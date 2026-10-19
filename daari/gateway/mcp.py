@@ -1262,7 +1262,9 @@ async def _handle_tasks_get(
         )
     if hasattr(store, "_record"):
         store._record("polled", tool=task.tool, task_id=task.task_id)
-    return _rpc_response(request, _jsonrpc_result(rpc_id, store.as_public(task)))
+    return _rpc_response(
+        request, _jsonrpc_result(rpc_id, _public_task_result(store, task, params))
+    )
 
 
 async def _handle_tasks_update(
@@ -1283,7 +1285,9 @@ async def _handle_tasks_update(
             _jsonrpc_error(rpc_id, INVALID_PARAMS, f"Unknown taskId: {task_id}"),
         )
     # Input-required acknowledgement: echo status; no mutation required for MVP.
-    return _rpc_response(request, _jsonrpc_result(rpc_id, store.as_public(task)))
+    return _rpc_response(
+        request, _jsonrpc_result(rpc_id, _public_task_result(store, task, params))
+    )
 
 
 async def _handle_tasks_cancel(
@@ -1302,7 +1306,15 @@ async def _handle_tasks_cancel(
             request,
             _jsonrpc_error(rpc_id, INVALID_PARAMS, f"Unknown taskId: {task_id}"),
         )
-    return _rpc_response(request, _jsonrpc_result(rpc_id, store.as_public(task)))
+    return _rpc_response(
+        request, _jsonrpc_result(rpc_id, _public_task_result(store, task, params))
+    )
+
+
+def _public_task_result(store: Any, task: Any, params: dict[str, Any]) -> dict[str, Any]:
+    """Stamp resultType on task results for protocol >= 2026-07-28 (#1765)."""
+    protocol = _per_request_protocol_version(params) or DEFAULT_PROTOCOL_VERSION
+    return _stamp_call_result_type(store.as_public(task), protocol)
 
 
 class MCPGatewayAdapter(GatewayAdapter):

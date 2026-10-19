@@ -7427,6 +7427,14 @@ Local ids keep family `daari` and omit both markers. Covered by
 protocol versions stay unstamped. Covered by
 `tests/unit/test_mcp_openapi_proxy.py`.
 
+### MCP task results stamp resultType ([#1765](https://github.com/naveenreddyalka/daari/issues/1765))
+
+<!-- tracking:#1765 -->
+**Status:** Done (2026-10-19). `tasks/get`, `tasks/update`, and `tasks/cancel`
+include `resultType: complete` when the per-request protocol (else the
+`tools/list` default) is `>= 2026-07-28`. Older protocols omit the field.
+Existing task fields stay. Covered by `tests/unit/test_mcp_tasks.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
