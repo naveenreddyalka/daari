@@ -60,6 +60,12 @@ Built-in local catalog: `clef`, `clef-flash`, `nimble`, `tev1`, `drex-1.5`,
 with capability tag `decision` so IDE/agents can discover on-box judges without
 hardcoding. Virtual-key `allowed_models` still filters `/v1/models`.
 
+Ollama ids ending in `:cloud` (for example `clef:cloud`) are remote egress.
+OpenAI and Anthropic `GET /v1/models` cards set `hosted_on` to `ollama-cloud`.
+`/api/tags` and `/api/show` set `details.family` to `ollama-cloud` and add the
+`remote` capability. Local ids keep `details.family` `daari` and omit both
+markers.
+
 ```yaml
 decisions:
   local_models: [my-judge, org/custom-decision]
