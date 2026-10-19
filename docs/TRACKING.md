@@ -7409,6 +7409,15 @@ with reason `cloud_fenced`, normal tier choice runs, and the session re-pins
 to the tier that served the reply. Covered by
 `tests/unit/test_session_affinity.py`.
 
+### Catalog marks Ollama :cloud ids as remote ([#1776](https://github.com/naveenreddyalka/daari/issues/1776))
+
+<!-- tracking:#1776 -->
+**Status:** Done (2026-10-19). OpenAI and Anthropic `GET /v1/models` cards for
+`:cloud` ids set `hosted_on` to `ollama-cloud`. Ollama `/api/tags` and
+`/api/show` set `details.family` to `ollama-cloud` and add capability `remote`.
+Local ids keep family `daari` and omit both markers. Covered by
+`tests/unit/test_cloud_catalog_marker.py`.
+
 ### OpenAPI MCP proxy stamps resultType ([#1777](https://github.com/naveenreddyalka/daari/issues/1777))
 
 <!-- tracking:#1777 -->

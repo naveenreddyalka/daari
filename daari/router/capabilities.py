@@ -133,6 +133,8 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
     """OpenAI-shaped `/v1/models` rows with capability tags (G5 / #244)."""
     import time
 
+    from daari.pricing import is_ollama_cloud_model
+
     catalog = catalog_from_settings(settings)
     created = int(time.time())
     cards: list[dict[str, Any]] = []
@@ -167,6 +169,8 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
         )
         if speed is not None:
             card["speed"] = speed
+        if is_ollama_cloud_model(model_id):
+            card["hosted_on"] = "ollama-cloud"
         cards.append(card)
 
     local_union: set[str] = set()
@@ -494,6 +498,8 @@ def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
             **anthropic_lifecycle_fields(model_id, settings),
         }
         row.update(anthropic_model_limits(model_id))
+        if card.get("hosted_on"):
+            row["hosted_on"] = card["hosted_on"]
         cards.append(row)
     return cards
 
