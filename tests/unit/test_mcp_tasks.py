@@ -206,3 +206,73 @@ async def test_tasks_update_reports_state(settings, tmp_path, monkeypatch):
         task_id = created.json()["result"]["taskId"]
         updated = await _rpc(client, "tasks/update", {"taskId": task_id})
         assert "status" in updated.json()["result"]
+
+
+def _protocol_meta(version: str = "2026-07-28") -> dict:
+    return {"_meta": {"io.modelcontextprotocol/protocolVersion": version}}
+
+
+@pytest.mark.asyncio
+async def test_tasks_get_result_type_follows_protocol(settings, tmp_path, monkeypatch):
+    """tasks/get stamps resultType only on protocol >= 2026-07-28 (#1765)."""
+    app = _app(settings, tmp_path)
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=1),
+        )
+
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, fake_execute)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await _rpc(
+            client,
+            "tools/call",
+            {
+                "name": "route",
+                "arguments": {"input": "x"},
+                "_meta": {TASKS_META_KEY: True},
+            },
+        )
+        task_id = created.json()["result"]["taskId"]
+        modern = await _rpc(
+            client,
+            "tasks/get",
+            {"taskId": task_id, **_protocol_meta()},
+            rpc_id=2,
+        )
+        legacy = await _rpc(
+            client,
+            "tasks/get",
+            {"taskId": task_id, **_protocol_meta("2025-03-26")},
+            rpc_id=3,
+        )
+        default = await _rpc(client, "tasks/get", {"taskId": task_id}, rpc_id=4)
+        updated = await _rpc(
+            client,
+            "tasks/update",
+            {"taskId": task_id, **_protocol_meta()},
+            rpc_id=5,
+        )
+        cancelled = await _rpc(
+            client,
+            "tasks/cancel",
+            {"taskId": task_id, **_protocol_meta()},
+            rpc_id=6,
+        )
+    modern_body = modern.json()["result"]
+    assert modern_body["resultType"] == "complete"
+    assert modern_body["taskId"] == task_id
+    assert modern_body["status"] in {"working", "completed", "cancelled"}
+    assert modern_body["tool"] == "route"
+    for response in (legacy, default):
+        body = response.json()["result"]
+        assert body["taskId"] == task_id
+        assert "resultType" not in body
+    assert updated.json()["result"]["resultType"] == "complete"
+    assert updated.json()["result"]["taskId"] == task_id
+    assert cancelled.json()["result"]["resultType"] == "complete"
+    assert cancelled.json()["result"]["taskId"] == task_id
+    assert "status" in cancelled.json()["result"]
