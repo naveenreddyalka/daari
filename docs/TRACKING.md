@@ -7427,6 +7427,16 @@ Local ids keep family `daari` and omit both markers. Covered by
 protocol versions stay unstamped. Covered by
 `tests/unit/test_mcp_openapi_proxy.py`.
 
+### Configurable systemone upstream ([#1778](https://github.com/naveenreddyalka/daari/issues/1778))
+
+<!-- tracking:#1778 -->
+**Status:** Done (2026-10-19). `systemone.base_url` (empty by default) overrides
+`ollama.base_url` for `POST /v1/systemone`, the local `/v1/decisions` path,
+decision-guardrail predicates, and the difficulty hop. Empty both bases keep
+the existing Ollama 503. Doctor's decisions tip names `ollama default` or the
+explicit base URL. The field is on the config-editor ownership/PATCH subset.
+Covered by `tests/unit/test_systemone_upstream.py`.
+
 ### MCP task results stamp resultType ([#1765](https://github.com/naveenreddyalka/daari/issues/1765))
 
 <!-- tracking:#1765 -->

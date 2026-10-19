@@ -258,7 +258,9 @@ def _resolve_guardrail_predicate_target(
         )
     if not is_local_decisions_model(name, settings=settings):
         raise ValueError(f"decision guardrails require a local decisions model, got {name!r}")
-    base = (base_url or "").strip().rstrip("/")
+    from daari.gateway.systemone import resolve_systemone_base
+
+    base = resolve_systemone_base(settings, fallback=base_url)
     if not base:
         raise RuntimeError("ollama.base_url is empty")
     return name, f"{base}/v1/systemone"
@@ -907,8 +909,14 @@ async def _handle_local(
         log_gateway_event("decisions_local_disabled", {})
         return _error(501, "not_implemented", _UNAVAILABLE_LOCAL)
 
-    ollama = getattr(settings, "ollama", None)
-    base = str(getattr(ollama, "base_url", "") or "").strip().rstrip("/")
+    from daari.gateway.systemone import (
+        explicit_systemone_base,
+        resolve_systemone_base,
+        systemone_override_unavailable,
+    )
+
+    explicit = explicit_systemone_base(settings)
+    base = resolve_systemone_base(settings)
     if not base:
         log_gateway_event("decisions_local_unavailable", {"reason": "no_ollama_base_url"})
         return _error(503, "backend_unavailable", _UNAVAILABLE_LOCAL)
@@ -981,11 +989,11 @@ async def _handle_local(
             "decisions_ollama_down",
             {"error": summarize_upstream_failure(exc), "url_host": httpx.URL(url).host},
         )
-        return _error(
-            503,
-            "backend_unavailable",
-            backend_unavailable_message(exc) or _UNAVAILABLE_LOCAL,
-        )
+        if explicit:
+            message = systemone_override_unavailable(explicit)
+        else:
+            message = backend_unavailable_message(exc) or _UNAVAILABLE_LOCAL
+        return _error(503, "backend_unavailable", message)
 
     latency_ms = _elapsed_ms(started)
     if upstream.status_code >= 400:

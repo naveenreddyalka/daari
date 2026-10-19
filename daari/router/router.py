@@ -541,6 +541,7 @@ class Router:
         decision_classifier_model: str = "nimble",
         decision_classifier_timeout_seconds: float = 5.0,
         decision_classifier_agent_turns: bool = False,
+        systemone_base_url: str = "",
         models_lifecycle: dict[str, Any] | None = None,
     ) -> None:
         self.cache = cache
@@ -667,6 +668,7 @@ class Router:
         self.decision_classifier_model = (decision_classifier_model or "nimble").strip() or "nimble"
         self.decision_classifier_timeout_seconds = float(decision_classifier_timeout_seconds or 5.0)
         self.decision_classifier_agent_turns = bool(decision_classifier_agent_turns)
+        self.systemone_base_url = (systemone_base_url or "").strip().rstrip("/")
         self.models_lifecycle = dict(models_lifecycle) if models_lifecycle else {}
         self.local_pool = local_pool
         self.local_pool_frontier_fallback = bool(local_pool_frontier_fallback)
@@ -1432,7 +1434,11 @@ class Router:
         from daari.gateway.request_log import log_gateway_event
         from daari.router.decision_classifier import classify_via_systemone
 
-        base_url = getattr(self.ollama_l3, "base_url", "") or "http://127.0.0.1:11434"
+        base_url = (
+            (self.systemone_base_url or "").strip().rstrip("/")
+            or getattr(self.ollama_l3, "base_url", "")
+            or "http://127.0.0.1:11434"
+        )
         started = time.perf_counter()
         try:
             result = await classify_via_systemone(
@@ -6541,6 +6547,7 @@ class AppContext:
             context_window_buffer=settings.routing.context_window_escalation_buffer,
             context_windows=dict(settings.routing.context_windows or {}),
             decision_classifier_enabled=settings.routing.decision_classifier.enabled,
+            systemone_base_url=str(getattr(settings.systemone, "base_url", "") or ""),
             decision_classifier_model=settings.routing.decision_classifier.model,
             decision_classifier_timeout_seconds=settings.routing.decision_classifier.timeout_seconds,
             decision_classifier_agent_turns=settings.routing.decision_classifier.agent_turns,

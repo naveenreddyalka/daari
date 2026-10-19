@@ -289,20 +289,33 @@ class OllamaSettings(BaseModel):
 
 
 class SystemOneSettings(BaseModel):
-    """Ollama decision-model facade at POST /v1/systemone (#1291).
+    """Decision-model facade at POST /v1/systemone (#1291, #1778).
 
-    Proxies TypeSafe/Jev-shaped ``{model, state, questions}`` to Ollama 0.35+
-    ``/v1/systemone``. Default on; set ``enabled=false`` to return 501.
+    Proxies TypeSafe/Jev-shaped ``{model, state, questions}`` to an
+    OpenAI-compatible ``/v1/systemone`` (Ollama 0.35+ by default, or any
+    server such as vLLM 0.32+ when ``base_url`` is set). Default on; set
+    ``enabled=false`` to return 501.
     """
 
     enabled: bool = Field(
         default=True,
         description=(
-            "When true, POST /v1/systemone proxies to ollama.base_url and "
-            "local decisions ids are advertised on GET /v1/models (OpenAI list "
-            "tag `decision` and Anthropic `capabilities.decision.supported`) "
-            "and Ollama /api/tags with capability decision. When false, the "
-            "route returns 501 not_implemented and discovery omits those ids."
+            "When true, POST /v1/systemone proxies to systemone.base_url when "
+            "set, otherwise ollama.base_url, and local decisions ids are "
+            "advertised on GET /v1/models (OpenAI list tag `decision` and "
+            "Anthropic `capabilities.decision.supported`) and Ollama /api/tags "
+            "with capability decision. When false, the route returns 501 "
+            "not_implemented and discovery omits those ids."
+        ),
+    )
+    base_url: str = Field(
+        default="",
+        description=(
+            "OpenAI-compatible root for POST /v1/systemone, the local "
+            "POST /v1/decisions path, and decision-guardrail predicates "
+            "(vLLM 0.32+ /v1/systemone and other compatible servers). Empty "
+            "falls back to ollama.base_url. Editable via GET/PATCH "
+            "/v1/daari/config ownership (config editor)."
         ),
     )
 

@@ -15,6 +15,7 @@ _SAFE_SECTIONS = (
     "integrations",
     "observability",
     "decisions",
+    "systemone",
 )
 
 # Flat leaf paths exposed by the config editor GET payload.
@@ -59,6 +60,7 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("integrations", "mcp_servers"),
     ("observability", "structured_json_logs"),
     ("decisions", "local_models"),
+    ("systemone", "base_url"),
 )
 
 
@@ -233,6 +235,9 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
         },
         "decisions": {
             "local_models": list(getattr(s.decisions, "local_models", None) or []),
+        },
+        "systemone": {
+            "base_url": str(getattr(s.systemone, "base_url", "") or ""),
         },
     }
 
