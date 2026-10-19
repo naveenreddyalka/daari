@@ -842,6 +842,7 @@ class SamplingParams(BaseModel):
             "frequency_penalty",
             "reasoning_effort",
             "service_tier",
+            "speed",
             "parallel_tool_calls",
             "top_logprobs",
         ):
