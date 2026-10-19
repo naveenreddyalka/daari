@@ -90,8 +90,10 @@ alongside `state`; daari forwards them verbatim when present.
 
 Opt out with `systemone.enabled: false` (returns 501). Upstream is
 `ollama.base_url`; when Ollama is down the route returns typed
-`backend_unavailable` (503). Doctor tip `decisions_local_models` fires when
-systemone is on but none of the catalog models appear in Ollama tags.
+`backend_unavailable` (503). When `systemone.base_url` is set, that root is
+used instead of `ollama.base_url`. Doctor tip `decisions_local_models` fires
+when systemone is on but none of the catalog models appear in Ollama
+`/api/tags`, or in `GET {systemone.base_url}/v1/models` when that base is set.
 
 ## Next
 
