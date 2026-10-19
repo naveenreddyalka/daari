@@ -11,27 +11,27 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-19)
+## Where daari stands (verified in-tree, 2026-10-19 evening)
 
-**Loop velocity.** The entire 10-18 board (rows 136–149, three scans) merged
-within 24h — streamed fast degrade, fence-aware pins, `:cloud` catalog
-markers, both proxy `resultType` stamps, and the configurable systemone
-upstream (#1778 → PR #1790) are all on main. The loop self-refilled with
-three systemone follow-ups (rows 150–152). `agent:working` rows 6/62–63/
-65–67 unchanged.
+**Loop velocity.** Morning rows 153–157 are still open (L0 `speed` fingerprint,
+Helm/auth/breaker for the decisions upstream, spend slices). Rows 150–152
+and admin-plane rows 6/62–63/65–67 are unchanged. No feature PRs merged
+after the morning PRD.
 
-**Outward.** Fully flat since the 10-18 scans: LiteLLM 1.106.0 GA /
-1.107.0-rc.1, vLLM 0.32.0, Ollama 0.40.7-rc0, Portkey v2.29.0, OpenRouter
-(Oct 9), Anthropic (10-15), OpenAI (10-16 prompt-to-voice, non-goal).
-**Kong Gateway 3.16.0.1 (10-12):** `ai-a2a-proxy` adds A2A v1.0 wire-format
-and `ai-proxy-advanced` gains prompt cache-control mappings + byte-preserving
-forwards — A2A stays a demand-gated watch. Claude Code 2.1.303 is patch-only.
+**Outward.** Still flat on GA: LiteLLM 1.106.0 / 1.107.0-rc.1 (Oct 18),
+vLLM 0.32.0, Portkey v2.29.0, Kong Gateway 3.16.0.1, OpenRouter, Anthropic,
+OpenAI. Ollama **0.40.7-rc0** (Oct 18) adds MLX PPLX Decider v1.2
+([ollama#19072](https://github.com/ollama/ollama/pull/19072)); library
+manifests are not published, so the model stays a watch. No new HTTP
+fields to forward.
 
-**Inward theme: depth behind the configurable decisions upstream.** The
-new `systemone.base_url` hop cannot be deployed by the Helm chart, carries
-no auth to the upstream, and has retry but no breaker. And the fast-mode
-wave missed the cache layer: `speed` is absent from the L0 fingerprint, so
-fast and standard requests share one cache entry.
+**Inward theme: the next cache alias, then alert and console honesty.**
+L1's `semantic_context_key` still ignores `speed`, so fast and standard
+share a semantic hit even after the exact cache is fixed. Budget webhooks
+send `reset_epoch` only and never see `model_max_budget` windows.
+`schema_ok` is `/ready` + doctor, not a scrape or a console banner. The
+events API already filters `key_id`/`kind`; the web UI does not. The
+explicit systemone root is unit-tested, not on the gateway integration flow.
 
 ---
 
@@ -39,14 +39,19 @@ fast and standard requests share one cache entry.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 153 | L0 cache fingerprint includes Anthropic `speed` (today fast/standard share an entry) | 4 | 1 | LiteLLM cache keying | On-box cache truth backs fast-mode bill-back | Filed [#1798](https://github.com/naveenreddyalka/daari/issues/1798) |
-| 154 | Helm `systemone.baseUrl` knob + env + NetworkPolicy egress | 4 | 2 | LiteLLM/vLLM charts | The vLLM decisions box is reachable from a governed cluster | Filed [#1799](https://github.com/naveenreddyalka/daari/issues/1799) |
-| 155 | `systemone.api_key` Bearer on the configured upstream (all four call sites + doctor probe) | 4 | 2 | vLLM `--api-key` / LiteLLM provider creds | Shared on-prem judge boxes need auth without a sidecar | Filed [#1800](https://github.com/naveenreddyalka/daari/issues/1800) |
-| 156 | Circuit breaker on the systemone upstream + shared pool/retry on the classifier hop | 4 | 3 | Kong/Envoy breakers | Fail-fast keeps the per-request judge hop credible | Filed [#1801](https://github.com/naveenreddyalka/daari/issues/1801) |
-| 157 | Spend export `--model`/`--usage-speed` filters + Grafana cloud/fast panels | 3 | 2 | Portkey spend UI | Fast-vs-standard and local-vs-cloud FinOps on-box | Filed [#1802](https://github.com/naveenreddyalka/daari/issues/1802) |
-| 150 | Doctor names the resolved systemone root on the classifier check | 2 | 1 | — (ops honesty) | Doctor says which box the hop really hits | Open [#1793](https://github.com/naveenreddyalka/daari/issues/1793) |
-| 151 | `daari_meta` labels the resolved systemone executor (not hardcoded ollama) | 3 | 1 | — (response honesty) | Clients see which upstream answered | Open [#1794](https://github.com/naveenreddyalka/daari/issues/1794) |
-| 152 | Upstream request ids on systemone HTTP failures | 3 | 1 | LiteLLM failure logs | Provider tickets cite the id on-box | Open [#1795](https://github.com/naveenreddyalka/daari/issues/1795) |
+| 158 | L1 `semantic_context_key` includes Anthropic `speed` (fast/standard share a semantic hit) | 4 | 1 | LiteLLM cache keying | On-box semantic hits must not alias billed modes | Filed [#1804](https://github.com/naveenreddyalka/daari/issues/1804) |
+| 159 | `daari_schema_ok` Prometheus gauge + web-ui banner when `/ready` is schema-lagged | 3 | 2 | LiteLLM health dashboards | Schema drift pages from the on-box scrape | Filed [#1805](https://github.com/naveenreddyalka/daari/issues/1805) |
+| 160 | Web-ui events: `key_id`/`kind` filters + payload column (API already accepts them) | 3 | 1 | LiteLLM admin logs | Console finishes the on-box request log | Filed [#1806](https://github.com/naveenreddyalka/daari/issues/1806) |
+| 161 | Budget webhooks: ISO `reset_at` + `model_max_budget` threshold crossings | 4 | 2 | Portkey / LiteLLM per-model budgets | Same reset clock as the 402, including model caps | Filed [#1807](https://github.com/naveenreddyalka/daari/issues/1807) |
+| 162 | Gateway integration flow pins explicit `systemone.base_url` (unit MockTransport only today) | 2 | 1 | — (testability) | The named decisions host is what the suite proves | Filed [#1808](https://github.com/naveenreddyalka/daari/issues/1808) |
+| 153 | L0 cache fingerprint includes Anthropic `speed` (today fast/standard share an entry) | 4 | 1 | LiteLLM cache keying | On-box cache truth backs fast-mode bill-back | Open |
+| 154 | Helm `systemone.baseUrl` knob + env + NetworkPolicy egress | 4 | 2 | LiteLLM/vLLM charts | The vLLM decisions box is reachable from a governed cluster | Open |
+| 155 | `systemone.api_key` Bearer on the configured upstream (all four call sites + doctor probe) | 4 | 2 | vLLM `--api-key` / LiteLLM provider creds | Shared on-prem judge boxes need auth without a sidecar | Open |
+| 156 | Circuit breaker on the systemone upstream + shared pool/retry on the classifier hop | 4 | 3 | Kong/Envoy breakers | Fail-fast keeps the per-request judge hop credible | Open |
+| 157 | Spend export `--model`/`--usage-speed` filters + Grafana cloud/fast panels | 3 | 2 | Portkey spend UI | Fast-vs-standard and local-vs-cloud FinOps on-box | Open |
+| 150 | Doctor names the resolved systemone root on the classifier check | 2 | 1 | — (ops honesty) | Doctor says which box the hop really hits | Open |
+| 151 | `daari_meta` labels the resolved systemone executor (not hardcoded ollama) | 3 | 1 | — (response honesty) | Clients see which upstream answered | Open |
+| 152 | Upstream request ids on systemone HTTP failures | 3 | 1 | LiteLLM failure logs | Provider tickets cite the id on-box | Open |
 | 136–149 | 10-18 waves: `resultType` everywhere; fast-mode stream degrade/headers/billing; `:cloud` fences + catalog markers; replay/ledger honesty; configurable systemone upstream; 1.106 GA floor | 2–5 | 1–3 | Claude Code / Anthropic / LiteLLM / vLLM | Protocol, egress, and billing truth on-box | Shipped |
 | 131 | Ollama `:cloud` counts as remote egress for `no_frontier` / PII scrub / region fences | 5 | 2 | Portkey egress fences | "Local-only means local-only" is the core promise | Shipped |
 | 117–130 | 10-16/10-17 waves: modality 410; Opus fast billing; scoped reads; lockout unlock; Helm consistent backup; client recipes; catalog/doctor/ready honesty | 2–5 | 1–3 | — / Ollama / LiteLLM | Lifecycle, tenancy, DR, onboarding on-box | Shipped |
@@ -82,16 +87,10 @@ failures; fast-mode rate-limit header copy (Messages + chat); adaptive
 thinking key strip; `speed`-ignored warning; compare-litellm 1.106.0 GA floor.
 
 Watch rows (do not file yet): systemone multi-upstream / opt-in Ollama
-fallback when the explicit base is down (file on fleet demand); a gateway
-integration-flow case for the configurable systemone override (unit
-MockTransport only today — fold into the next test audit); gzip compression
-Prom metrics (ratio/CPU — operator ask); `schema_ok` Prometheus gauge +
-web-ui banner (today it is `/ready` + doctor only); budget threshold
-webhooks: ISO `reset_at` parity with the report path + model-budget
-(`model_max_budget`) alert coverage; events web-ui `key_id`/`kind` filters +
-payload column (API already returns them); `CONFIGURE_CLIENTS` first-wave
-tuple lags the registry (trivial, fold into the next recipe); cursor-agent
-CLI configure (distinct from the Cursor IDE recipe); `migrate --downgrade`
+fallback when the explicit base is down (file on fleet demand); gzip
+compression Prom metrics (ratio/CPU — operator ask); `CONFIGURE_CLIENTS`
+first-wave tuple lags the registry (trivial, fold into the next recipe);
+cursor-agent CLI configure (distinct from the Cursor IDE recipe); `migrate --downgrade`
 (demand-triggered); Responses background completion webhooks + wider
 `include` allowlist (one include today, poll-only); per-user request-count
 RPD (USD caps only); SCIM + multi-issuer/audience SSO (multi-JWKS yes,
@@ -107,36 +106,33 @@ cache-hit complaints appear); Anthropic Compliance API user-preferences
 export + OpenAI GPT-Live incl. prompt-to-voice (non-goals).
 
 Verified fine this run — don't re-audit: configurable `base_url` honored on
-the systemone facade, local decisions, guardrail predicates, and classifier;
-doctor probes the configured catalog via `/v1/models` and names the explicit
-base; shared pooled client + `run_upstream` retry on the facade and
-decisions paths; `Idempotency-Key` on both decisions routes; `:cloud` rows
-in metered spend SQL; scheme-only URL validation on `systemone.base_url`
-(private addresses intentionally allowed — lab GPUs); lockout unlock verb
-present on CLI/API/web-ui; ASR/TTS/Ollama Helm knobs coherent; `speed`
-parsed on both ingress shapes and gated before egress (the gap is cache
-keying only, row 153).
+the systemone facade (unit tests; the gap is the gateway flow, row 162);
+doctor probes the configured catalog via `/v1/models`; shared pooled client
++ `run_upstream` retry on the facade and decisions paths; `Idempotency-Key`
+on both decisions routes; `:cloud` rows in metered spend SQL; scheme-only
+URL validation on `systemone.base_url` (private addresses intentionally
+allowed — lab GPUs); lockout unlock verb present on CLI/API/web-ui;
+ASR/TTS/Ollama Helm knobs coherent; `speed` parsed on both ingress shapes
+and gated before egress (exact-cache keying is row 153; L1 namespace is
+row 158). `GET /v1/daari/events` already filters `key_id` and `kind`.
+`WindowStatus.reset_at` and 402 `budget_error` already speak ISO.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Cache truth for fast mode** — include `speed` in the L0 fingerprint
-   (row 153) so the cache layer stops conflating fast and standard
-   responses the rest of the stack already bills and degrades honestly.
-2. **Deployable decisions upstream** — Helm knob + env + NetworkPolicy
-   egress (row 154) and upstream Bearer auth (row 155) make the vLLM
-   `/v1/systemone` story real in a governed cluster, not just on a laptop.
-3. **Fail-fast judge hop** — a breaker on the systemone upstream and a
-   pooled, retry-aware classifier hop (row 156) keep per-request decision
-   latency credible when the judge box is down.
-4. **FinOps slices for the new spend dimensions** — `--model` /
-   `--usage-speed` export filters and Grafana cloud/fast panels (row 157)
-   turn recorded `:cloud` and fast-mode rows into operator answers.
-5. **Systemone observability follow-ups** — resolved-root doctor naming,
-   executor-true `daari_meta`, and upstream request ids (rows 150–152)
-   land from today's refill; admin-plane rows 62–67 stay with their
-   `agent:working` sessions.
+1. **Semantic cache truth for fast mode** — include `speed` in the L1
+   context key (row 158) so a semantic hit cannot return the other mode's
+   completion. Exact-cache keying (row 153) stays queued beside it.
+2. **Model-cap alerts on the same clock as the 402** — ISO `reset_at` on
+   budget webhooks and threshold fires for `model_max_budget` (row 161).
+3. **Schema lag a scraper can see** — `daari_schema_ok` plus a console
+   banner (row 159) when `/ready` is already `not_ready`.
+4. **Events console catches up to the API** — key and kind filters and a
+   payload column (row 160).
+5. **Pin the named decisions host in the gateway suite** — one integration
+   flow for explicit `systemone.base_url` (row 162). Helm, auth, breaker,
+   and spend slices (rows 154–157) stay queued from the morning scan.
 
 Compliance non-goals (SCIM, WIF depth, A2A, SOC 2 program, Realtime/WS,
 FIPS builds, HIPAA BAA) stay deferred until buyer demand.
@@ -144,6 +140,15 @@ FIPS builds, HIPAA BAA) stay deferred until buyer demand.
 ---
 
 ## Changelog
+
+- **2026-10-19 evening (L1 speed alias, alert clock, console honesty)** —
+  Outward still flat: LiteLLM 1.106.0 GA / 1.107.0-rc.1, vLLM 0.32.0,
+  Portkey v2.29.0, Kong Gateway 3.16.0.1, OpenRouter, Anthropic, OpenAI.
+  Ollama 0.40.7-rc0's PPLX Decider v1.2 is an unpublished MLX runtime
+  (watch). Filed rows 158–162: L1 `speed` context key, `schema_ok` gauge
+  and console banner, events key/kind/payload UI, budget-webhook ISO
+  `reset_at` plus model-cap crossings, and a gateway-flow pin for explicit
+  `systemone.base_url`. Morning rows 150–157 stay open.
 
 - **2026-10-19 (depth behind the configurable decisions upstream + fast-mode
   cache truth)** — Marked rows 136–149 Shipped (the whole 10-18 board merged
