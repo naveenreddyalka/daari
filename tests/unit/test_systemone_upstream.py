@@ -217,6 +217,82 @@ def test_doctor_reports_ollama_default_upstream(settings):
     assert "ollama default" in detail
 
 
+def _capture_events(monkeypatch) -> list[tuple[str, dict]]:
+    events: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        "daari.gateway.systemone.log_gateway_event",
+        lambda event, payload: events.append((event, payload)),
+    )
+    return events
+
+
+@pytest.mark.asyncio
+async def test_empty_base_keeps_ollama_meta(settings, monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    events = _capture_events(monkeypatch)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.systemone.base_url = ""
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/systemone", json=_SYSTEMONE_BODY)
+
+    assert response.status_code == 200
+    meta = response.json()["daari_meta"]
+    assert meta["executor"] == "ollama"
+    assert meta["provider_id"] == "ollama"
+    ok = [payload for name, payload in events if name == "systemone_ok"]
+    assert ok and ok[-1]["upstream"] == "ollama"
+
+
+@pytest.mark.asyncio
+async def test_explicit_base_labels_openai_compat_meta(settings, monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    events = _capture_events(monkeypatch)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.systemone.base_url = "http://vllm.local:8000"
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/systemone", json=_SYSTEMONE_BODY)
+
+    assert response.status_code == 200
+    meta = response.json()["daari_meta"]
+    assert meta["executor"] == "openai-compat"
+    assert meta["provider_id"] == "openai-compat"
+    ok = [payload for name, payload in events if name == "systemone_ok"]
+    assert ok and ok[-1]["upstream"] == "openai-compat"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [b"not-json", b"[]"],
+)
+async def test_explicit_base_bad_body_names_host_not_ollama(settings, monkeypatch, body):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body, headers={"content-type": "application/json"})
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.systemone.base_url = "http://vllm.local:8000"
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/systemone", json=_SYSTEMONE_BODY)
+
+    assert response.status_code == 502
+    message = response.json()["error"]["message"]
+    assert "Ollama" not in message
+    assert "vllm.local" in message
+
+
 def test_doctor_reports_explicit_base_url(settings):
     settings.systemone.enabled = True
     settings.systemone.base_url = "http://vllm.local:8000"

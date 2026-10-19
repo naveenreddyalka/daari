@@ -7480,6 +7480,15 @@ share an L0 entry. An omitted `speed` stays out of the fingerprint. Covered by
 standard prompts no longer share an L1 hit. An unset speed keeps the previous
 context key. Covered by `tests/unit/test_semantic_cache.py`.
 
+### Systemone meta names the resolved upstream ([#1794](https://github.com/naveenreddyalka/daari/issues/1794))
+
+<!-- tracking:#1794 -->
+**Status:** Done (2026-10-19). An empty `systemone.base_url` keeps
+`daari_meta.executor` and `provider_id` as `ollama`. A configured base labels
+both `openai-compat`, and `systemone_ok` records the same `upstream`. A
+non-JSON or non-object body from that host returns 502 naming the host and
+not Ollama. Covered by `tests/unit/test_systemone_upstream.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
