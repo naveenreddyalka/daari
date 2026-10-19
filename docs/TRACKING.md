@@ -7445,6 +7445,16 @@ include `resultType: complete` when the per-request protocol (else the
 `tools/list` default) is `>= 2026-07-28`. Older protocols omit the field.
 Existing task fields stay. Covered by `tests/unit/test_mcp_tasks.py`.
 
+### Doctor names the resolved systemone root for the classifier ([#1793](https://github.com/naveenreddyalka/daari/issues/1793))
+
+<!-- tracking:#1793 -->
+**Status:** Done (2026-10-19). When `systemone.base_url` is set, the
+`decision_classifier` tip names that root instead of Ollama, and
+`decision_classifier_model` probes `GET {base}/v1/models`. A miss does not
+suggest `ollama pull`. An empty base keeps the Ollama tag check. Covered by
+`tests/unit/test_doctor_decision_classifier.py` and
+`tests/unit/test_doctor_decision_classifier_model.py`.
+
 ### Doctor probes the configured systemone catalog ([#1792](https://github.com/naveenreddyalka/daari/issues/1792))
 
 <!-- tracking:#1792 -->

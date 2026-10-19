@@ -17,6 +17,23 @@ def test_tip_when_decision_classifier_enabled(settings):
     assert "heuristic" in detail or "fallback" in detail
 
 
+def test_tip_names_explicit_systemone_root(settings):
+    settings.routing.decision_classifier.enabled = True
+    settings.systemone.base_url = "http://vllm.test:8000"
+    row = _check_decision_classifier(settings)
+    assert row is not None
+    assert "http://vllm.test:8000" in row.detail
+    assert "Ollama" not in row.detail
+
+
+def test_tip_keeps_ollama_wording_without_systemone_base(settings):
+    settings.routing.decision_classifier.enabled = True
+    settings.systemone.base_url = ""
+    row = _check_decision_classifier(settings)
+    assert row is not None
+    assert "Ollama" in row.detail
+
+
 def test_tip_absent_when_decision_classifier_disabled(settings):
     settings.routing.decision_classifier.enabled = False
     assert _check_decision_classifier(settings) is None

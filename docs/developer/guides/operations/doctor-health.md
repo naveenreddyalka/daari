@@ -65,10 +65,10 @@ package `version` for upgrade/rollback discovery.
 | doctor `mcp_server_rate_limits` | Optional: when any `integrations.mcp_servers` entry sets `rpm` / `tpm` — tip that per-server egress ceilings apply independently of key-family `mcp` RPM/TPM |
 | doctor `master_key_strength` | Optional: warns when `server.dangerously_permit_weak_or_unset_api_key` is true, or when master key is unset while virtual keys / `mcp_oauth.local_as` imply auth (#1320) |
 | doctor `config_editor_ungoverned` | Optional: when `observability.config_editor` is on, SSO is off, and no master key is set — tip that `PATCH /v1/daari/config` (and other admin surfaces) are ungoverned (#1441) |
-| doctor `decision_classifier` | Optional: when `routing.decision_classifier.enabled` is true — tip that an Ollama `/v1/systemone` difficulty hop runs before heuristic tier pick (fallback on timeout/failure) |
+| doctor `decision_classifier` | Optional: when `routing.decision_classifier.enabled` is true — tip that a `/v1/systemone` difficulty hop runs before heuristic tier pick (fallback on timeout/failure). Empty `systemone.base_url` names Ollama; a set base names that root |
 | doctor `compact_to_fit` | Optional: when `routing.compact_to_fit.enabled` is true — tip that oldest droppable turns are trimmed before L6/frontier; system and tool-call payloads are kept; over-cap history fail-closes oversized; successful trims expose `tokens_before` / `tokens_after` and `compact_to_fit_tokens_dropped` |
 | doctor `structured_json_logs` | Optional: when `observability.structured_json_logs` is true — tip that gateway events are single-line JSON on stdout (containers/SIEM); `~/.daari/cursor-requests.log` is still written |
-| doctor `decision_classifier_model` | Optional: when the classifier is enabled but `routing.decision_classifier.model` (default `nimble`) is missing from Ollama `/api/tags` — tip to `ollama pull <model>`; quiet if Ollama is unreachable (the `ollama` check owns that) |
+| doctor `decision_classifier_model` | Optional: when the classifier is enabled but `routing.decision_classifier.model` (default `nimble`) is missing. Empty `systemone.base_url` reads Ollama `/api/tags` and suggests `ollama pull`. A set base reads `GET {base}/v1/models` and does not suggest `ollama pull`. Quiet if that upstream is unreachable |
 
 ## Next
 
