@@ -793,11 +793,14 @@ def _check_decisions_local_models(
     openai_catalog = bool(explicit)
     base = explicit or settings.ollama.base_url.rstrip("/")
     catalog_url = f"{base}/v1/models" if openai_catalog else f"{base}/api/tags"
+    from daari.gateway.systemone import systemone_auth_headers
+
+    headers = systemone_auth_headers(settings)
     own_client = client is None
     http = client or httpx.Client(timeout=5.0)
     try:
         try:
-            response = http.get(catalog_url)
+            response = http.get(catalog_url, headers=headers or None)
         except Exception:
             return None
         if response.status_code != 200:
@@ -3402,11 +3405,14 @@ def _check_decision_classifier_model(
     openai_catalog = bool(explicit)
     base = explicit or settings.ollama.base_url.rstrip("/")
     catalog_url = f"{base}/v1/models" if openai_catalog else f"{base}/api/tags"
+    from daari.gateway.systemone import systemone_auth_headers
+
+    headers = systemone_auth_headers(settings)
     own_client = client is None
     http = client or httpx.Client(timeout=5.0)
     try:
         try:
-            response = http.get(catalog_url)
+            response = http.get(catalog_url, headers=headers or None)
         except Exception:
             return None
         if response.status_code != 200:
