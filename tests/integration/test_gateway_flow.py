@@ -3976,6 +3976,65 @@ async def test_decisions_l0_exact_cache_gateway(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_systemone_explicit_base_url_on_gateway(app, monkeypatch):
+    """POST /v1/systemone uses systemone.base_url, not ollama.base_url (#1808)."""
+    import httpx
+
+    from daari.gateway import systemone
+
+    seen: list[str] = []
+    systemone_ok = {
+        "model": "nimble",
+        "answers": {
+            "label": {
+                "type": "choice",
+                "choice": "bug",
+                "probabilities": {"billing": 0.01, "bug": 0.98},
+                "confidence": 0.9,
+            }
+        },
+        "usage": {"input_tokens": 12, "output_tokens": 1},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, json=systemone_ok)
+
+    systemone._http = None
+    real = httpx.AsyncClient
+
+    class Patched(real):
+        def __init__(self, *args, **kwargs):
+            if kwargs.get("transport") is None:
+                kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    monkeypatch.setattr("daari.gateway.systemone.httpx.AsyncClient", Patched)
+    app.state.ctx.settings.ollama.base_url = "http://ollama.local:11434"
+    app.state.ctx.settings.systemone.base_url = "http://vllm.local:8000"
+
+    body = {
+        "model": "nimble",
+        "state": "checkout returns 500",
+        "questions": {
+            "label": {
+                "type": "choice",
+                "instructions": "Which label fits?",
+                "criteria": {"bug": "errors", "billing": "payments"},
+            }
+        },
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/systemone", json=body)
+
+    assert response.status_code == 200
+    assert seen == ["http://vllm.local:8000/v1/systemone"]
+    assert all("ollama.local" not in url for url in seen)
+
+
+@pytest.mark.asyncio
 async def test_retired_chat_410_before_admission(settings, monkeypatch):
     """Retired ids 410 without consuming RPM or an in-flight slot (#1701)."""
     settings.models.lifecycle = {"retired-model": {"lifecycle": "retired"}}
