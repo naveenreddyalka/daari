@@ -397,10 +397,18 @@
               Team
               <input id="events-team-filter" type="text" placeholder="team_id" aria-label="Events team filter" />
             </label>
+            <label>
+              Key
+              <input id="events-key-filter" type="text" placeholder="key_id" aria-label="Events key filter" />
+            </label>
+            <label>
+              Kind
+              <input id="events-kind-filter" type="text" placeholder="event kind" aria-label="Events kind filter" />
+            </label>
             <button id="events-next" type="button">Next page</button>
           </div>
         </div>
-        <p class="subtle">Newest-first from <code>GET /v1/daari/events</code> (team filter and cursor pagination).</p>
+        <p class="subtle">Newest-first from <code>GET /v1/daari/events</code> (team/key/kind filters and cursor pagination).</p>
         <table>
           <thead>
             <tr>
@@ -408,6 +416,7 @@
               <th>Time</th>
               <th>Kind</th>
               <th>Team</th>
+              <th>Payload</th>
             </tr>
           </thead>
           <tbody id="events-table"></tbody>

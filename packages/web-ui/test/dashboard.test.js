@@ -822,7 +822,7 @@ test("events panel fetches team filter and renders rows as text", async (t) => {
             id: 9,
             ts: xss,
             event: "chat",
-            payload: { team_id: "eng" },
+            payload: { team_id: "eng", note: xss },
           },
         ],
         total: 2,
@@ -854,6 +854,7 @@ test("events panel fetches team filter and renders rows as text", async (t) => {
   assert.match(eventsText, /chat/);
   assert.match(eventsText, /eng/);
   assert.match(eventsText, /onerror/);
+  assert.match(eventsText, /"team_id":"eng"/);
   assert.equal(doc.querySelectorAll("#events-table script").length, 0);
   assert.equal(doc.querySelectorAll("#events-table img").length, 0);
   assert.equal(dom.window.__xss, undefined);
@@ -875,4 +876,53 @@ test("events panel fetches team filter and renders rows as text", async (t) => {
   );
   assert.ok(unlockCall);
   assert.match(unlockCall.init.body, /onerror/);
+});
+
+test("events panel key/kind filters hit the API and payload cell is text", async (t) => {
+  const xss = '<img src=x onerror=window.__xss=1><script>window.__xss=1</script>';
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/events": {
+        events: [
+          {
+            id: 3,
+            ts: "2026-10-20T00:00:00+00:00",
+            event: "budget_alert",
+            payload: { key_id: "k1", team_id: "ops", detail: xss },
+          },
+        ],
+        total: 1,
+        limit: 20,
+        offset: 0,
+        has_more: false,
+        next_cursor: "",
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const key = doc.getElementById("events-key-filter");
+  const kind = doc.getElementById("events-kind-filter");
+  assert.ok(key);
+  assert.ok(kind);
+  key.value = "k1";
+  kind.value = "budget_alert";
+  key.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await settle();
+  kind.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await settle();
+
+  const eventCalls = fetch.calls.filter((c) => c.url.includes("/v1/daari/events"));
+  assert.ok(eventCalls.some((c) => c.url.includes("key_id=k1")));
+  assert.ok(eventCalls.some((c) => c.url.includes("kind=budget_alert")));
+  const eventsText = doc.getElementById("events-table").textContent;
+  assert.match(eventsText, /budget_alert/);
+  assert.match(eventsText, /"key_id":"k1"/);
+  assert.match(eventsText, /onerror/);
+  assert.equal(doc.querySelectorAll("#events-table script").length, 0);
+  assert.equal(doc.querySelectorAll("#events-table img").length, 0);
+  assert.equal(dom.window.__xss, undefined);
 });

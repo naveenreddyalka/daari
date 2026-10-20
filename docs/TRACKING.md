@@ -7548,6 +7548,13 @@ by `tests/unit/test_spend_export.py` and `tests/unit/test_grafana_dashboard.py`.
 a text-only banner when `/ready` reports `schema_ok: false`. Covered by
 `tests/unit/test_prometheus.py` and `packages/web-ui/test/dashboard.test.js`.
 
+### Web-ui events key/kind filters + payload column ([#1806](https://github.com/naveenreddyalka/daari/issues/1806))
+
+<!-- tracking:#1806 -->
+**Status:** Done (2026-10-20). Events panel sends non-empty `key_id` / `kind`
+(resetting the cursor) and renders a text payload cell (`JSON.stringify`, no
+HTML injection). Covered by `packages/web-ui/test/dashboard.test.js`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
