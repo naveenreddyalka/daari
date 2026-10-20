@@ -7489,6 +7489,15 @@ both `openai-compat`, and `systemone_ok` records the same `upstream`. A
 non-JSON or non-object body from that host returns 502 naming the host and
 not Ollama. Covered by `tests/unit/test_systemone_upstream.py`.
 
+### Systemone HTTP failures record upstream request ids ([#1795](https://github.com/naveenreddyalka/daari/issues/1795))
+
+<!-- tracking:#1795 -->
+**Status:** Done (2026-10-20). `systemone_upstream_http` includes
+`upstream_request_id` from `request-id` / `x-request-id` /
+`anthropic-request-id` (same precedence as frontier) when present; omits the
+key when absent. Client status and body stay unchanged. Covered by
+`tests/unit/test_systemone_upstream.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
