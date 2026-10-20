@@ -7507,6 +7507,17 @@ NetworkPolicy `$wantLocal` includes `systemone.baseUrl`. Documented in
 capacity-helm. Covered by `tests/unit/test_helm_chart.py`,
 `tests/unit/test_capacity_helm_docs.py`.
 
+### Systemone optional upstream api_key Bearer ([#1800](https://github.com/naveenreddyalka/daari/issues/1800))
+
+<!-- tracking:#1800 -->
+**Status:** Done (2026-10-20). `systemone.api_key` (empty by default,
+`secret://` resolvable) sends `Authorization: Bearer` on the facade,
+local `/v1/decisions`, decision-guardrail predicates, the difficulty hop,
+and doctor catalog probes when set; omitted otherwise. Not exposed on
+config-editor reads; resolved values are registered with `redact_secrets`.
+Covered by `tests/unit/test_systemone_upstream.py` and
+`tests/unit/test_decision_classifier.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

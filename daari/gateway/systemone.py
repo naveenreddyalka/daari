@@ -71,6 +71,34 @@ def resolve_systemone_base(settings: Any, *, fallback: str = "") -> str:
     return str(getattr(ollama, "base_url", "") or "").strip().rstrip("/")
 
 
+def resolve_systemone_api_key(settings: Any = None) -> str | None:
+    """Resolved ``systemone.api_key`` (``secret://`` via ``current_secret``), or None."""
+    if settings is None:
+        return None
+    systemone = getattr(settings, "systemone", None)
+    raw = getattr(systemone, "api_key", None) if systemone is not None else None
+    if raw is None:
+        return None
+    from daari.security.secret_refs import current_secret, register_secret
+
+    value = current_secret(raw) if isinstance(raw, str) else None
+    text = str(value or "").strip()
+    if not text:
+        return None
+    register_secret(text)
+    return text
+
+
+def systemone_auth_headers(settings: Any = None, *, api_key: str | None = None) -> dict[str, str]:
+    """Authorization Bearer when an api key is configured; empty dict otherwise."""
+    key = (api_key or "").strip() if api_key is not None else None
+    if key is None:
+        key = resolve_systemone_api_key(settings) or ""
+    if not key:
+        return {}
+    return {"Authorization": f"Bearer {key}"}
+
+
 def _bad_upstream_body(explicit: str, base: str, *, kind: str) -> str:
     """502 text for a body that is not a JSON object.
 
@@ -276,6 +304,8 @@ async def _post_systemone(
     timeout: float,
     retry: Any | None = None,
     metrics: Any | None = None,
+    headers: dict[str, str] | None = None,
+    settings: Any | None = None,
 ) -> httpx.Response:
     from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
 
@@ -284,9 +314,12 @@ async def _post_systemone(
         if isinstance(retry, RetryPolicy)
         else (RetryPolicy(attempts=1) if retry is None else RetryPolicy.from_settings(retry))
     )
+    auth = dict(headers) if headers else systemone_auth_headers(settings)
 
     async def attempt() -> httpx.Response:
-        response = await _shared_client().post(url, json=payload, timeout=timeout)
+        response = await _shared_client().post(
+            url, json=payload, timeout=timeout, headers=auth or None
+        )
         if response.status_code in RETRYABLE_STATUS:
             response.raise_for_status()
         return response
@@ -377,6 +410,7 @@ async def _dispatch_systemone(request: Request, body: SystemOneRequest) -> Any:
                 timeout=timeout,
                 retry=retry_settings,
                 metrics=metrics,
+                settings=settings,
             )
     except httpx.RequestError as exc:
         log_gateway_event(

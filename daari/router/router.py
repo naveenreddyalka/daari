@@ -542,6 +542,7 @@ class Router:
         decision_classifier_timeout_seconds: float = 5.0,
         decision_classifier_agent_turns: bool = False,
         systemone_base_url: str = "",
+        systemone_api_key: str = "",
         models_lifecycle: dict[str, Any] | None = None,
     ) -> None:
         self.cache = cache
@@ -669,6 +670,7 @@ class Router:
         self.decision_classifier_timeout_seconds = float(decision_classifier_timeout_seconds or 5.0)
         self.decision_classifier_agent_turns = bool(decision_classifier_agent_turns)
         self.systemone_base_url = (systemone_base_url or "").strip().rstrip("/")
+        self.systemone_api_key = (systemone_api_key or "").strip()
         self.models_lifecycle = dict(models_lifecycle) if models_lifecycle else {}
         self.local_pool = local_pool
         self.local_pool_frontier_fallback = bool(local_pool_frontier_fallback)
@@ -1446,6 +1448,7 @@ class Router:
                 model=self.decision_classifier_model,
                 state=text,
                 timeout_seconds=self.decision_classifier_timeout_seconds,
+                api_key=self.systemone_api_key or None,
             )
         except Exception as exc:
             latency_ms = int((time.perf_counter() - started) * 1000)
@@ -6548,6 +6551,7 @@ class AppContext:
             context_windows=dict(settings.routing.context_windows or {}),
             decision_classifier_enabled=settings.routing.decision_classifier.enabled,
             systemone_base_url=str(getattr(settings.systemone, "base_url", "") or ""),
+            systemone_api_key=str(getattr(settings.systemone, "api_key", "") or ""),
             decision_classifier_model=settings.routing.decision_classifier.model,
             decision_classifier_timeout_seconds=settings.routing.decision_classifier.timeout_seconds,
             decision_classifier_agent_turns=settings.routing.decision_classifier.agent_turns,

@@ -353,3 +353,145 @@ def test_doctor_reports_explicit_base_url(settings):
     detail = _check_decisions(settings).detail
     assert "explicit base_url" in detail
     assert "http://vllm.local:8000" in detail
+
+
+def test_systemone_api_key_defaults_empty(settings):
+    assert settings.systemone.api_key == ""
+
+
+def test_config_md_lists_systemone_api_key():
+    text = CONFIG_MD.read_text(encoding="utf-8")
+    assert "systemone.api_key" in text
+
+
+def test_live_config_omits_systemone_api_key(settings):
+    settings.systemone.api_key = "sk-systemone-secret"
+    payload = live_config_payload(settings)
+    assert "api_key" not in payload.get("systemone", {})
+    dumped = str(payload)
+    assert "sk-systemone-secret" not in dumped
+
+
+@pytest.mark.asyncio
+async def test_facade_sends_bearer_when_api_key_set(settings, monkeypatch):
+    seen: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.systemone.base_url = "http://vllm.local:8000"
+    settings.systemone.api_key = "sk-vllm-test"
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/systemone", json=_SYSTEMONE_BODY)
+
+    assert response.status_code == 200
+    assert seen == ["Bearer sk-vllm-test"]
+
+
+@pytest.mark.asyncio
+async def test_facade_omits_authorization_by_default(settings, monkeypatch):
+    seen: list[bool] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append("authorization" in request.headers)
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.systemone.base_url = ""
+    settings.systemone.api_key = ""
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/systemone", json=_SYSTEMONE_BODY)
+
+    assert response.status_code == 200
+    assert seen == [False]
+
+
+@pytest.mark.asyncio
+async def test_decisions_local_sends_bearer_when_api_key_set(settings, monkeypatch):
+    seen: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.systemone.base_url = "http://vllm.local:8000"
+    settings.systemone.api_key = "sk-decisions-key"
+    settings.decisions.cache_enabled = False
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json=_DECISIONS_BODY)
+
+    assert response.status_code == 200, response.text
+    assert seen == ["Bearer sk-decisions-key"]
+
+
+def test_guardrail_predicate_sends_bearer_when_api_key_set(settings):
+    seen: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        return httpx.Response(
+            200,
+            json={
+                "answers": {
+                    "guardrail": {"type": "boolean", "value": False, "probability": 0.1}
+                }
+            },
+        )
+
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.systemone.base_url = "http://vllm.local:8000"
+    settings.systemone.api_key = "sk-guard-key"
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    prob = evaluate_guardrail_predicate(
+        text="hello",
+        statement="Is this spam?",
+        model="nimble",
+        base_url=settings.ollama.base_url,
+        client=client,
+        settings=settings,
+    )
+    assert prob == pytest.approx(0.1)
+    assert seen == ["Bearer sk-guard-key"]
+
+
+def test_doctor_catalog_probe_sends_bearer_when_api_key_set(settings):
+    from daari.setup.doctor import _check_decisions_local_models
+
+    seen: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        return httpx.Response(200, json={"data": [{"id": "nimble"}]})
+
+    settings.systemone.enabled = True
+    settings.systemone.base_url = "http://vllm.local:8000"
+    settings.systemone.api_key = "sk-doctor-key"
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert _check_decisions_local_models(settings, client) is None
+    assert seen == ["Bearer sk-doctor-key"]
+
+
+def test_redact_secrets_covers_resolved_systemone_api_key(settings, tmp_path):
+    from daari.security.secret_refs import clear_registered_secrets, redact_secrets
+    from daari.security.secret_refs import resolve_settings_secrets
+
+    clear_registered_secrets()
+    secret_file = tmp_path / "keys.env"
+    secret_file.write_text("SYSTEMONE_KEY=sk-from-secret-ref\n", encoding="utf-8")
+    settings.systemone.api_key = f"secret://env-file/{secret_file}#SYSTEMONE_KEY"
+    resolve_settings_secrets(settings)
+    assert settings.systemone.api_key == "sk-from-secret-ref"
+    assert "[redacted]" in redact_secrets("upstream used sk-from-secret-ref")
+    clear_registered_secrets()

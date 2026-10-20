@@ -100,14 +100,20 @@ async def classify_via_systemone(
     state: str,
     timeout_seconds: float = 5.0,
     client: httpx.AsyncClient | None = None,
+    api_key: str | None = None,
 ) -> DecisionClassification:
     """POST Ollama /v1/systemone; raises on transport/HTTP/shape errors."""
     url = f"{base_url.rstrip('/')}/v1/systemone"
     payload = build_systemone_payload(model, state)
+    from daari.gateway.systemone import systemone_auth_headers
+
+    headers = systemone_auth_headers(api_key=api_key)
     owns = client is None
     http = client or httpx.AsyncClient(timeout=timeout_seconds)
     try:
-        response = await http.post(url, json=payload, timeout=timeout_seconds)
+        response = await http.post(
+            url, json=payload, timeout=timeout_seconds, headers=headers or None
+        )
         response.raise_for_status()
         data = response.json()
     except Exception as exc:

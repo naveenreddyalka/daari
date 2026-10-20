@@ -256,3 +256,96 @@ def test_record_decision_classifier_error_outcome():
     text = render_prometheus(metrics)
     assert 'daari_decision_classifier_total{outcome="error"} 1' in text
     assert 'daari_decision_classifier_latency_ms_count 1' in text
+
+
+@pytest.mark.asyncio
+async def test_classify_via_systemone_sends_bearer_when_api_key_set(monkeypatch):
+    import httpx
+
+    from daari.router.decision_classifier import classify_via_systemone
+
+    seen: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        return httpx.Response(
+            200,
+            json={
+                "model": "nimble",
+                "answers": {
+                    "difficulty": {"type": "choice", "choice": "trivial", "confidence": 0.9}
+                },
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    result = await classify_via_systemone(
+        base_url="http://vllm.local:8000",
+        model="nimble",
+        state="hi",
+        api_key="sk-classifier-key",
+        client=client,
+    )
+    assert result.tier == "L3"
+    assert seen == ["Bearer sk-classifier-key"]
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_classify_via_systemone_omits_authorization_by_default():
+    import httpx
+
+    from daari.router.decision_classifier import classify_via_systemone
+
+    seen: list[bool] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append("authorization" in request.headers)
+        return httpx.Response(
+            200,
+            json={
+                "model": "nimble",
+                "answers": {
+                    "difficulty": {"type": "choice", "choice": "standard", "confidence": 0.8}
+                },
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    result = await classify_via_systemone(
+        base_url="http://vllm.local:8000",
+        model="nimble",
+        state="hi",
+        client=client,
+    )
+    assert result.tier == "L4"
+    assert seen == [False]
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_router_passes_systemone_api_key_to_classifier(tmp_path, monkeypatch):
+    router = _router(tmp_path, enabled=True)
+    router.systemone_api_key = "sk-router-key"
+    captured: dict = {}
+
+    async def fake_classify(**kwargs):
+        captured.update(kwargs)
+        from daari.router.decision_classifier import DecisionClassification
+
+        return DecisionClassification(
+            model="nimble",
+            complexity="complex",
+            tier="L5",
+            answer={"type": "choice", "choice": "complex"},
+        )
+
+    import daari.router.decision_classifier as dc
+
+    monkeypatch.setattr(dc, "classify_via_systemone", fake_classify)
+
+    request = _request("hi")
+    from daari.router.profile import build_prompt_profile
+
+    await router._apply_decision_classifier(request, build_prompt_profile(request))
+    assert captured.get("api_key") == "sk-router-key"

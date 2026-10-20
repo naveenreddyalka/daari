@@ -286,10 +286,15 @@ def evaluate_guardrail_predicate(
         model=model, base_url=base_url, settings=settings
     )
     payload = _guardrail_predicate_payload(text=text, statement=statement, model=name)
+    from daari.gateway.systemone import systemone_auth_headers
+
+    headers = systemone_auth_headers(settings)
     owns = client is None
     http = client or httpx.Client(timeout=timeout_seconds)
     try:
-        response = http.post(url, json=payload, timeout=timeout_seconds)
+        response = http.post(
+            url, json=payload, timeout=timeout_seconds, headers=headers or None
+        )
         response.raise_for_status()
         data = response.json()
     except Exception as exc:
@@ -318,8 +323,13 @@ async def evaluate_guardrail_predicate_async(
             model=model, base_url=base_url, settings=settings
         )
         payload = _guardrail_predicate_payload(text=text, statement=statement, model=name)
+        from daari.gateway.systemone import systemone_auth_headers
+
+        headers = systemone_auth_headers(settings)
         try:
-            response = await client.post(url, json=payload, timeout=timeout_seconds)
+            response = await client.post(
+                url, json=payload, timeout=timeout_seconds, headers=headers or None
+            )
             response.raise_for_status()
             data = response.json()
         except Exception as exc:
@@ -983,6 +993,7 @@ async def _handle_local(
                 timeout=timeout,
                 retry=retry_settings,
                 metrics=metrics,
+                settings=settings,
             )
     except httpx.RequestError as exc:
         log_gateway_event(

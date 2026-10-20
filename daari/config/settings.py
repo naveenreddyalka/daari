@@ -318,6 +318,17 @@ class SystemOneSettings(BaseModel):
             "/v1/daari/config ownership (config editor)."
         ),
     )
+    api_key: str = Field(
+        default="",
+        description=(
+            "Optional Bearer token for the systemone upstream (vLLM --api-key "
+            "or a reverse-proxy secret). Sent as Authorization on "
+            "POST /v1/systemone, local POST /v1/decisions, decision-guardrail "
+            "predicates, the routing difficulty hop, and doctor catalog "
+            "probes when set. Supports secret:// refs. Empty leaves requests "
+            "unauthenticated. Not exposed on GET/PATCH /v1/daari/config."
+        ),
+    )
 
 
 class DecisionsSettings(BaseModel):
