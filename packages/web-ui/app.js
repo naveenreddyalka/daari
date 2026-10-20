@@ -50,6 +50,8 @@ const lockoutsStatusNode = document.getElementById("lockouts-status");
 const eventsTableNode = document.getElementById("events-table");
 const eventsStatusNode = document.getElementById("events-status");
 const eventsTeamFilterNode = document.getElementById("events-team-filter");
+const eventsKeyFilterNode = document.getElementById("events-key-filter");
+const eventsKindFilterNode = document.getElementById("events-kind-filter");
 const eventsNextButton = document.getElementById("events-next");
 const tracesTableNode = document.getElementById("traces-table");
 const traceDetailNode = document.getElementById("trace-detail");
@@ -605,6 +607,20 @@ function eventsUrl() {
   if (team) {
     params.set("team_id", team);
   }
+  const keyId =
+    eventsKeyFilterNode && typeof eventsKeyFilterNode.value === "string"
+      ? eventsKeyFilterNode.value.trim()
+      : "";
+  if (keyId) {
+    params.set("key_id", keyId);
+  }
+  const kind =
+    eventsKindFilterNode && typeof eventsKindFilterNode.value === "string"
+      ? eventsKindFilterNode.value.trim()
+      : "";
+  if (kind) {
+    params.set("kind", kind);
+  }
   if (eventsCursor) {
     params.set("cursor", eventsCursor);
   }
@@ -617,18 +633,25 @@ function renderEvents(events) {
   }
   const rows = Array.isArray(events) ? events : [];
   if (rows.length === 0) {
-    setEmptyRow(eventsTableNode, 4, "No events recorded yet.");
+    setEmptyRow(eventsTableNode, 5, "No events recorded yet.");
     return;
   }
   clearNode(eventsTableNode);
   for (const event of rows) {
     const payload = event && typeof event.payload === "object" && event.payload ? event.payload : {};
+    let payloadText = "{}";
+    try {
+      payloadText = JSON.stringify(payload);
+    } catch {
+      payloadText = "{}";
+    }
     const row = document.createElement("tr");
     appendTextCells(row, [
       event && event.id != null ? event.id : "",
       (event && event.ts) || "-",
       (event && event.event) || "-",
       payload.team_id || "-",
+      payloadText,
     ]);
     eventsTableNode.appendChild(row);
   }
@@ -985,11 +1008,18 @@ if (adminKeysIdleDaysNode) {
     void loadAdminKeys();
   });
 }
+function resetEventsCursorAndReload() {
+  eventsCursor = "";
+  void loadEvents();
+}
 if (eventsTeamFilterNode) {
-  eventsTeamFilterNode.addEventListener("change", () => {
-    eventsCursor = "";
-    void loadEvents();
-  });
+  eventsTeamFilterNode.addEventListener("change", resetEventsCursorAndReload);
+}
+if (eventsKeyFilterNode) {
+  eventsKeyFilterNode.addEventListener("change", resetEventsCursorAndReload);
+}
+if (eventsKindFilterNode) {
+  eventsKindFilterNode.addEventListener("change", resetEventsCursorAndReload);
 }
 if (eventsNextButton) {
   eventsNextButton.addEventListener("click", () => {
