@@ -146,6 +146,15 @@ class TestRenderPrometheus:
         assert "daari_decision_classifier_latency_ms_sum 125" in text
         assert "daari_decision_classifier_latency_ms_count 3" in text
 
+    def test_schema_ok_gauge(self):
+        """Local SQLite schema lag is scrapeable as daari_schema_ok (#1805)."""
+        ok = render_prometheus(Metrics(), schema_ok=True)
+        assert "# TYPE daari_schema_ok gauge" in ok
+        assert "daari_schema_ok 1" in ok
+        bad = render_prometheus(Metrics(), schema_ok=False)
+        assert "daari_schema_ok 0" in bad
+        assert "daari_schema_ok" not in render_prometheus(Metrics())
+
 
 @pytest.mark.asyncio
 async def test_metrics_endpoint_open_without_auth(settings):

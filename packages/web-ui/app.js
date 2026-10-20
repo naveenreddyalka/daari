@@ -23,6 +23,7 @@ const backendSummaryOpenCircuitNode = document.getElementById("backend-summary-o
 const orgNode = document.getElementById("org-learning");
 const orgSummaryNode = document.getElementById("org-summary");
 const statusNode = document.getElementById("status");
+const schemaOkBannerNode = document.getElementById("schema-ok-banner");
 const refreshButton = document.getElementById("refresh");
 const exportButton = document.getElementById("export-stats");
 const themeToggleButton = document.getElementById("theme-toggle");
@@ -802,8 +803,36 @@ async function loadTraces() {
   }
 }
 
+async function refreshSchemaOkBanner() {
+  if (!schemaOkBannerNode) {
+    return;
+  }
+  try {
+    const headers = authHeaders({});
+    const response = await fetch(`${apiBaseUrl}/ready`, { headers });
+    let body = {};
+    try {
+      body = await response.json();
+    } catch {
+      body = {};
+    }
+    if (body && body.schema_ok === false) {
+      schemaOkBannerNode.hidden = false;
+      schemaOkBannerNode.textContent =
+        "Local SQLite schema lag: /ready reports schema_ok false. Run migrations or restore matching store files before sending traffic.";
+      return;
+    }
+    schemaOkBannerNode.hidden = true;
+    schemaOkBannerNode.textContent = "";
+  } catch {
+    schemaOkBannerNode.hidden = true;
+    schemaOkBannerNode.textContent = "";
+  }
+}
+
 async function loadStats() {
   statusNode.textContent = "Refreshing...";
+  void refreshSchemaOkBanner();
   try {
     const stats = await fetchJson(`${apiBaseUrl}/v1/daari/stats`);
     latestStats = stats;
