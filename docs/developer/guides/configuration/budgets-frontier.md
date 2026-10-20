@@ -122,10 +122,10 @@ key and team), and the `402` repeats them with remaining `0` plus
 
 ### Operator alerts
 
-A webhook fires when a request *pushes* a key or team window across a
-threshold (default 80% and 100%) — USD **or** request-count quotas. Empty
-URL disables. The POST is a background task: a down hook is logged
-(`budget.alert_failed`) and never delays or fails the chat response.
+A webhook fires when a request *pushes* a key, team, or `model_max_budget`
+window across a threshold (default 80% and 100%) — USD **or** request-count
+quotas. Empty URL disables. The POST is a background task: a down hook is
+logged (`budget.alert_failed`) and never delays or fails the chat response.
 
 ```yaml
 alerts:
@@ -156,9 +156,16 @@ Payload (never includes key material):
   "spent_usd": 4.12,
   "remaining_usd": 0.88,
   "threshold": 0.8,
-  "reset_epoch": 1756944000
+  "reset_epoch": 1756944000,
+  "reset_at": "2026-08-28T00:00:00+00:00"
 }
 ```
+
+`reset_at` matches the ISO timestamp on the `402` body (same clock as
+`reset_epoch`). Model-pattern crossings use `scope: "model"` with
+`model_pattern` (and `id` equal to that pattern) so they do not collapse onto
+the key id; dedupe is once per scope, pattern, window, and threshold until
+reset.
 
 Request-quota crossings use the same envelope with `quota: "requests"` and
 `limit_requests` / `spent_requests` / `remaining_requests` instead of the
