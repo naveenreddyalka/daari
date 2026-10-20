@@ -238,6 +238,14 @@ spec:
             - name: DAARI_OLLAMA__BASE_URL
               value: {{ .Values.ollama.baseUrl | quote }}
             {{- end }}
+            {{- if not .Values.systemone.enabled }}
+            - name: DAARI_SYSTEMONE__ENABLED
+              value: "false"
+            {{- end }}
+            {{- if .Values.systemone.baseUrl }}
+            - name: DAARI_SYSTEMONE__BASE_URL
+              value: {{ .Values.systemone.baseUrl | quote }}
+            {{- end }}
             {{- if .Values.asr.baseUrl }}
             - name: DAARI_ASR__BASE_URL
               value: {{ .Values.asr.baseUrl | quote }}

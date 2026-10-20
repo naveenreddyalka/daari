@@ -71,7 +71,7 @@ spec:
           port: 443
     {{- end }}
     {{- $localBackends := ne $egress.localBackends false }}
-    {{- $wantLocal := or .Values.ollama.baseUrl .Values.orgPool.enabled .Values.asr.baseUrl .Values.tts.baseUrl }}
+    {{- $wantLocal := or .Values.ollama.baseUrl .Values.orgPool.enabled .Values.asr.baseUrl .Values.tts.baseUrl .Values.systemone.baseUrl }}
     {{- if and $localBackends $wantLocal }}
     - ports:
         - protocol: TCP

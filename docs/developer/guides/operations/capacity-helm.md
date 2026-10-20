@@ -380,6 +380,22 @@ ollama:
   baseUrl: http://ollama.internal:11434
 ```
 
+### Systemone / decisions upstream
+
+`systemone.baseUrl` defaults to empty (chart omits env; decisions hop uses
+`ollama.baseUrl`). Set it to mount `DAARI_SYSTEMONE__BASE_URL` for a dedicated
+OpenAI-compatible `/v1/systemone` server (vLLM). `systemone.enabled` defaults
+to true (chart omits env). Set it to false to mount
+`DAARI_SYSTEMONE__ENABLED=false` and return 501 on the route. With
+`networkPolicy.enabled`, a non-empty `systemone.baseUrl` opens the same local
+backend egress ports as `ollama` / `asr` / `tts`.
+
+```yaml
+systemone:
+  enabled: true
+  baseUrl: http://vllm.internal:8000
+```
+
 ### ASR and TTS base URLs
 
 `asr.baseUrl` / `tts.baseUrl` default to empty (chart omits env; routes return
