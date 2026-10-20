@@ -275,6 +275,8 @@ def _where(
     ph: str,
     tier: str | None = None,
     user_id: str | None = None,
+    model: str | None = None,
+    usage_speed: str | None = None,
 ) -> tuple[str, list[Any]]:
     clauses = [f"ts >= {ph}"]
     params: list[Any] = [since]
@@ -290,6 +292,12 @@ def _where(
     if tier:
         clauses.append(f"tier = {ph}")
         params.append(tier)
+    if model:
+        clauses.append(f"model LIKE {ph}")
+        params.append(model)
+    if usage_speed:
+        clauses.append(f"usage_speed = {ph}")
+        params.append(usage_speed)
     return " AND ".join(clauses), params
 
 
@@ -460,10 +468,21 @@ class SpendLedger:
         team_id: str | None = None,
         user_id: str | None = None,
         tier: str | None = None,
+        model: str | None = None,
+        usage_speed: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         if not self.enabled:
             return
-        where, params = _where(since, key_id, team_id, "?", tier=tier, user_id=user_id)
+        where, params = _where(
+            since,
+            key_id,
+            team_id,
+            "?",
+            tier=tier,
+            user_id=user_id,
+            model=model,
+            usage_speed=usage_speed,
+        )
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,"
             " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
@@ -720,10 +739,21 @@ class PostgresSpendLedger(SpendLedger):
         team_id: str | None = None,
         user_id: str | None = None,
         tier: str | None = None,
+        model: str | None = None,
+        usage_speed: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         if not self.enabled:
             return
-        where, params = _where(since, key_id, team_id, "%s", tier=tier, user_id=user_id)
+        where, params = _where(
+            since,
+            key_id,
+            team_id,
+            "%s",
+            tier=tier,
+            user_id=user_id,
+            model=model,
+            usage_speed=usage_speed,
+        )
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,"
             " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"

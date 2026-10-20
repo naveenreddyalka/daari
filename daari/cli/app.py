@@ -1915,6 +1915,16 @@ def spend_export(
         "--tier",
         help="Exact spend tier (asr, translation, embed, L3-L6, ...).",
     ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="Model SQL LIKE pattern (e.g. %:cloud for Ollama cloud egress).",
+    ),
+    usage_speed: str | None = typer.Option(
+        None,
+        "--usage-speed",
+        help="Exact usage speed: fast or standard (Anthropic fast mode).",
+    ),
 ) -> None:
     """Stream per-request spend rows for chargeback (#709)."""
     import csv
@@ -1944,6 +1954,11 @@ def spend_export(
         raise typer.Exit(code=1)
     tier_filter = (tier or "").strip() or None
     user_filter = (user or "").strip() or None
+    model_filter = (model or "").strip() or None
+    speed_raw = (usage_speed or "").strip().lower() or None
+    if speed_raw is not None and speed_raw not in {"fast", "standard"}:
+        typer.echo("--usage-speed must be fast or standard.", err=True)
+        raise typer.Exit(code=1)
     catalog = getattr(settings, "model_groups", None) or {}
     rows = (
         annotate_model_group(row, catalog)
@@ -1953,6 +1968,8 @@ def spend_export(
             team_id=team,
             user_id=user_filter,
             tier=tier_filter,
+            model=model_filter,
+            usage_speed=speed_raw,
         )
     )
     if fmt == "jsonl":

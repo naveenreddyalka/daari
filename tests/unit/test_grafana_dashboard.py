@@ -474,3 +474,40 @@ def test_grafana_dashboard_panel_ids_are_unique() -> None:
     assert None not in ids, "every panel must have an id"
     assert len(ids) == len(set(ids)), f"duplicate panel ids: {ids}"
 
+
+def test_grafana_dashboard_includes_cloud_vs_local_spend_share_panel():
+    """Cloud vs local spend share should chart on the overview (#1802)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "cloud" in p.get("title", "").lower()
+            and "local" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a cloud-vs-local spend share panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_frontier_spend_usd" in expr for expr in exprs)
+    assert any("daari_requests_total" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_fast_mode_request_rate_panel():
+    """Fast-mode traffic should chart on the overview (#1802)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "fast" in p.get("title", "").lower()
+            and "mode" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a fast-mode request-rate panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_soft_warnings_total" in expr for expr in exprs)
+    assert any("fast_degraded_to_standard" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
