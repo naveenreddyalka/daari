@@ -7570,6 +7570,13 @@ by `tests/unit/test_helm_chart.py` and `tests/unit/test_capacity_helm_docs.py`.
 and `model_pattern` (dedupe per pattern). Covered by
 `tests/unit/test_budget_alerts.py`.
 
+### Gateway flow pins systemone.base_url ([#1808](https://github.com/naveenreddyalka/daari/issues/1808))
+
+<!-- tracking:#1808 -->
+**Status:** Done (2026-10-20). Mocked gateway flow asserts `POST /v1/systemone`
+hits `{systemone.base_url}/v1/systemone` when that root differs from
+`ollama.base_url`. Covered by `tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
