@@ -496,6 +496,18 @@ def render_prometheus(
                 f"{int(count)}"
             )
 
+    systemone_breaker = snap.get("systemone_breaker") or {}
+    if systemone_breaker:
+        lines.append(
+            "# HELP daari_systemone_breaker_total Systemone upstream circuit "
+            "breaker events (open, trip, reject)."
+        )
+        lines.append("# TYPE daari_systemone_breaker_total counter")
+        for event, count in sorted(systemone_breaker.items()):
+            lines.append(
+                f"daari_systemone_breaker_total{_labels(event=str(event))} {int(count)}"
+            )
+
     cancelled = snap.get("cancelled") or {}
     if cancelled:
         lines.append("# HELP daari_cancelled_requests_total Client-abandoned requests, by phase.")

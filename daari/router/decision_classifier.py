@@ -101,26 +101,62 @@ async def classify_via_systemone(
     timeout_seconds: float = 5.0,
     client: httpx.AsyncClient | None = None,
     api_key: str | None = None,
+    retry: Any | None = None,
+    metrics: Any | None = None,
 ) -> DecisionClassification:
-    """POST Ollama /v1/systemone; raises on transport/HTTP/shape errors."""
+    """POST /v1/systemone via the shared pool + retry/breaker path (#1801)."""
+    from daari.gateway.systemone import (
+        SystemOneCircuitOpen,
+        _post_systemone,
+        _shared_client,
+        systemone_auth_headers,
+    )
+
     url = f"{base_url.rstrip('/')}/v1/systemone"
     payload = build_systemone_payload(model, state)
-    from daari.gateway.systemone import systemone_auth_headers
-
     headers = systemone_auth_headers(api_key=api_key)
-    owns = client is None
-    http = client or httpx.AsyncClient(timeout=timeout_seconds)
+
+    # Optional injected client (tests); otherwise reuse the gateway pool.
+    if client is not None:
+        from daari.gateway import systemone as systemone_mod
+
+        previous = systemone_mod._http
+        systemone_mod._http = client
+        try:
+            response = await _post_systemone(
+                url,
+                payload=payload,
+                timeout=timeout_seconds,
+                retry=retry,
+                metrics=metrics,
+                headers=headers,
+            )
+        except SystemOneCircuitOpen:
+            raise
+        except Exception as exc:
+            raise RuntimeError(summarize_upstream_failure(exc)) from exc
+        finally:
+            systemone_mod._http = previous
+    else:
+        _shared_client()
+        try:
+            response = await _post_systemone(
+                url,
+                payload=payload,
+                timeout=timeout_seconds,
+                retry=retry,
+                metrics=metrics,
+                headers=headers,
+            )
+        except SystemOneCircuitOpen:
+            raise
+        except Exception as exc:
+            raise RuntimeError(summarize_upstream_failure(exc)) from exc
+
     try:
-        response = await http.post(
-            url, json=payload, timeout=timeout_seconds, headers=headers or None
-        )
-        response.raise_for_status()
         data = response.json()
     except Exception as exc:
         raise RuntimeError(summarize_upstream_failure(exc)) from exc
-    finally:
-        if owns:
-            await http.aclose()
     if not isinstance(data, dict):
         raise RuntimeError("systemone returned non-object JSON")
     answers = data.get("answers")

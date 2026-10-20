@@ -286,9 +286,19 @@ def evaluate_guardrail_predicate(
         model=model, base_url=base_url, settings=settings
     )
     payload = _guardrail_predicate_payload(text=text, statement=statement, model=name)
-    from daari.gateway.systemone import systemone_auth_headers
+    from daari.gateway.systemone import (
+        SystemOneCircuitOpen,
+        _note_failure,
+        _note_success,
+        _reject_if_open,
+        systemone_auth_headers,
+    )
 
     headers = systemone_auth_headers(settings)
+    try:
+        _reject_if_open(url)
+    except SystemOneCircuitOpen as exc:
+        raise RuntimeError(str(exc)) from exc
     owns = client is None
     http = client or httpx.Client(timeout=timeout_seconds)
     try:
@@ -297,7 +307,9 @@ def evaluate_guardrail_predicate(
         )
         response.raise_for_status()
         data = response.json()
+        _note_success(url)
     except Exception as exc:
+        _note_failure(url)
         raise RuntimeError(summarize_upstream_failure(exc)) from exc
     finally:
         if owns:
@@ -323,16 +335,28 @@ async def evaluate_guardrail_predicate_async(
             model=model, base_url=base_url, settings=settings
         )
         payload = _guardrail_predicate_payload(text=text, statement=statement, model=name)
-        from daari.gateway.systemone import systemone_auth_headers
+        from daari.gateway.systemone import (
+            SystemOneCircuitOpen,
+            _note_failure,
+            _note_success,
+            _reject_if_open,
+            systemone_auth_headers,
+        )
 
         headers = systemone_auth_headers(settings)
+        try:
+            _reject_if_open(url)
+        except SystemOneCircuitOpen as exc:
+            raise RuntimeError(str(exc)) from exc
         try:
             response = await client.post(
                 url, json=payload, timeout=timeout_seconds, headers=headers or None
             )
             response.raise_for_status()
             data = response.json()
+            _note_success(url)
         except Exception as exc:
+            _note_failure(url)
             raise RuntimeError(summarize_upstream_failure(exc)) from exc
         return _parse_guardrail_probability(data)
 
@@ -995,6 +1019,9 @@ async def _handle_local(
                 metrics=metrics,
                 settings=settings,
             )
+    except systemone_mod.SystemOneCircuitOpen as exc:
+        log_gateway_event("decisions_circuit_open", {"base": exc.base})
+        return systemone_mod.circuit_open_response(exc)
     except httpx.RequestError as exc:
         log_gateway_event(
             "decisions_ollama_down",

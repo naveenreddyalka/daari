@@ -210,6 +210,8 @@ class Metrics:
     mcp_tasks: dict[str, int] = field(default_factory=dict)
     # server:outcome:circuit → count for MCP egress resilience (#1203).
     mcp_egress: dict[str, int] = field(default_factory=dict)
+    # event (open|trip|reject) → count for systemone upstream breaker (#1801).
+    systemone_breaker: dict[str, int] = field(default_factory=dict)
     cancelled: dict[str, int] = field(default_factory=dict)
     deadline_exhausted: int = 0
     compact_to_fit_applied: int = 0
@@ -342,6 +344,12 @@ class Metrics:
         with self._lock:
             self.mcp_egress[key] = self.mcp_egress.get(key, 0) + 1
 
+    def record_systemone_breaker(self, *, event: str) -> None:
+        """Systemone upstream breaker trip / open / reject (#1801)."""
+        label = (event or "").strip().lower() or "trip"
+        with self._lock:
+            self.systemone_breaker[label] = self.systemone_breaker.get(label, 0) + 1
+
     def record_cancelled(self, phase: str) -> None:
         """Client abandoned the request before upstream work finished (#769)."""
         with self._lock:
@@ -444,6 +452,7 @@ class Metrics:
                 "mcp_tool_calls": dict(self.mcp_tool_calls),
                 "mcp_tasks": dict(self.mcp_tasks),
                 "mcp_egress": dict(self.mcp_egress),
+                "systemone_breaker": dict(self.systemone_breaker),
                 "cancelled": dict(self.cancelled),
                 "deadline_exhausted": self.deadline_exhausted,
                 "compact_to_fit_applied": self.compact_to_fit_applied,
