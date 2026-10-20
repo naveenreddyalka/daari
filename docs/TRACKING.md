@@ -7555,6 +7555,28 @@ a text-only banner when `/ready` reports `schema_ok: false`. Covered by
 (resetting the cursor) and renders a text payload cell (`JSON.stringify`, no
 HTML injection). Covered by `packages/web-ui/test/dashboard.test.js`.
 
+### Helm systemone.apiKeySecret ([#1820](https://github.com/naveenreddyalka/daari/issues/1820))
+
+<!-- tracking:#1820 -->
+**Status:** Done (2026-10-20). Chart `systemone.apiKeySecret` mounts
+`DAARI_SYSTEMONE__API_KEY` via `secretKeyRef` (same shape as frontier). Covered
+by `tests/unit/test_helm_chart.py` and `tests/unit/test_capacity_helm_docs.py`.
+
+### Budget alert reset_at + model-cap crossings ([#1807](https://github.com/naveenreddyalka/daari/issues/1807))
+
+<!-- tracking:#1807 -->
+**Status:** Done (2026-10-20). Webhook payloads include ISO `reset_at` alongside
+`reset_epoch`; `model_max_budget` threshold crossings fire with `scope: model`
+and `model_pattern` (dedupe per pattern). Covered by
+`tests/unit/test_budget_alerts.py`.
+
+### Gateway flow pins systemone.base_url ([#1808](https://github.com/naveenreddyalka/daari/issues/1808))
+
+<!-- tracking:#1808 -->
+**Status:** Done (2026-10-20). Mocked gateway flow asserts `POST /v1/systemone`
+hits `{systemone.base_url}/v1/systemone` when that root differs from
+`ollama.base_url`. Covered by `tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

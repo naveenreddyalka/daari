@@ -633,9 +633,11 @@ class TestHelmSystemone:
         rendered = _helm_template()
         assert "DAARI_SYSTEMONE__BASE_URL" not in rendered
         assert "DAARI_SYSTEMONE__ENABLED" not in rendered
+        assert "DAARI_SYSTEMONE__API_KEY" not in rendered
         values = _load_yaml(VALUES)
         assert values["systemone"]["baseUrl"] == ""
         assert values["systemone"]["enabled"] is True
+        assert values["systemone"]["apiKeySecret"] == {}
 
     def test_systemone_base_url_when_set(self, helm_available: None) -> None:
         rendered = _helm_template(
@@ -651,6 +653,21 @@ class TestHelmSystemone:
         rendered = _helm_template("--set", "systemone.enabled=false")
         assert re.search(
             r'name: DAARI_SYSTEMONE__ENABLED\s+value: "false"',
+            rendered,
+        )
+
+    def test_systemone_api_key_secret_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "systemone.apiKeySecret.name=daari-systemone",
+            "--set",
+            "systemone.apiKeySecret.key=token",
+        )
+        assert "DAARI_SYSTEMONE__API_KEY" in rendered
+        assert 'name: "daari-systemone"' in rendered
+        assert 'key: "token"' in rendered
+        assert re.search(
+            r"name: DAARI_SYSTEMONE__API_KEY\s+valueFrom:\s+secretKeyRef:",
             rendered,
         )
 

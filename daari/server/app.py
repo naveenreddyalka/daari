@@ -578,6 +578,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     apply_selected_team(claims, selected, store)
             ledger = None
             statuses: list = []
+            model_budget_before: list = []
+            budget_alert_model = ""
             team = None
             team_ids: list = []
             client = ""
@@ -653,6 +655,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         pricing=pricing,
                         fallback_per_1k=fallback,
                     )
+                    # Snapshot model_max_budget windows before spend so threshold
+                    # crossings page the same webhook as key/team caps (#1807).
+                    alerter_pre = getattr(request.app.state, "budget_alerter", None)
+                    if (
+                        alerter_pre is not None
+                        and getattr(alerter_pre, "enabled", False)
+                        and key is not None
+                    ):
+                        from daari.auth.budgets import (
+                            effective_model_max_budget,
+                            model_max_budget_status,
+                        )
+                        from daari.observability.budget_alerts import model_from_body
+
+                        if effective_model_max_budget(key, team):
+                            raw_model_body = b""
+                            if request.method in {"POST", "PUT", "PATCH"}:
+                                raw_model_body = await request.body()
+                            budget_alert_model = model_from_body(raw_model_body)
+                            if budget_alert_model:
+                                model_budget_before = model_max_budget_status(
+                                    budget_alert_model,
+                                    key,
+                                    team,
+                                    ledger,
+                                    client_id=client,
+                                    team_client_ids=team_ids,
+                                    pricing=pricing,
+                                    fallback_per_1k=fallback,
+                                )
                     degrade_snap = getattr(ledger, "budget_degrade_snapshot", None)
                     if callable(degrade_snap):
                         snap = degrade_snap()
@@ -810,6 +842,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     pricing=pricing,
                     fallback_per_1k=fallback,
                 )
+                after_model: list = []
+                if budget_alert_model:
+                    from daari.auth.budgets import model_max_budget_status
+
+                    after_model = model_max_budget_status(
+                        budget_alert_model,
+                        claims.virtual_key,
+                        team,
+                        ledger,
+                        client_id=client,
+                        team_client_ids=team_ids,
+                        pricing=pricing,
+                        fallback_per_1k=fallback,
+                    )
                 import asyncio
 
                 from daari.server.shutdown import track_budget_alert_task
@@ -819,8 +865,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     asyncio.create_task(
                         asyncio.to_thread(
                             alerter.notify,
-                            statuses,
-                            after,
+                            list(statuses) + list(model_budget_before),
+                            list(after) + list(after_model),
                             key=claims.virtual_key,
                             team=team,
                         )
