@@ -277,9 +277,13 @@ def _where(
     user_id: str | None = None,
     model: str | None = None,
     usage_speed: str | None = None,
+    until: str | None = None,
 ) -> tuple[str, list[Any]]:
     clauses = [f"ts >= {ph}"]
     params: list[Any] = [since]
+    if until:
+        clauses.append(f"ts < {ph}")
+        params.append(until)
     if key_id:
         clauses.append(f"key_id = {ph}")
         params.append(key_id)
@@ -460,6 +464,39 @@ class SpendLedger:
             usage_speed=str(getattr(bound, "usage_speed", None) or ""),
         )
 
+    def count_rows(
+        self,
+        *,
+        since: str,
+        key_id: str | None = None,
+        team_id: str | None = None,
+        user_id: str | None = None,
+        tier: str | None = None,
+        model: str | None = None,
+        usage_speed: str | None = None,
+        until: str | None = None,
+    ) -> int:
+        if not self.enabled:
+            return 0
+        where, params = _where(
+            since,
+            key_id,
+            team_id,
+            "?",
+            tier=tier,
+            user_id=user_id,
+            model=model,
+            usage_speed=usage_speed,
+            until=until,
+        )
+        sql = f"SELECT COUNT(*) FROM spend_requests WHERE {where}"
+        try:
+            with self._lock, self._connect() as conn:
+                row = conn.execute(sql, params).fetchone()
+            return int(row[0] or 0) if row else 0
+        except Exception:
+            return 0
+
     def iter_rows(
         self,
         *,
@@ -470,6 +507,9 @@ class SpendLedger:
         tier: str | None = None,
         model: str | None = None,
         usage_speed: str | None = None,
+        until: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> Iterator[dict[str, Any]]:
         if not self.enabled:
             return
@@ -482,6 +522,7 @@ class SpendLedger:
             user_id=user_id,
             model=model,
             usage_speed=usage_speed,
+            until=until,
         )
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,"
@@ -489,6 +530,9 @@ class SpendLedger:
             " cost_usd, cost_avoided_usd, cache_hit, usage_speed"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
         )
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params = [*params, max(0, int(limit)), max(0, int(offset or 0))]
         try:
             with self._lock, self._connect() as conn:
                 cursor = conn.execute(sql, params)
@@ -731,6 +775,41 @@ class PostgresSpendLedger(SpendLedger):
         except Exception:
             pass
 
+    def count_rows(
+        self,
+        *,
+        since: str,
+        key_id: str | None = None,
+        team_id: str | None = None,
+        user_id: str | None = None,
+        tier: str | None = None,
+        model: str | None = None,
+        usage_speed: str | None = None,
+        until: str | None = None,
+    ) -> int:
+        if not self.enabled:
+            return 0
+        where, params = _where(
+            since,
+            key_id,
+            team_id,
+            "%s",
+            tier=tier,
+            user_id=user_id,
+            model=model,
+            usage_speed=usage_speed,
+            until=until,
+        )
+        sql = f"SELECT COUNT(*) FROM spend_requests WHERE {where}"
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    row = cur.fetchone()
+            return int(row[0] or 0) if row else 0
+        except Exception:
+            return 0
+
     def iter_rows(
         self,
         *,
@@ -741,6 +820,9 @@ class PostgresSpendLedger(SpendLedger):
         tier: str | None = None,
         model: str | None = None,
         usage_speed: str | None = None,
+        until: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> Iterator[dict[str, Any]]:
         if not self.enabled:
             return
@@ -753,6 +835,7 @@ class PostgresSpendLedger(SpendLedger):
             user_id=user_id,
             model=model,
             usage_speed=usage_speed,
+            until=until,
         )
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,"
@@ -760,6 +843,9 @@ class PostgresSpendLedger(SpendLedger):
             " cost_usd, cost_avoided_usd, cache_hit, usage_speed"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
         )
+        if limit is not None:
+            sql += " LIMIT %s OFFSET %s"
+            params = [*params, max(0, int(limit)), max(0, int(offset or 0))]
         try:
             with self._lock, self._connect() as conn:
                 with conn.cursor() as cur:

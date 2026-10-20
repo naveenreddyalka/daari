@@ -2130,6 +2130,122 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             payload["cache_trust"] = trust
             return payload
 
+        @router.get("/v1/daari/spend/export")
+        async def daari_spend_export(
+            request: Request,
+            since: str,
+            until: str | None = None,
+            key: str | None = None,
+            team: str | None = None,
+            user: str | None = None,
+            tier: str | None = None,
+            model: str | None = None,
+            usage_speed: str | None = None,
+            format: str = "json",
+            limit: int | None = None,
+            offset: int | None = None,
+        ) -> Any:
+            """Per-request spend rows with CLI-parity filters (#1821)."""
+            import csv
+            import io
+
+            from fastapi.responses import PlainTextResponse
+
+            from daari.enterprise.audit import parse_since
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.gateway.admin_read import _clamp_page, _page_meta
+            from daari.observability.spend import (
+                EXPORT_FIELDS,
+                annotate_model_group,
+                export_dict,
+            )
+
+            ctx: AppContext = request.app.state.ctx
+            role = _require_role(request, ctx, "analyst")
+            team_filter = (team or "").strip() or None
+            scope = _admin_team_scope(request, role, team_filter)
+            if scope:
+                team_filter = scope
+
+            fmt = (format or "json").strip().lower()
+            if fmt not in {"json", "csv"}:
+                raise HTTPException(status_code=400, detail="format must be json or csv")
+            speed_raw = (usage_speed or "").strip().lower() or None
+            if speed_raw is not None and speed_raw not in {"fast", "standard"}:
+                raise HTTPException(
+                    status_code=400, detail="usage_speed must be fast or standard"
+                )
+            try:
+                cutoff = parse_since(since)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            until_cut: str | None = None
+            if until is not None and str(until).strip():
+                try:
+                    until_cut = parse_since(str(until).strip())
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+            ledger = getattr(ctx.router, "spend_ledger", None)
+            if ledger is None or not getattr(ledger, "enabled", False):
+                raise HTTPException(status_code=404, detail="spend log is not enabled")
+
+            lim, off = _clamp_page(limit=limit, offset=offset)
+            key_filter = (key or "").strip() or None
+            user_filter = (user or "").strip() or None
+            tier_filter = (tier or "").strip() or None
+            model_filter = (model or "").strip() or None
+            filter_kwargs = {
+                "since": cutoff,
+                "until": until_cut,
+                "key_id": key_filter,
+                "team_id": team_filter,
+                "user_id": user_filter,
+                "tier": tier_filter,
+                "model": model_filter,
+                "usage_speed": speed_raw,
+            }
+            total = int(ledger.count_rows(**filter_kwargs))
+            catalog = getattr(ctx.settings, "model_groups", None) or {}
+            rows = [
+                export_dict(annotate_model_group(row, catalog))
+                for row in ledger.iter_rows(**filter_kwargs, limit=lim, offset=off)
+            ]
+            page = _page_meta(total, limit=lim, offset=off, returned=len(rows))
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="admin.spend.export",
+                detail={
+                    "limit": page.get("limit"),
+                    "team_id": team_filter,
+                    "returned": len(rows),
+                    "format": fmt,
+                },
+            )
+            if fmt == "csv":
+                buffer = io.StringIO()
+                writer = csv.DictWriter(
+                    buffer, fieldnames=EXPORT_FIELDS, lineterminator="\n"
+                )
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow(row)
+                return PlainTextResponse(
+                    buffer.getvalue(),
+                    media_type="text/csv",
+                    headers={
+                        "X-Daari-Total": str(page["total"]),
+                        "X-Daari-Limit": str(page["limit"]),
+                        "X-Daari-Offset": str(page["offset"]),
+                        "X-Daari-Has-More": "true" if page["has_more"] else "false",
+                    },
+                )
+            result: dict[str, Any] = {"rows": rows, **page}
+            if team_filter:
+                result["team_id"] = team_filter
+            return result
+
         @router.get("/v1/daari/cache/diversity")
         async def daari_cache_diversity(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx

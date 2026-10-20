@@ -7577,6 +7577,14 @@ and `model_pattern` (dedupe per pattern). Covered by
 hits `{systemone.base_url}/v1/systemone` when that root differs from
 `ollama.base_url`. Covered by `tests/integration/test_gateway_flow.py`.
 
+### HTTP spend export with model / usage-speed filters ([#1821](https://github.com/naveenreddyalka/daari/issues/1821))
+
+<!-- tracking:#1821 -->
+**Status:** Done (2026-10-20). `GET /v1/daari/spend/export` is analyst-gated with
+CLI-parity filters (`model` LIKE, `usage_speed`, key/team/user/tier, since/until),
+JSON + optional CSV, audit row, and admin pagination. Covered by
+`tests/unit/test_spend_export.py` and `tests/unit/test_chargeback_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
