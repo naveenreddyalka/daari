@@ -17,6 +17,15 @@ from daari.setup.doctor import _check_decisions
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_MD = ROOT / "docs/developer/reference/config.md"
 
+
+@pytest.fixture(autouse=True)
+def _reset_systemone_breakers():
+    from daari.gateway.systemone import reset_systemone_breakers
+
+    reset_systemone_breakers()
+    yield
+    reset_systemone_breakers()
+
 _SYSTEMONE_OK = {
     "model": "nimble",
     "answers": {
@@ -495,3 +504,91 @@ def test_redact_secrets_covers_resolved_systemone_api_key(settings, tmp_path):
     assert settings.systemone.api_key == "sk-from-secret-ref"
     assert "[redacted]" in redact_secrets("upstream used sk-from-secret-ref")
     clear_registered_secrets()
+
+
+@pytest.mark.asyncio
+async def test_breaker_trips_then_fast_fails_with_retry_after(settings, monkeypatch):
+    from daari.gateway.systemone import reset_systemone_breakers, breaker_for
+
+    reset_systemone_breakers()
+    attempts = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["n"] += 1
+        raise httpx.ConnectError("refused", request=request)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.systemone.base_url = "http://vllm.local:8000"
+    settings.upstream.retry.attempts = 1
+    # Lower threshold so the test trips quickly.
+    breaker = breaker_for("http://vllm.local:8000")
+    breaker.failure_threshold = 2
+    breaker.cooldown_seconds = 60.0
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for _ in range(2):
+            r = await client.post("/v1/systemone", json=_SYSTEMONE_BODY)
+            assert r.status_code == 503
+        assert attempts["n"] == 2
+        # Circuit open: no upstream attempt.
+        r = await client.post("/v1/systemone", json=_SYSTEMONE_BODY)
+        assert r.status_code == 503
+        assert attempts["n"] == 2
+        assert "Retry-After" in r.headers
+        assert r.json()["error"]["type"] == "backend_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_breaker_recovers_after_cooldown(settings, monkeypatch):
+    from daari.gateway.systemone import reset_systemone_breakers, breaker_for
+
+    reset_systemone_breakers()
+    attempts = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["n"] += 1
+        if attempts["n"] <= 2:
+            raise httpx.ConnectError("refused", request=request)
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.systemone.base_url = "http://vllm.local:8000"
+    settings.upstream.retry.attempts = 1
+    breaker = breaker_for("http://vllm.local:8000")
+    breaker.failure_threshold = 2
+    breaker.cooldown_seconds = 0.0  # immediate half-open
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for _ in range(2):
+            assert (await client.post("/v1/systemone", json=_SYSTEMONE_BODY)).status_code == 503
+        ok = await client.post("/v1/systemone", json=_SYSTEMONE_BODY)
+        assert ok.status_code == 200
+        assert attempts["n"] == 3
+
+
+def test_breaker_prometheus_counter(settings, monkeypatch):
+    from daari.gateway.systemone import reset_systemone_breakers, breaker_for, SystemOneCircuitOpen
+    from daari.gateway.systemone import _reject_if_open, _note_failure
+    from daari.observability.metrics import Metrics
+    from daari.observability.prometheus import render_prometheus
+
+    reset_systemone_breakers()
+    metrics = Metrics()
+    breaker = breaker_for("http://vllm.local:8000")
+    breaker.failure_threshold = 1
+    breaker.cooldown_seconds = 60.0
+    _note_failure("http://vllm.local:8000", metrics=metrics)
+    assert breaker.state == "open"
+    try:
+        _reject_if_open("http://vllm.local:8000", metrics=metrics)
+        raise AssertionError("expected SystemOneCircuitOpen")
+    except SystemOneCircuitOpen:
+        pass
+    text = render_prometheus(metrics)
+    assert "daari_systemone_breaker_total" in text
+    assert 'event="open"' in text or 'event="trip"' in text
+    assert 'event="reject"' in text

@@ -7518,6 +7518,18 @@ config-editor reads; resolved values are registered with `redact_secrets`.
 Covered by `tests/unit/test_systemone_upstream.py` and
 `tests/unit/test_decision_classifier.py`.
 
+### Systemone upstream circuit breaker + classifier pool ([#1801](https://github.com/naveenreddyalka/daari/issues/1801))
+
+<!-- tracking:#1801 -->
+**Status:** Done (2026-10-20). Per-base circuit breaker on `_post_systemone`:
+when open the facade/decisions return 503 + `Retry-After`, the classifier
+falls back to heuristics, and guardrail predicates raise into their
+`on_error` path — no upstream attempt. `classify_via_systemone` reuses the
+shared pooled client and retry policy. Prometheus
+`daari_systemone_breaker_total{event=…}`. Covered by
+`tests/unit/test_systemone_upstream.py` and
+`tests/unit/test_decision_classifier.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

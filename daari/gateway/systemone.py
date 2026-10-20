@@ -25,6 +25,7 @@ _DISABLED = (
 )
 
 _http: httpx.AsyncClient | None = None
+_breakers: dict[str, Any] = {}
 
 
 def _shared_client() -> httpx.AsyncClient:
@@ -41,6 +42,104 @@ async def aclose_http() -> None:
     if _http is not None and not getattr(_http, "is_closed", True):
         await _http.aclose()
     _http = None
+
+
+class SystemOneCircuitOpen(RuntimeError):
+    """The systemone upstream breaker is open; callers must not hit the network."""
+
+    def __init__(self, base: str, *, retry_after: int = 30) -> None:
+        self.base = base
+        self.retry_after = max(1, int(retry_after))
+        super().__init__(f"systemone circuit open for {base}")
+
+
+def _breaker_key(base_or_url: str) -> str:
+    raw = (base_or_url or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = httpx.URL(raw)
+        host = parsed.host
+        if isinstance(host, (bytes, bytearray)):
+            host = host.decode("ascii", errors="replace")
+        host = str(host or "").strip()
+        if host:
+            scheme = str(parsed.scheme or "http")
+            if isinstance(scheme, (bytes, bytearray)):
+                scheme = scheme.decode("ascii", errors="replace")
+            port = parsed.port
+            if port and not (
+                (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
+            ):
+                return f"{scheme}://{host}:{port}"
+            return f"{scheme}://{host}"
+    except Exception:
+        pass
+    return raw.rstrip("/").split("/v1/")[0].rstrip("/")
+
+
+def breaker_for(base_or_url: str) -> Any:
+    """Per-upstream-base circuit breaker (defaults match MCP egress)."""
+    from daari.router.circuit_breaker import CircuitBreaker
+
+    key = _breaker_key(base_or_url) or "systemone"
+    breaker = _breakers.get(key)
+    if breaker is None:
+        breaker = CircuitBreaker(failure_threshold=3, cooldown_seconds=30.0)
+        _breakers[key] = breaker
+    return breaker
+
+
+def reset_systemone_breakers() -> None:
+    """Clear breaker state (tests)."""
+    _breakers.clear()
+
+
+def _reject_if_open(base_or_url: str, *, metrics: Any | None = None) -> None:
+    breaker = breaker_for(base_or_url)
+    if breaker.allow():
+        return
+    if metrics is not None and hasattr(metrics, "record_systemone_breaker"):
+        try:
+            metrics.record_systemone_breaker(event="reject")
+        except Exception:  # noqa: BLE001 — metrics must never break a request
+            pass
+    cooldown = float(getattr(breaker, "cooldown_seconds", 30.0) or 30.0)
+    raise SystemOneCircuitOpen(_breaker_key(base_or_url), retry_after=int(cooldown))
+
+
+def _note_success(base_or_url: str) -> None:
+    breaker_for(base_or_url).record_success()
+
+
+def _note_failure(base_or_url: str, *, metrics: Any | None = None) -> None:
+    breaker = breaker_for(base_or_url)
+    was_open = breaker.state == "open"
+    breaker.record_failure()
+    if metrics is not None and hasattr(metrics, "record_systemone_breaker"):
+        try:
+            if breaker.state == "open" and not was_open:
+                metrics.record_systemone_breaker(event="open")
+            metrics.record_systemone_breaker(event="trip")
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def circuit_open_response(exc: SystemOneCircuitOpen) -> JSONResponse:
+    """503 + Retry-After when the systemone breaker is open."""
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": {
+                "type": "backend_unavailable",
+                "message": (
+                    "Decision models upstream circuit is open "
+                    f"({exc.base or 'systemone'}). Retry after cooldown."
+                ),
+            }
+        },
+        headers={"Retry-After": str(exc.retry_after)},
+    )
 
 
 class SystemOneRequest(BaseModel):
@@ -307,6 +406,7 @@ async def _post_systemone(
     headers: dict[str, str] | None = None,
     settings: Any | None = None,
 ) -> httpx.Response:
+    from daari.router.circuit_breaker import counts_as_hard_provider_failure
     from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
 
     policy = (
@@ -315,6 +415,7 @@ async def _post_systemone(
         else (RetryPolicy(attempts=1) if retry is None else RetryPolicy.from_settings(retry))
     )
     auth = dict(headers) if headers else systemone_auth_headers(settings)
+    _reject_if_open(url, metrics=metrics)
 
     async def attempt() -> httpx.Response:
         response = await _shared_client().post(
@@ -324,13 +425,25 @@ async def _post_systemone(
             response.raise_for_status()
         return response
 
-    return await run_upstream(
-        attempt,
-        upstream="systemone",
-        policy=policy,
-        timeout=timeout,
-        metrics=metrics,
-    )
+    try:
+        response = await run_upstream(
+            attempt,
+            upstream="systemone",
+            policy=policy,
+            timeout=timeout,
+            metrics=metrics,
+        )
+    except SystemOneCircuitOpen:
+        raise
+    except Exception as exc:
+        if counts_as_hard_provider_failure(exc):
+            _note_failure(url, metrics=metrics)
+        raise
+    if response.status_code >= 500:
+        _note_failure(url, metrics=metrics)
+    else:
+        _note_success(url)
+    return response
 
 
 async def _dispatch_systemone(request: Request, body: SystemOneRequest) -> Any:
@@ -412,6 +525,9 @@ async def _dispatch_systemone(request: Request, body: SystemOneRequest) -> Any:
                 metrics=metrics,
                 settings=settings,
             )
+    except SystemOneCircuitOpen as exc:
+        log_gateway_event("systemone_circuit_open", {"base": exc.base})
+        return circuit_open_response(exc)
     except httpx.RequestError as exc:
         log_gateway_event(
             "systemone_ollama_down",

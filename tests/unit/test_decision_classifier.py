@@ -18,6 +18,15 @@ from daari.router.decision_classifier import (
 from daari.router.router import OllamaExecutor, Router
 
 
+@pytest.fixture(autouse=True)
+def _reset_systemone_breakers():
+    from daari.gateway.systemone import reset_systemone_breakers
+
+    reset_systemone_breakers()
+    yield
+    reset_systemone_breakers()
+
+
 class NoopEmbedder:
     async def embed(self, text: str, *, model: str | None = None):
         return None
@@ -349,3 +358,71 @@ async def test_router_passes_systemone_api_key_to_classifier(tmp_path, monkeypat
 
     await router._apply_decision_classifier(request, build_prompt_profile(request))
     assert captured.get("api_key") == "sk-router-key"
+
+
+@pytest.mark.asyncio
+async def test_classify_reuses_shared_systemone_client(monkeypatch):
+    import httpx
+
+    from daari.gateway import systemone as systemone_mod
+    from daari.gateway.systemone import reset_systemone_breakers
+    from daari.router.decision_classifier import classify_via_systemone
+
+    reset_systemone_breakers()
+    systemone_mod._http = None
+    seen_clients: list[object] = []
+
+    class TrackingClient(httpx.AsyncClient):
+        async def post(self, *args, **kwargs):
+            seen_clients.append(self)
+            return httpx.Response(
+                200,
+                json={
+                    "model": "nimble",
+                    "answers": {
+                        "difficulty": {
+                            "type": "choice",
+                            "choice": "trivial",
+                            "confidence": 0.9,
+                        }
+                    },
+                },
+                request=httpx.Request("POST", "http://vllm.local:8000/v1/systemone"),
+            )
+
+    monkeypatch.setattr(
+        "daari.router.http_pool.build_async_client",
+        lambda httpx_mod: TrackingClient(),
+    )
+    systemone_mod._http = None
+    result = await classify_via_systemone(
+        base_url="http://vllm.local:8000",
+        model="nimble",
+        state="hi",
+    )
+    assert result.tier == "L3"
+    assert seen_clients
+    assert systemone_mod._http is seen_clients[0]
+    await systemone_mod.aclose_http()
+
+
+@pytest.mark.asyncio
+async def test_classifier_falls_back_when_circuit_open(tmp_path, monkeypatch):
+    from daari.gateway.systemone import reset_systemone_breakers, breaker_for
+
+    reset_systemone_breakers()
+    breaker = breaker_for("http://ollama.test:11434")
+    breaker.failure_threshold = 1
+    breaker.cooldown_seconds = 60.0
+    breaker.record_failure()
+    assert breaker.state == "open"
+
+    router = _router(tmp_path, enabled=True)
+    router.systemone_base_url = "http://ollama.test:11434"
+
+    request = _request("hi")
+    from daari.router.profile import build_prompt_profile
+
+    updated = await router._apply_decision_classifier(request, build_prompt_profile(request))
+    assert request.meta.decision_tier is None
+    assert updated.complexity == build_prompt_profile(request).complexity
