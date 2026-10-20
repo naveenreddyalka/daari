@@ -39,6 +39,7 @@ def _status(
     now: datetime = NOW,
     quota: str = "usd",
     max_requests: int = 0,
+    model_pattern: str | None = None,
 ) -> WindowStatus:
     window = (
         BudgetWindow(duration, 0.0, max_requests=int(cap if quota == "requests" else max_requests))
@@ -51,6 +52,7 @@ def _status(
         spend=spend,
         now=now,
         quota=quota,  # type: ignore[arg-type]
+        model_pattern=model_pattern,
     )
 
 
@@ -178,6 +180,8 @@ class TestAlerter:
         assert body["spent_usd"] == 8.2
         assert body["remaining_usd"] == pytest.approx(1.8)
         assert body["threshold"] == 0.8
+        assert body["reset_epoch"] == _status(8.2).reset_epoch
+        assert body["reset_at"] == _status(8.2).reset_at
         assert "dk_" not in str(body)
         assert len(posted) == 1
         assert posted[0].url.path == "/budget"
@@ -188,6 +192,41 @@ class TestAlerter:
         assert snap["budget_alerts"]["key:0.8"] == 1
         text = render_prometheus(alerter.metrics)
         assert 'daari_budget_alerts_total{scope="key",threshold="0.8"} 1' in text
+
+    def test_model_pattern_crossing_payload_and_dedupe(self):
+        posted: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            posted.append(request)
+            return httpx.Response(204)
+
+        alerter = BudgetAlerter(
+            webhook_url="https://hooks.example/budget",
+            transport=httpx.MockTransport(handler),
+        )
+        before = [_status(7.0, scope="model", model_pattern="gpt-4*")]
+        after = [_status(8.2, scope="model", model_pattern="gpt-4*")]
+        bodies = alerter.notify(before, after, key=KEY, team=TEAM)
+        assert len(bodies) == 1
+        body = bodies[0]
+        assert body["scope"] == "model"
+        assert body["id"] == "gpt-4*"
+        assert body["model_pattern"] == "gpt-4*"
+        assert body["reset_at"] == after[0].reset_at
+        assert body["reset_epoch"] == after[0].reset_epoch
+        assert body["id"] != KEY.key_id
+        assert len(posted) == 1
+        # Same window + threshold must not refire; a different pattern still pages.
+        assert alerter.notify(after, [_status(8.4, scope="model", model_pattern="gpt-4*")], key=KEY, team=TEAM) == []
+        other = alerter.notify(
+            [_status(7.0, scope="model", model_pattern="claude-*")],
+            [_status(8.2, scope="model", model_pattern="claude-*")],
+            key=KEY,
+            team=TEAM,
+        )
+        assert len(other) == 1
+        assert other[0]["model_pattern"] == "claude-*"
+        assert len(posted) == 2
 
     def test_dedupes_until_window_reset(self):
         hits: list[httpx.Request] = []

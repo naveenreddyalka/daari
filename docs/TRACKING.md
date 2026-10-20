@@ -7562,6 +7562,14 @@ HTML injection). Covered by `packages/web-ui/test/dashboard.test.js`.
 `DAARI_SYSTEMONE__API_KEY` via `secretKeyRef` (same shape as frontier). Covered
 by `tests/unit/test_helm_chart.py` and `tests/unit/test_capacity_helm_docs.py`.
 
+### Budget alert reset_at + model-cap crossings ([#1807](https://github.com/naveenreddyalka/daari/issues/1807))
+
+<!-- tracking:#1807 -->
+**Status:** Done (2026-10-20). Webhook payloads include ISO `reset_at` alongside
+`reset_epoch`; `model_max_budget` threshold crossings fire with `scope: model`
+and `model_pattern` (dedupe per pattern). Covered by
+`tests/unit/test_budget_alerts.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

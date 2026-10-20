@@ -127,6 +127,10 @@ def _ratio(status: WindowStatus) -> float:
 def _identity(status: WindowStatus, key: VirtualKey, team: Team | None) -> tuple[str, str, str]:
     if status.scope == "team" and team is not None:
         return "team", team.team_id, team.name
+    if status.scope == "model":
+        # Pattern is the identity — never collapse onto the key id (#1807).
+        pattern = (getattr(status, "model_pattern", None) or "").strip() or "model"
+        return "model", pattern, pattern
     return "key", key.key_id, key.name
 
 
@@ -145,9 +149,15 @@ def dedupe_ttl_seconds(status: WindowStatus) -> int:
     return max(1, ttl)
 
 
-def _crossing_key(status: WindowStatus) -> tuple[str, str, str]:
-    """Scope + duration + quota so USD and request caps on one window both alert (#498)."""
-    return (status.scope, status.window.duration, getattr(status, "quota", "usd") or "usd")
+def _crossing_key(status: WindowStatus) -> tuple[str, str, str, str]:
+    """Scope + duration + quota (+ pattern) so USD/request and model caps alert (#498, #1807)."""
+    pattern = (getattr(status, "model_pattern", None) or "").strip()
+    return (
+        status.scope,
+        status.window.duration,
+        getattr(status, "quota", "usd") or "usd",
+        pattern,
+    )
 
 
 def crossings(
@@ -267,7 +277,12 @@ class BudgetAlerter:
             "window": window_label(status.window.duration),
             "threshold": float(threshold),
             "reset_epoch": status.reset_epoch,
+            "reset_at": status.reset_at,
         }
+        if scope == "model":
+            pattern = (getattr(status, "model_pattern", None) or "").strip()
+            if pattern:
+                base["model_pattern"] = pattern
         if getattr(status, "quota", "usd") == "requests":
             base["quota"] = "requests"
             base["limit_requests"] = int(status.limit)
@@ -434,6 +449,7 @@ class BudgetAlerter:
                     "spent_usd": round(float(status.spend), 6),
                     "remaining_usd": round(status.remaining, 6),
                     "reset_epoch": status.reset_epoch,
+                    "reset_at": status.reset_at,
                 }
             )
         for body in out:
@@ -441,8 +457,8 @@ class BudgetAlerter:
         return out
 
 
-def user_id_from_body(raw: bytes) -> str:
-    """OpenAI ``user`` field from a JSON body; empty when absent or unreadable."""
+def _json_body_field(raw: bytes, field: str) -> str:
+    """String field from a JSON object body; empty when absent or unreadable."""
     if not raw:
         return ""
     try:
@@ -451,7 +467,17 @@ def user_id_from_body(raw: bytes) -> str:
         return ""
     if not isinstance(parsed, dict):
         return ""
-    raw_user = parsed.get("user")
-    if raw_user is None:
+    value = parsed.get(field)
+    if value is None:
         return ""
-    return str(raw_user).strip()
+    return str(value).strip()
+
+
+def user_id_from_body(raw: bytes) -> str:
+    """OpenAI ``user`` field from a JSON body; empty when absent or unreadable."""
+    return _json_body_field(raw, "user")
+
+
+def model_from_body(raw: bytes) -> str:
+    """OpenAI ``model`` field from a JSON body; empty when absent or unreadable."""
+    return _json_body_field(raw, "model")
