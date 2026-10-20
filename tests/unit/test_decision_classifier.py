@@ -4,15 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-
-@pytest.fixture(autouse=True)
-def _reset_systemone_breakers():
-    from daari.gateway.systemone import reset_systemone_breakers
-
-    reset_systemone_breakers()
-    yield
-    reset_systemone_breakers()
-
 from daari.cache.exact import ExactCache
 from daari.cache.semantic import SemanticCache
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
@@ -25,6 +16,15 @@ from daari.router.decision_classifier import (
     map_score_to_complexity,
 )
 from daari.router.router import OllamaExecutor, Router
+
+
+@pytest.fixture(autouse=True)
+def _reset_systemone_breakers():
+    from daari.gateway.systemone import reset_systemone_breakers
+
+    reset_systemone_breakers()
+    yield
+    reset_systemone_breakers()
 
 
 class NoopEmbedder:
@@ -408,7 +408,7 @@ async def test_classify_reuses_shared_systemone_client(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_classifier_falls_back_when_circuit_open(tmp_path, monkeypatch):
-    from daari.gateway.systemone import reset_systemone_breakers, breaker_for, SystemOneCircuitOpen
+    from daari.gateway.systemone import reset_systemone_breakers, breaker_for
 
     reset_systemone_breakers()
     breaker = breaker_for("http://ollama.test:11434")
