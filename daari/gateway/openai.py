@@ -1882,6 +1882,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "compact_to_fit_tokens_dropped": 0,
                     "mcp_grant_denied": 0,
                 }
+            from daari.gateway.systemone import breaker_snapshot
+
+            systemone_breaker = list(
+                full.get("systemone_breaker_state") or breaker_snapshot()
+            )
             payload: dict[str, Any] = {
                 "total_requests": total,
                 "errors": full["errors"],
@@ -1889,6 +1894,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "tiers": tiers,
                 "backends": backends,
                 "backend_summary": backend_summary,
+                "systemone_breaker": systemone_breaker,
                 "soft_warnings": full.get("soft_warnings") or {},
                 "rejects": full.get("rejects") or {},
                 "team_rate_limits": _stats_team_rate_limits(request, team_id=scope),

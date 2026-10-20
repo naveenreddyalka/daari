@@ -66,6 +66,9 @@ def run_doctor(
     decisions_models_tip = _check_decisions_local_models(cfg, httpx_client)
     if decisions_models_tip is not None:
         results.append(decisions_models_tip)
+    breaker_tip = _check_systemone_breaker(cfg)
+    if breaker_tip is not None:
+        results.append(breaker_tip)
     results.append(_check_responses_stream_resume(cfg))
     results.append(_check_moderations(cfg))
     results.append(_check_rerank(cfg))
@@ -765,6 +768,33 @@ def _check_decisions(settings: Settings) -> CheckResult:
             "POST /v1/decisions: systemone.enabled=false and frontier.enabled=false "
             "(no local clef/nimble/tev1 or gpt-6-luna path) — enable systemone "
             "and/or frontier + API key (see clients-and-gateways.md / http-api)"
+        ),
+        optional=True,
+    )
+
+
+def _check_systemone_breaker(settings: Settings) -> CheckResult | None:
+    """Tip when a systemone upstream circuit is open (#1822). No network I/O."""
+    if not bool(getattr(getattr(settings, "systemone", None), "enabled", True)):
+        return None
+    from daari.gateway.systemone import breaker_snapshot
+
+    open_rows = [
+        row for row in breaker_snapshot() if str(row.get("state") or "") == "open"
+    ]
+    if not open_rows:
+        return None
+    parts = [
+        f"{row.get('base') or 'systemone'} (cooldown {row.get('cooldown_seconds')}s)"
+        for row in open_rows
+    ]
+    return CheckResult(
+        name="systemone_breaker",
+        ok=False,
+        detail=(
+            "systemone upstream circuit open for "
+            + ", ".join(parts)
+            + " — /v1/systemone and decisions hops fast-fail until cooldown"
         ),
         optional=True,
     )

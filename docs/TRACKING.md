@@ -7585,6 +7585,14 @@ CLI-parity filters (`model` LIKE, `usage_speed`, key/team/user/tier, since/until
 JSON + optional CSV, audit row, and admin pagination. Covered by
 `tests/unit/test_spend_export.py` and `tests/unit/test_chargeback_docs.py`.
 
+### Systemone breaker state on stats / doctor / metrics / console ([#1822](https://github.com/naveenreddyalka/daari/issues/1822))
+
+<!-- tracking:#1822 -->
+**Status:** Done (2026-10-20). Per-upstream systemone breaker state (open/closed +
+rejects) on metrics snapshot, `/v1/daari/stats`, `daari_systemone_breaker_state`
+gauge, doctor tip (no network), and web-ui next to pool `open_circuit`. Covered by
+`tests/unit/test_systemone_upstream.py` and `packages/web-ui/test/dashboard.test.js`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -26,6 +26,7 @@ _DISABLED = (
 
 _http: httpx.AsyncClient | None = None
 _breakers: dict[str, Any] = {}
+_breaker_rejects: dict[str, int] = {}
 
 
 def _shared_client() -> httpx.AsyncClient:
@@ -93,19 +94,40 @@ def breaker_for(base_or_url: str) -> Any:
 def reset_systemone_breakers() -> None:
     """Clear breaker state (tests)."""
     _breakers.clear()
+    _breaker_rejects.clear()
+
+
+def breaker_snapshot() -> list[dict[str, Any]]:
+    """Current per-upstream breaker state for stats / metrics / doctor (#1822)."""
+    rows: list[dict[str, Any]] = []
+    for key, breaker in sorted(_breakers.items()):
+        state = str(getattr(breaker, "state", "closed") or "closed")
+        rows.append(
+            {
+                "base": key,
+                "state": state,
+                "rejects": int(_breaker_rejects.get(key, 0)),
+                "cooldown_seconds": float(
+                    getattr(breaker, "cooldown_seconds", 30.0) or 30.0
+                ),
+            }
+        )
+    return rows
 
 
 def _reject_if_open(base_or_url: str, *, metrics: Any | None = None) -> None:
     breaker = breaker_for(base_or_url)
     if breaker.allow():
         return
+    key = _breaker_key(base_or_url) or "systemone"
+    _breaker_rejects[key] = int(_breaker_rejects.get(key, 0)) + 1
     if metrics is not None and hasattr(metrics, "record_systemone_breaker"):
         try:
             metrics.record_systemone_breaker(event="reject")
         except Exception:  # noqa: BLE001 — metrics must never break a request
             pass
     cooldown = float(getattr(breaker, "cooldown_seconds", 30.0) or 30.0)
-    raise SystemOneCircuitOpen(_breaker_key(base_or_url), retry_after=int(cooldown))
+    raise SystemOneCircuitOpen(key, retry_after=int(cooldown))
 
 
 def _note_success(base_or_url: str) -> None:
