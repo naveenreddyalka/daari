@@ -7498,6 +7498,15 @@ not Ollama. Covered by `tests/unit/test_systemone_upstream.py`.
 key when absent. Client status and body stay unchanged. Covered by
 `tests/unit/test_systemone_upstream.py`.
 
+### Helm systemone.baseUrl and NetworkPolicy egress ([#1799](https://github.com/naveenreddyalka/daari/issues/1799))
+
+<!-- tracking:#1799 -->
+**Status:** Done (2026-10-20). Chart `systemone.enabled` / `systemone.baseUrl`
+mount `DAARI_SYSTEMONE__ENABLED` (when false) and `DAARI_SYSTEMONE__BASE_URL`.
+NetworkPolicy `$wantLocal` includes `systemone.baseUrl`. Documented in
+capacity-helm. Covered by `tests/unit/test_helm_chart.py`,
+`tests/unit/test_capacity_helm_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

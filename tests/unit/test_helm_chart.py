@@ -628,6 +628,50 @@ class TestHelmOllamaBaseUrl:
         )
 
 
+class TestHelmSystemone:
+    def test_systemone_env_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_SYSTEMONE__BASE_URL" not in rendered
+        assert "DAARI_SYSTEMONE__ENABLED" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["systemone"]["baseUrl"] == ""
+        assert values["systemone"]["enabled"] is True
+
+    def test_systemone_base_url_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "systemone.baseUrl=http://vllm.internal:8000",
+        )
+        assert re.search(
+            r'name: DAARI_SYSTEMONE__BASE_URL\s+value: "http://vllm.internal:8000"',
+            rendered,
+        )
+
+    def test_systemone_enabled_false_renders_env(self, helm_available: None) -> None:
+        rendered = _helm_template("--set", "systemone.enabled=false")
+        assert re.search(
+            r'name: DAARI_SYSTEMONE__ENABLED\s+value: "false"',
+            rendered,
+        )
+
+    def test_networkpolicy_egress_local_backends_when_systemone_set(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template(
+            "--set",
+            "networkPolicy.enabled=true",
+            "--set",
+            "systemone.baseUrl=http://vllm:8000",
+        )
+        np = _docs_by_kind(rendered)["NetworkPolicy"][0]
+        egress_ports = {
+            (p.get("protocol"), p.get("port"))
+            for rule in np["spec"]["egress"]
+            for p in rule.get("ports") or []
+        }
+        assert ("TCP", 8000) in egress_ports
+
+
 class TestHelmAsrBaseUrl:
     def test_asr_base_url_absent_by_default(self, helm_available: None) -> None:
         rendered = _helm_template()

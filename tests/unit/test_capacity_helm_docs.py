@@ -14,6 +14,14 @@ def test_capacity_helm_documents_tts_base_url() -> None:
     assert "DAARI_TTS__BASE_URL" in text
 
 
+def test_capacity_helm_documents_systemone() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "systemone.baseUrl" in text
+    assert "systemone.enabled" in text
+    assert "DAARI_SYSTEMONE__BASE_URL" in text
+    assert "DAARI_SYSTEMONE__ENABLED" in text
+
+
 def test_capacity_helm_documents_tts_model_and_voice() -> None:
     text = DOC.read_text(encoding="utf-8")
     assert "tts.model" in text

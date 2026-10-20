@@ -347,11 +347,17 @@ localPool:
 
 # Embedder base URL for POST /v1/embeddings and L1. Empty leaves the image
 # default (localhost). Distinct from orgPool, which only sets the routing URL.
-# Local POST /v1/decisions models (clef / clef-flash / nimble / tev1) and
-# POST /v1/systemone proxy to this Ollama root when systemone.enabled (app
-# default true). No extra Helm knobs — set DAARI_SYSTEMONE__ENABLED=false via
-# env to disable the local decisions / systemone path.
+# Local POST /v1/decisions models also fall back to this Ollama root when
+# systemone.baseUrl is empty.
 ollama:
+  baseUrl: ""
+
+# Decision-model upstream for POST /v1/systemone, local /v1/decisions,
+# guardrail predicates, and the decision classifier. Empty baseUrl keeps
+# the Ollama fallback (ollama.baseUrl). enabled defaults true (chart omits
+# env); set false to mount DAARI_SYSTEMONE__ENABLED=false (501 on the route).
+systemone:
+  enabled: true
   baseUrl: ""
 
 # Local OpenAI-compatible speech-to-text (vLLM, whisper.cpp). Empty leaves
