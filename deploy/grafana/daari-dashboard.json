@@ -837,6 +837,54 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 41,
+      "title": "Cloud vs local spend share",
+      "description": "Frontier/cloud USD spend (`daari_frontier_spend_usd`) beside L6 vs local request rates so operators can see cloud-egress share without leaving the overview (#1802).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 160
+      },
+      "targets": [
+        {
+          "expr": "daari_frontier_spend_usd{window=\"daily\"}",
+          "legendFormat": "cloud/frontier spend (daily USD)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(daari_requests_total{tier=\"L6\"}[5m]))",
+          "legendFormat": "cloud/frontier req/s",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(daari_requests_total{tier=~\"L[0-5]\"}[5m]))",
+          "legendFormat": "local req/s",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "title": "Fast-mode request rate",
+      "description": "Anthropic fast-mode degrades to standard (`daari_soft_warnings_total{kind=\"fast_degraded_to_standard\"}`) — the on-box signal for fast-mode traffic pressure (#1802).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 160
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_soft_warnings_total{kind=\"fast_degraded_to_standard\"}[5m]))",
+          "legendFormat": "fast_degraded_to_standard/s",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

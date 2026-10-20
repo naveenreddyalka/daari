@@ -148,6 +148,127 @@ def test_spend_export_cli_tier_help_and_filter(tmp_path, monkeypatch):
     assert json.loads(lines[0])["tier"] == "asr"
 
 
+def test_export_filters_by_model_like_and_usage_speed(tmp_path):
+    """--model uses SQL LIKE; --usage-speed matches fast|standard (#1802)."""
+    ledger = SpendLedger(tmp_path / "spend.sqlite3", enabled=True)
+    _row(
+        ledger,
+        request_id="req-cloud",
+        model="clef:cloud",
+        usage_speed="fast",
+        key_id="key-a",
+        team_id="team-1",
+    )
+    _row(
+        ledger,
+        request_id="req-flash",
+        model="clef-flash:cloud",
+        usage_speed="standard",
+        key_id="key-a",
+        team_id="team-1",
+    )
+    _row(
+        ledger,
+        request_id="req-local",
+        model="llama3.2:3b",
+        usage_speed="",
+        key_id="key-b",
+        team_id="team-2",
+    )
+
+    cloud = list(ledger.iter_rows(since=SINCE, model="%:cloud"))
+    assert [row["request_id"] for row in cloud] == ["req-cloud", "req-flash"]
+    fast = list(ledger.iter_rows(since=SINCE, usage_speed="fast"))
+    assert [row["request_id"] for row in fast] == ["req-cloud"]
+    combined = list(
+        ledger.iter_rows(
+            since=SINCE,
+            model="%:cloud",
+            usage_speed="standard",
+            key_id="key-a",
+            team_id="team-1",
+        )
+    )
+    assert [row["request_id"] for row in combined] == ["req-flash"]
+
+
+def test_spend_export_cli_model_and_usage_speed_filters(tmp_path, monkeypatch):
+    settings = Settings()
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+    ledger = spend_ledger_from_settings(settings)
+    from datetime import datetime, timedelta, timezone
+
+    recent = (datetime.now(timezone.utc) - timedelta(days=1)).strftime(
+        "%Y-%m-%dT%H:%M:%S+00:00"
+    )
+    _row(
+        ledger,
+        ts=recent,
+        request_id="req-fast-cloud",
+        model="clef:cloud",
+        usage_speed="fast",
+    )
+    _row(
+        ledger,
+        ts=recent,
+        request_id="req-std-cloud",
+        model="clef-flash:cloud",
+        usage_speed="standard",
+    )
+    _row(ledger, ts=recent, request_id="req-local", model="llama3.2:3b")
+
+    help_result = CliRunner().invoke(
+        cli_app,
+        ["spend", "export", "--help"],
+        env={"NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "120"},
+    )
+    assert help_result.exit_code == 0
+    help_text = help_result.stdout + help_result.stderr
+    assert "--model" in help_text
+    assert "--usage-speed" in help_text
+
+    cloud = CliRunner().invoke(
+        cli_app,
+        ["spend", "export", "--since", "7d", "--format", "jsonl", "--model", "%:cloud"],
+    )
+    assert cloud.exit_code == 0, cloud.output
+    cloud_ids = {
+        json.loads(line)["request_id"]
+        for line in cloud.stdout.splitlines()
+        if line.strip()
+    }
+    assert cloud_ids == {"req-fast-cloud", "req-std-cloud"}
+
+    fast = CliRunner().invoke(
+        cli_app,
+        [
+            "spend",
+            "export",
+            "--since",
+            "7d",
+            "--format",
+            "jsonl",
+            "--model",
+            "%:cloud",
+            "--usage-speed",
+            "fast",
+        ],
+    )
+    assert fast.exit_code == 0, fast.output
+    lines = [line for line in fast.stdout.splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert json.loads(lines[0])["request_id"] == "req-fast-cloud"
+    assert json.loads(lines[0])["usage_speed"] == "fast"
+
+    bad = CliRunner().invoke(
+        cli_app,
+        ["spend", "export", "--since", "7d", "--format", "jsonl", "--usage-speed", "turbo"],
+    )
+    assert bad.exit_code != 0
+
+
 def test_prune_drops_rows_before_cutoff(tmp_path):
     ledger = SpendLedger(tmp_path / "spend.sqlite3", enabled=True)
     _row(ledger, ts=OLD, request_id="req-old")

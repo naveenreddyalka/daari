@@ -7530,6 +7530,16 @@ shared pooled client and retry policy. Prometheus
 `tests/unit/test_systemone_upstream.py` and
 `tests/unit/test_decision_classifier.py`.
 
+### Spend export model / usage-speed filters + Grafana panels ([#1802](https://github.com/naveenreddyalka/daari/issues/1802))
+
+<!-- tracking:#1802 -->
+**Status:** Done (2026-10-20). `daari spend export --model` (SQL LIKE) and
+`--usage-speed fast|standard` compose with key/team/user/tier/time filters.
+Grafana overview adds cloud-vs-local spend share
+(`daari_frontier_spend_usd` + L6/local request rates) and fast-mode request
+rate (`daari_soft_warnings_total{kind="fast_degraded_to_standard"}`). Covered
+by `tests/unit/test_spend_export.py` and `tests/unit/test_grafana_dashboard.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
