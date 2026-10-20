@@ -24,6 +24,22 @@ body[data-theme="light"] {
   color: #94a3b8;
 }
 
+.schema-ok-banner {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #b45309;
+  background: #451a03;
+  color: #fde68a;
+  font-size: 0.95rem;
+}
+
+body[data-theme="light"] .schema-ok-banner {
+  background: #fffbeb;
+  border-color: #d97706;
+  color: #92400e;
+}
+
 .row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

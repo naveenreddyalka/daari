@@ -140,6 +140,13 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
                 alerter.notify(listed_keys)
         except Exception:
             virtual_keys = None
+    schema_ok: bool | None = None
+    try:
+        from daari.ops.backup import local_sqlite_schema_status
+
+        schema_ok = bool(local_sqlite_schema_status(settings).schema_ok)
+    except Exception:
+        schema_ok = False
     return render_prometheus(
         ctx.metrics,
         budget_state=budget_state,
@@ -152,6 +159,7 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
         key_rate_limits=key_rate_limits,
         in_flight_scopes=in_flight_scopes,
         virtual_keys=virtual_keys,
+        schema_ok=schema_ok,
     )
 
 

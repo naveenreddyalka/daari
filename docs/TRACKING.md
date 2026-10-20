@@ -7540,6 +7540,14 @@ Grafana overview adds cloud-vs-local spend share
 rate (`daari_soft_warnings_total{kind="fast_degraded_to_standard"}`). Covered
 by `tests/unit/test_spend_export.py` and `tests/unit/test_grafana_dashboard.py`.
 
+### Scrape schema_ok + web console banner ([#1805](https://github.com/naveenreddyalka/daari/issues/1805))
+
+<!-- tracking:#1805 -->
+**Status:** Done (2026-10-20). `/metrics` exposes `daari_schema_ok` (1/0) from
+`local_sqlite_schema_status` when Prometheus is enabled. The web console shows
+a text-only banner when `/ready` reports `schema_ok: false`. Covered by
+`tests/unit/test_prometheus.py` and `packages/web-ui/test/dashboard.test.js`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

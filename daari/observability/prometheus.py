@@ -40,6 +40,7 @@ def render_prometheus(
     key_rate_limits: list[dict[str, Any]] | None = None,
     in_flight_scopes: list[dict[str, Any]] | None = None,
     virtual_keys: dict[str, Any] | None = None,
+    schema_ok: bool | None = None,
 ) -> str:
     """Render the current Metrics snapshot (plus optional gauges) as exposition text."""
     snap = metrics.snapshot(include_histograms=True)
@@ -322,6 +323,14 @@ def render_prometheus(
         for candidate in ("soft_allow",):
             value = 1 if degraded_budget and budget_mode == candidate else 0
             lines.append(f"daari_budget_degraded{_labels(mode=candidate)} {value}")
+
+    if schema_ok is not None:
+        lines.append(
+            "# HELP daari_schema_ok 1 when local SQLite store schemas match"
+            " STORE_SCHEMA_VERSIONS; 0 when any file lags or errors."
+        )
+        lines.append("# TYPE daari_schema_ok gauge")
+        lines.append(f"daari_schema_ok {1 if schema_ok else 0}")
 
     if team_rate_limits:
         lines.append(

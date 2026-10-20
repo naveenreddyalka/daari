@@ -129,9 +129,38 @@ function routes(overrides = {}) {
     "/v1/daari/traces/abcd1234efgh": TRACE_DETAIL,
     "/v1/daari/traces": TRACES,
     "/v1/org-learning/profile": { status: 404 },
+    "/ready": { status: "ready", schema_ok: true },
     ...overrides,
   };
 }
+
+test("schema lag banner shows when /ready reports schema_ok false", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/ready": { __http: 503, status: "not_ready", schema_ok: false },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const banner = dom.window.document.getElementById("schema-ok-banner");
+  assert.ok(banner);
+  assert.equal(banner.hidden, false);
+  assert.match(banner.textContent, /schema/i);
+  assert.equal(banner.innerHTML.includes("<"), false);
+});
+
+test("schema lag banner stays hidden when schema_ok is true", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const banner = dom.window.document.getElementById("schema-ok-banner");
+  assert.ok(banner);
+  assert.equal(banner.hidden, true);
+});
 
 test("stats summary shows compact_to_fit_tokens_dropped and mcp_grant_denied", async (t) => {
   const fetch = fakeFetch(routes());

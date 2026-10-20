@@ -23,6 +23,15 @@ export function fakeFetch(routes) {
       }
     }
     if (best !== null) {
+      if (best && typeof best === "object" && typeof best.__http === "number") {
+        const { __http, ...body } = best;
+        return {
+          ok: __http < 400,
+          status: __http,
+          statusText: __http < 400 ? "OK" : "Error",
+          json: async () => body,
+        };
+      }
       if (best && typeof best === "object" && "status" in best && best.status >= 400) {
         return { ok: false, status: best.status, statusText: "Error", json: async () => ({}) };
       }
