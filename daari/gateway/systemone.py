@@ -391,10 +391,13 @@ async def _dispatch_systemone(request: Request, body: SystemOneRequest) -> Any:
 
     latency_ms = _elapsed_ms(started)
     if upstream.status_code >= 400:
-        log_gateway_event(
-            "systemone_upstream_http",
-            {"status": upstream.status_code},
-        )
+        from daari.router.retry import provider_request_id
+
+        http_payload: dict[str, Any] = {"status": upstream.status_code}
+        request_id = provider_request_id(getattr(upstream, "headers", None))
+        if request_id:
+            http_payload["upstream_request_id"] = request_id
+        log_gateway_event("systemone_upstream_http", http_payload)
         try:
             detail = upstream.json()
         except Exception:

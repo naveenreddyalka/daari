@@ -293,6 +293,59 @@ async def test_explicit_base_bad_body_names_host_not_ollama(settings, monkeypatc
     assert "vllm.local" in message
 
 
+@pytest.mark.asyncio
+async def test_upstream_http_failure_records_request_id(settings, monkeypatch):
+    # Non-retryable 4xx so the response reaches systemone_upstream_http (not retry).
+    error_body = {"error": {"type": "upstream_error", "message": "boom"}}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json=error_body,
+            headers={"x-request-id": "sys1_req_abc"},
+        )
+
+    _patch_upstream(monkeypatch, handler)
+    events = _capture_events(monkeypatch)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.systemone.base_url = ""
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/systemone", json=_SYSTEMONE_BODY)
+
+    assert response.status_code == 400
+    assert response.json() == error_body
+    failed = [payload for name, payload in events if name == "systemone_upstream_http"]
+    assert len(failed) == 1
+    assert failed[0]["status"] == 400
+    assert failed[0]["upstream_request_id"] == "sys1_req_abc"
+
+
+@pytest.mark.asyncio
+async def test_upstream_http_failure_omits_id_when_headers_absent(settings, monkeypatch):
+    error_body = {"error": {"type": "upstream_error", "message": "bad"}}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(422, json=error_body)
+
+    _patch_upstream(monkeypatch, handler)
+    events = _capture_events(monkeypatch)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.systemone.base_url = ""
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/systemone", json=_SYSTEMONE_BODY)
+
+    assert response.status_code == 422
+    assert response.json() == error_body
+    failed = [payload for name, payload in events if name == "systemone_upstream_http"]
+    assert len(failed) == 1
+    assert failed[0]["status"] == 422
+    assert "upstream_request_id" not in failed[0]
+
+
 def test_doctor_reports_explicit_base_url(settings):
     settings.systemone.enabled = True
     settings.systemone.base_url = "http://vllm.local:8000"
