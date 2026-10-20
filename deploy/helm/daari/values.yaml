@@ -356,9 +356,12 @@ ollama:
 # guardrail predicates, and the decision classifier. Empty baseUrl keeps
 # the Ollama fallback (ollama.baseUrl). enabled defaults true (chart omits
 # env); set false to mount DAARI_SYSTEMONE__ENABLED=false (501 on the route).
+# apiKeySecret mounts DAARI_SYSTEMONE__API_KEY from a k8s Secret ({ name, key })
+# for authenticated vLLM / reverse-proxy upstreams. Empty {} omits the env.
 systemone:
   enabled: true
   baseUrl: ""
+  apiKeySecret: {}
 
 # Local OpenAI-compatible speech-to-text (vLLM, whisper.cpp). Empty leaves
 # POST /v1/audio/transcriptions unconfigured (501) instead of a cloud ASR API.

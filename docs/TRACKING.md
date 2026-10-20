@@ -7555,6 +7555,13 @@ a text-only banner when `/ready` reports `schema_ok: false`. Covered by
 (resetting the cursor) and renders a text payload cell (`JSON.stringify`, no
 HTML injection). Covered by `packages/web-ui/test/dashboard.test.js`.
 
+### Helm systemone.apiKeySecret ([#1820](https://github.com/naveenreddyalka/daari/issues/1820))
+
+<!-- tracking:#1820 -->
+**Status:** Done (2026-10-20). Chart `systemone.apiKeySecret` mounts
+`DAARI_SYSTEMONE__API_KEY` via `secretKeyRef` (same shape as frontier). Covered
+by `tests/unit/test_helm_chart.py` and `tests/unit/test_capacity_helm_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

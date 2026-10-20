@@ -18,8 +18,10 @@ def test_capacity_helm_documents_systemone() -> None:
     text = DOC.read_text(encoding="utf-8")
     assert "systemone.baseUrl" in text
     assert "systemone.enabled" in text
+    assert "systemone.apiKeySecret" in text
     assert "DAARI_SYSTEMONE__BASE_URL" in text
     assert "DAARI_SYSTEMONE__ENABLED" in text
+    assert "DAARI_SYSTEMONE__API_KEY" in text
 
 
 def test_capacity_helm_documents_tts_model_and_voice() -> None:

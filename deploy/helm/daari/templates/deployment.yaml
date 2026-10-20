@@ -246,6 +246,15 @@ spec:
             - name: DAARI_SYSTEMONE__BASE_URL
               value: {{ .Values.systemone.baseUrl | quote }}
             {{- end }}
+            {{- with .Values.systemone.apiKeySecret }}
+            {{- if .name }}
+            - name: DAARI_SYSTEMONE__API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name | quote }}
+                  key: {{ .key | default "api-key" | quote }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.asr.baseUrl }}
             - name: DAARI_ASR__BASE_URL
               value: {{ .Values.asr.baseUrl | quote }}
