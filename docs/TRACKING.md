@@ -7620,6 +7620,14 @@ panel and a systemone breaker events timeseries; PrometheusRule adds
 metrics/audit `scope` is `speed` when that filter is primary. Covered by
 `tests/unit/test_cache_invalidate.py` and `tests/unit/test_cache_invalidate_metrics.py`.
 
+### Promote shipped clients into configure first-wave ([#1827](https://github.com/naveenreddyalka/daari/issues/1827))
+
+<!-- tracking:#1827 -->
+**Status:** Done (2026-10-21). `CONFIGURE_CLIENTS` lists every registry recipe
+(cursor + claude-code first); help / unknown-client messages and verification
+hints cover Cursor Bearer and ChatGPT Desktop `X-Daari-Client-Id`. Covered by
+`tests/unit/test_configure_cli.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

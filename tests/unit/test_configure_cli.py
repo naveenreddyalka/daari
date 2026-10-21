@@ -9,7 +9,8 @@ import pytest
 from typer.testing import CliRunner
 
 from daari.cli.app import app
-from daari.cli.configure import configure_client, supported_clients
+from daari.cli.configure import CONFIGURE_CLIENTS, configure_client, supported_clients
+from daari.clients.registry import default_registry
 from daari.config.settings import Settings
 
 
@@ -30,6 +31,15 @@ def test_unknown_client_lists_supported_and_exits_1(home):
     assert "Unknown client" in result.output
     assert "claude-code" in result.output
     assert "vscode" in result.output
+    assert "cursor" in result.output
+    assert "chatgpt-desktop" in result.output
+
+
+def test_configure_help_lists_first_wave_clients():
+    result = runner.invoke(app, ["configure", "--help"])
+    assert result.exit_code == 0
+    for cid in ("cursor", "claude-code", "vscode", "claude-desktop", "chatgpt-desktop"):
+        assert cid in result.output
 
 
 def test_supported_clients_includes_first_wave():
@@ -37,6 +47,38 @@ def test_supported_clients_includes_first_wave():
     assert "claude-code" in ids
     assert "vscode" in ids
     assert "claude-desktop" in ids
+
+
+def test_configure_first_wave_subset_of_registry_and_leads_supported():
+    """First-wave ⊆ registry; supported_clients starts with that wave (#1827)."""
+    registry_ids = set(default_registry().list_ids())
+    assert set(CONFIGURE_CLIENTS) <= registry_ids
+    for required in (
+        "cursor",
+        "claude-code",
+        "vscode",
+        "claude-desktop",
+        "chatgpt-desktop",
+    ):
+        assert required in CONFIGURE_CLIENTS
+    ids = supported_clients()
+    assert ids[: len(CONFIGURE_CLIENTS)] == list(CONFIGURE_CLIENTS)
+
+
+def test_verification_hint_cursor_bearer_and_chatgpt_client_header():
+    from daari.cli.configure import _verification_hint
+
+    cursor = _verification_hint(
+        "cursor", base_url="http://127.0.0.1:11435/v1", api_key="secret"
+    )
+    assert "Authorization: Bearer secret" in cursor
+    assert "/v1/models" in cursor
+
+    chatgpt = _verification_hint(
+        "chatgpt-desktop", base_url="http://127.0.0.1:11435/v1", api_key="secret"
+    )
+    assert "X-Daari-Client-Id: chatgpt-desktop" in chatgpt
+    assert "/api/tags" in chatgpt or "/v1/models" in chatgpt
 
 
 def test_configure_claude_code_writes_settings(home, monkeypatch):
