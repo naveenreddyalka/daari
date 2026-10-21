@@ -102,7 +102,7 @@ def render_prometheus(
     cache_invalidate = snap.get("cache_invalidate") or {}
     lines.append(
         "# HELP daari_cache_invalidate_total Admin cache invalidate ops "
-        "(scope=model|hash|team|key|all, result=ok|error)."
+        "(scope=model|hash|team|key|speed|all, result=ok|error)."
     )
     lines.append("# TYPE daari_cache_invalidate_total counter")
     if not cache_invalidate:

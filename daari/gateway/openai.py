@@ -2371,6 +2371,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             entry_hash = payload.get("hash")
             team_id = payload.get("team_id")
             key_id = payload.get("key_id")
+            speed = payload.get("speed")
             if model is not None and not isinstance(model, str):
                 raise HTTPException(status_code=422, detail="model must be a string")
             if entry_hash is not None and not isinstance(entry_hash, str):
@@ -2379,24 +2380,37 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 raise HTTPException(status_code=422, detail="team_id must be a string")
             if key_id is not None and not isinstance(key_id, str):
                 raise HTTPException(status_code=422, detail="key_id must be a string")
+            if speed is not None and not isinstance(speed, str):
+                raise HTTPException(status_code=422, detail="speed must be a string")
             model_s = model.strip() if isinstance(model, str) and model.strip() else None
             hash_s = (
                 entry_hash.strip() if isinstance(entry_hash, str) and entry_hash.strip() else None
             )
             team_s = team_id.strip() if isinstance(team_id, str) and team_id.strip() else None
             key_s = key_id.strip() if isinstance(key_id, str) and key_id.strip() else None
+            speed_s = speed.strip().lower() if isinstance(speed, str) and speed.strip() else None
+            if speed_s is not None and speed_s not in {"fast", "standard"}:
+                raise HTTPException(status_code=422, detail="speed must be fast or standard")
             l0 = getattr(ctx.router, "cache", None)
             l1 = getattr(ctx.router, "semantic_cache", None)
             from daari.observability.metrics import cache_invalidate_scope
 
             scope = cache_invalidate_scope(
-                model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
+                model=model_s,
+                entry_hash=hash_s,
+                team_id=team_s,
+                key_id=key_s,
+                speed=speed_s,
             )
             try:
                 l0_removed = (
                     int(
                         l0.invalidate(
-                            model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
+                            model=model_s,
+                            entry_hash=hash_s,
+                            team_id=team_s,
+                            key_id=key_s,
+                            speed=speed_s,
                         )
                     )
                     if l0 is not None and hasattr(l0, "invalidate")
@@ -2405,7 +2419,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 l1_removed = (
                     int(
                         l1.invalidate(
-                            model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
+                            model=model_s,
+                            entry_hash=hash_s,
+                            team_id=team_s,
+                            key_id=key_s,
+                            speed=speed_s,
                         )
                     )
                     if l1 is not None and hasattr(l1, "invalidate")
@@ -2427,6 +2445,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "hash": hash_s or "",
                     "team_id": team_s or "",
                     "key_id": key_s or "",
+                    "speed": speed_s or "",
                     "l0_removed": l0_removed,
                     "l1_removed": l1_removed,
                 },
@@ -2445,6 +2464,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "hash": hash_s or "",
                     "team_id": team_s or "",
                     "key_id": key_s or "",
+                    "speed": speed_s or "",
                 },
             )
             return {

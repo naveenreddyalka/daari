@@ -17,6 +17,11 @@ Adapters convert to `InternalRequest` / `InternalResponse` ([internals](../inter
 
 ## One-click setup
 
+`daari configure <client>` onboards every shipped recipe in first-wave order
+(cursor, claude-code, vscode, claude-desktop, chatgpt-desktop, codex,
+gemini-cli, intellij, opencode) — same set as `daari setup`, with a verify curl
+matched to that client's auth shape.
+
 ```bash
 daari setup cursor --tunnel
 daari setup claude-code

@@ -2830,7 +2830,10 @@ def service_uninstall(
 def configure_command(
     client: str = typer.Argument(
         ...,
-        help="Client to configure (claude-code, vscode, claude-desktop, …).",
+        help=(
+            "Client to configure (cursor, claude-code, vscode, claude-desktop, "
+            "chatgpt-desktop, codex, gemini-cli, intellij, opencode)."
+        ),
     ),
     dry_run: bool = typer.Option(
         False,
@@ -3323,6 +3326,7 @@ def _daemon_invalidate_caches(
     entry_hash: str | None,
     team_id: str | None = None,
     key_id: str | None = None,
+    speed: str | None = None,
     token: str | None = None,
 ) -> tuple[bool, str]:
     url = f"http://{settings.server.host}:{settings.server.port}/v1/daari/cache/invalidate"
@@ -3335,6 +3339,8 @@ def _daemon_invalidate_caches(
         body["team_id"] = team_id
     if key_id:
         body["key_id"] = key_id
+    if speed:
+        body["speed"] = speed
     auth = (token or "").strip() or (settings.server.primary_master_key() or "").strip()
     headers: dict[str, str] = {}
     if _sso_admin_gate_active(settings):
@@ -3375,15 +3381,25 @@ def cache_invalidate(
     key: str | None = typer.Option(
         None, "--key", help="Drop L0 rows scoped to key:<id> and L1 context_keys with that segment."
     ),
+    speed: str | None = typer.Option(
+        None,
+        "--speed",
+        help="Drop L0/L1 rows for Anthropic speed mode: fast or standard.",
+    ),
     token: str | None = typer.Option(
         None,
         "--token",
         help="Bearer token (SSO or master key) when calling a running daemon under SSO.",
     ),
 ) -> None:
-    """Drop L0/L1 entries by model, hash, team, or key. Empty selection clears both caches."""
+    """Drop L0/L1 entries by model, hash, team, key, or speed. Empty selection clears both caches."""
     from daari.cache.exact import ExactCache
     from daari.cache.semantic import OllamaEmbedder, SemanticCache
+
+    speed_s = (speed or "").strip().lower() or None
+    if speed_s is not None and speed_s not in {"fast", "standard"}:
+        typer.echo("--speed must be fast or standard.", err=True)
+        raise typer.Exit(code=1)
 
     settings = get_settings()
     if _daemon_is_running(settings):
@@ -3393,6 +3409,7 @@ def cache_invalidate(
             entry_hash=entry_hash,
             team_id=team,
             key_id=key,
+            speed=speed_s,
             token=token,
         )
         if not ok:
@@ -3411,8 +3428,12 @@ def cache_invalidate(
         enabled=settings.cache.l1.enabled,
         ttl_seconds=settings.cache.l1.ttl_seconds,
     )
-    l0_removed = l0.invalidate(model=model, entry_hash=entry_hash, team_id=team, key_id=key)
-    l1_removed = l1.invalidate(model=model, entry_hash=entry_hash, team_id=team, key_id=key)
+    l0_removed = l0.invalidate(
+        model=model, entry_hash=entry_hash, team_id=team, key_id=key, speed=speed_s
+    )
+    l1_removed = l1.invalidate(
+        model=model, entry_hash=entry_hash, team_id=team, key_id=key, speed=speed_s
+    )
     typer.echo(f"L0: removed {l0_removed}")
     typer.echo(f"L1: removed {l1_removed}")
 

@@ -8,8 +8,19 @@ from daari.clients.registry import default_registry
 from daari.cli.setup_actions import _print_setup_plan
 from daari.config.settings import Settings, get_settings
 
-# Documented first-wave clients for `daari configure` (#445).
-CONFIGURE_CLIENTS = ("claude-code", "vscode", "claude-desktop")
+# Documented first-wave clients for `daari configure` (#445 / #1827).
+# Cursor + Claude Code lead; remaining registry recipes follow in operator order.
+CONFIGURE_CLIENTS = (
+    "cursor",
+    "claude-code",
+    "vscode",
+    "claude-desktop",
+    "chatgpt-desktop",
+    "codex",
+    "gemini-cli",
+    "intellij",
+    "opencode",
+)
 
 
 def supported_clients() -> list[str]:
@@ -35,6 +46,12 @@ def _verification_hint(client_id: str, *, base_url: str, api_key: str) -> str:
             f'Verify: curl -sS -H "x-api-key: {api_key}" '
             f"{root}/v1/models"
         )
+    if client_id == "chatgpt-desktop":
+        return (
+            f'Verify: curl -sS -H "X-Daari-Client-Id: chatgpt-desktop" '
+            f"{root}/api/tags"
+        )
+    # Cursor, VS Code, Codex, OpenCode, IntelliJ, and other OpenAI-shaped clients.
     return f'Verify: curl -sS -H "Authorization: Bearer {api_key}" {root}/v1/models'
 
 

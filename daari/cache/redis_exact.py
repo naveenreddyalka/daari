@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from daari.cache.exact import ExactCache, cache_key, cache_scope_segment
+from daari.cache.exact import ExactCache, cache_key, cache_scope_segment, cache_speed_segment
 from daari.gateway.internal import InternalRequest, InternalResponse
 
 # When L0 Redis TTL is off (ttl_seconds == 0), prune still reclaims entries
@@ -74,6 +74,9 @@ class RedisExactCache(ExactCache):
         segment = cache_scope_segment(request)
         if segment:
             entry["scope"] = segment
+        speed = cache_speed_segment(request)
+        if speed:
+            entry["speed"] = speed
         key = self._key(request)
         payload = json.dumps(entry)
         client = self._store()
@@ -109,6 +112,7 @@ class RedisExactCache(ExactCache):
         entry_hash: str | None = None,
         team_id: str | None = None,
         key_id: str | None = None,
+        speed: str | None = None,
         dry_run: bool = False,
     ) -> int:
         if not self.enabled:
@@ -124,6 +128,8 @@ class RedisExactCache(ExactCache):
                 continue
             entry = self._redis_entry_dict(raw)
             if not self._entry_matches_scope(entry, team_id=team_id, key_id=key_id):
+                continue
+            if not self._entry_matches_speed(entry, speed=speed):
                 continue
             if dry_run:
                 removed += 1

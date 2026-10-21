@@ -66,6 +66,17 @@ def cache_scope_segment(request: InternalRequest) -> str:
     return ""
 
 
+def cache_speed_segment(request: InternalRequest) -> str:
+    """Anthropic speed fragment for L0 entry metadata (#1826).
+
+    Empty when unset so pre-speed rows stay matchable by model/hash/all only.
+    """
+    speed = str(getattr(request.sampling, "speed", None) or "").strip().lower()
+    if speed:
+        return f"speed:{speed}"
+    return ""
+
+
 def cache_key(request: InternalRequest) -> str:
     parts = [
         normalize_messages(_messages_for_cache(request)),
@@ -149,6 +160,9 @@ class ExactCache:
         segment = cache_scope_segment(request)
         if segment:
             entry["scope"] = segment
+        speed = cache_speed_segment(request)
+        if speed:
+            entry["speed"] = speed
         self._store().set(cache_key(request), entry)
 
     def prune(self, *, dry_run: bool = False) -> int:
@@ -172,9 +186,10 @@ class ExactCache:
         entry_hash: str | None = None,
         team_id: str | None = None,
         key_id: str | None = None,
+        speed: str | None = None,
         dry_run: bool = False,
     ) -> int:
-        """Drop entries by served model, cache key, tenant scope, or everything."""
+        """Drop entries by served model, cache key, tenant scope, speed, or everything."""
         if not self.enabled:
             return 0
         store = self._store()
@@ -188,6 +203,8 @@ class ExactCache:
                 continue
             if not self._entry_matches_scope(entry, team_id=team_id, key_id=key_id):
                 continue
+            if not self._entry_matches_speed(entry, speed=speed):
+                continue
             if not dry_run:
                 store.delete(key)
             removed += 1
@@ -198,6 +215,13 @@ class ExactCache:
         if isinstance(entry, dict):
             scope = entry.get("scope")
             return scope if isinstance(scope, str) else None
+        return None
+
+    @staticmethod
+    def _entry_speed(entry: Any) -> str | None:
+        if isinstance(entry, dict):
+            speed = entry.get("speed")
+            return speed if isinstance(speed, str) else None
         return None
 
     def _entry_matches_scope(
@@ -215,6 +239,17 @@ class ExactCache:
         if key_id is not None and scope != f"key:{key_id}":
             return False
         return True
+
+    def _entry_matches_speed(self, entry: Any, *, speed: str | None) -> bool:
+        if speed is None:
+            return True
+        wanted = str(speed).strip().lower()
+        if not wanted:
+            return True
+        stored = self._entry_speed(entry)
+        if stored is None:
+            return False
+        return stored == f"speed:{wanted}" or stored == wanted
 
     def _entry_model(self, entry: Any) -> str | None:
         raw = self._entry_value(entry)

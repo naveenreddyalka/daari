@@ -30,8 +30,9 @@ Three different operations:
 | `daari cache invalidate --hash <id>` | Drops one L0 key or one L1 `answer_hash`. |
 | `daari cache invalidate --team <id>` | L0 rows stored with `scope: team:<id>` and L1 rows whose `context_key` contains that segment. Admin JSON: `{"team_id": "<id>"}`. |
 | `daari cache invalidate --key <id>` | L0 rows stored with `scope: key:<id>` and L1 rows whose `context_key` contains that segment. Admin JSON: `{"key_id": "<id>"}`. |
+| `daari cache invalidate --speed <fast\|standard>` | L0 rows whose stored Anthropic speed segment matches, and L1 rows whose `context_key` contains `speed:<mode>`. Admin JSON: `{"speed": "fast"}`. Omit to clear both modes (with `--model` or alone). |
 | `daari cache invalidate --token <bearer>` | When `enterprise.sso` is enabled and `daari serve` is up, send `Authorization: Bearer` (SSO token or master key). If omitted, the CLI uses `server.api_key` when configured. |
-| `daari cache invalidate` (no flags) | Drops every L0 and L1 entry. Hits the running daemon (`POST /v1/daari/cache/invalidate`) when `daari serve` is up; otherwise edits the on-disk caches. Selectors can be combined; the daemon accepts `model`, `hash`, `team_id`, and `key_id` in the JSON body. |
+| `daari cache invalidate` (no flags) | Drops every L0 and L1 entry. Hits the running daemon (`POST /v1/daari/cache/invalidate`) when `daari serve` is up; otherwise edits the on-disk caches. Selectors can be combined; the daemon accepts `model`, `hash`, `team_id`, `key_id`, and `speed` in the JSON body. |
 | `daari context clear` | Deletes the L0, L1, and command-context directories entirely, then asks the daemon to reopen handles. |
 | `daari cache prune` | Removes only TTL-expired disk entries. When `cache.backend` is Redis and `cache.l0.ttl_seconds > 0`, prune does not scan — Redis key expiry is the reclaim path. When Redis L0 TTL is `0` (unbounded), prune deletes keys whose stored `t` is older than **7 days**. |
 

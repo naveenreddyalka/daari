@@ -410,3 +410,136 @@ def test_daemon_invalidate_sso_without_token_is_clear(settings):
     ok, detail = _daemon_invalidate_caches(settings, model="llama", entry_hash=None)
     assert ok is False
     assert "SSO token required" in detail
+
+
+def _speed_req(text: str, *, speed: str | None, model: str = "daari") -> InternalRequest:
+    from daari.gateway.sampling import SamplingParams
+
+    return InternalRequest(
+        messages=[Message(role="user", content=text)],
+        model=model,
+        sampling=SamplingParams(speed=speed),
+    )
+
+
+def test_exact_invalidate_by_speed_leaves_other_mode(tmp_path):
+    """speed=fast drops only fast-fingerprint L0 rows; standard stays (#1826)."""
+    cache = ExactCache(str(tmp_path / "l0"), enabled=True)
+    fast = _speed_req("same", speed="fast")
+    standard = _speed_req("same", speed="standard")
+    plain = _speed_req("same", speed=None)
+    cache.put(fast, _resp("fast-ans", "claude"))
+    cache.put(standard, _resp("std-ans", "claude"))
+    cache.put(plain, _resp("plain-ans", "claude"))
+    assert cache.invalidate(speed="fast") == 1
+    assert cache.get(fast) is None
+    assert cache.get(standard) is not None
+    assert cache.get(plain) is not None
+    assert cache.invalidate(model="claude") == 2
+    assert cache.get(standard) is None
+    assert cache.get(plain) is None
+
+
+def test_redis_invalidate_by_speed():
+    client = _Redis()
+    cache = RedisExactCache("redis://test", client=client, enabled=True)
+    fast = _speed_req("a", speed="fast")
+    standard = _speed_req("a", speed="standard")
+    cache.put(fast, _resp("one", "claude"))
+    cache.put(standard, _resp("two", "claude"))
+    assert cache.invalidate(speed="fast") == 1
+    assert cache.get(fast) is None
+    assert cache.get(standard) is not None
+
+
+def test_semantic_invalidate_by_speed(tmp_path):
+    cache = SemanticCache(str(tmp_path / "l1"), _Embedder(), enabled=True)
+    cache._save_entries(
+        [
+            {
+                "context_key": "claude|0|||speed:fast",
+                "answer_hash": "aaa",
+                "response_json": "{}",
+            },
+            {
+                "context_key": "claude|0|||speed:standard",
+                "answer_hash": "bbb",
+                "response_json": "{}",
+            },
+            {"context_key": "claude|0||", "answer_hash": "ccc", "response_json": "{}"},
+        ]
+    )
+    assert cache.invalidate(speed="fast") == 1
+    left = {row["answer_hash"] for row in cache._load_entries()}
+    assert left == {"bbb", "ccc"}
+    assert cache.invalidate(model="claude") == 2
+    assert cache._load_entries() == []
+
+
+def test_cache_invalidate_cli_speed(monkeypatch, settings, tmp_path):
+    settings.cache.l0.path = str(tmp_path / "l0")
+    settings.cache.l1.path = str(tmp_path / "l1")
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+    monkeypatch.setattr("daari.cli.app._daemon_is_running", lambda _settings: False)
+    cache = ExactCache(str(settings.l0_cache_path), enabled=True)
+    fast = _speed_req("disk", speed="fast")
+    standard = _speed_req("disk", speed="standard")
+    cache.put(fast, _resp("gone", "claude"))
+    cache.put(standard, _resp("keep", "claude"))
+    result = CliRunner().invoke(cli_app, ["cache", "invalidate", "--speed", "fast"])
+    assert result.exit_code == 0, result.stdout
+    assert "L0: removed 1" in result.stdout
+    assert cache.get(fast) is None
+    assert cache.get(standard) is not None
+
+
+@pytest.mark.asyncio
+async def test_admin_invalidate_by_speed(settings, monkeypatch):
+    events: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        "daari.gateway.openai.log_gateway_event",
+        lambda event, payload: events.append((event, payload)),
+    )
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    fast = _speed_req("cached", speed="fast")
+    standard = _speed_req("cached", speed="standard")
+    app.state.ctx.router.cache.put(fast, _resp("answer", "claude"))
+    app.state.ctx.router.cache.put(standard, _resp("keep", "claude"))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/daari/cache/invalidate",
+            json={"speed": "fast"},
+        )
+    assert response.status_code == 200
+    assert response.json()["l0_removed"] == 1
+    assert app.state.ctx.router.cache.get(fast) is None
+    assert app.state.ctx.router.cache.get(standard) is not None
+    assert events and events[-1][0] == "cache_invalidate"
+    assert events[-1][1].get("speed") == "fast"
+
+
+def test_daemon_invalidate_forwards_speed(monkeypatch, settings):
+    seen: dict[str, object] = {}
+
+    def fake_post(url, json=None, headers=None, timeout=5.0):
+        seen["json"] = json
+
+        class Resp:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"removed": 1, "l0_removed": 1, "l1_removed": 0}
+
+        return Resp()
+
+    monkeypatch.setattr("daari.cli.app.httpx.post", fake_post)
+    from daari.cli.app import _daemon_invalidate_caches
+
+    ok, detail = _daemon_invalidate_caches(
+        settings, model=None, entry_hash=None, speed="fast"
+    )
+    assert ok is True
+    assert seen["json"] == {"speed": "fast"}
+    assert "Invalidated 1" in detail

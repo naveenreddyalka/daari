@@ -34,9 +34,12 @@ def test_cache_invalidate_scope_helper() -> None:
     assert cache_invalidate_scope(entry_hash="abc") == "hash"
     assert cache_invalidate_scope(team_id="t") == "team"
     assert cache_invalidate_scope(key_id="k") == "key"
+    assert cache_invalidate_scope(speed="fast") == "speed"
     assert cache_invalidate_scope() == "all"
     # hash wins over model when both set (most specific filter)
     assert cache_invalidate_scope(model="m", entry_hash="h") == "hash"
+    # model wins over speed when both set
+    assert cache_invalidate_scope(model="m", speed="fast") == "model"
 
 
 @pytest.mark.asyncio
