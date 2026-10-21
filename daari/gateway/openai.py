@@ -1770,6 +1770,26 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if not schema.schema_ok and http_status == 200:
                 status = "not_ready"
                 http_status = 503
+            if bool(getattr(getattr(ctx.settings, "systemone", None), "enabled", True)):
+                from daari.gateway.systemone import breaker_snapshot
+
+                open_rows = [
+                    row
+                    for row in breaker_snapshot()
+                    if str(row.get("state") or "") == "open"
+                ]
+                if open_rows:
+                    checks["systemone_breaker"] = "open"
+                    fails_ready = bool(
+                        getattr(ctx.settings.systemone, "breaker_fails_ready", False)
+                    )
+                    if fails_ready:
+                        status = "not_ready"
+                        http_status = 503
+                    elif http_status == 200 and status in ("ready", "degraded"):
+                        status = "degraded"
+                else:
+                    checks["systemone_breaker"] = "ok"
             content: dict[str, Any] = {
                 "status": status,
                 "checks": checks,
@@ -2318,6 +2338,27 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             _require_admin_role(request, ctx)
             payload = ctx.reload_cache_handles()
             return {"status": "ok", **payload}
+
+        @router.post("/v1/daari/systemone/breaker/reset")
+        async def daari_systemone_breaker_reset(request: Request) -> dict[str, Any]:
+            """Close open systemone upstream circuits (#1842)."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_admin_role(request, ctx)
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.gateway.systemone import (
+                breaker_snapshot,
+                close_systemone_breakers,
+            )
+
+            before = list(breaker_snapshot())
+            after = close_systemone_breakers()
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="systemone.breaker.reset",
+                detail={"before": before, "after": after},
+            )
+            return {"status": "ok", "systemone_breaker": after}
 
         @router.get("/v1/daari/mcp/activity")
         async def daari_mcp_activity_list(request: Request) -> dict[str, Any]:

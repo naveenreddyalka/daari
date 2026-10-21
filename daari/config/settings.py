@@ -329,6 +329,14 @@ class SystemOneSettings(BaseModel):
             "unauthenticated. Not exposed on GET/PATCH /v1/daari/config."
         ),
     )
+    breaker_fails_ready: bool = Field(
+        default=False,
+        description=(
+            "When true, an open systemone upstream circuit marks GET /ready "
+            "as not_ready (HTTP 503). Default false keeps the probe degraded "
+            "(HTTP 200) so pods stay in service while the judge hop is fenced."
+        ),
+    )
 
 
 class DecisionsSettings(BaseModel):

@@ -66,7 +66,7 @@ def run_doctor(
     decisions_models_tip = _check_decisions_local_models(cfg, httpx_client)
     if decisions_models_tip is not None:
         results.append(decisions_models_tip)
-    breaker_tip = _check_systemone_breaker(cfg)
+    breaker_tip = _check_systemone_breaker(cfg, httpx_client=httpx_client)
     if breaker_tip is not None:
         results.append(breaker_tip)
     results.append(_check_responses_stream_resume(cfg))
@@ -773,15 +773,55 @@ def _check_decisions(settings: Settings) -> CheckResult:
     )
 
 
-def _check_systemone_breaker(settings: Settings) -> CheckResult | None:
-    """Tip when a systemone upstream circuit is open (#1822). No network I/O."""
+def _systemone_breaker_rows_from_daemon(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> list[dict[str, Any]] | None:
+    """Fetch ``systemone_breaker`` from the live daemon stats, or None (#1842)."""
+    host = settings.server.host
+    port = settings.server.port
+    url = f"http://{host}:{port}/v1/daari/stats"
+    headers: dict[str, str] = {}
+    api_key = settings.server.primary_master_key()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    own_client = client is None
+    http = client or httpx.Client(timeout=3.0)
+    try:
+        response = http.get(url, headers=headers)
+        if response.status_code != 200:
+            return None
+        payload = response.json()
+        rows = payload.get("systemone_breaker")
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, dict)]
+        return None
+    except Exception:
+        return None
+    finally:
+        if own_client:
+            http.close()
+
+
+def _check_systemone_breaker(
+    settings: Settings,
+    *,
+    httpx_client: httpx.Client | None = None,
+) -> CheckResult | None:
+    """Tip when a systemone upstream circuit is open (#1822 / #1842).
+
+    Prefers the live daemon's ``GET /v1/daari/stats`` breaker state so a CLI
+    ``daari doctor`` sees the serving process. Falls back to the in-process
+    snapshot when the daemon is unreachable.
+    """
     if not bool(getattr(getattr(settings, "systemone", None), "enabled", True)):
         return None
     from daari.gateway.systemone import breaker_snapshot
 
-    open_rows = [
-        row for row in breaker_snapshot() if str(row.get("state") or "") == "open"
-    ]
+    rows = _systemone_breaker_rows_from_daemon(settings, httpx_client)
+    if rows is None:
+        rows = list(breaker_snapshot())
+    open_rows = [row for row in rows if str(row.get("state") or "") == "open"]
     if not open_rows:
         return None
     parts = [

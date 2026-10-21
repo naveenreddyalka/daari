@@ -48,6 +48,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/v1/daari/spend/export` | Daari Spend Export |
 | `POST` | `/v1/daari/sso/session` | Daari Sso Session |
 | `GET` | `/v1/daari/stats` | Daari Stats |
+| `POST` | `/v1/daari/systemone/breaker/reset` | Daari Systemone Breaker Reset |
 | `GET` | `/v1/daari/teams` | Daari Teams List |
 | `GET` | `/v1/daari/traces` | Daari Traces |
 | `GET` | `/v1/daari/traces/{trace_id}` | Daari Trace Detail |
