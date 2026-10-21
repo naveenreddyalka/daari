@@ -511,3 +511,40 @@ def test_grafana_dashboard_includes_fast_mode_request_rate_panel():
     assert any("fast_degraded_to_standard" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
 
+
+def test_grafana_dashboard_includes_schema_ok_panel():
+    """Local SQLite schema lag gauge should chart on the overview (#1823)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "schema" in p.get("title", "").lower()
+            and "ok" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a schema_ok panel in daari-dashboard.json"
+    assert panel.get("type") == "stat"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_schema_ok" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_systemone_breaker_panel():
+    """Systemone breaker events should chart on the overview (#1823)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "systemone" in p.get("title", "").lower()
+            and "breaker" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a systemone breaker panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_systemone_breaker_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+    assert any("event" in expr for expr in exprs)
+

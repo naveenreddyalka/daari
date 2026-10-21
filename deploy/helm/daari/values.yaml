@@ -194,6 +194,18 @@ prometheusRules:
     rateThreshold: 0.05
     for: 5m
     severity: warning
+  # Local SQLite schema lag (#1823) — same signal as /ready schema_ok false.
+  schema:
+    enabled: true
+    for: 5m
+    severity: critical
+  # Sustained systemone breaker open/reject rate (#1823).
+  systemoneBreaker:
+    enabled: true
+    window: 5m
+    rateThreshold: 0.05
+    for: 5m
+    severity: warning
 
 # Optional private Prometheus scrape listener (app observability.metrics_port).
 # 0 / unset = off (scrape API port /metrics). Non-zero binds 127.0.0.1-style

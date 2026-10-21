@@ -870,7 +870,7 @@
     {
       "id": 42,
       "title": "Fast-mode request rate",
-      "description": "Anthropic fast-mode degrades to standard (`daari_soft_warnings_total{kind=\"fast_degraded_to_standard\"}`) — the on-box signal for fast-mode traffic pressure (#1802).",
+      "description": "Anthropic fast-mode degrades to standard (`daari_soft_warnings_total{kind=\"fast_degraded_to_standard\"}`) \u2014 the on-box signal for fast-mode traffic pressure (#1802).",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -882,6 +882,44 @@
         {
           "expr": "sum(rate(daari_soft_warnings_total{kind=\"fast_degraded_to_standard\"}[5m]))",
           "legendFormat": "fast_degraded_to_standard/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "title": "Schema ok",
+      "description": "Local SQLite store schemas match the running build (`daari_schema_ok`). 0 means a store lags STORE_SCHEMA_VERSIONS and /ready returns 503.",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 168
+      },
+      "targets": [
+        {
+          "expr": "daari_schema_ok",
+          "legendFormat": "schema_ok",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "title": "Systemone breaker events",
+      "description": "Rate of systemone upstream circuit breaker events (`daari_systemone_breaker_total`) by event (open, reject, trip).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 18,
+        "x": 6,
+        "y": 168
+      },
+      "targets": [
+        {
+          "expr": "sum by (event) (rate(daari_systemone_breaker_total[5m]))",
+          "legendFormat": "{{event}}",
           "refId": "A"
         }
       ]
