@@ -63,6 +63,45 @@ def test_events_list_requires_postgres_backend(monkeypatch):
     assert "postgres" in result.output
 
 
+def test_events_list_key_since_until(monkeypatch):
+    """CLI --key/--since/--until match the HTTP events filters (#1824)."""
+    from daari.cli.app import app as cli_app
+    from daari.config.settings import Settings
+
+    dsn = f"memory:cli-events-window-{uuid.uuid4().hex}"
+    settings = Settings()
+    settings.observability.request_log.backend = "postgres"
+    settings.observability.postgres_url = dsn
+    store = PostgresRequestLogStore(dsn)
+    store.append("chat", {"team_id": "eng", "key_id": "k-a"}, ts="2026-10-20T13:00:00+00:00")
+    store.append("chat", {"team_id": "eng", "key_id": "k-b"}, ts="2026-10-20T14:05:00+00:00")
+    store.append("embed", {"team_id": "eng", "key_id": "k-b"}, ts="2026-10-20T14:15:00+00:00")
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+
+    runner = CliRunner()
+    page = runner.invoke(
+        cli_app,
+        [
+            "events",
+            "list",
+            "--key",
+            "k-b",
+            "--since",
+            "2026-10-20T14:00:00Z",
+            "--until",
+            "2026-10-20T14:10:00Z",
+        ],
+    )
+    assert page.exit_code == 0, page.output
+    lines = [line for line in page.output.splitlines() if line.strip() and not line.startswith("next_cursor")]
+    assert len(lines) == 1
+    assert lines[0].split("\t")[2] == "chat"
+
+    bad = runner.invoke(cli_app, ["events", "list", "--since", "bogus"])
+    assert bad.exit_code == 1
+    assert "invalid since" in bad.output
+
+
 def test_keys_lockouts_prints_expiry(monkeypatch):
     from daari.cli.app import app as cli_app
     from daari.config.settings import Settings

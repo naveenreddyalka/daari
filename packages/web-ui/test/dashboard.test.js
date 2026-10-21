@@ -933,3 +933,44 @@ test("events panel key/kind filters hit the API and payload cell is text", async
   assert.equal(doc.querySelectorAll("#events-table img").length, 0);
   assert.equal(dom.window.__xss, undefined);
 });
+
+test("events panel since/until filters hit the API", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/events": {
+        events: [
+          {
+            id: 4,
+            ts: "2026-10-20T14:05:00+00:00",
+            event: "chat",
+            payload: { team_id: "eng" },
+          },
+        ],
+        total: 1,
+        limit: 20,
+        offset: 0,
+        has_more: false,
+        next_cursor: "",
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const since = doc.getElementById("events-since-filter");
+  const until = doc.getElementById("events-until-filter");
+  assert.ok(since);
+  assert.ok(until);
+  since.value = "2026-10-20T14:00:00Z";
+  until.value = "2026-10-20T14:10:00Z";
+  since.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await settle();
+  until.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await settle();
+
+  const eventCalls = fetch.calls.filter((c) => c.url.includes("/v1/daari/events"));
+  assert.ok(eventCalls.some((c) => c.url.includes("since=2026-10-20T14%3A00%3A00Z") || c.url.includes("since=2026-10-20T14:00:00Z")));
+  assert.ok(eventCalls.some((c) => c.url.includes("until=2026-10-20T14%3A10%3A00Z") || c.url.includes("until=2026-10-20T14:10:00Z")));
+});
