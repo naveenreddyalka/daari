@@ -9,8 +9,34 @@ from daari.gateway.internal import InternalRequest, Message
 from daari.observability.trace import add_step
 
 ANTHROPIC_VERSION = "2023-06-01"
+# API version that rejects temperature / top_p / top_k (HTTP 400) (#1849).
+ANTHROPIC_VERSION_NO_SAMPLING = "2026-10-21"
+_ANTHROPIC_SAMPLING_KEYS = ("temperature", "top_p", "top_k")
 DEFAULT_MAX_TOKENS = 4096
 EFFORT_BETA = "effort-2025-11-24"
+
+
+def effective_anthropic_version(version: str | None) -> str:
+    """Client header when set; otherwise the outbound default."""
+    return (version or "").strip() or ANTHROPIC_VERSION
+
+
+def apply_anthropic_version_sampling_compat(
+    payload: dict[str, Any], version: str | None
+) -> list[str]:
+    """Omit sampling knobs removed under anthropic-version 2026-10-21 (#1849).
+
+    Mutates ``payload`` in place. Returns the names that were dropped.
+    """
+    if effective_anthropic_version(version) != ANTHROPIC_VERSION_NO_SAMPLING:
+        return []
+    dropped: list[str] = []
+    for name in _ANTHROPIC_SAMPLING_KEYS:
+        if name not in payload:
+            continue
+        del payload[name]
+        dropped.append(name)
+    return dropped
 
 
 def infer_frontier_kind(provider: str, base_url: str = "") -> str:

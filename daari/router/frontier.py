@@ -19,6 +19,7 @@ from daari.router.anthropic_messages import (
     anthropic_headers_for_request,
     anthropic_messages_path,
     anthropic_tool_event_from_sse_data,
+    apply_anthropic_version_sampling_compat,
     infer_frontier_kind,
     text_delta_from_sse_data,
     text_from_anthropic_content,
@@ -255,13 +256,14 @@ class FrontierExecutor:
         target.warning = f"{existing}; {note}" if existing else note
 
     def _openai_payload(self, request: InternalRequest, *, stream: bool) -> dict[str, Any]:
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.default_model,
             "messages": self._build_messages(request),
-            "temperature": request.temperature,
             "stream": stream,
             **request.sampling.openai_payload(),
         }
+        if request.temperature is not None:
+            payload["temperature"] = request.temperature
         # Stream and non-stream must both forward tools (#1006). tool_choice
         # already arrives via sampling.openai_payload().
         if request.tools:
@@ -271,6 +273,29 @@ class FrontierExecutor:
         ):
             payload["provider"] = as_openrouter_payload(request.provider)
         self._run_param_compat(payload, has_tools=bool(request.tools))
+        return payload
+
+    def _anthropic_payload(self, request: InternalRequest, *, stream: bool) -> dict[str, Any]:
+        """Build L6 Anthropic Messages body with version + model param-compat (#1849)."""
+        payload = to_anthropic_payload(
+            request,
+            model=self.default_model,
+            stream=stream,
+            prompt_cache=self.prompt_cache,
+        )
+        version_drops = apply_anthropic_version_sampling_compat(
+            payload, request.meta.anthropic_version
+        )
+        compat = self._run_param_compat(payload, has_tools=bool(request.tools))
+        for name in version_drops:
+            if name not in compat.dropped_params:
+                compat.dropped_params.append(name)
+            note = (
+                f"{name} is not supported under anthropic-version "
+                f"{request.meta.anthropic_version or '2026-10-21'} and was omitted"
+            )
+            if note not in compat.warnings:
+                compat.warnings.append(note)
         return payload
 
     def _run_param_compat(
@@ -354,13 +379,7 @@ class FrontierExecutor:
         self.last_fast_degraded = False
 
         if self._is_anthropic():
-            payload = to_anthropic_payload(
-                request,
-                model=self.default_model,
-                stream=True,
-                prompt_cache=self.prompt_cache,
-            )
-            self._run_param_compat(payload, has_tools=bool(request.tools))
+            payload = self._anthropic_payload(request, stream=True)
             from daari.observability.otel import inject_trace_headers
 
             headers = inject_trace_headers(
@@ -472,13 +491,7 @@ class FrontierExecutor:
         started = time.perf_counter()
         anthropic = self._is_anthropic()
         if anthropic:
-            payload = to_anthropic_payload(
-                request,
-                model=model,
-                stream=False,
-                prompt_cache=self.prompt_cache,
-            )
-            self._run_param_compat(payload, has_tools=bool(request.tools))
+            payload = self._anthropic_payload(request, stream=False)
             from daari.observability.otel import inject_trace_headers
 
             headers = inject_trace_headers(

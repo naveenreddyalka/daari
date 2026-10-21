@@ -252,7 +252,9 @@ class AnthropicRequest(BaseModel):
     tool_choice: dict[str, Any] | None = None
     max_tokens: int | None = None
     stream: bool = False
-    temperature: float = 0.7
+    # Optional: omit rather than inject 0.7 (Anthropic API 2026-10-21 removes
+    # sampling knobs; defaulting here 400s new SDK clients) (#1849).
+    temperature: float | None = None
     top_p: float | None = None
     top_k: int | None = None
     stop_sequences: list[str] | None = None
