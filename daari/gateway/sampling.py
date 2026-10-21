@@ -223,20 +223,30 @@ def _normalize_thinking(raw: Any) -> dict[str, Any] | None:
     return None
 
 
-def reasoning_effort_from_thinking(thinking: dict[str, Any] | None) -> str | None:
-    """Map Anthropic request-level thinking onto reasoning_effort (#1009).
-
-    ``type: disabled`` → no local think. Otherwise budget_tokens buckets:
-    ≤2048 → low, ≤8192 → medium, else → high. Enabled without a budget → medium.
-    """
+def _thinking_type(thinking: dict[str, Any] | None) -> str | None:
     if not thinking:
         return None
     kind = thinking.get("type")
-    if isinstance(kind, str) and kind.strip().lower() == "disabled":
+    if isinstance(kind, str) and kind.strip():
+        return kind.strip().lower()
+    return None
+
+
+def reasoning_effort_from_thinking(thinking: dict[str, Any] | None) -> str | None:
+    """Map Anthropic request-level thinking onto reasoning_effort (#1009).
+
+    ``type: disabled`` / ``between_tools`` → no local think (#1828). Otherwise
+    budget_tokens buckets: ≤2048 → low, ≤8192 → medium, else → high. Enabled
+    without a budget → medium.
+    """
+    if not thinking:
+        return None
+    kind = _thinking_type(thinking)
+    if kind in {"disabled", "between_tools"}:
         return None
     budget = thinking.get("budget_tokens")
     if isinstance(budget, bool) or not isinstance(budget, int):
-        if isinstance(kind, str) and kind.strip().lower() == "enabled":
+        if kind == "enabled":
             return "medium"
         return None
     if budget <= 2048:
@@ -782,6 +792,11 @@ class SamplingParams(BaseModel):
             notes.append("prompt_cache_retention is not available from local models")
         if self.prompt_cache_options:
             notes.append("prompt_cache_options are not available from local models")
+        if _thinking_type(self.thinking) == "between_tools":
+            notes.append(
+                "thinking.type between_tools is not available on local models; "
+                "treated as disabled (no up-front think)"
+            )
         return notes
 
     def unsupported_non_ollama(self) -> list[str]:
@@ -829,6 +844,8 @@ class SamplingParams(BaseModel):
             names.append("prompt_cache_retention")
         if self.prompt_cache_options:
             names.append("prompt_cache_options")
+        if _thinking_type(self.thinking) == "between_tools":
+            names.append("thinking.between_tools")
         return names
 
     def honored_fields(self) -> dict[str, Any]:
