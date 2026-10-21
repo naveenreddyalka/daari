@@ -2831,11 +2831,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             team_id: str | None = None,
             key_id: str | None = None,
             kind: str | None = None,
+            since: str | None = None,
+            until: str | None = None,
         ) -> dict[str, Any]:
             """Newest-first gateway request/event log (#1683)."""
             ctx: AppContext = request.app.state.ctx
             role = _require_role(request, ctx, "analyst")
             scope = _admin_team_scope(request, role, team_id)
+            from daari.enterprise.audit import parse_since
             from daari.gateway.admin_read import MAX_EVENTS_LIMIT, _clamp_page, _page_meta
             from daari.gateway.postgres_request_log import request_log_store_from_settings
 
@@ -2852,6 +2855,18 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             before_id = _parse_event_cursor(cursor)
             key = (key_id or "").strip() or None
             kind_norm = (kind or "").strip().lower() or None
+            since_cut: str | None = None
+            until_cut: str | None = None
+            if since is not None and str(since).strip():
+                try:
+                    since_cut = parse_since(str(since).strip())
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if until is not None and str(until).strip():
+                try:
+                    until_cut = parse_since(str(until).strip())
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
             events, total = store.query_events(
                 limit=lim,
                 offset=off,
@@ -2859,6 +2874,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 team_id=scope,
                 key_id=key,
                 kind=kind_norm,
+                since=since_cut,
+                until=until_cut,
             )
             page = _page_meta(total, limit=lim, offset=off, returned=len(events))
             result: dict[str, Any] = {"events": events, **page}
@@ -2870,6 +2887,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 result["team_id"] = scope
             if key:
                 result["key_id"] = key
+            if since_cut:
+                result["since"] = since_cut
+            if until_cut:
+                result["until"] = until_cut
             from daari.enterprise.postgres_audit import audit_log_from_settings
 
             audit_log_from_settings(ctx.settings).record(

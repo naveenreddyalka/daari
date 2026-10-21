@@ -161,3 +161,79 @@ async def test_events_vk_team_scope(settings, tmp_path):
         body = ok.json()
         assert body["team_id"] == team_a.team_id
         assert [row["event"] for row in body["events"]] == ["own"]
+
+
+def test_query_events_since_until_window():
+    """Store path filters by inclusive since / exclusive until (#1824)."""
+    dsn = _dsn()
+    store = PostgresRequestLogStore(dsn)
+    store.append("early", {"n": 1}, ts="2026-10-20T13:00:00+00:00")
+    store.append("mid", {"n": 2}, ts="2026-10-20T14:05:00+00:00")
+    store.append("late", {"n": 3}, ts="2026-10-20T14:15:00+00:00")
+    events, total = store.query_events(
+        since="2026-10-20T14:00:00+00:00",
+        until="2026-10-20T14:10:00+00:00",
+    )
+    assert total == 1
+    assert [row["event"] for row in events] == ["mid"]
+
+
+@pytest.mark.asyncio
+async def test_events_since_until_and_invalid_400(settings):
+    dsn = _dsn()
+    _enable_postgres_log(settings, dsn)
+    settings.server.api_key = "master-sekret"
+    settings.enterprise.sso.enabled = False
+    store = PostgresRequestLogStore(dsn)
+    store.append("early", {"n": 1}, ts="2026-10-20T13:00:00+00:00")
+    store.append("mid", {"n": 2}, ts="2026-10-20T14:05:00+00:00")
+    store.append("late", {"n": 3}, ts="2026-10-20T14:15:00+00:00")
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        bad = await client.get(
+            "/v1/daari/events",
+            params={"since": "not-a-date"},
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert bad.status_code == 400
+
+        window = await client.get(
+            "/v1/daari/events",
+            params={
+                "since": "2026-10-20T14:00:00Z",
+                "until": "2026-10-20T14:10:00Z",
+            },
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert window.status_code == 200
+        body = window.json()
+        assert [row["event"] for row in body["events"]] == ["mid"]
+        assert body["since"].startswith("2026-10-20T14:00:00")
+        assert body["until"].startswith("2026-10-20T14:10:00")
+
+        paged = await client.get(
+            "/v1/daari/events",
+            params={
+                "since": "2026-10-20T13:00:00Z",
+                "until": "2026-10-20T15:00:00Z",
+                "limit": 1,
+            },
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert paged.status_code == 200
+        first = paged.json()
+        assert first["events"][0]["event"] == "late"
+        assert first["has_more"] is True
+        page2 = await client.get(
+            "/v1/daari/events",
+            params={
+                "since": "2026-10-20T13:00:00Z",
+                "until": "2026-10-20T15:00:00Z",
+                "cursor": first["next_cursor"],
+            },
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert page2.status_code == 200
+        assert [row["event"] for row in page2.json()["events"]] == ["mid", "early"]
