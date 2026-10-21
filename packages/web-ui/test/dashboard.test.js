@@ -17,6 +17,9 @@ const STATS = {
     { id: "gpu-b", healthy: false, circuit: "open", outstanding: 0 },
   ],
   backend_summary: { total: 2, healthy: 1, unhealthy: 1, open_circuit: 1 },
+  systemone_breaker: [
+    { base: "http://vllm.local:8000", state: "open", rejects: 2, cooldown_seconds: 30 },
+  ],
   mcp_tool_calls: { "route:ok": 5, "stats:deny": 2 },
   mcp_tasks: { working: 1, failed: 1, completed: 3, cancelled: 0, input_required: 0, active: 1, total: 5 },
   team_rate_limits: [
@@ -335,6 +338,10 @@ test("backend_summary counts render near pool backends", async (t) => {
     doc.getElementById("backend-summary-open-circuit").classList.contains("metric-warn"),
     "open_circuit > 0 should emphasize the metric"
   );
+  const s1 = doc.getElementById("systemone-breaker-status");
+  assert.match(s1.textContent, /vllm\.local:8000=open/);
+  assert.match(s1.textContent, /rejects 2/);
+  assert.ok(s1.classList.contains("metric-warn"), "open systemone breaker warns");
 });
 
 test("backend_summary zeros when pool empty", async (t) => {

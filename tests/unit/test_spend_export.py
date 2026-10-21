@@ -447,3 +447,150 @@ def test_sqlite_backend_when_spend_enabled(tmp_path):
     ledger = spend_ledger_from_settings(settings)
     assert isinstance(ledger, SpendLedger)
     assert ledger.enabled is True
+
+
+@pytest.mark.asyncio
+async def test_http_spend_export_filters_model_and_usage_speed(settings, tmp_path):
+    """GET /v1/daari/spend/export mirrors CLI filters (#1821)."""
+    from httpx import ASGITransport, AsyncClient
+
+    from daari.enterprise.postgres_audit import audit_log_from_settings
+    from daari.router.router import AppContext
+    from daari.server.app import create_app
+
+    spend_path = tmp_path / "spend.sqlite3"
+    settings.server.api_key = "master-sekret"
+    settings.enterprise.sso.enabled = False
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(spend_path)
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+
+    ledger = SpendLedger(spend_path, enabled=True)
+    _row(
+        ledger,
+        request_id="req-fast-cloud",
+        model="clef:cloud",
+        usage_speed="fast",
+        key_id="key-a",
+        team_id="team-1",
+        tier="L6",
+    )
+    _row(
+        ledger,
+        request_id="req-std-cloud",
+        model="clef-flash:cloud",
+        usage_speed="standard",
+        key_id="key-a",
+        team_id="team-1",
+        tier="L6",
+    )
+    _row(
+        ledger,
+        request_id="req-local",
+        model="llama3.2:3b",
+        usage_speed="",
+        key_id="key-b",
+        team_id="team-2",
+        tier="L3",
+    )
+    _row(
+        ledger,
+        ts=OLD,
+        request_id="req-old",
+        model="clef:cloud",
+        usage_speed="fast",
+    )
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    headers = {"Authorization": "Bearer master-sekret"}
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        bad_speed = await client.get(
+            "/v1/daari/spend/export",
+            params={"since": SINCE, "usage_speed": "turbo"},
+            headers=headers,
+        )
+        assert bad_speed.status_code == 400
+
+        page = await client.get(
+            "/v1/daari/spend/export",
+            params={
+                "since": SINCE,
+                "model": "%:cloud",
+                "usage_speed": "fast",
+                "key": "key-a",
+                "team": "team-1",
+                "limit": 10,
+                "offset": 0,
+            },
+            headers=headers,
+        )
+        assert page.status_code == 200, page.text
+        body = page.json()
+        assert body["total"] == 1
+        assert body["limit"] == 10
+        assert body["offset"] == 0
+        assert body["has_more"] is False
+        assert len(body["rows"]) == 1
+        assert body["rows"][0]["request_id"] == "req-fast-cloud"
+        assert body["rows"][0]["usage_speed"] == "fast"
+        assert body["rows"][0]["model"] == "clef:cloud"
+
+        csv_resp = await client.get(
+            "/v1/daari/spend/export",
+            params={"since": SINCE, "model": "%:cloud", "format": "csv", "limit": 50},
+            headers=headers,
+        )
+        assert csv_resp.status_code == 200
+        assert "text/csv" in csv_resp.headers.get("content-type", "")
+        assert "req-fast-cloud" in csv_resp.text
+        assert "req-std-cloud" in csv_resp.text
+        assert "req-local" not in csv_resp.text
+        assert csv_resp.text.splitlines()[0].startswith("timestamp,")
+
+        until_cut = await client.get(
+            "/v1/daari/spend/export",
+            params={"since": "2000-01-01T00:00:00+00:00", "until": SINCE, "limit": 50},
+            headers=headers,
+        )
+        assert until_cut.status_code == 200
+        until_ids = {row["request_id"] for row in until_cut.json()["rows"]}
+        assert until_ids == {"req-old"}
+
+    audit = audit_log_from_settings(settings)
+    actions = [row["action"] for row in audit.list(limit=20)]
+    assert "admin.spend.export" in actions
+
+
+@pytest.mark.asyncio
+async def test_http_spend_export_disabled_is_404(settings, tmp_path):
+    from httpx import ASGITransport, AsyncClient
+
+    from daari.router.router import AppContext
+    from daari.server.app import create_app
+
+    settings.server.api_key = "master-sekret"
+    settings.enterprise.sso.enabled = False
+    settings.usage.spend.enabled = False
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            "/v1/daari/spend/export",
+            params={"since": SINCE},
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert resp.status_code == 404
+
+
+def test_export_filters_by_until(tmp_path):
+    ledger = SpendLedger(tmp_path / "spend.sqlite3", enabled=True)
+    _row(ledger, ts=OLD, request_id="req-old")
+    _row(ledger, ts=NEW, request_id="req-new")
+    rows = list(ledger.iter_rows(since="2000-01-01T00:00:00+00:00", until=SINCE))
+    assert [row["request_id"] for row in rows] == ["req-old"]
+    assert ledger.count_rows(since="2000-01-01T00:00:00+00:00", until=SINCE) == 1

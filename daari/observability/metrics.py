@@ -350,6 +350,15 @@ class Metrics:
         with self._lock:
             self.systemone_breaker[label] = self.systemone_breaker.get(label, 0) + 1
 
+    def _systemone_breaker_state(self) -> list[dict[str, Any]]:
+        """Live per-upstream open/closed (+ rejects) for exporters (#1822)."""
+        try:
+            from daari.gateway.systemone import breaker_snapshot
+
+            return list(breaker_snapshot())
+        except Exception:
+            return []
+
     def record_cancelled(self, phase: str) -> None:
         """Client abandoned the request before upstream work finished (#769)."""
         with self._lock:
@@ -453,6 +462,7 @@ class Metrics:
                 "mcp_tasks": dict(self.mcp_tasks),
                 "mcp_egress": dict(self.mcp_egress),
                 "systemone_breaker": dict(self.systemone_breaker),
+                "systemone_breaker_state": self._systemone_breaker_state(),
                 "cancelled": dict(self.cancelled),
                 "deadline_exhausted": self.deadline_exhausted,
                 "compact_to_fit_applied": self.compact_to_fit_applied,

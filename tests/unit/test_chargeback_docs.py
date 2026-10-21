@@ -37,6 +37,15 @@ def test_chargeback_guide_documents_tier_filter() -> None:
     assert "`asr`" in text and "`translation`" in text and "`tts`" in text and "`embed`" in text
 
 
+def test_chargeback_guide_documents_model_speed_and_http_export() -> None:
+    """Chargeback guide names --model / --usage-speed and HTTP export (#1821)."""
+    text = DOC.read_text(encoding="utf-8")
+    assert "--model" in text
+    assert "--usage-speed" in text
+    assert "/v1/daari/spend/export" in text
+    assert "usage_speed" in text
+
+
 def test_chargeback_guide_names_tts_tier() -> None:
     text = DOC.read_text(encoding="utf-8")
     sentence = next(

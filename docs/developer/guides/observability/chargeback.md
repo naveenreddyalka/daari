@@ -25,10 +25,21 @@ daari spend export --since 7d --format csv --user alice
 daari spend export --since 7d --format csv --tier asr
 daari spend export --since 7d --format csv --tier tts
 daari spend export --since 7d --format jsonl --tier embed --team platform
+daari spend export --since 7d --format csv --model '%:cloud'
+daari spend export --since 7d --format jsonl --model '%:cloud' --usage-speed fast
 daari spend report --since 30d --team platform --by-user
 ```
 
-`--since` accepts an ISO-8601 timestamp or a relative window (`7d`, `12h`). `--key`, `--team`, `--user`, and `--tier` are exact filters (`--tier` matches the ledger column: `asr`, `translation`, `tts`, `embed`, `L3`–`L6`, …). CSV and JSONL both stream one row at a time.
+HTTP (analyst-gated, same filters; team-scoped when claims pin a team):
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "$BASE/v1/daari/spend/export?since=7d&model=%25:cloud&usage_speed=fast"
+curl -H "Authorization: Bearer $TOKEN" \
+  "$BASE/v1/daari/spend/export?since=7d&format=csv&tier=asr"
+```
+
+`--since` accepts an ISO-8601 timestamp or a relative window (`7d`, `12h`). Optional `until` (HTTP) is the exclusive upper bound with the same formats. `--key`, `--team`, `--user`, and `--tier` are exact filters (`--tier` matches the ledger column: `asr`, `translation`, `tts`, `embed`, `L3`–`L6`, …). `--model` is a SQL `LIKE` pattern (e.g. `%:cloud` for Ollama cloud egress). `--usage-speed` is exact `fast` or `standard` (Anthropic fast mode). CSV and JSONL both stream one row at a time. The HTTP export returns JSON `{rows, total, limit, offset, has_more}` by default, or CSV when `format=csv`.
 
 Each row has: timestamp, request id, key id, team id, client id, **user id** (OpenAI `user` / end-user when present), model, tier, input / output / cached tokens, `cost_usd` (what this request cost; $0 on local tiers), `cost_avoided_usd` (the frontier price those tokens would have paid), and a cache-hit flag.
 
