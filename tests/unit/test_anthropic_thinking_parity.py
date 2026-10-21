@@ -86,3 +86,31 @@ class TestPayloadEmission:
         )
         assert params.thinking == {"type": "disabled"}
         assert params.ollama_think() is None
+
+    def test_between_tools_degrades_locally_without_silent_drop(self):
+        """Local tiers map between_tools → no think and signal the drop (#1828)."""
+        params = SamplingParams.from_anthropic_body(
+            {"max_tokens": 10, "thinking": {"type": "between_tools"}}
+        )
+        assert params.thinking == {"type": "between_tools"}
+        assert params.ollama_think() is None
+        assert params.reasoning_effort is None
+        assert "thinking.between_tools" in params.dropped_param_names()
+        notes = params.unsupported_locally()
+        assert any("between_tools" in note for note in notes)
+
+    def test_to_anthropic_payload_forwards_between_tools_unchanged(self):
+        """L6 Anthropic path keeps thinking.type=between_tools (#1828)."""
+        between = {"type": "between_tools"}
+        params = SamplingParams.from_anthropic_body(
+            {"max_tokens": 50, "thinking": between}
+        )
+        payload = to_anthropic_payload(
+            InternalRequest(
+                messages=[Message(role="user", content="hi")],
+                model="daari",
+                sampling=params,
+            ),
+            model="claude-sonnet-5-5",
+        )
+        assert payload["thinking"] == between

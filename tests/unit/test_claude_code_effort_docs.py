@@ -26,3 +26,12 @@ def test_claude_code_guide_pins_output_config_format() -> None:
     assert "output_config.format" in text
     assert "json_schema" in text
     assert "output_format" in text
+
+
+def test_claude_code_guide_pins_between_tools() -> None:
+    """Thinking budgets section documents between_tools catalog + local degrade (#1828)."""
+    text = DOC.read_text(encoding="utf-8")
+    assert "## Thinking budgets" in text
+    assert "between_tools" in text
+    assert "thinking.between_tools" in text
+    assert "Sonnet 5.5" in text or "sonnet-5-5" in text

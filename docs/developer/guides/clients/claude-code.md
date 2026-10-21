@@ -48,6 +48,13 @@ verbatim on L6 Anthropic escalations. Locally it maps onto Ollama `think` via
 | ≤ 8192 | `medium` |
 | > 8192 | `high` |
 | `type: disabled` | omitted |
+| `type: between_tools` | omitted (signaled via `dropped_params`) |
+
+`GET /v1/models` (Anthropic-shaped) advertises
+`capabilities.thinking.types.between_tools.supported` — `true` only for Claude
+Sonnet 5.5 (Anthropic's published set). On a local-only path, `between_tools`
+degrades to no up-front think and is listed in `daari_meta.dropped_params` as
+`thinking.between_tools` rather than silently vanishing mid tool-loop.
 
 ## Effort (`output_config`)
 
