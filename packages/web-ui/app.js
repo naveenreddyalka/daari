@@ -20,6 +20,7 @@ const backendSummaryTotalNode = document.getElementById("backend-summary-total")
 const backendSummaryHealthyNode = document.getElementById("backend-summary-healthy");
 const backendSummaryUnhealthyNode = document.getElementById("backend-summary-unhealthy");
 const backendSummaryOpenCircuitNode = document.getElementById("backend-summary-open-circuit");
+const systemoneBreakerStatusNode = document.getElementById("systemone-breaker-status");
 const orgNode = document.getElementById("org-learning");
 const orgSummaryNode = document.getElementById("org-summary");
 const statusNode = document.getElementById("status");
@@ -252,6 +253,27 @@ function renderBackendSummary(summary) {
       typeof open === "number" && open > 0
     );
   }
+}
+
+function renderSystemoneBreaker(rows) {
+  if (!systemoneBreakerStatusNode) {
+    return;
+  }
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length === 0) {
+    systemoneBreakerStatusNode.textContent = "Systemone breaker: closed (no trips yet).";
+    systemoneBreakerStatusNode.classList.remove("metric-warn");
+    return;
+  }
+  const parts = list.map((row) => {
+    const base = row && row.base ? String(row.base) : "systemone";
+    const state = row && row.state ? String(row.state) : "closed";
+    const rejects = typeof row?.rejects === "number" ? row.rejects : 0;
+    return `${base}=${state} (rejects ${rejects})`;
+  });
+  systemoneBreakerStatusNode.textContent = `Systemone breaker: ${parts.join("; ")}`;
+  const anyOpen = list.some((row) => String(row?.state || "") === "open");
+  systemoneBreakerStatusNode.classList.toggle("metric-warn", anyOpen);
 }
 
 function renderBackends(backends) {
@@ -881,6 +903,7 @@ async function loadStats() {
     renderTeamRateLimits(stats.team_rate_limits);
     renderKeyRateLimits(stats.key_rate_limits);
     renderBackendSummary(stats.backend_summary);
+    renderSystemoneBreaker(stats.systemone_breaker);
     renderBackends(stats.backends);
 
     try {

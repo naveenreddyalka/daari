@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import httpx
@@ -592,3 +593,97 @@ def test_breaker_prometheus_counter(settings, monkeypatch):
     assert "daari_systemone_breaker_total" in text
     assert 'event="open"' in text or 'event="trip"' in text
     assert 'event="reject"' in text
+
+
+def test_breaker_state_snapshot_gauge_stats_and_doctor(settings):
+    """Trip → open → cooldown reset across snapshot/render/doctor (#1822)."""
+    from daari.gateway.systemone import (
+        SystemOneCircuitOpen,
+        _note_failure,
+        _note_success,
+        _reject_if_open,
+        breaker_for,
+        breaker_snapshot,
+        reset_systemone_breakers,
+    )
+    from daari.observability.metrics import Metrics
+    from daari.observability.prometheus import render_prometheus
+    from daari.setup.doctor import _check_systemone_breaker, run_doctor
+
+    reset_systemone_breakers()
+    base = "http://vllm.local:8000"
+    metrics = Metrics()
+    breaker = breaker_for(base)
+    breaker.failure_threshold = 1
+    breaker.cooldown_seconds = 60.0
+    _note_failure(base, metrics=metrics)
+    assert breaker.state == "open"
+    try:
+        _reject_if_open(base, metrics=metrics)
+        raise AssertionError("expected SystemOneCircuitOpen")
+    except SystemOneCircuitOpen:
+        pass
+
+    snap_rows = breaker_snapshot()
+    assert len(snap_rows) == 1
+    assert snap_rows[0]["base"] == "http://vllm.local:8000"
+    assert snap_rows[0]["state"] == "open"
+    assert snap_rows[0]["rejects"] == 1
+
+    full = metrics.snapshot(include_histograms=True)
+    assert full["systemone_breaker_state"][0]["state"] == "open"
+    text = render_prometheus(metrics)
+    assert "daari_systemone_breaker_state" in text
+    assert 'base="http://vllm.local:8000"' in text
+    assert 'state="open"' in text
+    assert re.search(
+        r'daari_systemone_breaker_state\{[^}]*base="http://vllm\.local:8000"[^}]*\} 1',
+        text,
+    )
+
+    tip = _check_systemone_breaker(settings)
+    assert tip is not None
+    assert tip.ok is False
+    assert "vllm.local:8000" in tip.detail
+    assert "cooldown" in tip.detail
+    doctor_rows = run_doctor(settings, httpx_client=None)
+    assert any(r.name == "systemone_breaker" and not r.ok for r in doctor_rows)
+
+    breaker.cooldown_seconds = 0.0
+    _note_success(base)
+    assert breaker.state == "closed"
+    assert breaker_snapshot()[0]["state"] == "closed"
+    assert _check_systemone_breaker(settings) is None
+    closed_text = render_prometheus(metrics)
+    assert 'state="closed"' in closed_text
+    assert "daari_systemone_breaker_state" in closed_text
+
+
+@pytest.mark.asyncio
+async def test_stats_includes_systemone_breaker_state(settings, tmp_path):
+    from httpx import ASGITransport, AsyncClient
+
+    from daari.gateway.systemone import _note_failure, breaker_for, reset_systemone_breakers
+    from daari.router.router import AppContext
+    from daari.server.app import create_app
+
+    reset_systemone_breakers()
+    settings.server.api_key = "master-sekret"
+    settings.enterprise.sso.enabled = False
+    breaker = breaker_for("http://vllm.local:8000")
+    breaker.failure_threshold = 1
+    breaker.cooldown_seconds = 60.0
+    _note_failure("http://vllm.local:8000")
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            "/v1/daari/stats",
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "systemone_breaker" in body
+    assert body["systemone_breaker"][0]["state"] == "open"
+    assert body["systemone_breaker"][0]["base"] == "http://vllm.local:8000"

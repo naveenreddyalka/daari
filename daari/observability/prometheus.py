@@ -517,6 +517,23 @@ def render_prometheus(
                 f"daari_systemone_breaker_total{_labels(event=str(event))} {int(count)}"
             )
 
+    systemone_state = snap.get("systemone_breaker_state") or []
+    if systemone_state:
+        lines.append(
+            "# HELP daari_systemone_breaker_state Systemone upstream circuit "
+            "breaker state (1=open, 0=closed/half_open)."
+        )
+        lines.append("# TYPE daari_systemone_breaker_state gauge")
+        for row in systemone_state:
+            if not isinstance(row, dict):
+                continue
+            base = str(row.get("base") or "systemone")
+            state = str(row.get("state") or "closed")
+            value = 1 if state == "open" else 0
+            lines.append(
+                f"daari_systemone_breaker_state{_labels(base=base, state=state)} {value}"
+            )
+
     cancelled = snap.get("cancelled") or {}
     if cancelled:
         lines.append("# HELP daari_cancelled_requests_total Client-abandoned requests, by phase.")
