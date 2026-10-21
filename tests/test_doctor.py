@@ -60,6 +60,7 @@ class TestDoctor:
             version_response,
             tags_response,
             stats_response,
+            stats_response,
             ready_response,
         ]
 
@@ -155,6 +156,7 @@ class TestDoctor:
             version_response,
             tags_response,
             stats_response,
+            stats_response,
             ready_response,
         ]
 
@@ -196,6 +198,7 @@ class TestDoctor:
             version_response,
             tags_response,
             stats_response,
+            stats_response,
             ready_response,
         ]
 
@@ -233,6 +236,7 @@ class TestDoctor:
             version_response,
             tags_response,
             stats_response,
+            stats_response,
             ready_response,
         ]
 
@@ -266,6 +270,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            stats_response,
             stats_response,
             ready_response,
         ]
@@ -321,6 +326,7 @@ class TestDoctor:
             version_response,
             tags_response,
             stats_response,
+            stats_response,
             ready_response,
         ]
 
@@ -360,6 +366,7 @@ class TestDoctor:
             version_response,
             tags_response,
             stats_response,
+            stats_response,
             ready_response,
         ]
 
@@ -390,6 +397,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            stats_response,
             stats_response,
             ready_response,
         ]
@@ -422,6 +430,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            stats_response,
             stats_response,
             ready_response,
         ]
@@ -462,6 +471,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            stats_response,
             org_cache_response,
             stats_response,
             ready_response,

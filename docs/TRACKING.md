@@ -7638,6 +7638,15 @@ Sonnet 5.5). Local tiers map `between_tools` to no think and signal
 unchanged. Covered by `tests/unit/test_anthropic_gateway.py` and
 `tests/unit/test_anthropic_thinking_parity.py`.
 
+### Systemone breaker truth for operators ([#1842](https://github.com/naveenreddyalka/daari/issues/1842))
+
+<!-- tracking:#1842 -->
+**Status:** Done (2026-10-21). `daari doctor` reads live daemon
+`/v1/daari/stats` breaker state (in-process fallback); `GET /ready` exposes
+`systemone_breaker` (degraded by default, `breaker_fails_ready` for 503);
+admin `POST /v1/daari/systemone/breaker/reset` closes circuits with audit.
+Covered by `tests/unit/test_systemone_upstream.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

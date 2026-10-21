@@ -97,6 +97,14 @@ def reset_systemone_breakers() -> None:
     _breaker_rejects.clear()
 
 
+def close_systemone_breakers() -> list[dict[str, Any]]:
+    """Close open circuits in place and return the per-base snapshot (#1842)."""
+    for breaker in _breakers.values():
+        breaker.record_success()
+    _breaker_rejects.clear()
+    return breaker_snapshot()
+
+
 def breaker_snapshot() -> list[dict[str, Any]]:
     """Current per-upstream breaker state for stats / metrics / doctor (#1822)."""
     rows: list[dict[str, Any]] = []

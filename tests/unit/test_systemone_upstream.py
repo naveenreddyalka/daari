@@ -687,3 +687,172 @@ async def test_stats_includes_systemone_breaker_state(settings, tmp_path):
     assert "systemone_breaker" in body
     assert body["systemone_breaker"][0]["state"] == "open"
     assert body["systemone_breaker"][0]["base"] == "http://vllm.local:8000"
+
+
+def test_doctor_systemone_breaker_uses_daemon_stats(settings):
+    """Doctor must report open circuits from the live daemon, not CLI process (#1842)."""
+    from unittest.mock import MagicMock
+
+    from daari.gateway.systemone import reset_systemone_breakers
+    from daari.setup.doctor import _check_systemone_breaker
+
+    reset_systemone_breakers()
+    # In-process is closed/empty; daemon reports open.
+    mock = MagicMock(spec=httpx.Client)
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {
+        "total_requests": 3,
+        "systemone_breaker": [
+            {
+                "base": "http://vllm.local:8000",
+                "state": "open",
+                "rejects": 2,
+                "cooldown_seconds": 30.0,
+            }
+        ],
+    }
+    mock.get.return_value = resp
+
+    tip = _check_systemone_breaker(settings, httpx_client=mock)
+    assert tip is not None
+    assert tip.ok is False
+    assert tip.name == "systemone_breaker"
+    assert "vllm.local:8000" in tip.detail
+    mock.get.assert_called()
+    assert mock.get.call_args.args[0].endswith("/v1/daari/stats")
+
+
+def test_doctor_systemone_breaker_falls_back_in_process(settings):
+    from unittest.mock import MagicMock
+
+    from daari.gateway.systemone import _note_failure, breaker_for, reset_systemone_breakers
+    from daari.setup.doctor import _check_systemone_breaker
+
+    reset_systemone_breakers()
+    breaker = breaker_for("http://vllm.local:8000")
+    breaker.failure_threshold = 1
+    _note_failure("http://vllm.local:8000")
+
+    mock = MagicMock(spec=httpx.Client)
+    mock.get.side_effect = httpx.ConnectError("refused")
+    tip = _check_systemone_breaker(settings, httpx_client=mock)
+    assert tip is not None
+    assert tip.ok is False
+    assert "vllm.local:8000" in tip.detail
+
+
+@pytest.mark.asyncio
+async def test_ready_includes_systemone_breaker_degraded_when_open(settings, monkeypatch):
+    from daari.gateway.systemone import _note_failure, breaker_for, reset_systemone_breakers
+
+    reset_systemone_breakers()
+    settings.server.dangerously_permit_weak_or_unset_api_key = True
+    breaker = breaker_for("http://vllm.local:8000")
+    breaker.failure_threshold = 1
+    breaker.cooldown_seconds = 60.0
+    _note_failure("http://vllm.local:8000")
+
+    async def backend_ok(probe_url: str, timeout: float = 2.0) -> str:
+        return "ok"
+
+    monkeypatch.setattr("daari.gateway.openai.check_model_backend", backend_ok)
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/ready")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["checks"]["systemone_breaker"] == "open"
+    assert body["status"] == "degraded"
+
+
+@pytest.mark.asyncio
+async def test_ready_breaker_fails_ready_when_configured(settings, monkeypatch):
+    from daari.gateway.systemone import _note_failure, breaker_for, reset_systemone_breakers
+
+    reset_systemone_breakers()
+    settings.server.dangerously_permit_weak_or_unset_api_key = True
+    settings.systemone.breaker_fails_ready = True
+    breaker = breaker_for("http://vllm.local:8000")
+    breaker.failure_threshold = 1
+    breaker.cooldown_seconds = 60.0
+    _note_failure("http://vllm.local:8000")
+
+    async def backend_ok(probe_url: str, timeout: float = 2.0) -> str:
+        return "ok"
+
+    monkeypatch.setattr("daari.gateway.openai.check_model_backend", backend_ok)
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/ready")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["checks"]["systemone_breaker"] == "open"
+    assert body["status"] == "not_ready"
+
+
+@pytest.mark.asyncio
+async def test_admin_reset_systemone_breaker(settings, tmp_path):
+    from daari.enterprise.audit import AuditLog
+    from daari.gateway.systemone import (
+        _note_failure,
+        breaker_for,
+        breaker_snapshot,
+        reset_systemone_breakers,
+    )
+
+    reset_systemone_breakers()
+    settings.server.api_key = "master-sekret"
+    settings.enterprise.sso.enabled = False
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    breaker = breaker_for("http://vllm.local:8000")
+    breaker.failure_threshold = 1
+    breaker.cooldown_seconds = 60.0
+    _note_failure("http://vllm.local:8000")
+    assert breaker_snapshot()[0]["state"] == "open"
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/v1/daari/systemone/breaker/reset",
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert all(row["state"] == "closed" for row in body["systemone_breaker"])
+    assert breaker_snapshot()[0]["state"] == "closed"
+    rows = AuditLog(settings.enterprise.audit_path).list(action="systemone.breaker.reset")
+    assert len(rows) >= 1
+
+
+@pytest.mark.asyncio
+async def test_reset_systemone_breaker_forbidden_for_non_admin(settings, tmp_path):
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.gateway.systemone import reset_systemone_breakers
+
+    reset_systemone_breakers()
+    settings.server.api_key = "master-sekret"
+    settings.server.virtual_keys.enabled = True
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.enterprise.sso.enabled = False
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    key = store.create("viewer", client_id="viewer")
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/v1/daari/systemone/breaker/reset",
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+    assert resp.status_code == 403
+
+
+def test_doctor_health_docs_systemone_breaker_row():
+    text = (ROOT / "docs/developer/guides/operations/doctor-health.md").read_text()
+    assert "systemone_breaker" in text

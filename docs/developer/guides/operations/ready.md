@@ -11,8 +11,8 @@ readiness contract.
 | `status` | HTTP | Meaning |
 |----------|------|---------|
 | `ready` | 200 | Cache handle is present and the model backend check is `ok`. |
-| `degraded` | 200 | The process can serve, but an optional dependency is down (some local pool hosts, or Redis/Postgres when those stores are configured). |
-| `not_ready` | 503 | Cache is missing, no serving model host, or a local SQLite file is behind `STORE_SCHEMA_VERSIONS` (`schema_ok` false). |
+| `degraded` | 200 | The process can serve, but an optional dependency is down (some local pool hosts, Redis/Postgres when those stores are configured, or an open systemone upstream circuit). |
+| `not_ready` | 503 | Cache is missing, no serving model host, a local SQLite file is behind `STORE_SCHEMA_VERSIONS` (`schema_ok` false), or an open systemone circuit with `systemone.breaker_fails_ready=true`. |
 | `shutting_down` | 503 | Coordinated shutdown. Load balancers should stop sending traffic. |
 
 ## Checks
@@ -21,6 +21,7 @@ The JSON body includes `checks`:
 
 - `cache` — `ok` when a cache handle exists, otherwise `missing`.
 - `model_backend` — local pool or Ollama/MLX probe (`ok` when the serving host answers).
+- `systemone_breaker` — when `systemone.enabled` (default): `ok` or `open`. Open marks `degraded` unless `systemone.breaker_fails_ready` flips readiness to `not_ready`.
 
 Optional keys appear only when that store is configured:
 

@@ -31,7 +31,7 @@ async def test_ready_ok_when_backend_answers(settings, monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ready"
-    assert body["checks"] == {"cache": "ok", "model_backend": "ok"}
+    assert body["checks"] == {"cache": "ok", "model_backend": "ok", "systemone_breaker": "ok"}
 
 
 @pytest.mark.asyncio
