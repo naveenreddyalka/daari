@@ -7628,6 +7628,16 @@ metrics/audit `scope` is `speed` when that filter is primary. Covered by
 hints cover Cursor Bearer and ChatGPT Desktop `X-Daari-Client-Id`. Covered by
 `tests/unit/test_configure_cli.py`.
 
+### Anthropic thinking.types.between_tools catalog + local degrade ([#1828](https://github.com/naveenreddyalka/daari/issues/1828))
+
+<!-- tracking:#1828 -->
+**Status:** Done (2026-10-21). Anthropic `/v1/models` cards include
+`capabilities.thinking.types.between_tools.supported` (true only for Claude
+Sonnet 5.5). Local tiers map `between_tools` to no think and signal
+`thinking.between_tools` in `dropped_params`; L6 forwards the thinking dict
+unchanged. Covered by `tests/unit/test_anthropic_gateway.py` and
+`tests/unit/test_anthropic_thinking_parity.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

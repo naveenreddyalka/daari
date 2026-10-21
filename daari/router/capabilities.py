@@ -321,6 +321,24 @@ def anthropic_thinking_disabled_supported(model_id: str) -> bool:
     return matching_model_key(model_id, {k: True for k in _THINKING_DISABLED_UNSUPPORTED}) is None
 
 
+# Anthropic documents ``thinking.type: between_tools`` only for Claude Sonnet 5.5.
+_THINKING_BETWEEN_TOOLS_SUPPORTED: frozenset[str] = frozenset({"claude-sonnet-5-5"})
+
+
+def anthropic_thinking_between_tools_supported(model_id: str) -> bool:
+    """Whether ``thinking: {type: \"between_tools\"}`` is accepted (#1828).
+
+    ``supported: true`` only for models Anthropic documents (Sonnet 5.5);
+    ``false`` when a request that sends it gets a 400 from that model.
+    """
+    from daari.pricing import matching_model_key
+
+    return (
+        matching_model_key(model_id, {k: True for k in _THINKING_BETWEEN_TOOLS_SUPPORTED})
+        is not None
+    )
+
+
 def _anthropic_claude_5x(model_id: str) -> bool:
     """True for catalog Claude 5.x ids (server_tools hosts); not Claude 3/4 or locals."""
     from daari.pricing import matching_model_key
@@ -440,11 +458,14 @@ def anthropic_speed_capability(
 
 
 def anthropic_capabilities(model_id: str, settings: Any = None) -> dict[str, Any]:
-    """Anthropic Models API ``capabilities`` object (#1481 / #1507 / #1740)."""
+    """Anthropic Models API ``capabilities`` object (#1481 / #1507 / #1740 / #1828)."""
     thinking_types: dict[str, Any] = {
         "disabled": {
             "supported": anthropic_thinking_disabled_supported(model_id),
-        }
+        },
+        "between_tools": {
+            "supported": anthropic_thinking_between_tools_supported(model_id),
+        },
     }
     caps: dict[str, Any] = {
         "thinking": {"types": thinking_types},

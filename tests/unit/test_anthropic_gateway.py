@@ -199,6 +199,39 @@ def test_anthropic_model_cards_thinking_disabled_capability(settings) -> None:
         )
 
 
+def test_anthropic_model_cards_thinking_between_tools_capability(settings) -> None:
+    """Models API reports capabilities.thinking.types.between_tools (#1828).
+
+    Anthropic documents ``between_tools`` only for Claude Sonnet 5.5.
+    """
+    from daari.router.capabilities import (
+        anthropic_capabilities,
+        anthropic_thinking_between_tools_supported,
+    )
+
+    assert anthropic_thinking_between_tools_supported("claude-sonnet-5-5") is True
+    assert anthropic_thinking_between_tools_supported("claude-sonnet-5-5-20251001") is True
+    assert anthropic_thinking_between_tools_supported("claude-haiku-5-5") is False
+    assert anthropic_thinking_between_tools_supported("daari") is False
+
+    sonnet_caps = anthropic_capabilities("claude-sonnet-5-5")
+    assert sonnet_caps["thinking"]["types"]["between_tools"]["supported"] is True
+
+    local_caps = anthropic_capabilities("daari")
+    assert local_caps["thinking"]["types"]["between_tools"]["supported"] is False
+
+    cards = {card["id"]: card for card in anthropic_model_cards(settings)}
+    for card in cards.values():
+        between = card["capabilities"]["thinking"]["types"]["between_tools"]
+        assert between["supported"] in (True, False)
+        if "sonnet-5-5" in card["id"].lower() or card["id"].lower().startswith(
+            "claude-sonnet-5.5"
+        ):
+            assert between["supported"] is True
+        elif card["id"] == "daari":
+            assert between["supported"] is False
+
+
 @pytest.mark.asyncio
 async def test_messages_captures_anthropic_beta_and_version(settings):
     """Inbound anthropic-beta / anthropic-version land on RequestMeta (#455)."""
