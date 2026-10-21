@@ -7593,6 +7593,24 @@ rejects) on metrics snapshot, `/v1/daari/stats`, `daari_systemone_breaker_state`
 gauge, doctor tip (no network), and web-ui next to pool `open_circuit`. Covered by
 `tests/unit/test_systemone_upstream.py` and `packages/web-ui/test/dashboard.test.js`.
 
+### Grafana + alert-pack for schema_ok and systemone breaker ([#1823](https://github.com/naveenreddyalka/daari/issues/1823))
+
+<!-- tracking:#1823 -->
+**Status:** Done (2026-10-21). Overview dashboard gains a `daari_schema_ok` stat
+panel and a systemone breaker events timeseries; PrometheusRule adds
+`DaariSchemaLagged` and `DaariSystemoneBreakerSpike`. Covered by
+`tests/unit/test_grafana_dashboard.py` and `tests/unit/test_helm_chart.py`.
+
+### Events since/until windows across store, API, console, CLI ([#1824](https://github.com/naveenreddyalka/daari/issues/1824))
+
+<!-- tracking:#1824 -->
+**Status:** Done (2026-10-21). `query_events` / `GET /v1/daari/events` /
+`daari events list` / web-ui events view accept `since`/`until` (audit
+`parse_since` at the edges); CLI also gains `--key`. Covered by
+`tests/unit/test_request_log_events_http.py`,
+`tests/unit/test_events_lockouts_admin.py`, and
+`packages/web-ui/test/dashboard.test.js`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

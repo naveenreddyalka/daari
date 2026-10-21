@@ -406,10 +406,18 @@
               Kind
               <input id="events-kind-filter" type="text" placeholder="event kind" aria-label="Events kind filter" />
             </label>
+            <label>
+              Since
+              <input id="events-since-filter" type="text" placeholder="ISO or 7d" aria-label="Events since filter" />
+            </label>
+            <label>
+              Until
+              <input id="events-until-filter" type="text" placeholder="ISO or 1h" aria-label="Events until filter" />
+            </label>
             <button id="events-next" type="button">Next page</button>
           </div>
         </div>
-        <p class="subtle">Newest-first from <code>GET /v1/daari/events</code> (team/key/kind filters and cursor pagination).</p>
+        <p class="subtle">Newest-first from <code>GET /v1/daari/events</code> (team/key/kind/since/until filters and cursor pagination).</p>
         <table>
           <thead>
             <tr>

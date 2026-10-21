@@ -113,18 +113,23 @@ class PostgresRequestLogStore:
         team_id: str | None = None,
         key_id: str | None = None,
         kind: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         """Newest-first page plus total matches (#1683).
 
         ``before_id`` keeps rows with ``id`` strictly less than that cursor.
         ``team_id`` / ``key_id`` match those payload fields when set.
         ``kind`` matches the event name (case-insensitive).
+        ``since`` / ``until`` are ISO-8601 UTC cutoffs (inclusive / exclusive).
         """
         lim = max(1, min(int(limit), 1000))
         off = max(0, int(offset))
         team = (team_id or "").strip() or None
         key = (key_id or "").strip() or None
         kind_norm = (kind or "").strip().lower() or None
+        since_cut = (since or "").strip() or None
+        until_cut = (until or "").strip() or None
         if self._memory:
             rows, lock = _memory_bucket(self.dsn)
             with lock:
@@ -137,6 +142,8 @@ class PostgresRequestLogStore:
                         team_id=team,
                         key_id=key,
                         kind=kind_norm,
+                        since=since_cut,
+                        until=until_cut,
                     )
                 ]
             matched.sort(key=lambda r: int(r["id"]), reverse=True)
@@ -157,6 +164,12 @@ class PostgresRequestLogStore:
         if kind_norm is not None:
             clauses.append("lower(event) = %s")
             params.append(kind_norm)
+        if since_cut is not None:
+            clauses.append("ts >= %s")
+            params.append(since_cut)
+        if until_cut is not None:
+            clauses.append("ts < %s")
+            params.append(until_cut)
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
@@ -314,6 +327,8 @@ def _row_in_query(
     team_id: str | None,
     key_id: str | None,
     kind: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
 ) -> bool:
     if before_id is not None and int(row.get("id") or 0) >= int(before_id):
         return False
@@ -324,6 +339,18 @@ def _row_in_query(
         return False
     if kind is not None and str(row.get("event") or "").strip().lower() != kind:
         return False
+    if since is not None or until is not None:
+        row_ts = _parse_ts(row.get("ts"))
+        if row_ts is None:
+            return False
+        if since is not None:
+            since_dt = _parse_ts(since)
+            if since_dt is not None and row_ts < since_dt:
+                return False
+        if until is not None:
+            until_dt = _parse_ts(until)
+            if until_dt is not None and row_ts >= until_dt:
+                return False
     return True
 
 

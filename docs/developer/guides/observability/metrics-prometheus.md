@@ -40,9 +40,11 @@ a **Concurrency gate** panel on `daari_rate_limit_in_flight` vs
 `daari_decision_classifier_total` and a **Decision classifier latency p50 / p95**
 panel on `daari_decision_classifier_latency_ms`, a **Virtual keys by status** panel on
 `daari_virtual_keys{status}`, a **Retired model rejects** panel on
-`daari_rejects_total{kind="retired"}`, and an **Escalations & errors** panel on
-`daari_escalations_total` / `daari_errors_total` so operators see flake / false-hit / budget /
-MCP deny / key-lifecycle / retired-model / routing-shadow / compact-to-fit pressure without raw PromQL).
+`daari_rejects_total{kind="retired"}`, a **Schema ok** stat on `daari_schema_ok`, a
+**Systemone breaker events** panel on `daari_systemone_breaker_total`, and an
+**Escalations & errors** panel on `daari_escalations_total` / `daari_errors_total` so
+operators see flake / false-hit / budget / MCP deny / key-lifecycle / retired-model /
+routing-shadow / compact-to-fit / schema-lag / judge-breaker pressure without raw PromQL).
 
 Useful series: request latency histograms by tier (`daari_request_latency_ms`),
 stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path
@@ -77,6 +79,8 @@ label and a `runbook_url` annotation pointing here.
 | `DaariGuardrailTripSpike` | `daari_guardrail_trips_total` | `sum(rate(...)) > 1` for 5m |
 | `DaariKeysExpiringSoon` | `daari_virtual_keys{status="expiring_soon"}` | `> 0` for 1h |
 | `DaariCacheInvalidateErrors` | `daari_cache_invalidate_total{result="error"}` | `sum(rate(...)) > 0.05` for 5m |
+| `DaariSchemaLagged` | `daari_schema_ok` | `== 0` for 5m |
+| `DaariSystemoneBreakerSpike` | `daari_systemone_breaker_total{event=~"open|reject"}` | `sum(rate(...)) > 0.05` for 5m |
 
 Requires the `monitoring.coreos.com` CRDs (kube-prometheus /
 prometheus-operator), same as `ServiceMonitor`.

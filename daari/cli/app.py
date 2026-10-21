@@ -1179,13 +1179,21 @@ app.add_typer(enterprise_app, name="enterprise")
 @events_app.command("list")
 def events_list(
     team: str | None = typer.Option(None, "--team", help="Filter by payload team_id."),
+    key: str | None = typer.Option(None, "--key", help="Filter by payload key_id."),
     kind: str | None = typer.Option(None, "--kind", help="Filter by event name."),
+    since: str | None = typer.Option(
+        None, "--since", help="ISO-8601 timestamp or relative window (7d, 12h)."
+    ),
+    until: str | None = typer.Option(
+        None, "--until", help="ISO-8601 timestamp or relative window (exclusive)."
+    ),
     limit: int = typer.Option(50, "--limit", help="Max rows (newest first, cap 1000)."),
     cursor: str | None = typer.Option(
         None, "--cursor", help="Exclusive event id; return older rows only."
     ),
 ) -> None:
     """List gateway events from the same store as GET /v1/daari/events."""
+    from daari.enterprise.audit import parse_since
     from daari.gateway.admin_read import MAX_EVENTS_LIMIT, _clamp_page, _page_meta
     from daari.gateway.postgres_request_log import request_log_store_from_settings
 
@@ -1206,13 +1214,30 @@ def events_list(
         if cursor_id < 1:
             typer.echo("cursor must be an integer event id", err=True)
             raise typer.Exit(code=1)
+    since_cut: str | None = None
+    until_cut: str | None = None
+    if since is not None and str(since).strip():
+        try:
+            since_cut = parse_since(str(since).strip())
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+    if until is not None and str(until).strip():
+        try:
+            until_cut = parse_since(str(until).strip())
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
     lim, off = _clamp_page(limit=limit, offset=0, maximum=MAX_EVENTS_LIMIT)
     events, total = store.query_events(
         limit=lim,
         offset=off,
         before_id=cursor_id,
         team_id=(team or "").strip() or None,
+        key_id=(key or "").strip() or None,
         kind=(kind or "").strip() or None,
+        since=since_cut,
+        until=until_cut,
     )
     page = _page_meta(total, limit=lim, offset=off, returned=len(events))
     if not events:

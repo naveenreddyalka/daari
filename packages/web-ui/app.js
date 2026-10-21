@@ -53,6 +53,8 @@ const eventsStatusNode = document.getElementById("events-status");
 const eventsTeamFilterNode = document.getElementById("events-team-filter");
 const eventsKeyFilterNode = document.getElementById("events-key-filter");
 const eventsKindFilterNode = document.getElementById("events-kind-filter");
+const eventsSinceFilterNode = document.getElementById("events-since-filter");
+const eventsUntilFilterNode = document.getElementById("events-until-filter");
 const eventsNextButton = document.getElementById("events-next");
 const tracesTableNode = document.getElementById("traces-table");
 const traceDetailNode = document.getElementById("trace-detail");
@@ -643,6 +645,20 @@ function eventsUrl() {
   if (kind) {
     params.set("kind", kind);
   }
+  const since =
+    eventsSinceFilterNode && typeof eventsSinceFilterNode.value === "string"
+      ? eventsSinceFilterNode.value.trim()
+      : "";
+  if (since) {
+    params.set("since", since);
+  }
+  const until =
+    eventsUntilFilterNode && typeof eventsUntilFilterNode.value === "string"
+      ? eventsUntilFilterNode.value.trim()
+      : "";
+  if (until) {
+    params.set("until", until);
+  }
   if (eventsCursor) {
     params.set("cursor", eventsCursor);
   }
@@ -1043,6 +1059,12 @@ if (eventsKeyFilterNode) {
 }
 if (eventsKindFilterNode) {
   eventsKindFilterNode.addEventListener("change", resetEventsCursorAndReload);
+}
+if (eventsSinceFilterNode) {
+  eventsSinceFilterNode.addEventListener("change", resetEventsCursorAndReload);
+}
+if (eventsUntilFilterNode) {
+  eventsUntilFilterNode.addEventListener("change", resetEventsCursorAndReload);
 }
 if (eventsNextButton) {
   eventsNextButton.addEventListener("click", () => {
