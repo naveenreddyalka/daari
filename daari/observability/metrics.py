@@ -54,6 +54,7 @@ def cache_invalidate_scope(
     entry_hash: str | None = None,
     team_id: str | None = None,
     key_id: str | None = None,
+    speed: str | None = None,
 ) -> str:
     """Bounded scope label for admin cache invalidate metrics (#1639)."""
     if entry_hash:
@@ -64,6 +65,8 @@ def cache_invalidate_scope(
         return "team"
     if key_id:
         return "key"
+    if speed:
+        return "speed"
     return "all"
 
 
@@ -390,7 +393,7 @@ class Metrics:
     ) -> None:
         """Admin cache invalidate op; labels stay bounded (no per-hash) (#1639)."""
         scope_label = (scope or "all").strip().lower() or "all"
-        if scope_label not in ("model", "hash", "team", "key", "all"):
+        if scope_label not in ("model", "hash", "team", "key", "speed", "all"):
             scope_label = "all"
         result_label = (result or "ok").strip().lower() or "ok"
         if result_label not in ("ok", "error"):

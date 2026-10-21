@@ -130,9 +130,16 @@ def _semantic_entry_matches(
     entry_hash: str | None,
     team_id: str | None = None,
     key_id: str | None = None,
+    speed: str | None = None,
 ) -> bool:
     """True when the row should be dropped. Unset filters match everything."""
-    if model is None and entry_hash is None and team_id is None and key_id is None:
+    if (
+        model is None
+        and entry_hash is None
+        and team_id is None
+        and key_id is None
+        and speed is None
+    ):
         return True
     ctx = str(entry.get("context_key") or "")
     segments = ctx.split("|")
@@ -145,6 +152,10 @@ def _semantic_entry_matches(
         return False
     if key_id is not None and f"key:{key_id}" not in segments:
         return False
+    if speed is not None:
+        wanted = str(speed).strip().lower()
+        if wanted and f"speed:{wanted}" not in segments:
+            return False
     return True
 
 
@@ -615,9 +626,10 @@ class SemanticCache:
         entry_hash: str | None = None,
         team_id: str | None = None,
         key_id: str | None = None,
+        speed: str | None = None,
         dry_run: bool = False,
     ) -> int:
-        """Drop L1 rows by context_key model prefix, answer hash, tenant, or all."""
+        """Drop L1 rows by context_key model prefix, answer hash, tenant, speed, or all."""
         if not self.enabled:
             return 0
         entries = self._load_entries()
@@ -630,6 +642,7 @@ class SemanticCache:
                 entry_hash=entry_hash,
                 team_id=team_id,
                 key_id=key_id,
+                speed=speed,
             ):
                 removed += 1
             else:
