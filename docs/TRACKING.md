@@ -7611,6 +7611,15 @@ panel and a systemone breaker events timeseries; PrometheusRule adds
 `tests/unit/test_events_lockouts_admin.py`, and
 `packages/web-ui/test/dashboard.test.js`.
 
+### Cache invalidate by Anthropic speed selector ([#1826](https://github.com/naveenreddyalka/daari/issues/1826))
+
+<!-- tracking:#1826 -->
+**Status:** Done (2026-10-21). `ExactCache` / `RedisExactCache` / `SemanticCache`
+`invalidate` accept optional `speed`; L0 persists a `speed:` segment on put; admin
+`POST /v1/daari/cache/invalidate` and `daari cache invalidate --speed` forward it;
+metrics/audit `scope` is `speed` when that filter is primary. Covered by
+`tests/unit/test_cache_invalidate.py` and `tests/unit/test_cache_invalidate_metrics.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
