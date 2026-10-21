@@ -2830,7 +2830,10 @@ def service_uninstall(
 def configure_command(
     client: str = typer.Argument(
         ...,
-        help="Client to configure (claude-code, vscode, claude-desktop, …).",
+        help=(
+            "Client to configure (cursor, claude-code, vscode, claude-desktop, "
+            "chatgpt-desktop, codex, gemini-cli, intellij, opencode)."
+        ),
     ),
     dry_run: bool = typer.Option(
         False,
