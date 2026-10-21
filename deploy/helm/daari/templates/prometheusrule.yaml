@@ -94,4 +94,26 @@ spec:
             description: "sum(rate(daari_cache_invalidate_total{result=\"error\"})) exceeds {{ ($pr.cacheInvalidate).rateThreshold | default 0.05 }}."
             runbook_url: {{ ($pr.cacheInvalidate).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
         {{- end }}
+        {{- if ($pr.schema).enabled | default true }}
+        - alert: DaariSchemaLagged
+          expr: daari_schema_ok == 0
+          for: {{ ($pr.schema).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.schema).severity | default "critical" | quote }}
+          annotations:
+            summary: "daari local SQLite schema lags the running build"
+            description: "daari_schema_ok is 0; a local store is behind STORE_SCHEMA_VERSIONS and /ready returns 503."
+            runbook_url: {{ ($pr.schema).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
+        {{- if ($pr.systemoneBreaker).enabled | default true }}
+        - alert: DaariSystemoneBreakerSpike
+          expr: sum(rate(daari_systemone_breaker_total{event=~"open|reject"}[{{ ($pr.systemoneBreaker).window | default "5m" }}])) > {{ ($pr.systemoneBreaker).rateThreshold | default 0.05 }}
+          for: {{ ($pr.systemoneBreaker).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.systemoneBreaker).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari systemone breaker open/reject rate elevated"
+            description: "sum(rate(daari_systemone_breaker_total{event=~\"open|reject\"})) exceeds {{ ($pr.systemoneBreaker).rateThreshold | default 0.05 }}."
+            runbook_url: {{ ($pr.systemoneBreaker).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
 {{- end }}

@@ -366,6 +366,8 @@ _PROMETHEUS_RULE_METRICS = (
     "daari_guardrail_trips_total",
     "daari_virtual_keys",
     "daari_cache_invalidate_total",
+    "daari_schema_ok",
+    "daari_systemone_breaker_total",
 )
 
 
@@ -439,6 +441,8 @@ class TestHelmPrometheusRules:
         assert "DaariGuardrailTripSpike" in alert_names
         assert "DaariKeysExpiringSoon" in alert_names
         assert "DaariCacheInvalidateErrors" in alert_names
+        assert "DaariSchemaLagged" in alert_names
+        assert "DaariSystemoneBreakerSpike" in alert_names
         for group in groups:
             for alert in group.get("rules") or []:
                 if "alert" not in alert:
