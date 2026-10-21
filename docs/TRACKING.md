@@ -7647,6 +7647,14 @@ unchanged. Covered by `tests/unit/test_anthropic_gateway.py` and
 admin `POST /v1/daari/systemone/breaker/reset` closes circuits with audit.
 Covered by `tests/unit/test_systemone_upstream.py`.
 
+### LiteLLM 1.107.0 compromise advisory; GA floor 1.106.2 ([#1848](https://github.com/naveenreddyalka/daari/issues/1848))
+
+<!-- tracking:#1848 -->
+**Status:** Done (2026-10-21). `compare-litellm.md` pins the stable floor at
+**1.106.2 GA** and rewrites the 1.107 section as a do-not-install supply-chain
+advisory (Aikido link; daari does not depend on LiteLLM). Covered by
+`tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

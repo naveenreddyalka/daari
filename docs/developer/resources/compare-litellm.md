@@ -52,8 +52,9 @@ this GA cut. daari does **not** ship those.
 ## LiteLLM 1.106.0 GA
 
 LiteLLM [v1.106.0](https://github.com/BerriAI/litellm/releases/tag/v1.106.0)
-(18 Oct 2026) is **GA**. The stable comparison floor is **1.106.0 GA**.
-The cut includes a native
+(18 Oct 2026) is **GA**. After same-day backports, the stable comparison
+floor is **[1.106.2 GA](https://github.com/BerriAI/litellm/releases/tag/v1.106.2)**.
+The 1.106 cut includes a native
 [decision-model guardrail](https://docs.litellm.ai/docs/proxy/guardrails/decision_model)
 (`guardrail: decision_model`): yes/no questions against any `/v1/decisions`
 model, blocking or logging at a probability threshold.
@@ -64,11 +65,19 @@ operators who pull clef or nimble. daari also does **not** ship LiteLLM's
 cosign image signing, one-command Docker quickstart, or JWT
 `auto_register_map_existing_key`. stdio MCP stays N/A (no stdio transport).
 
-## LiteLLM 1.107 RC (watch)
+## LiteLLM 1.107.0 compromise (do not install)
 
-LiteLLM [v1.107.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.107.0-rc.1)
-(18 Oct 2026) is **prerelease**. The stable comparison floor stays
-**1.106.0 GA**. Do not treat 1.107 features (including
-`agent_access_default_deny`) as the comparison bar until that line is GA.
+On 2026-10-21, LiteLLM **v1.107.0** PyPI wheels and the official Docker image
+were **compromised** with an infostealer and RAT
+([Aikido write-up](https://www.aikido.dev/blog/litellm-compromised-infostealer-rat)).
+PyPI quarantined the version; the Docker image was removed from Docker Hub /
+GHCR. Indicators include `/tmp/.pc_once_*` and `/tmp/remote_code_loader.lock`.
+
+**Do not** `pip install litellm==1.107.0` or pull `litellm/litellm:1.107.0`.
+Stay on LiteLLM **1.106.2** (or skip LiteLLM entirely). Treat 1.107.0 as
+unsafe / do-not-install — not a feature comparison bar.
+
+daari does **not** depend on LiteLLM at runtime; the local-first install path
+never pulled the poisoned artifact.
 
 Measured on the same Ollama corpus: [benchmark vs LiteLLM](benchmark-vs-litellm.md). Short matrix: [compare](compare.md).
