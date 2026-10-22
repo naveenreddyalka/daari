@@ -1090,6 +1090,10 @@ class ModelPrice(BaseModel):
     cache_write_1h_per_1m: float | None = None
     # Explicit 5m / default cache-write rate (e.g. Haiku 5.5 $0.125 = 1.25×).
     cache_write_per_1m: float | None = None
+    # OpenAI Responses prompt-cache write totals (not surcharges): 1.25× / 2.5×
+    # input for GPT-5.6+ at 30m / 12h (#1843).
+    cache_write_30m_per_1m: float | None = None
+    cache_write_12h_per_1m: float | None = None
     # Long-context tier: once prompt tokens reach the threshold, the whole
     # request is billed at the above-* rates (#411 / gpt-6-astra >272K).
     input_threshold_tokens: int | None = None
@@ -1254,10 +1258,13 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
     # OpenAI standard short-context tier. gpt-5.6 is the Sol alias.
     # Sol is the promotional rate published through 2026-11-21 ($4/$20).
     # Above 272K input tokens the whole request bills at 2× input / 1.5× output.
+    # Prompt-cache writes: 30m = 1.25× input, 12h = 2.5× input (#1843).
     "gpt-6-astra": {
         "input_per_1m": 10.00,
         "output_per_1m": 50.00,
         "cached_input_per_1m": 1.00,
+        "cache_write_30m_per_1m": 12.50,
+        "cache_write_12h_per_1m": 25.00,
         "input_threshold_tokens": 272_000,
         "above_input_per_1m": 20.00,
         "above_output_per_1m": 75.00,
@@ -1270,6 +1277,8 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "output_per_1m": 10.00,
         "cached_input_per_1m": 0.10,
         "cache_write_1h_per_1m": 2.50,
+        "cache_write_30m_per_1m": 2.50,
+        "cache_write_12h_per_1m": 5.00,
     },
     # OpenAI chat-latest — rolling alias for ChatGPT Instant (updated 2026-10-07).
     # Published rates $5 / $0.50 cached / $30; underlying snapshot moves — do not
@@ -1279,6 +1288,8 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "input_per_1m": 5.00,
         "output_per_1m": 30.00,
         "cached_input_per_1m": 0.50,
+        "cache_write_30m_per_1m": 6.25,
+        "cache_write_12h_per_1m": 12.50,
     },
     # OpenAI gpt-6-luna chat/responses: $0.10 / 1M input, $0.01 cached,
     # $0.50 / 1M output. POST /v1/decisions bills the same id input-only
@@ -1290,11 +1301,37 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "input_per_1m": 0.10,
         "output_per_1m": 0.50,
         "cached_input_per_1m": 0.01,
+        "cache_write_30m_per_1m": 0.125,
+        "cache_write_12h_per_1m": 0.25,
     },
-    "gpt-5.6": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
-    "gpt-5.6-sol": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
-    "gpt-5.6-terra": {"input_per_1m": 2.00, "output_per_1m": 12.00, "cached_input_per_1m": 0.20},
-    "gpt-5.6-luna": {"input_per_1m": 0.20, "output_per_1m": 1.20, "cached_input_per_1m": 0.02},
+    "gpt-5.6": {
+        "input_per_1m": 4.00,
+        "output_per_1m": 20.00,
+        "cached_input_per_1m": 0.40,
+        "cache_write_30m_per_1m": 5.00,
+        "cache_write_12h_per_1m": 10.00,
+    },
+    "gpt-5.6-sol": {
+        "input_per_1m": 4.00,
+        "output_per_1m": 20.00,
+        "cached_input_per_1m": 0.40,
+        "cache_write_30m_per_1m": 5.00,
+        "cache_write_12h_per_1m": 10.00,
+    },
+    "gpt-5.6-terra": {
+        "input_per_1m": 2.00,
+        "output_per_1m": 12.00,
+        "cached_input_per_1m": 0.20,
+        "cache_write_30m_per_1m": 2.50,
+        "cache_write_12h_per_1m": 5.00,
+    },
+    "gpt-5.6-luna": {
+        "input_per_1m": 0.20,
+        "output_per_1m": 1.20,
+        "cached_input_per_1m": 0.02,
+        "cache_write_30m_per_1m": 0.25,
+        "cache_write_12h_per_1m": 0.50,
+    },
     # Google Gemini API intro rate through 2026-12-31 ($1.50/$7.50 after).
     # https://ai.google.dev/gemini-api/docs/pricing
     "gemini-3.8-flash": {

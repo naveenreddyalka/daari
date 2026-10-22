@@ -1270,6 +1270,8 @@ class Router:
         from daari.observability.spend import SpendContext, bind_spend_context
 
         meta = request.meta
+        from daari.router.anthropic_messages import request_cache_ttl
+
         bind_spend_context(
             SpendContext(
                 key_id=getattr(meta, "key_id", None) or "",
@@ -1282,6 +1284,7 @@ class Router:
                 region_pin=getattr(meta, "region_pin", None),
                 pricing=self.pricing,
                 fallback_per_1k=float(self.frontier_price_per_1k_tokens or 0.002),
+                cache_ttl=request_cache_ttl(request),
             )
         )
 
@@ -1318,6 +1321,31 @@ class Router:
             bound.usage_speed = reported_speed
         if bound is not None:
             bound.tool_cost_usd = float(getattr(response.daari_meta, "tool_cost_usd", 0.0) or 0.0)
+            from daari.router.anthropic_messages import request_cache_ttl
+
+            bound.cache_ttl = request_cache_ttl(request)
+            bound.cache_write_tokens = int(response.daari_meta.cache_write_tokens or 0)
+            bound.cached_tokens = int(response.daari_meta.cached_tokens or 0)
+        # When the provider omitted usage.cost, bill from pricing + request TTL (#1843).
+        if (
+            response.daari_meta.cost_usd is None
+            and (response.daari_meta.tier or "").upper() == "L6"
+        ):
+            from daari.router.anthropic_messages import request_cache_ttl
+
+            response.daari_meta.cost_usd = cost_usd(
+                response.daari_meta.model or response.model,
+                input_tokens,
+                output_tokens,
+                self.pricing,
+                fallback_per_1k=float(self.frontier_price_per_1k_tokens or 0.002),
+                cached_input_tokens=int(response.daari_meta.cached_tokens or 0),
+                cache_write_tokens=int(response.daari_meta.cache_write_tokens or 0),
+                cache_ttl=request_cache_ttl(request),
+                service_tier=getattr(request.sampling, "service_tier", None),
+                region_pin=getattr(request.meta, "region_pin", None),
+                usage_speed=getattr(response.daari_meta, "usage_speed", None),
+            )
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,

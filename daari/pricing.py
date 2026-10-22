@@ -181,6 +181,8 @@ class ResolvedPrice:
     output_per_1m: float
     cached_input_per_1m: float | None = None
     cache_write_1h_per_1m: float | None = None
+    cache_write_30m_per_1m: float | None = None
+    cache_write_12h_per_1m: float | None = None
     cache_write_per_1m: float | None = None
     is_fallback: bool = False
     input_threshold_tokens: int | None = None
@@ -341,12 +343,22 @@ def cost_usd(
 
 
 def _cache_write_rate(price: ResolvedPrice, cache_ttl: str | None) -> float:
-    """1h TTL uses cache_write_1h_per_1m; missing/5m keeps today's input rate.
+    """TTL-keyed write rates; missing/5m keeps today's input (or cache_write_per_1m).
 
-    ``cache_write_per_1m`` (including 0) overrides the non-1h write rate so a
-    path can bill cache writes at $0 without changing chat models.
+    OpenAI Responses ``30m`` / ``12h`` use ``cache_write_30m_per_1m`` /
+    ``cache_write_12h_per_1m`` (1.25× / 2.5× input totals) (#1843). Anthropic
+    ``1h`` uses ``cache_write_1h_per_1m``. ``cache_write_per_1m`` (including 0)
+    overrides the non-TTL write rate so a path can bill writes at $0.
     """
     ttl = (cache_ttl or "").strip().lower()
+    if ttl in {"12h", "12hr"}:
+        if price.cache_write_12h_per_1m is not None:
+            return float(price.cache_write_12h_per_1m)
+        return float(price.input_per_1m) * 2.5
+    if ttl in {"30m", "30min"}:
+        if price.cache_write_30m_per_1m is not None:
+            return float(price.cache_write_30m_per_1m)
+        return float(price.input_per_1m) * 1.25
     if ttl in {"1h", "1hr", "60m"}:
         if price.cache_write_1h_per_1m is not None:
             return float(price.cache_write_1h_per_1m)
@@ -362,6 +374,8 @@ def _resolved_from_entry(entry: object, *, input_tokens: int = 0) -> ResolvedPri
     output_rate = float(_field(entry, "output_per_1m"))
     cached_rate = _optional_field(entry, "cached_input_per_1m")
     write_1h = _optional_field(entry, "cache_write_1h_per_1m")
+    write_30m = _optional_field(entry, "cache_write_30m_per_1m")
+    write_12h = _optional_field(entry, "cache_write_12h_per_1m")
     write_rate = _optional_field(entry, "cache_write_per_1m")
     threshold = _optional_int_field(entry, "input_threshold_tokens")
     above_input = _optional_field(entry, "above_input_per_1m")
@@ -376,6 +390,10 @@ def _resolved_from_entry(entry: object, *, input_tokens: int = 0) -> ResolvedPri
             cached_rate = cached_rate * (above_input / input_rate)
         if write_1h is not None and input_rate > 0:
             write_1h = write_1h * (above_input / input_rate)
+        if write_30m is not None and input_rate > 0:
+            write_30m = write_30m * (above_input / input_rate)
+        if write_12h is not None and input_rate > 0:
+            write_12h = write_12h * (above_input / input_rate)
         if write_rate is not None and input_rate > 0:
             write_rate = write_rate * (above_input / input_rate)
         input_rate = above_input
@@ -386,6 +404,8 @@ def _resolved_from_entry(entry: object, *, input_tokens: int = 0) -> ResolvedPri
         output_per_1m=output_rate,
         cached_input_per_1m=cached_rate,
         cache_write_1h_per_1m=write_1h,
+        cache_write_30m_per_1m=write_30m,
+        cache_write_12h_per_1m=write_12h,
         cache_write_per_1m=write_rate,
         is_fallback=False,
         input_threshold_tokens=threshold,
