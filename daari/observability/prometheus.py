@@ -130,6 +130,38 @@ def render_prometheus(
                 f"daari_cache_invalidate_entries_removed_total{_labels(layer=str(layer))} "
                 f"{int(count)}"
             )
+    gzip = snap.get("gzip") or {}
+    lines.append(
+        "# HELP daari_gzip_total Buffered JSON gzip outcomes "
+        '(result=compressed|skipped; skipped reasons: below_min|not_json|already_encoded|streaming).'
+    )
+    lines.append("# TYPE daari_gzip_total counter")
+    if not gzip:
+        lines.append("daari_gzip_total 0")
+    else:
+        for key, count in sorted(gzip.items()):
+            if key == "compressed":
+                lines.append(f'daari_gzip_total{_labels(result="compressed")} {int(count)}')
+                continue
+            result, _, reason = str(key).partition(":")
+            if result != "skipped" or not reason:
+                continue
+            lines.append(
+                f"daari_gzip_total{_labels(result=result, reason=reason)} {int(count)}"
+            )
+    lines.append(
+        "# HELP daari_gzip_uncompressed_bytes_total "
+        "Uncompressed JSON bytes on responses that were gzip-compressed."
+    )
+    lines.append("# TYPE daari_gzip_uncompressed_bytes_total counter")
+    lines.append(f"daari_gzip_uncompressed_bytes_total {int(snap.get('gzip_bytes_before', 0))}")
+    lines.append(
+        "# HELP daari_gzip_compressed_bytes_total "
+        "Compressed JSON bytes after gzip (compressed responses only)."
+    )
+    lines.append("# TYPE daari_gzip_compressed_bytes_total counter")
+    lines.append(f"daari_gzip_compressed_bytes_total {int(snap.get('gzip_bytes_after', 0))}")
+
     lines.append("# HELP daari_upstream_retries_total Transient upstream failures retried.")
     lines.append("# TYPE daari_upstream_retries_total counter")
     lines.append(f"daari_upstream_retries_total {snap.get('upstream_retries', 0)}")

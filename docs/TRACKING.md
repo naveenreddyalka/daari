@@ -7719,6 +7719,15 @@ L6 Anthropic forward does not. Covered by
 `tests/unit/test_anthropic_thinking_parity.py`; metrics-prometheus guide lists
 the kind.
 
+### Prometheus counters for gzip JSON compression ([#1830](https://github.com/naveenreddyalka/daari/issues/1830))
+
+<!-- tracking:#1830 -->
+**Status:** Done (2026-10-22). `GzipJsonMiddleware` records
+`daari_gzip_total{result,reason?}` plus uncompressed/compressed byte counters
+on `/metrics`; skip reasons are `below_min` / `not_json` / `already_encoded` /
+`streaming`. Covered by `tests/unit/test_gzip_json.py`; metrics-prometheus
+guide lists the series.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
