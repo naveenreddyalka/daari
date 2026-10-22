@@ -146,13 +146,33 @@ def _remember_stream_token_counts(
     prefer_output: bool,
 ) -> None:
     raw_in = usage.get("input_tokens")
+    if raw_in is None:
+        raw_in = usage.get("prompt_tokens")
     raw_out = usage.get("output_tokens")
+    if raw_out is None:
+        raw_out = usage.get("completion_tokens")
     if isinstance(raw_in, int) and not isinstance(raw_in, bool):
         if executor.last_stream_input_tokens is None or prefer_output:
             executor.last_stream_input_tokens = raw_in
     if isinstance(raw_out, int) and not isinstance(raw_out, bool):
         if executor.last_stream_output_tokens is None or prefer_output:
             executor.last_stream_output_tokens = raw_out
+    # Cache dims from Anthropic (cache_creation_*) or OpenAI (cache_write_tokens) (#1865).
+    _, cached, write = usage_cost_and_cache({"usage": usage})
+    if cached is not None:
+        if executor.last_stream_cached_tokens is None or prefer_output:
+            executor.last_stream_cached_tokens = cached
+    if write:
+        if executor.last_stream_cache_write_tokens is None or prefer_output:
+            executor.last_stream_cache_write_tokens = write
+
+
+def _remember_openai_stream_usage(executor: FrontierExecutor, chunk: dict[str, Any]) -> None:
+    """Keep final-chunk usage (stream_options.include_usage) for L6 stream billing (#1865)."""
+    usage = chunk.get("usage") if isinstance(chunk.get("usage"), dict) else None
+    if usage is None:
+        return
+    _remember_stream_token_counts(executor, usage, prefer_output=True)
 
 
 @dataclass
@@ -264,6 +284,15 @@ class FrontierExecutor:
         }
         if request.temperature is not None:
             payload["temperature"] = request.temperature
+        # Final-chunk usage (incl. cache_write_tokens) for stream billing (#1865).
+        if stream:
+            options = payload.get("stream_options")
+            if not isinstance(options, dict):
+                options = {}
+            else:
+                options = dict(options)
+            options["include_usage"] = True
+            payload["stream_options"] = options
         # Stream and non-stream must both forward tools (#1006). tool_choice
         # already arrives via sampling.openai_payload().
         if request.tools:
@@ -375,6 +404,8 @@ class FrontierExecutor:
         self.last_stream_usage_speed = None
         self.last_stream_input_tokens = None
         self.last_stream_output_tokens = None
+        self.last_stream_cached_tokens = None
+        self.last_stream_cache_write_tokens = None
         self.last_fast_rate_headers = {}
         self.last_fast_degraded = False
 
@@ -467,6 +498,8 @@ class FrontierExecutor:
                         chunk = json.loads(data)
                     except ValueError:
                         continue
+                    if isinstance(chunk, dict):
+                        _remember_openai_stream_usage(self, chunk)
                     for choice in chunk.get("choices", []):
                         delta_obj = choice.get("delta") or {}
                         tool_calls = delta_obj.get("tool_calls")

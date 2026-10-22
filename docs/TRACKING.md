@@ -7736,6 +7736,15 @@ opt-in Flint L4 recipe (`models.l4=flint`, Ollama ≥ 0.40.8; Mac-first in rc0);
 doctor tips when L4 is Flint on an older Ollama. Covered by
 `tests/test_setup.py`; ollama backend guide notes the recipe.
 
+### Streamed L6 cache-write + TTL billing ([#1865](https://github.com/naveenreddyalka/daari/issues/1865))
+
+<!-- tracking:#1865 -->
+**Status:** Done (2026-10-22). Frontier stream recall keeps `cache_write_tokens`
+(and cached reads); OpenAI streams request `include_usage`; `stream_usage_cost`
+applies request TTL (30m / 12h) so streamed cost matches non-stream. Spend /
+usage ledger and cost headers get the write dims. Covered by
+`tests/unit/test_openai_cache_ttl_pricing.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
