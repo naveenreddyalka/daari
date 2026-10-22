@@ -10,6 +10,14 @@ import yaml
 
 from daari.config.settings import Settings
 
+# Recursive Flint — optional L4 coding MoE (Ollama ≥ 0.40.8; Mac-first in rc0) (#1852).
+FLINT_MODEL = "flint"
+FLINT_OLLAMA_FLOOR = (0, 40, 8)
+FLINT_RECIPE_NOTE = (
+    "Optional Flint L4 coding recipe (models.l4=flint). Requires Ollama ≥ 0.40.8; "
+    "0.40.8-rc0 is Mac-first — other GPUs follow later RCs. Pull with: ollama pull flint"
+)
+
 
 @dataclass
 class ModelSetupResult:
@@ -139,6 +147,33 @@ def warm_configured_models(
     return [do_warm(model) for model in configured_warm_models(settings)]
 
 
+def apply_flint_l4_recipe(
+    *,
+    config_path: Path | None = None,
+    dry_run: bool = False,
+) -> ModelSetupResult:
+    """Set ``models.l4`` to Flint without pulling weights (#1852)."""
+    path = config_path or Path.home() / ".daari" / "config.yaml"
+    if dry_run:
+        current_l4: str | None = None
+        if path.is_file():
+            with path.open(encoding="utf-8") as handle:
+                loaded = yaml.safe_load(handle) or {}
+            if isinstance(loaded, dict):
+                models = loaded.get("models") or {}
+                if isinstance(models, dict):
+                    raw = models.get("l4")
+                    current_l4 = str(raw) if raw is not None else None
+        changed = current_l4 != FLINT_MODEL
+        return ModelSetupResult(
+            tier="l4",
+            model=FLINT_MODEL,
+            config_path=path,
+            changed=changed,
+        )
+    return write_models_config(FLINT_MODEL, tier="l4", config_path=path)
+
+
 def write_models_config(
     model: str | None = None,
     *,
@@ -196,6 +231,7 @@ def setup_models_interactive(
     tier: str = "l3",
     model: str | None = None,
     list_only: bool = False,
+    flint: bool = False,
     config_path: Path | None = None,
     httpx_client: httpx.Client | None = None,
 ) -> ModelSetupResult | None:
@@ -209,6 +245,12 @@ def setup_models_interactive(
         typer.echo(f"  l4: {cfg.models.l4}")
         typer.echo(f"  routing.prefer: {cfg.routing.prefer}")
         return None
+
+    if flint:
+        typer.echo(FLINT_RECIPE_NOTE)
+        result = apply_flint_l4_recipe(config_path=path, dry_run=False)
+        typer.echo(f"Set models.l4 = {FLINT_MODEL} in {path}")
+        return result
 
     if model is not None:
         result = write_models_config(model, tier=tier, config_path=path)
@@ -265,4 +307,13 @@ def setup_models_interactive(
     )
     typer.echo(f"Wrote models.{tier} = {picked} to {path}")
     typer.echo(f"Wrote routing.prefer = {prefer} to {path}")
+
+    if tier == "l4" and picked != FLINT_MODEL:
+        typer.echo(FLINT_RECIPE_NOTE)
+        if typer.confirm(
+            f"Apply optional Flint L4 coding recipe (set models.l4={FLINT_MODEL})?",
+            default=False,
+        ):
+            result = apply_flint_l4_recipe(config_path=path, dry_run=False)
+            typer.echo(f"Set models.l4 = {FLINT_MODEL} in {path}")
     return result

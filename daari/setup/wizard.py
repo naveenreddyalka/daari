@@ -98,7 +98,18 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
             raise typer.Exit(code=1)
         setup_models_interactive(cfg, tier="l3")
         if typer.confirm("Configure L4 model as well?", default=True):
+            # Interactive L4 path also offers the optional Flint coding recipe (#1852).
             setup_models_interactive(cfg, tier="l4")
+        else:
+            from daari.setup.models import FLINT_MODEL, FLINT_RECIPE_NOTE, apply_flint_l4_recipe
+
+            typer.echo(FLINT_RECIPE_NOTE)
+            if typer.confirm(
+                f"Apply optional Flint L4 coding recipe (set models.l4={FLINT_MODEL})?",
+                default=False,
+            ):
+                apply_flint_l4_recipe(dry_run=False)
+                typer.echo(f"Set models.l4 = {FLINT_MODEL}")
     elif choice == "5":
         setup_openai_compat(cfg, write_env_example=True)
     elif choice == "6":

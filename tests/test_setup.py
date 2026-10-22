@@ -23,7 +23,12 @@ from daari.clients.vscode.recipe import VSCodeSetupRecipe
 from daari.config.settings import Settings
 from daari.setup.backup import create_backup, latest_backup, restore_latest_backup
 from daari.setup.jsonc import load_jsonc
-from daari.setup.models import fetch_ollama_models, write_models_config
+from daari.setup.models import (
+    FLINT_MODEL,
+    apply_flint_l4_recipe,
+    fetch_ollama_models,
+    write_models_config,
+)
 from daari.setup.tunnel import (
     cloudflared_tunnel_ready_from_logs,
     find_cloudflared_metrics_port,
@@ -251,6 +256,25 @@ class TestSetupModels:
 
         models = fetch_ollama_models("http://127.0.0.1:11434", client=mock)
         assert models == ["llama3.2:3b"]
+
+    def test_flint_l4_recipe_dry_run_does_not_write(self, tmp_path):
+        """Optional Flint L4 recipe dry-run leaves config untouched (#1852)."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("models:\n  l3: llama3.2:3b\n  l4: llama3.1:8b\n", encoding="utf-8")
+        before = config_path.read_text(encoding="utf-8")
+        plan = apply_flint_l4_recipe(config_path=config_path, dry_run=True)
+        assert plan.changed is True
+        assert plan.tier == "l4"
+        assert plan.model == FLINT_MODEL
+        assert config_path.read_text(encoding="utf-8") == before
+
+    def test_flint_l4_recipe_apply_sets_l4(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        result = apply_flint_l4_recipe(config_path=config_path, dry_run=False)
+        assert result.changed is True
+        assert result.model == FLINT_MODEL
+        text = config_path.read_text(encoding="utf-8")
+        assert f"l4: {FLINT_MODEL}" in text or f'l4: "{FLINT_MODEL}"' in text
 
 
 class TestSetupCLI:

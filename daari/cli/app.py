@@ -3168,9 +3168,16 @@ def setup_models(
     tier: str = typer.Option("l3", "--tier", help="Model tier to configure (l3|l4)."),
     model: str | None = typer.Option(None, "--model", help="Model name (non-interactive)."),
     list_models: bool = typer.Option(False, "--list", help="Show current tier map."),
+    flint: bool = typer.Option(
+        False,
+        "--flint",
+        help="Apply optional Flint L4 coding recipe (models.l4=flint; Ollama ≥ 0.40.8).",
+    ),
 ) -> None:
     """Pick an Ollama model for a daari tier."""
-    setup_models_interactive(get_settings(), tier=tier, model=model, list_only=list_models)
+    setup_models_interactive(
+        get_settings(), tier=tier, model=model, list_only=list_models, flint=flint
+    )
 
 
 @models_app.command("warm")
