@@ -1177,6 +1177,11 @@ class Router:
                         "tier": response.daari_meta.tier,
                     },
                 )
+                # Catalog capability requested on a tier that cannot honor it (#1851).
+                if "thinking.between_tools" in dropped:
+                    metrics = getattr(self, "metrics", None)
+                    if metrics is not None and hasattr(metrics, "record_soft_warning"):
+                        metrics.record_soft_warning("thinking_between_tools_stripped")
         if response.daari_meta.task_type is None:
             response.daari_meta.task_type = profile.category
         if response.daari_meta.complexity is None:
