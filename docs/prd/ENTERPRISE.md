@@ -50,7 +50,7 @@ Prom). Flint is not yet a setup/models recipe.
 | 173 | systemone breaker truth: doctor via daemon stats, `/ready` component, admin reset | 5 | 2 | Kong/Envoy upstream state | Fenced judge hop visible and clearable on the box | Open |
 | 174 | Bill OpenAI prompt-cache writes by TTL (30m 1.25× / 12h 2.5×) | 4 | 2 | OpenAI invoice / LiteLLM | Ledger/budgets match the provider invoice | Open |
 | 175 | Forward `anthropic-user-profile-id` + map end users | 4 | 2 | — (Anthropic 10-20) | Enforcement blast-radius shrinks to one tenant | Filed [#1844](https://github.com/naveenreddyalka/daari/issues/1844) |
-| 176 | Team-scope cache invalidate; audit offline CLI | 4 | 2 | — (tenancy depth) | Per-tenant cache control with local audit | Open |
+| 176 | Team-scope cache invalidate; audit offline CLI | 4 | 2 | — (tenancy depth) | Per-tenant cache control with local audit | Filed [#1845](https://github.com/naveenreddyalka/daari/issues/1845) |
 | 177 | Facade `/api/show` parity: Ollama 0.40.7 fields | 3 | 1 | Ollama | Ollama-native clients notice nothing | Open |
 | 171 | compare-litellm RC.2 watchables (superseded by row 178) | 2 | 1 | LiteLLM release notes | Superseded — do not implement as written | Superseded |
 | 172 | Prometheus counters for gzip JSON compression | 2 | 1 | Kong/Envoy compression metrics | Accept-Encoding payoff on-box | Open |

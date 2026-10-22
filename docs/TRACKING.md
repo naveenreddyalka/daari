@@ -7683,6 +7683,15 @@ wins). Forwarded on the L6 Anthropic hop and audited via request log +
 `daari_meta.anthropic_user_profile_id`. Covered by
 `tests/unit/test_anthropic_user_profile.py`.
 
+### Team-scope cache invalidate + offline CLI audit ([#1845](https://github.com/naveenreddyalka/daari/issues/1845))
+
+<!-- tracking:#1845 -->
+**Status:** Done (2026-10-22). Team-pinned SSO admins have invalidate rewritten
+to their team (mismatch → 403); unpinned admins unchanged. Offline
+`daari cache invalidate` writes `cache.invalidate` with `offline: true`.
+Covered by `tests/unit/test_cache_invalidate.py`; org-cache guide documents
+the scoping rule.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -824,6 +824,22 @@ def _inventory_team_scope(request: Request, role: str, team_id: str | None) -> s
     return _admin_team_scope(request, role, team_id)
 
 
+def _invalidate_team_scope(request: Request, team_id: str | None) -> str | None:
+    """Force team-pinned admins onto their team for cache invalidate (#1845).
+
+    Unpinned admins keep today's behavior (any ``team_id`` or fleet-wide wipe).
+    A pinned admin's empty body is rewritten to their team; a mismatching
+    explicit ``team_id`` is 403.
+    """
+    own = (_caller_team_id(request) or "").strip() or None
+    wanted = (team_id or "").strip() or None
+    if not own:
+        return wanted
+    if wanted and wanted != own:
+        raise HTTPException(status_code=403, detail="team scope denied")
+    return own
+
+
 def _stats_team_rate_limits(
     request: Request, *, team_id: str | None = None
 ) -> list[dict[str, Any]]:
@@ -2448,6 +2464,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             speed_s = speed.strip().lower() if isinstance(speed, str) and speed.strip() else None
             if speed_s is not None and speed_s not in {"fast", "standard"}:
                 raise HTTPException(status_code=422, detail="speed must be fast or standard")
+            team_s = _invalidate_team_scope(request, team_s)
             l0 = getattr(ctx.router, "cache", None)
             l1 = getattr(ctx.router, "semantic_cache", None)
             from daari.observability.metrics import cache_invalidate_scope
