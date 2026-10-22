@@ -295,6 +295,11 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 "modelfile": f"# daari virtual model: {name}",
                 "parameters": "",
                 "template": "",
+                # Ollama ≥0.40.7 show fields (#1846); empty renderer/parser +
+                # template_source "model" match a templateless native model.
+                "renderer": "",
+                "parser": "",
+                "template_source": "model",
                 "details": entry["details"],
                 "model_info": {"general.architecture": "daari-router"},
                 "capabilities": entry.get("capabilities", caps),

@@ -25,8 +25,11 @@ the mapped tier (`completion`, plus `tools` / `vision` / `thinking` when the
 catalog supports them), so Desktop does not disable tools/vision UI against the
 facade. When `thinking` is in capabilities, `/api/show` also returns a
 `thinking` controls object (`values`: `low` / `medium` / `high`, `default`:
-`medium`) so clients can discover allowed think levels. Same note:
-[JetBrains](intellij.md).
+`medium`) so clients can discover allowed think levels. Ollama **0.40.7+**
+clients also read `renderer`, `parser`, and `template_source` on `/api/show`;
+the facade returns stable stubs (`""` / `""` / `"model"`) so feature detection
+matches a templateless native model. `/api/tags` is unchanged (show-only).
+Same note: [JetBrains](intellij.md).
 
 Optional: send `X-Daari-Client-Id: chatgpt-desktop` when the client allows
 custom headers so `daari report` attributes traffic correctly.
