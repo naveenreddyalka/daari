@@ -543,3 +543,77 @@ def test_daemon_invalidate_forwards_speed(monkeypatch, settings):
     assert ok is True
     assert seen["json"] == {"speed": "fast"}
     assert "Invalidated 1" in detail
+
+
+@pytest.mark.asyncio
+async def test_team_pinned_admin_invalidate_auto_scopes_empty_body(settings, tmp_path):
+    """SSO admin with team_id=eng + {} body clears only eng rows (#1845)."""
+    from daari.enterprise.sso import mint_dev_token
+
+    settings.server.api_key = "master-sekret"
+    settings.enterprise.sso.enabled = True
+    settings.enterprise.sso.secret = "sso-hs-secret"
+    settings.enterprise.sso.issuer = "daari-dev"
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    eng = _scoped_req("eng-row", scope="team", team_id="eng")
+    ops = _scoped_req("ops-row", scope="team", team_id="ops")
+    app.state.ctx.router.cache.put(eng, _resp("e", "llama"))
+    app.state.ctx.router.cache.put(ops, _resp("o", "llama"))
+    token = mint_dev_token(
+        subject="lead",
+        role="admin",
+        secret="sso-hs-secret",
+        issuer="daari-dev",
+        extra={"team_id": "eng"},
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await client.post(
+            "/v1/daari/cache/invalidate",
+            json={"team_id": "ops"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert denied.status_code == 403
+
+        ok = await client.post(
+            "/v1/daari/cache/invalidate",
+            json={},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert ok.status_code == 200
+    assert ok.json()["l0_removed"] == 1
+    assert app.state.ctx.router.cache.get(eng) is None
+    assert app.state.ctx.router.cache.get(ops) is not None
+
+
+def test_offline_cli_invalidate_writes_audit_row(monkeypatch, settings, tmp_path):
+    """Offline CLI invalidate records cache.invalidate with offline: true (#1845)."""
+    from daari.enterprise.audit import AuditLog
+
+    settings.cache.l0.path = str(tmp_path / "l0")
+    settings.cache.l1.path = str(tmp_path / "l1")
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+    monkeypatch.setattr("daari.cli.app._daemon_is_running", lambda _settings: False)
+    cache = ExactCache(str(settings.l0_cache_path), enabled=True)
+    req = _scoped_req("disk", scope="team", team_id="ops")
+    cache.put(req, _resp("gone", "llama"))
+    result = CliRunner().invoke(cli_app, ["cache", "invalidate", "--team", "ops"])
+    assert result.exit_code == 0, result.stdout
+    rows = AuditLog(settings.enterprise.audit_path).list(action="cache.invalidate")
+    assert len(rows) == 1
+    detail = rows[0]["detail"]
+    assert detail["offline"] is True
+    assert detail["team_id"] == "ops"
+    assert detail["l0_removed"] == 1
+    assert detail["scope"] == "team"
+
+
+def test_org_cache_doc_mentions_team_pin_scope():
+    text = (
+        __import__("pathlib").Path(__file__).resolve().parents[2]
+        / "docs/developer/guides/features/org-cache.md"
+    ).read_text(encoding="utf-8")
+    assert "team-pinned" in text.lower() or "team_id claim" in text
+    assert "403" in text
+    assert "offline: true" in text

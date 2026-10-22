@@ -3434,6 +3434,32 @@ def cache_invalidate(
     l1_removed = l1.invalidate(
         model=model, entry_hash=entry_hash, team_id=team, key_id=key, speed=speed_s
     )
+    from daari.observability.metrics import cache_invalidate_scope
+    import os
+
+    scope = cache_invalidate_scope(
+        model=model,
+        entry_hash=entry_hash,
+        team_id=team,
+        key_id=key,
+        speed=speed_s,
+    )
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="cache.invalidate",
+        detail={
+            "scope": scope,
+            "l0_removed": l0_removed,
+            "l1_removed": l1_removed,
+            "model": model or "",
+            "hash": entry_hash or "",
+            "team_id": team or "",
+            "key_id": key or "",
+            "speed": speed_s or "",
+            "offline": True,
+        },
+    )
     typer.echo(f"L0: removed {l0_removed}")
     typer.echo(f"L1: removed {l1_removed}")
 
