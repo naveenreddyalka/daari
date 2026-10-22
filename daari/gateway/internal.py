@@ -112,6 +112,8 @@ class RequestMeta(BaseModel):
     # Client anthropic-beta / anthropic-version forwarded on the L6 Anthropic leg (#455).
     anthropic_beta: str | None = None
     anthropic_version: str | None = None
+    # Anthropic user profile id for end-customer safety isolation (#1844).
+    anthropic_user_profile_id: str | None = None
     # Sanitized X-Request-ID (or generated) for spend/log correlation (#965).
     request_id: str | None = None
     # Decision-classifier hint (#1292). Not part of the L0/L1 cache key.
@@ -215,6 +217,8 @@ class DaariMeta(BaseModel):
     agent_usage: list[dict] | None = None
     # GenAI operation.name override for non-chat modalities (#1106).
     operation_name: str | None = None
+    # Forwarded Anthropic user-profile id (audit; id only) (#1844).
+    anthropic_user_profile_id: str | None = None
 
 
 class InternalResponse(BaseModel):

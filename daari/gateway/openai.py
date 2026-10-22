@@ -1022,6 +1022,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             apply_cost_tier(body, meta)
             # Virtual-key defaults (issue #111); headers keep precedence.
             from daari.providers.mcp_token_exchange import bearer_from_authorization
+            from daari.router.anthropic_messages import apply_anthropic_user_profile
             from daari.server.auth import apply_auth_claims_to_meta
 
             apply_auth_claims_to_meta(
@@ -1032,6 +1033,21 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             meta.authorization_bearer = bearer_from_authorization(
                 request.headers.get("authorization")
             )
+            apply_anthropic_user_profile(
+                meta,
+                client_header=request.headers.get("anthropic-user-profile-id"),
+                user_profiles=getattr(
+                    getattr(ctx.settings, "anthropic", None), "user_profiles", None
+                ),
+            )
+            if meta.anthropic_user_profile_id:
+                log_gateway_event(
+                    "anthropic_user_profile",
+                    {
+                        "anthropic_user_profile_id": meta.anthropic_user_profile_id,
+                        "request_id": request_id,
+                    },
+                )
             from daari.gateway.model_access import (
                 reject_disallowed_model,
                 reject_model_group_budget,

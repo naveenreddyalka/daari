@@ -59,6 +59,7 @@ def anthropic_headers(
     *,
     anthropic_beta: str | None = None,
     anthropic_version: str | None = None,
+    anthropic_user_profile_id: str | None = None,
 ) -> dict[str, str]:
     headers = {
         "x-api-key": api_key,
@@ -68,7 +69,40 @@ def anthropic_headers(
     beta = (anthropic_beta or "").strip()
     if beta:
         headers["anthropic-beta"] = beta
+    profile = (anthropic_user_profile_id or "").strip()
+    if profile:
+        headers["anthropic-user-profile-id"] = profile
     return headers
+
+
+def apply_anthropic_user_profile(
+    meta: Any,
+    *,
+    client_header: str | None = None,
+    user_profiles: dict[str, str] | None = None,
+) -> None:
+    """Resolve anthropic-user-profile-id onto RequestMeta (#1844).
+
+    Client header wins. Otherwise the first match among user / key_id /
+    team_id / client_id in ``user_profiles`` is injected.
+    """
+    client = (client_header or "").strip() or None
+    if client:
+        meta.anthropic_user_profile_id = client
+        return
+    if (getattr(meta, "anthropic_user_profile_id", None) or "").strip():
+        return
+    profiles = user_profiles or {}
+    if not profiles:
+        return
+    for attr in ("user", "key_id", "team_id", "client_id"):
+        key = (getattr(meta, attr, None) or "").strip()
+        if not key:
+            continue
+        mapped = (profiles.get(key) or "").strip()
+        if mapped:
+            meta.anthropic_user_profile_id = mapped
+            return
 
 
 def anthropic_headers_for_request(
@@ -81,7 +115,7 @@ def anthropic_headers_for_request(
 
     When ``output_config`` is present and the L6 model is Opus 4.5, inject
     ``effort-2025-11-24`` if the client did not already send it (#1230).
-    Opus 4.6+ does not need the beta.
+    Opus 4.6+ does not need the beta. Forwards ``anthropic-user-profile-id`` (#1844).
     """
     meta = request.meta
     beta = (meta.anthropic_beta or "").strip() or None
@@ -92,6 +126,7 @@ def anthropic_headers_for_request(
         api_key,
         anthropic_beta=beta,
         anthropic_version=meta.anthropic_version,
+        anthropic_user_profile_id=getattr(meta, "anthropic_user_profile_id", None),
     )
 
 
