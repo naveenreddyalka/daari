@@ -7710,6 +7710,15 @@ session API key and downloads a file; 403 shows an analyst-key message.
 Covered by `packages/web-ui/test/dashboard.test.js`; chargeback guide points at
 the control.
 
+### soft_warning when local strips thinking.between_tools ([#1851](https://github.com/naveenreddyalka/daari/issues/1851))
+
+<!-- tracking:#1851 -->
+**Status:** Done (2026-10-22). Local-tier drops of `thinking.between_tools` call
+`record_soft_warning("thinking_between_tools_stripped")` (stats + Prometheus);
+L6 Anthropic forward does not. Covered by
+`tests/unit/test_anthropic_thinking_parity.py`; metrics-prometheus guide lists
+the kind.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -4,19 +4,27 @@ Request-level `thinking` / `metadata` were dropped by `AnthropicRequest`;
 `top_k` reached local Ollama but not `to_anthropic_payload`.
 
 API version 2026-10-21 removes sampling params (#1849).
+Local strip of thinking.between_tools bumps soft_warnings (#1851).
 """
 
 from __future__ import annotations
 
+import pytest
+
+from daari.cache.exact import ExactCache
+from daari.cache.semantic import SemanticCache
 from daari.gateway.anthropic import AnthropicRequest
-from daari.gateway.internal import InternalRequest, Message, RequestMeta
+from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message, RequestMeta
 from daari.gateway.sampling import SamplingParams
+from daari.observability.metrics import Metrics
 from daari.router.anthropic_messages import (
     apply_anthropic_version_sampling_compat,
     to_anthropic_payload,
 )
 from daari.router.frontier import FrontierExecutor
 from daari.router.param_compat import FrontierParamCompatResult
+from daari.router.router import OllamaExecutor, Router
+from tests.conftest import NoopEmbedder
 
 
 THINKING = {"type": "enabled", "budget_tokens": 4096}
@@ -197,3 +205,91 @@ class TestPayloadEmission:
         assert isinstance(compat, FrontierParamCompatResult)
         for name in ("temperature", "top_p", "top_k"):
             assert name in compat.dropped_params
+
+
+def _between_tools_request() -> InternalRequest:
+    return InternalRequest(
+        messages=[Message(role="user", content="hi")],
+        model="llama3.2:3b",
+        sampling=SamplingParams.from_anthropic_body(
+            {"max_tokens": 16, "thinking": {"type": "between_tools"}}
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_local_between_tools_increments_soft_warning_once(tmp_path):
+    """Local strip of between_tools bumps soft_warnings exactly once (#1851)."""
+    metrics = Metrics()
+
+    async def fake_l3(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=1),
+        )
+
+    ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+    ollama.execute = fake_l3  # type: ignore[method-assign]
+    router = Router(
+        cache=ExactCache(str(tmp_path / "c"), enabled=False),
+        semantic_cache=SemanticCache(
+            path=str(tmp_path / "l1"), embedder=NoopEmbedder(), enabled=False
+        ),
+        ollama=ollama,
+        metrics=metrics,
+        confidence_threshold=0.0,
+    )
+    result = await router.route(_between_tools_request())
+    assert result.daari_meta.tier == "L3"
+    assert "thinking.between_tools" in (result.daari_meta.dropped_params or [])
+    assert metrics.soft_warnings.get("thinking_between_tools_stripped") == 1
+    await router.route(_between_tools_request())
+    assert metrics.soft_warnings.get("thinking_between_tools_stripped") == 2
+
+
+@pytest.mark.asyncio
+async def test_l6_between_tools_does_not_increment_soft_warning(tmp_path):
+    """L6 Anthropic forward keeps between_tools — no soft_warning (#1851)."""
+    metrics = Metrics()
+
+    async def fake_l3(request: InternalRequest) -> InternalResponse:
+        raise AssertionError("local must not run on web_search L6 path")
+
+    async def fake_l6(
+        request: InternalRequest,
+        *,
+        escalated_from: str,
+        local_confidence: float,
+    ) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="claude-sonnet-5-5",
+            daari_meta=DaariMeta(tier="L6", executor="frontier", latency_ms=1),
+        )
+
+    ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+    ollama.execute = fake_l3  # type: ignore[method-assign]
+    frontier = FrontierExecutor(
+        base_url="https://api.anthropic.com",
+        default_model="claude-sonnet-5-5",
+        api_key="sk-test",
+        provider="anthropic",
+    )
+    frontier.execute = fake_l6  # type: ignore[method-assign]
+    router = Router(
+        cache=ExactCache(str(tmp_path / "c"), enabled=False),
+        semantic_cache=SemanticCache(
+            path=str(tmp_path / "l1"), embedder=NoopEmbedder(), enabled=False
+        ),
+        ollama=ollama,
+        metrics=metrics,
+        frontier=frontier,
+        frontier_enabled=True,
+    )
+    request = _between_tools_request()
+    # Force L6 without local degrade (same as Anthropic forward path).
+    request.sampling.web_search_options = {"search_context_size": "medium"}
+    result = await router.route(request)
+    assert result.daari_meta.tier == "L6"
+    assert metrics.soft_warnings.get("thinking_between_tools_stripped") is None
