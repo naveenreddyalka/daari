@@ -1190,6 +1190,9 @@ class Router:
             response.daari_meta.service_tier = request.sampling.service_tier
         if getattr(request.meta, "region_pin", None) and response.daari_meta.region_pin is None:
             response.daari_meta.region_pin = request.meta.region_pin
+        profile_id = getattr(request.meta, "anthropic_user_profile_id", None)
+        if profile_id and response.daari_meta.anthropic_user_profile_id is None:
+            response.daari_meta.anthropic_user_profile_id = profile_id
         add_step(
             "served",
             tier=response.daari_meta.tier,

@@ -7673,6 +7673,16 @@ Covered by `tests/unit/test_anthropic_thinking_parity.py` and
 `prompt_cache_options` / breakpoints; ledger and `daari_meta.cost_usd` bill
 writes at the TTL rate. Covered by `tests/unit/test_openai_cache_ttl_pricing.py`.
 
+### Forward anthropic-user-profile-id + end-user map ([#1844](https://github.com/naveenreddyalka/daari/issues/1844))
+
+<!-- tracking:#1844 -->
+**Status:** Done (2026-10-22). Client `anthropic-user-profile-id` is captured on
+`/v1/messages` and OpenAI-shape chat; optional `anthropic.user_profiles` maps
+user / key_id / team_id / client_id when the client omits the header (client
+wins). Forwarded on the L6 Anthropic hop and audited via request log +
+`daari_meta.anthropic_user_profile_id`. Covered by
+`tests/unit/test_anthropic_user_profile.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

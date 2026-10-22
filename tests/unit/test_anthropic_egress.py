@@ -205,6 +205,43 @@ class TestExecutor:
         assert headers_lower.get("anthropic-version") == ANTHROPIC_VERSION
 
     @pytest.mark.asyncio
+    async def test_forwards_anthropic_user_profile_id(self):
+        """L6 Anthropic leg echoes anthropic-user-profile-id (#1844)."""
+        from daari.gateway.internal import RequestMeta
+
+        seen: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["headers"] = dict(request.headers)
+            return httpx.Response(
+                200,
+                json={
+                    "content": [{"type": "text", "text": "ok"}],
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            )
+
+        executor = FrontierExecutor(
+            base_url="https://api.anthropic.com",
+            default_model="claude-sonnet-4-0",
+            api_key="sk-ant-test",
+            provider="anthropic",
+            transport=httpx.MockTransport(handler),
+        )
+        await executor.execute(
+            _request(meta=RequestMeta(anthropic_user_profile_id="prof_audit")),
+            escalated_from="L3",
+            local_confidence=0.2,
+        )
+        assert seen["headers"].get("anthropic-user-profile-id") == "prof_audit"
+
+        seen.clear()
+        await executor.execute(_request(), escalated_from="L3", local_confidence=0.2)
+        headers_lower = {k.lower(): v for k, v in seen["headers"].items()}
+        assert "anthropic-user-profile-id" not in headers_lower
+
+    @pytest.mark.asyncio
     async def test_openai_provider_is_unchanged(self):
         seen: dict = {}
 

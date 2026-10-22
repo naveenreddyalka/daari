@@ -672,6 +672,15 @@ def _governed_responses_meta(
         meta.authorization_bearer = bearer_from_authorization(
             headers.get("authorization")
         )
+        from daari.router.anthropic_messages import apply_anthropic_user_profile
+
+        apply_anthropic_user_profile(
+            meta,
+            client_header=headers.get("anthropic-user-profile-id"),
+            user_profiles=getattr(
+                getattr(ctx.settings, "anthropic", None), "user_profiles", None
+            ),
+        )
     return meta
 
 

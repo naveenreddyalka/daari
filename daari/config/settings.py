@@ -587,6 +587,19 @@ class FrontierParamCompatSettings(BaseModel):
     tools_transport: str | None = None
 
 
+class AnthropicSettings(BaseModel):
+    """Anthropic-platform knobs (user profiles, etc.) (#1844)."""
+
+    user_profiles: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Map daari end-user / key_id / team_id / client_id to an Anthropic "
+            "user-profile id. Injected as anthropic-user-profile-id on the L6 "
+            "Anthropic hop when the client did not send one."
+        ),
+    )
+
+
 class FrontierSettings(RuntimeSettings):
     enabled: bool = False
     provider: str = "openai"
@@ -2426,6 +2439,7 @@ class Settings(BaseSettings):
     cache: CacheSettings = Field(default_factory=CacheSettings)
     routing: RoutingSettings = Field(default_factory=RoutingSettings)
     frontier: FrontierSettings = Field(default_factory=FrontierSettings)
+    anthropic: AnthropicSettings = Field(default_factory=AnthropicSettings)
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
     usage: UsageSettings = Field(default_factory=UsageSettings)

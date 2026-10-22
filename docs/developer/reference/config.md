@@ -154,6 +154,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `frontier.prompt_cache` | bool | `True` |  |
 | `frontier.compress_context` | bool | `False` |  |
 | `frontier.compress_target_ratio` | float | `0.6` |  |
+| `anthropic.user_profiles` | dict | `{}` | Map daari end-user / key_id / team_id / client_id to an Anthropic user-profile id. Injected as anthropic-user-profile-id on the L6 Anthropic hop when the client did not send one. |
 | `tools.unknown` | str | `'deny'` |  |
 | `tools.allow` | list | `['git status', 'git diff', 'pytest', 'eslint *']` |  |
 | `tools.block` | list | `['rm *', 'curl *\| sh', '*> /dev/*']` |  |
