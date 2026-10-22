@@ -291,6 +291,42 @@
           </thead>
           <tbody id="report-model-group-spend-table"></tbody>
         </table>
+        <h3>Spend export</h3>
+        <p class="subtle">
+          Download chargeback rows from <code>GET /v1/daari/spend/export</code>
+          (analyst API key). Same filters as the HTTP/CLI export.
+        </p>
+        <div class="controls" style="flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem">
+          <label>
+            Since
+            <select id="spend-export-since" aria-label="Spend export since">
+              <option value="7d">7d</option>
+              <option value="14d">14d</option>
+              <option value="30d">30d</option>
+            </select>
+          </label>
+          <label>
+            Format
+            <select id="spend-export-format" aria-label="Spend export format">
+              <option value="csv">csv</option>
+              <option value="jsonl">jsonl</option>
+            </select>
+          </label>
+          <label>
+            Model
+            <input id="spend-export-model" type="text" placeholder="optional LIKE, e.g. %:cloud" aria-label="Spend export model filter" />
+          </label>
+          <label>
+            Usage speed
+            <select id="spend-export-usage-speed" aria-label="Spend export usage speed">
+              <option value="">(any)</option>
+              <option value="fast">fast</option>
+              <option value="standard">standard</option>
+            </select>
+          </label>
+          <button id="spend-export-download" type="button">Download spend export</button>
+        </div>
+        <p id="spend-export-status" class="subtle"></p>
         <h3>Cache trust</h3>
         <table>
           <thead>

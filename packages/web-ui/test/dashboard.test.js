@@ -974,3 +974,74 @@ test("events panel since/until filters hit the API", async (t) => {
   assert.ok(eventCalls.some((c) => c.url.includes("since=2026-10-20T14%3A00%3A00Z") || c.url.includes("since=2026-10-20T14:00:00Z")));
   assert.ok(eventCalls.some((c) => c.url.includes("until=2026-10-20T14%3A10%3A00Z") || c.url.includes("until=2026-10-20T14:10:00Z")));
 });
+
+test("spend export downloads csv via /v1/daari/spend/export", async (t) => {
+  const csvBody = "timestamp,cost_usd\n2026-10-01T00:00:00Z,0.01\n";
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/spend/export": { __http: 200, __text: csvBody },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const downloads = [];
+  dom.window.URL.createObjectURL = (blob) => {
+    downloads.push(blob);
+    return "blob:daari-spend-test";
+  };
+  dom.window.URL.revokeObjectURL = () => {};
+  const clickSpy = [];
+  const origCreate = dom.window.document.createElement.bind(dom.window.document);
+  dom.window.document.createElement = (tag) => {
+    const el = origCreate(tag);
+    if (tag === "a") {
+      el.click = () => {
+        clickSpy.push({ href: el.href, download: el.download });
+      };
+    }
+    return el;
+  };
+
+  const apiKey = doc.getElementById("api-key");
+  if (apiKey) {
+    apiKey.value = "analyst-key";
+    apiKey.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  }
+  doc.getElementById("spend-export-since").value = "7d";
+  doc.getElementById("spend-export-format").value = "csv";
+  doc.getElementById("spend-export-model").value = "%:cloud";
+  doc.getElementById("spend-export-usage-speed").value = "fast";
+  doc.getElementById("spend-export-download").click();
+  await settle(20);
+
+  const call = fetch.calls.find((c) => c.url.includes("/v1/daari/spend/export"));
+  assert.ok(call, "expected spend/export fetch");
+  assert.match(call.url, /since=7d/);
+  assert.match(call.url, /format=csv/);
+  assert.match(call.url, /model=%25%3Acloud|model=%25:cloud/);
+  assert.match(call.url, /usage_speed=fast/);
+  assert.equal(call.init?.headers?.Authorization, "Bearer analyst-key");
+  assert.equal(downloads.length, 1);
+  assert.equal(clickSpy.length, 1);
+  assert.match(clickSpy[0].download, /\.csv$/);
+  assert.match(doc.getElementById("spend-export-status").textContent, /download/i);
+});
+
+test("spend export shows analyst 403 message", async (t) => {
+  const fetch = fakeFetch(routes({ "/v1/daari/spend/export": { status: 403 } }));
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  doc.getElementById("spend-export-download").click();
+  await settle(20);
+
+  const status = doc.getElementById("spend-export-status").textContent;
+  assert.match(status, /403/);
+  assert.match(status, /analyst/i);
+  assert.ok(fetch.calls.some((c) => c.url.includes("/v1/daari/spend/export")));
+});

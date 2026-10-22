@@ -24,18 +24,33 @@ export function fakeFetch(routes) {
     }
     if (best !== null) {
       if (best && typeof best === "object" && typeof best.__http === "number") {
-        const { __http, ...body } = best;
+        const { __http, __text, ...body } = best;
+        const textBody =
+          __text !== undefined ? String(__text) : JSON.stringify(body);
         return {
           ok: __http < 400,
           status: __http,
           statusText: __http < 400 ? "OK" : "Error",
           json: async () => body,
+          text: async () => textBody,
         };
       }
       if (best && typeof best === "object" && "status" in best && best.status >= 400) {
-        return { ok: false, status: best.status, statusText: "Error", json: async () => ({}) };
+        return {
+          ok: false,
+          status: best.status,
+          statusText: "Error",
+          json: async () => ({}),
+          text: async () => "",
+        };
       }
-      return { ok: true, status: 200, statusText: "OK", json: async () => best };
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => best,
+        text: async () => JSON.stringify(best),
+      };
     }
     throw new TypeError("fetch failed");
   };

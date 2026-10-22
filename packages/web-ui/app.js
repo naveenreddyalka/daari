@@ -38,6 +38,12 @@ const reportSavingsNode = document.getElementById("report-savings");
 const reportTableNode = document.getElementById("report-table");
 const reportTeamsTableNode = document.getElementById("report-teams-table");
 const reportModelGroupSpendTableNode = document.getElementById("report-model-group-spend-table");
+const spendExportSinceNode = document.getElementById("spend-export-since");
+const spendExportFormatNode = document.getElementById("spend-export-format");
+const spendExportModelNode = document.getElementById("spend-export-model");
+const spendExportUsageSpeedNode = document.getElementById("spend-export-usage-speed");
+const spendExportDownloadButton = document.getElementById("spend-export-download");
+const spendExportStatusNode = document.getElementById("spend-export-status");
 const cacheTrustTableNode = document.getElementById("cache-trust-table");
 const reportStatusNode = document.getElementById("report-status");
 const adminKeysTableNode = document.getElementById("admin-keys-table");
@@ -1017,6 +1023,72 @@ function exportStats() {
   URL.revokeObjectURL(url);
 }
 
+function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function downloadSpendExport() {
+  if (!spendExportStatusNode || !spendExportDownloadButton) {
+    return;
+  }
+  const since = (spendExportSinceNode && spendExportSinceNode.value) || "7d";
+  const uiFormat = (spendExportFormatNode && spendExportFormatNode.value) || "csv";
+  const model = (spendExportModelNode && spendExportModelNode.value.trim()) || "";
+  const usageSpeed =
+    (spendExportUsageSpeedNode && spendExportUsageSpeedNode.value.trim()) || "";
+  const params = new URLSearchParams({ since });
+  // HTTP accepts csv|json; jsonl is built client-side from the JSON page.
+  params.set("format", uiFormat === "csv" ? "csv" : "json");
+  if (model) {
+    params.set("model", model);
+  }
+  if (usageSpeed) {
+    params.set("usage_speed", usageSpeed);
+  }
+  const url = `${apiBaseUrl}/v1/daari/spend/export?${params.toString()}`;
+  spendExportStatusNode.textContent = "Downloading spend export…";
+  try {
+    const response = await fetch(url, { headers: authHeaders() });
+    if (response.status === 403) {
+      spendExportStatusNode.textContent =
+        "403 Forbidden — spend export requires an analyst (or admin) API key.";
+      return;
+    }
+    if (!response.ok) {
+      spendExportStatusNode.textContent = `Spend export failed: ${response.status}`;
+      return;
+    }
+    let body;
+    let filename;
+    let mime;
+    if (uiFormat === "csv") {
+      body = await response.text();
+      filename = `daari-spend-${since}.csv`;
+      mime = "text/csv";
+    } else {
+      const payload = await response.json();
+      const rows = Array.isArray(payload.rows) ? payload.rows : [];
+      body = rows.map((row) => JSON.stringify(row)).join("\n");
+      if (rows.length) {
+        body += "\n";
+      }
+      filename = `daari-spend-${since}.jsonl`;
+      mime = "application/x-ndjson";
+    }
+    triggerBlobDownload(new Blob([body], { type: mime }), filename);
+    spendExportStatusNode.textContent = `Downloaded ${filename}`;
+  } catch (error) {
+    spendExportStatusNode.textContent = `Spend export failed: ${error.message}`;
+  }
+}
+
 function clearAutoRefresh() {
   if (refreshTimerId !== null) {
     window.clearInterval(refreshTimerId);
@@ -1091,6 +1163,11 @@ tracesTableNode.addEventListener("click", (event) => {
   }
 });
 exportButton.addEventListener("click", exportStats);
+if (spendExportDownloadButton) {
+  spendExportDownloadButton.addEventListener("click", () => {
+    void downloadSpendExport();
+  });
+}
 themeToggleButton.addEventListener("click", toggleTheme);
 autoRefreshNode.addEventListener("change", configureAutoRefresh);
 refreshIntervalNode.addEventListener("change", configureAutoRefresh);

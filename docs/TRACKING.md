@@ -7701,6 +7701,15 @@ fields `renderer`, `parser`, and `template_source` (stubs `""` / `""` /
 `tests/unit/test_ollama_show_0407_fields.py`; IntelliJ and ChatGPT Desktop
 facade recipes note the parity.
 
+### Web console spend export download ([#1850](https://github.com/naveenreddyalka/daari/issues/1850))
+
+<!-- tracking:#1850 -->
+**Status:** Done (2026-10-22). Packaged web UI **Spend export** panel calls
+`GET /v1/daari/spend/export` (since / csv|jsonl / model / usage_speed) with the
+session API key and downloads a file; 403 shows an analyst-key message.
+Covered by `packages/web-ui/test/dashboard.test.js`; chargeback guide points at
+the control.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
