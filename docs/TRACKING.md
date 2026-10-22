@@ -7665,6 +7665,14 @@ payloads omit `temperature` / `top_p` / `top_k` with drops in
 Covered by `tests/unit/test_anthropic_thinking_parity.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### OpenAI prompt-cache write rates by TTL (30m / 12h) ([#1843](https://github.com/naveenreddyalka/daari/issues/1843))
+
+<!-- tracking:#1843 -->
+**Status:** Done (2026-10-21). GPT-5.6+ prices include `cache_write_30m_per_1m`
+(1.25× input) and `cache_write_12h_per_1m` (2.5×). `request_cache_ttl` reads
+`prompt_cache_options` / breakpoints; ledger and `daari_meta.cost_usd` bill
+writes at the TTL rate. Covered by `tests/unit/test_openai_cache_ttl_pricing.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

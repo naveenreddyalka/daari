@@ -52,6 +52,12 @@ Chat rows without a provider fall back to `model`. Pass exactly one of
 
 `cost_avoided_usd` uses `pricing.models` for the model the client asked for. Models missing from that table use `usage.frontier_price_per_1k_tokens`. Frontier (`L6`) rows keep the real cost and record $0 avoided. A successful transcription exports as `tier` `asr` (local) or `L6` (frontier fallback). A successful translation exports as `tier` `translation` (local) or `L6` (frontier fallback). Speech synthesis exports as `tier` `tts`. Embedding calls export as `tier` `embed` with the caller's key and team. An unknown embedding model returns 400 and writes no row. Allowlist 403 and unconfigured transcription/translation/speech 501 write no row.
 
+OpenAI Responses prompt-cache **writes** are TTL-dependent totals (not surcharges):
+`prompt_cache_options.ttl` of `30m` bills at **1.25×** input and `12h` at **2.5×**
+input for GPT-5.6+ models (`cache_write_30m_per_1m` / `cache_write_12h_per_1m`).
+When options are present without a ttl, daari uses the 30m default. Per-breakpoint
+`prompt_cache_breakpoint.ttl` values take the longest TTL on the request.
+
 `daari prune` applies `observability.retention.spend_days` the same way it prunes traces and the day ledger. Postgres replicas share the table when `observability.backend` is `postgres`.
 
 ## Verify

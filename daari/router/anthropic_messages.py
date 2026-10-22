@@ -136,7 +136,16 @@ def openai_tools_to_anthropic(tools: list[Any] | None) -> list[dict[str, Any]]:
 
 
 def request_cache_ttl(request: InternalRequest) -> str | None:
-    """Highest TTL asked for on system messages or tools (`1h` wins over `5m`)."""
+    """Highest TTL on the request (OpenAI prompt_cache + Anthropic cache_control).
+
+    OpenAI Responses: ``prompt_cache_options.ttl`` and any
+    ``prompt_cache_breakpoint.ttl`` values (longest wins: ``12h`` > ``30m``).
+    When options are present without a ttl, default to ``30m`` (#1843).
+    Anthropic: ``1h`` wins over ``5m`` on system/tool ``cache_control``.
+    """
+    openai_ttl = _openai_prompt_cache_ttl(request)
+    if openai_ttl:
+        return openai_ttl
     found: set[str] = set()
     for message in request.messages:
         ttl = _ttl_from_cache_control(message.cache_control)
@@ -156,6 +165,31 @@ def request_cache_ttl(request: InternalRequest) -> str | None:
     if "5m" in found:
         return "5m"
     return None
+
+
+def _openai_prompt_cache_ttl(request: InternalRequest) -> str | None:
+    """Derive OpenAI Responses cache TTL from options / breakpoints (#1843)."""
+    options = getattr(request.sampling, "prompt_cache_options", None)
+    if not isinstance(options, dict):
+        return None
+    found: set[str] = set()
+    raw = options.get("ttl")
+    if isinstance(raw, str) and raw.strip():
+        found.add(raw.strip().lower())
+    breakpoints = options.get("breakpoints")
+    if isinstance(breakpoints, list):
+        for item in breakpoints:
+            if not isinstance(item, dict):
+                continue
+            bttl = item.get("ttl")
+            if isinstance(bttl, str) and bttl.strip():
+                found.add(bttl.strip().lower())
+    if "12h" in found or "12hr" in found:
+        return "12h"
+    if "30m" in found or "30min" in found:
+        return "30m"
+    # Options object present → OpenAI default TTL semantics.
+    return "30m"
 
 
 def _ttl_from_cache_control(cache_control: Any) -> str | None:
