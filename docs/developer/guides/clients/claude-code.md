@@ -36,6 +36,16 @@ No tunnel required (localhost is fine).
 
 Chat once, then `daari report`. Agent turns use `/v1/messages` with tool passthrough.
 
+## API version `2026-10-21` (sampling removed)
+
+Anthropic API version [`2026-10-21`](https://platform.claude.com/docs/en/release-notes/overview)
+removes `temperature`, `top_p`, and `top_k` — requests that set them return
+HTTP 400. New SDKs and the `ant` CLI send `anthropic-version: 2026-10-21` by
+default. daari does **not** inject a default temperature on `/v1/messages`;
+when the effective version is `2026-10-21`, the L6 Anthropic hop strips any
+sampling knobs the client still sent and lists them in
+`daari_meta.dropped_params` / `x-daari-dropped-params`.
+
 ## Thinking budgets
 
 Claude Code's request-level `thinking: {type, budget_tokens}` is forwarded

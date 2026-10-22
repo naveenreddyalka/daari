@@ -7655,6 +7655,16 @@ Covered by `tests/unit/test_systemone_upstream.py`.
 advisory (Aikido link; daari does not depend on LiteLLM). Covered by
 `tests/unit/test_compare_litellm_1104.py`.
 
+### Anthropic API 2026-10-21: no default temperature; strip sampling ([#1849](https://github.com/naveenreddyalka/daari/issues/1849))
+
+<!-- tracking:#1849 -->
+**Status:** Done (2026-10-21). `AnthropicRequest.temperature` defaults to
+`None` (no injected 0.7). Under `anthropic-version: 2026-10-21`, L6 Anthropic
+payloads omit `temperature` / `top_p` / `top_k` with drops in
+`daari_meta.dropped_params`. Claude Code guide documents the version change.
+Covered by `tests/unit/test_anthropic_thinking_parity.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

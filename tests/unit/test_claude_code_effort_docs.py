@@ -35,3 +35,13 @@ def test_claude_code_guide_pins_between_tools() -> None:
     assert "between_tools" in text
     assert "thinking.between_tools" in text
     assert "Sonnet 5.5" in text or "sonnet-5-5" in text
+
+
+def test_claude_code_guide_pins_api_version_2026_10_21_sampling() -> None:
+    """Guide notes API version 2026-10-21 removes sampling params (#1849)."""
+    text = DOC.read_text(encoding="utf-8")
+    assert "2026-10-21" in text
+    assert "temperature" in text
+    assert "top_p" in text
+    assert "top_k" in text
+    assert "dropped_params" in text or "strip" in text.lower()
