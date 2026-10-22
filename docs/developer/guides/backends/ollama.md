@@ -12,6 +12,11 @@ daari serve
 daari doctor
 ```
 
+Optional **Flint** L4 coding recipe (Ollama ≥ 0.40.8): `daari setup models --flint`
+sets `models.l4=flint` without pulling weights. Ollama 0.40.8-rc0 is Mac-first;
+other GPUs follow later RCs — do not assume Linux/GPU support beyond what your
+installed Ollama build documents. Pull later with `ollama pull flint`.
+
 Compose stack pulls models for you (`docker compose up`).
 
 ## Config

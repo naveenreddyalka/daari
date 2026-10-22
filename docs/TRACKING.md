@@ -7728,6 +7728,14 @@ on `/metrics`; skip reasons are `below_min` / `not_json` / `already_encoded` /
 `streaming`. Covered by `tests/unit/test_gzip_json.py`; metrics-prometheus
 guide lists the series.
 
+### Optional Flint L4 coding model recipe ([#1852](https://github.com/naveenreddyalka/daari/issues/1852))
+
+<!-- tracking:#1852 -->
+**Status:** Done (2026-10-22). `daari setup models --flint` / wizard offers an
+opt-in Flint L4 recipe (`models.l4=flint`, Ollama ≥ 0.40.8; Mac-first in rc0);
+doctor tips when L4 is Flint on an older Ollama. Covered by
+`tests/test_setup.py`; ollama backend guide notes the recipe.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

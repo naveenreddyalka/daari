@@ -356,8 +356,7 @@ def _parse_ollama_semver(raw: str) -> tuple[int, int, int] | None:
     return int(match.group(1)), int(match.group(2)), int(match.group(3))
 
 
-def _ollama_q2_0_warning(http: httpx.Client, base: str) -> CheckResult | None:
-    """Warn when the local daemon cannot load q2_0 GGUF tensors (Ollama < 0.40.6)."""
+def _ollama_version_payload(http: httpx.Client, base: str) -> tuple[str, tuple[int, int, int]] | None:
     try:
         response = http.get(f"{base}/api/version")
         if response.status_code != 200:
@@ -371,13 +370,56 @@ def _ollama_q2_0_warning(http: httpx.Client, base: str) -> CheckResult | None:
     if not isinstance(raw, str):
         return None
     parsed = _parse_ollama_semver(raw)
-    if parsed is None or parsed >= _OLLAMA_Q2_0_FLOOR:
+    if parsed is None:
+        return None
+    return raw.strip(), parsed
+
+
+def _ollama_q2_0_warning(http: httpx.Client, base: str) -> CheckResult | None:
+    """Warn when the local daemon cannot load q2_0 GGUF tensors (Ollama < 0.40.6)."""
+    version = _ollama_version_payload(http, base)
+    if version is None:
+        return None
+    raw, parsed = version
+    if parsed >= _OLLAMA_Q2_0_FLOOR:
         return None
     return CheckResult(
         name="ollama_q2_0",
         ok=False,
         detail=(
-            f"Ollama {raw.strip()} — q2_0 GGUF tensors need Ollama 0.40.6 or newer"
+            f"Ollama {raw} — q2_0 GGUF tensors need Ollama 0.40.6 or newer"
+        ),
+        optional=True,
+    )
+
+
+def _ollama_flint_warning(http: httpx.Client, base: str, l4_model: str) -> CheckResult | None:
+    """Tip when models.l4 is Flint but Ollama is older than 0.40.8 (#1852)."""
+    from daari.setup.models import FLINT_MODEL, FLINT_OLLAMA_FLOOR
+
+    name = (l4_model or "").strip()
+    if name != FLINT_MODEL and not name.startswith(f"{FLINT_MODEL}:"):
+        return None
+    version = _ollama_version_payload(http, base)
+    if version is None:
+        return CheckResult(
+            name="ollama_flint",
+            ok=False,
+            detail=(
+                f"models.l4={name} needs Ollama ≥ 0.40.8 "
+                "(0.40.8-rc0 is Mac-first; other GPUs follow later RCs)"
+            ),
+            optional=True,
+        )
+    raw, parsed = version
+    if parsed >= FLINT_OLLAMA_FLOOR:
+        return None
+    return CheckResult(
+        name="ollama_flint",
+        ok=False,
+        detail=(
+            f"Ollama {raw} — models.l4={name} needs Ollama ≥ 0.40.8 "
+            "(0.40.8-rc0 is Mac-first; other GPUs follow later RCs)"
         ),
         optional=True,
     )
@@ -500,6 +542,9 @@ def _check_ollama(
         warning = _ollama_q2_0_warning(http, base)
         if warning is not None:
             results.append(warning)
+        flint_warning = _ollama_flint_warning(http, base, l4_model)
+        if flint_warning is not None:
+            results.append(flint_warning)
         return results
     except Exception as exc:
         return [
