@@ -7692,6 +7692,15 @@ to their team (mismatch → 403); unpinned admins unchanged. Offline
 Covered by `tests/unit/test_cache_invalidate.py`; org-cache guide documents
 the scoping rule.
 
+### Ollama /api/show 0.40.7 renderer/parser/template_source ([#1846](https://github.com/naveenreddyalka/daari/issues/1846))
+
+<!-- tracking:#1846 -->
+**Status:** Done (2026-10-22). Facade `POST /api/show` returns Ollama 0.40.7
+fields `renderer`, `parser`, and `template_source` (stubs `""` / `""` /
+`"model"`) for every virtual model; `/api/tags` unchanged. Covered by
+`tests/unit/test_ollama_show_0407_fields.py`; IntelliJ and ChatGPT Desktop
+facade recipes note the parity.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

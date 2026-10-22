@@ -20,7 +20,10 @@ catalog or model name supports them), so capability-aware clients keep tool
 calling and thinking UI enabled against the facade. When `thinking` is in
 capabilities, `/api/show` also returns a `thinking` controls object (`values`:
 `low` / `medium` / `high`, `default`: `medium`) so clients can discover allowed
-think levels.
+think levels. Ollama **0.40.7+** clients also read `renderer`, `parser`, and
+`template_source` on `/api/show`; the facade returns stable stubs (`""` /
+`""` / `"model"`) so feature detection matches a templateless native model.
+`/api/tags` is unchanged (those keys are show-only).
 
 Helper (prints steps + reference JSON):
 
