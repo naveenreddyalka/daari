@@ -27,7 +27,13 @@ async def test_metrics_port_scrape_open_while_api_port_requires_key(settings):
         assert "daari_requests_total" in open_scrape.text or "HELP" in open_scrape.text
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # identity: main-port /metrics must not mutate gzip counters via Accept-Encoding
+        # before we compare the body to the auth-free metrics_port scrape (#1830).
+        async with AsyncClient(
+            transport=transport,
+            base_url="http://test",
+            headers={"Accept-Encoding": "identity"},
+        ) as client:
             denied = await client.get("/metrics")
             assert denied.status_code == 401
             allowed = await client.get(

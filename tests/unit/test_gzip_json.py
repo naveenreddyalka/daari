@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import gzip
 import json
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
+from daari.observability.metrics import Metrics
+from daari.observability.prometheus import render_prometheus
 from daari.server.app import create_app
 from daari.server.gzip_json import GZIP_MIN_BYTES, GzipJsonMiddleware, install_gzip_json
 
 
-def _app() -> FastAPI:
+def _app(*, metrics: Metrics | None = None) -> FastAPI:
     app = FastAPI()
 
     @app.get("/small")
@@ -31,6 +34,8 @@ def _app() -> FastAPI:
 
         return StreamingResponse(chunks(), media_type="text/event-stream")
 
+    if metrics is not None:
+        app.state.ctx = SimpleNamespace(metrics=metrics)
     install_gzip_json(app)
     return app
 
@@ -137,3 +142,41 @@ async def test_sse_is_not_compressed():
 def test_create_app_registers_gzip_middleware(settings):
     app = create_app(settings)
     assert any(getattr(m, "cls", None) is GzipJsonMiddleware for m in app.user_middleware)
+
+
+@pytest.mark.asyncio
+async def test_gzip_metrics_compressed_and_below_min(monkeypatch):
+    """Large JSON bumps compressed counters; small JSON skips with below_min (#1830)."""
+    async def fake_to_thread(fn, /, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr("daari.server.gzip_json.asyncio.to_thread", fake_to_thread)
+    metrics = Metrics()
+    app = _app(metrics=metrics)
+
+    status, headers, body = await _raw(app, "/big", "gzip")
+    assert status == 200
+    assert headers["content-encoding"] == "gzip"
+    snap = metrics.snapshot(include_histograms=True)
+    assert snap["gzip"].get("compressed") == 1
+    assert snap["gzip_bytes_before"] > GZIP_MIN_BYTES
+    assert 0 < snap["gzip_bytes_after"] < snap["gzip_bytes_before"]
+    text = render_prometheus(metrics)
+    assert 'daari_gzip_total{result="compressed"} 1' in text
+    assert f"daari_gzip_uncompressed_bytes_total {snap['gzip_bytes_before']}" in text
+    assert f"daari_gzip_compressed_bytes_total {snap['gzip_bytes_after']}" in text
+
+    status, headers, body = await _raw(app, "/small", "gzip")
+    assert status == 200
+    assert "content-encoding" not in headers
+    snap = metrics.snapshot(include_histograms=True)
+    assert snap["gzip"].get("skipped:below_min") == 1
+    text = render_prometheus(metrics)
+    assert 'daari_gzip_total{result="skipped",reason="below_min"} 1' in text
+
+
+def test_gzip_prometheus_zero_on_empty_metrics():
+    text = render_prometheus(Metrics())
+    assert "daari_gzip_total 0" in text
+    assert "daari_gzip_uncompressed_bytes_total 0" in text
+    assert "daari_gzip_compressed_bytes_total 0" in text

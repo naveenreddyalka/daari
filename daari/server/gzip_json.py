@@ -7,6 +7,9 @@ import gzip
 from typing import Any
 
 GZIP_MIN_BYTES = 16 * 1024
+# Cap while waiting for more_body=False so true streaming JSON cannot grow unbounded.
+# BaseHTTPMiddleware sends one data chunk with more_body=True plus an empty trailer.
+GZIP_MAX_BUFFER_BYTES = 16 * 1024 * 1024
 
 
 def accepts_gzip(header: str | None) -> bool:
@@ -59,6 +62,25 @@ def _scope_header(scope: dict, name: bytes) -> str:
     return ""
 
 
+def _record_gzip(
+    scope: dict,
+    *,
+    result: str,
+    reason: str | None = None,
+    bytes_before: int = 0,
+    bytes_after: int = 0,
+) -> None:
+    app = scope.get("app")
+    metrics = getattr(getattr(getattr(app, "state", None), "ctx", None), "metrics", None)
+    if metrics is not None and hasattr(metrics, "record_gzip"):
+        metrics.record_gzip(
+            result=result,
+            reason=reason,
+            bytes_before=bytes_before,
+            bytes_after=bytes_after,
+        )
+
+
 class GzipJsonMiddleware:
     """Compress buffered ``application/json`` when the client accepts gzip."""
 
@@ -77,8 +99,14 @@ class GzipJsonMiddleware:
                 headers = list(message.get("headers") or [])
                 content_type = _header_value(headers, b"content-type")
                 already = _header_value(headers, b"content-encoding")
-                if already or not _is_buffered_json(content_type):
+                if already:
                     state["mode"] = "passthrough"
+                    _record_gzip(scope, result="skipped", reason="already_encoded")
+                    await send(message)
+                    return
+                if not _is_buffered_json(content_type):
+                    state["mode"] = "passthrough"
+                    _record_gzip(scope, result="skipped", reason="not_json")
                     await send(message)
                     return
                 state["mode"] = "buffer"
@@ -95,17 +123,17 @@ class GzipJsonMiddleware:
                 return
 
             chunk = message.get("body", b"") or b""
+            state["chunks"].append(chunk)
+            held = b"".join(state["chunks"])
             if message.get("more_body"):
-                state["mode"] = "passthrough"
-                await send(state["start"])
-                held = b"".join(state["chunks"])
-                if held:
+                if len(held) > GZIP_MAX_BUFFER_BYTES:
+                    state["mode"] = "passthrough"
+                    _record_gzip(scope, result="skipped", reason="streaming")
+                    await send(state["start"])
                     await send({"type": "http.response.body", "body": held, "more_body": True})
-                await send(message)
                 return
 
-            state["chunks"].append(chunk)
-            body = b"".join(state["chunks"])
+            body = held
             headers = state["headers"]
             start = state["start"]
             if len(body) > GZIP_MIN_BYTES:
@@ -120,7 +148,15 @@ class GzipJsonMiddleware:
                     vary_value = vary.encode("latin-1")
                 _upsert_header(headers, b"vary", vary_value)
                 _upsert_header(headers, b"content-length", str(len(compressed)).encode())
+                _record_gzip(
+                    scope,
+                    result="compressed",
+                    bytes_before=len(body),
+                    bytes_after=len(compressed),
+                )
                 body = compressed
+            else:
+                _record_gzip(scope, result="skipped", reason="below_min")
             start["headers"] = headers
             await send(start)
             await send({"type": "http.response.body", "body": body, "more_body": False})

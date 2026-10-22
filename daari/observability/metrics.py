@@ -227,6 +227,10 @@ class Metrics:
     cache_invalidate: dict[str, int] = field(default_factory=dict)
     # layer (l0|l1) → entries removed across invalidate calls (#1639).
     cache_invalidate_entries_removed: dict[str, int] = field(default_factory=dict)
+    # Gzip JSON middleware outcomes (#1830): "compressed" or "skipped:<reason>".
+    gzip: dict[str, int] = field(default_factory=dict)
+    gzip_bytes_before: int = 0
+    gzip_bytes_after: int = 0
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -421,6 +425,31 @@ class Metrics:
             if label != "skipped" and latency_ms >= 0:
                 self.decision_classifier_latency.observe(max(0, int(latency_ms)))
 
+    def record_gzip(
+        self,
+        *,
+        result: str,
+        reason: str | None = None,
+        bytes_before: int = 0,
+        bytes_after: int = 0,
+    ) -> None:
+        """Buffered JSON gzip middleware outcome; labels stay bounded (#1830)."""
+        result_label = (result or "").strip().lower() or "skipped"
+        if result_label not in ("compressed", "skipped"):
+            result_label = "skipped"
+        reason_label = (reason or "").strip().lower() or ""
+        if result_label == "skipped":
+            if reason_label not in ("below_min", "not_json", "already_encoded", "streaming"):
+                reason_label = "below_min"
+            key = f"skipped:{reason_label}"
+        else:
+            key = "compressed"
+        with self._lock:
+            self.gzip[key] = self.gzip.get(key, 0) + 1
+            if result_label == "compressed":
+                self.gzip_bytes_before += max(0, int(bytes_before))
+                self.gzip_bytes_after += max(0, int(bytes_after))
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -473,6 +502,9 @@ class Metrics:
                 "mcp_grant_denied": self.mcp_grant_denied,
                 "cache_invalidate": dict(self.cache_invalidate),
                 "cache_invalidate_entries_removed": dict(self.cache_invalidate_entries_removed),
+                "gzip": dict(self.gzip),
+                "gzip_bytes_before": self.gzip_bytes_before,
+                "gzip_bytes_after": self.gzip_bytes_after,
                 "decision_classifier": dict(self.decision_classifier),
                 "decision_classifier_latency": {
                     "count": self.decision_classifier_latency.count,
