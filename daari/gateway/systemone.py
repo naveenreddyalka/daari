@@ -27,6 +27,135 @@ _DISABLED = (
 _http: httpx.AsyncClient | None = None
 _breakers: dict[str, Any] = {}
 _breaker_rejects: dict[str, int] = {}
+# Optional Redis client when cache.backend=redis (#1868). Fail-open on errors.
+_breaker_redis: Any | None = None
+_BREAKER_REDIS_PREFIX = "daari:systemone:breaker:"
+_BREAKER_REJECTS_REDIS_PREFIX = "daari:systemone:breaker_rejects:"
+_BREAKER_REDIS_TTL_PAD = 30
+
+
+def set_systemone_breaker_redis(client: Any | None) -> None:
+    """Install (or clear) the shared breaker Redis client (tests + startup)."""
+    global _breaker_redis
+    _breaker_redis = client
+
+
+def systemone_breaker_backend() -> str:
+    """``redis`` when a shared client is configured, else ``local``."""
+    return "redis" if _breaker_redis is not None else "local"
+
+
+def configure_systemone_breaker_store(settings: Any) -> None:
+    """Wire Redis-shared breaker state when ``cache.backend=redis`` (#1868)."""
+    cache = getattr(settings, "cache", None)
+    if getattr(cache, "backend", "disk") != "redis":
+        set_systemone_breaker_redis(None)
+        return
+    url = str(getattr(cache, "redis_url", "") or "").strip()
+    if not url:
+        set_systemone_breaker_redis(None)
+        return
+    try:
+        from daari.cache.redis_client import connect_redis
+
+        timeout = float(getattr(cache, "redis_timeout_seconds", 2.0) or 2.0)
+        set_systemone_breaker_redis(connect_redis(url, timeout_seconds=timeout))
+    except Exception:
+        log_gateway_event("systemone_breaker_redis_error", {"op": "connect"})
+        set_systemone_breaker_redis(None)
+
+
+def _breaker_state_redis_key(base: str) -> str:
+    return f"{_BREAKER_REDIS_PREFIX}{base}"
+
+
+def _breaker_rejects_redis_key(base: str) -> str:
+    return f"{_BREAKER_REJECTS_REDIS_PREFIX}{base}"
+
+
+def _redis_decode(raw: Any) -> str | None:
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        return raw.decode("utf-8", errors="replace")
+    return str(raw)
+
+
+def _load_shared_open(base: str, *, cooldown_seconds: float) -> bool | None:
+    """Return True/False when Redis answers; None on miss-config or error (fail-open)."""
+    if _breaker_redis is None:
+        return None
+    try:
+        raw = _redis_decode(_breaker_redis.get(_breaker_state_redis_key(base)))
+        if not raw:
+            return False
+        data = json.loads(raw)
+        opened_at = float(data.get("opened_at") or 0.0)
+        cooldown = float(data.get("cooldown_seconds") or cooldown_seconds or 30.0)
+        if opened_at <= 0:
+            return False
+        return (time.time() - opened_at) < cooldown
+    except Exception:
+        log_gateway_event("systemone_breaker_redis_error", {"op": "get", "base": base})
+        return None
+
+
+def _publish_shared_open(base: str, *, cooldown_seconds: float, failures: int) -> None:
+    if _breaker_redis is None:
+        return
+    try:
+        cooldown = max(1.0, float(cooldown_seconds or 30.0))
+        payload = json.dumps(
+            {
+                "state": "open",
+                "opened_at": time.time(),
+                "cooldown_seconds": cooldown,
+                "failures": int(failures),
+            }
+        )
+        _breaker_redis.set(
+            _breaker_state_redis_key(base),
+            payload,
+            ex=int(cooldown) + _BREAKER_REDIS_TTL_PAD,
+        )
+    except Exception:
+        log_gateway_event("systemone_breaker_redis_error", {"op": "set", "base": base})
+
+
+def _clear_shared_breaker(base: str | None = None) -> None:
+    if _breaker_redis is None:
+        return
+    try:
+        if base is not None:
+            _breaker_redis.delete(
+                _breaker_state_redis_key(base), _breaker_rejects_redis_key(base)
+            )
+            return
+        state_keys = list(_breaker_redis.keys(f"{_BREAKER_REDIS_PREFIX}*") or [])
+        reject_keys = list(_breaker_redis.keys(f"{_BREAKER_REJECTS_REDIS_PREFIX}*") or [])
+        keys = [str(k) for k in state_keys + reject_keys]
+        if keys:
+            _breaker_redis.delete(*keys)
+    except Exception:
+        log_gateway_event(
+            "systemone_breaker_redis_error",
+            {"op": "delete", "base": base or "*"},
+        )
+
+
+def _incr_shared_rejects(base: str, *, cooldown_seconds: float) -> int | None:
+    if _breaker_redis is None:
+        return None
+    try:
+        key = _breaker_rejects_redis_key(base)
+        count = int(_breaker_redis.incr(key))
+        if count == 1:
+            cooldown = max(1.0, float(cooldown_seconds or 30.0))
+            _breaker_redis.expire(key, int(cooldown) + _BREAKER_REDIS_TTL_PAD)
+        return count
+    except Exception:
+        log_gateway_event("systemone_breaker_redis_error", {"op": "incr", "base": base})
+        return None
 
 
 def _shared_client() -> httpx.AsyncClient:
@@ -95,57 +224,130 @@ def reset_systemone_breakers() -> None:
     """Clear breaker state (tests)."""
     _breakers.clear()
     _breaker_rejects.clear()
+    _clear_shared_breaker()
 
 
 def close_systemone_breakers() -> list[dict[str, Any]]:
-    """Close open circuits in place and return the per-base snapshot (#1842)."""
+    """Close open circuits fleet-wide and return the per-base snapshot (#1842/#1868)."""
     for breaker in _breakers.values():
         breaker.record_success()
     _breaker_rejects.clear()
+    _clear_shared_breaker()
     return breaker_snapshot()
 
 
 def breaker_snapshot() -> list[dict[str, Any]]:
-    """Current per-upstream breaker state for stats / metrics / doctor (#1822)."""
-    rows: list[dict[str, Any]] = []
-    for key, breaker in sorted(_breakers.items()):
-        state = str(getattr(breaker, "state", "closed") or "closed")
-        rows.append(
-            {
-                "base": key,
-                "state": state,
-                "rejects": int(_breaker_rejects.get(key, 0)),
-                "cooldown_seconds": float(
-                    getattr(breaker, "cooldown_seconds", 30.0) or 30.0
-                ),
-            }
-        )
-    return rows
+    """Current per-upstream breaker state for stats / metrics / doctor (#1822/#1868)."""
+    rows: dict[str, dict[str, Any]] = {}
+    for key, breaker in _breakers.items():
+        cooldown = float(getattr(breaker, "cooldown_seconds", 30.0) or 30.0)
+        shared_open = _load_shared_open(key, cooldown_seconds=cooldown)
+        if shared_open is True:
+            state = "open"
+        elif shared_open is False and _breaker_redis is not None:
+            state = "closed"
+        else:
+            state = str(getattr(breaker, "state", "closed") or "closed")
+        rejects = int(_breaker_rejects.get(key, 0))
+        if _breaker_redis is not None:
+            try:
+                raw = _redis_decode(_breaker_redis.get(_breaker_rejects_redis_key(key)))
+                if raw is not None:
+                    rejects = int(raw)
+            except Exception:
+                log_gateway_event(
+                    "systemone_breaker_redis_error", {"op": "get_rejects", "base": key}
+                )
+        rows[key] = {
+            "base": key,
+            "state": state,
+            "rejects": rejects,
+            "cooldown_seconds": cooldown,
+        }
+    if _breaker_redis is not None:
+        try:
+            for rkey in list(_breaker_redis.keys(f"{_BREAKER_REDIS_PREFIX}*") or []):
+                key = str(rkey)
+                if key.startswith(_BREAKER_REDIS_PREFIX):
+                    base = key[len(_BREAKER_REDIS_PREFIX) :]
+                else:
+                    continue
+                if not base or base in rows:
+                    continue
+                raw = _redis_decode(_breaker_redis.get(rkey))
+                if not raw:
+                    continue
+                data = json.loads(raw)
+                cooldown = float(data.get("cooldown_seconds") or 30.0)
+                opened_at = float(data.get("opened_at") or 0.0)
+                state = (
+                    "open"
+                    if opened_at and (time.time() - opened_at) < cooldown
+                    else "closed"
+                )
+                rejects = 0
+                try:
+                    rraw = _redis_decode(
+                        _breaker_redis.get(_breaker_rejects_redis_key(base))
+                    )
+                    if rraw is not None:
+                        rejects = int(rraw)
+                except Exception:
+                    rejects = 0
+                rows[base] = {
+                    "base": base,
+                    "state": state,
+                    "rejects": rejects,
+                    "cooldown_seconds": cooldown,
+                }
+        except Exception:
+            log_gateway_event("systemone_breaker_redis_error", {"op": "keys"})
+    return [rows[k] for k in sorted(rows)]
 
 
 def _reject_if_open(base_or_url: str, *, metrics: Any | None = None) -> None:
     breaker = breaker_for(base_or_url)
-    if breaker.allow():
-        return
     key = _breaker_key(base_or_url) or "systemone"
-    _breaker_rejects[key] = int(_breaker_rejects.get(key, 0)) + 1
+    cooldown = float(getattr(breaker, "cooldown_seconds", 30.0) or 30.0)
+    shared_open = _load_shared_open(key, cooldown_seconds=cooldown)
+    if shared_open is True:
+        open_circuit = True
+    elif shared_open is False and _breaker_redis is not None:
+        open_circuit = False
+    else:
+        open_circuit = not breaker.allow()
+    if not open_circuit:
+        return
+    shared_count = _incr_shared_rejects(key, cooldown_seconds=cooldown)
+    if shared_count is None:
+        _breaker_rejects[key] = int(_breaker_rejects.get(key, 0)) + 1
+    else:
+        _breaker_rejects[key] = shared_count
     if metrics is not None and hasattr(metrics, "record_systemone_breaker"):
         try:
             metrics.record_systemone_breaker(event="reject")
         except Exception:  # noqa: BLE001 — metrics must never break a request
             pass
-    cooldown = float(getattr(breaker, "cooldown_seconds", 30.0) or 30.0)
     raise SystemOneCircuitOpen(key, retry_after=int(cooldown))
 
 
 def _note_success(base_or_url: str) -> None:
+    key = _breaker_key(base_or_url) or "systemone"
     breaker_for(base_or_url).record_success()
+    _clear_shared_breaker(key)
 
 
 def _note_failure(base_or_url: str, *, metrics: Any | None = None) -> None:
     breaker = breaker_for(base_or_url)
     was_open = breaker.state == "open"
     breaker.record_failure()
+    if breaker.state == "open":
+        key = _breaker_key(base_or_url) or "systemone"
+        _publish_shared_open(
+            key,
+            cooldown_seconds=float(getattr(breaker, "cooldown_seconds", 30.0) or 30.0),
+            failures=int(getattr(breaker, "failures", 0) or 0),
+        )
     if metrics is not None and hasattr(metrics, "record_systemone_breaker"):
         try:
             if breaker.state == "open" and not was_open:
