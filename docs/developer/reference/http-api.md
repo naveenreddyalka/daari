@@ -28,6 +28,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/v1/batches/{batch_id}` | Retrieve Batch |
 | `POST` | `/v1/batches/{batch_id}/cancel` | Cancel Batch |
 | `POST` | `/v1/chat/completions` | Chat Completions |
+| `GET` | `/v1/daari/anthropic/enforcement` | Daari Anthropic Enforcement |
 | `GET` | `/v1/daari/audit` | Daari Audit List |
 | `GET` | `/v1/daari/cache/diversity` | Daari Cache Diversity |
 | `POST` | `/v1/daari/cache/invalidate` | Daari Cache Invalidate |
