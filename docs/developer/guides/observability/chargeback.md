@@ -40,8 +40,8 @@ curl -H "Authorization: Bearer $TOKEN" \
 ```
 
 The packaged web console (**Usage & savings → Spend export**) downloads the same
-endpoint with since / format (csv|jsonl) / optional model and usage_speed filters
-using the session API key — no separate CLI or curl step.
+endpoint with since / format (csv|jsonl) / optional model, usage_speed, team, and
+until filters using the session API key — no separate CLI or curl step.
 
 `--since` accepts an ISO-8601 timestamp or a relative window (`7d`, `12h`). Optional `until` (HTTP) is the exclusive upper bound with the same formats. `--key`, `--team`, `--user`, and `--tier` are exact filters (`--tier` matches the ledger column: `asr`, `translation`, `tts`, `embed`, `L3`–`L6`, …). `--model` is a SQL `LIKE` pattern (e.g. `%:cloud` for Ollama cloud egress). `--usage-speed` is exact `fast` or `standard` (Anthropic fast mode). CSV and JSONL both stream one row at a time. The HTTP export returns JSON `{rows, total, limit, offset, has_more}` by default, or CSV when `format=csv`.
 
