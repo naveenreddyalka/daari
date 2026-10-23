@@ -15,6 +15,17 @@ DECISION_CLASSIFIER_OUTCOMES = frozenset(
     {"success", "heuristic_fallback", "error", "skipped"}
 )
 
+# Bounded TTL classes for cache-write token counters (#1872).
+CACHE_WRITE_TTL_LABELS = frozenset({"30m", "12h", "1h", "unset"})
+
+
+def cache_write_ttl_label(ttl: str | None) -> str:
+    """Map request cache TTL to a low-cardinality Prometheus label (#1872)."""
+    label = (ttl or "").strip().lower()
+    if label in ("30m", "12h", "1h"):
+        return label
+    return "unset"
+
 # Prometheus modality label values (#1106).
 MODALITIES = frozenset(
     {
@@ -231,6 +242,8 @@ class Metrics:
     gzip: dict[str, int] = field(default_factory=dict)
     gzip_bytes_before: int = 0
     gzip_bytes_after: int = 0
+    # Cache-write tokens by TTL class (30m|12h|1h|unset) (#1872).
+    cache_write_tokens: dict[str, int] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -450,6 +463,15 @@ class Metrics:
                 self.gzip_bytes_before += max(0, int(bytes_before))
                 self.gzip_bytes_after += max(0, int(bytes_after))
 
+    def record_cache_write(self, *, tokens: int, ttl: str | None = None) -> None:
+        """Accumulate provider cache-write tokens by TTL class (#1872)."""
+        amount = max(0, int(tokens))
+        if amount == 0:
+            return
+        label = cache_write_ttl_label(ttl)
+        with self._lock:
+            self.cache_write_tokens[label] = self.cache_write_tokens.get(label, 0) + amount
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -505,6 +527,7 @@ class Metrics:
                 "gzip": dict(self.gzip),
                 "gzip_bytes_before": self.gzip_bytes_before,
                 "gzip_bytes_after": self.gzip_bytes_after,
+                "cache_write_tokens": dict(self.cache_write_tokens),
                 "decision_classifier": dict(self.decision_classifier),
                 "decision_classifier_latency": {
                     "count": self.decision_classifier_latency.count,
