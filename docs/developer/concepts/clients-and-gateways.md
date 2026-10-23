@@ -132,10 +132,14 @@ param wins over the header. In-flight background rows (`queued` / non-terminal)
 return **409** — resume is completed-only. Plain GET (no `stream`) remains JSON.
 `POST /v1/responses/{id}/cancel` is idempotent: an in-flight background job
 stops writing tokens and the stored status becomes `cancelled`; an already
-terminal object returns 200 with its current body. `DELETE /v1/responses/{id}`
-removes the row so a later GET is 404. Tenancy matches GET (other virtual keys
-see 404, not 403; the master key can cancel or delete any row). `include` is
-rejected with 400 rather than ignored; `metadata` is echoed.
+terminal object returns 200 with its current body. On a multi-replica fleet
+with `cache.backend: redis`, cancel/delete from any replica stops the worker
+on the owning pod (shared cancel flag); see
+[Batches multi-replica](../guides/features/batches.md#background-responses-cancel-across-replicas).
+`DELETE /v1/responses/{id}` removes the row so a later GET is 404. Tenancy
+matches GET (other virtual keys see 404, not 403; the master key can cancel or
+delete any row). `include` is rejected with 400 rather than ignored; `metadata`
+is echoed.
 Only `type: function` tools are accepted by default — hosted types (`web_search`,
 `mcp`, `file_search`, …) return **400** naming the unsupported type(s) and the
 supported allowlist. Opt in to local server-side MCP with

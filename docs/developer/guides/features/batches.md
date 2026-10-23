@@ -39,6 +39,17 @@ after `claim_ttl_seconds` and another replica resumes. Keep batches/files/
 responses on postgres when using those APIs across pods. Single-node
 SQLite remains the zero-dependency default.
 
+### Background Responses cancel across replicas
+
+Postgres-backed `responses.backend` makes `GET /v1/responses/{id}` and status
+polling fleet-true, but in-flight **execution** still runs on the pod that
+accepted `background: true`. With `cache.backend: redis` (same Redis as L0 /
+session pins), `POST /v1/responses/{id}/cancel` and `DELETE` set a shared
+cancel flag so the owning pod cooperatively stops the worker — stored status
+becomes `cancelled` and no further tokens are billed after the cancel is
+observed. Without Redis, cancel only stops a job on the pod that holds it
+(single-node default).
+
 Helm chart defaults stay at one replica until `postgres.enabled: true`. With that
 flag the Deployment sets `DAARI_BATCHES__BACKEND` / `DAARI_FILES__BACKEND` /
 `DAARI_RESPONSES__BACKEND` / `DAARI_OBSERVABILITY__BACKEND` to `postgres` for you.

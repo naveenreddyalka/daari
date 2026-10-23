@@ -182,7 +182,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `batches.claim_ttl_seconds` | int | `90` | How long a replica's drain claim stays exclusive before another replica may reclaim a crashed worker (#465). Ignored for sqlite. |
 | `batches.yield_to_interactive` | bool | `True` | When true, the batch worker waits while interactive HTTP requests are in flight before dispatching the next item (#444). |
 | `batches.idle_poll_seconds` | float | `0.25` | How often to re-check interactive load while yielding. |
-| `responses.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) so store:true / previous_response_id / background polling work across replicas (#481). |
+| `responses.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) so store:true / previous_response_id / background polling work across replicas (#481). Fleet cancel of in-flight background jobs uses cache.backend=redis (shared flag), not this setting (#1874). |
 | `responses.retention_days` | int | `0` | Delete stored responses older than this many days (#497). 0 keeps them forever. |
 | `idempotency.enabled` | bool | `True` | When true, honor Idempotency-Key on chat completions, Responses, modality routes, and decisions. A missing header is always a no-op. |
 | `idempotency.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) for multi-replica fleets. |

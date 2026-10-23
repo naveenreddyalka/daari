@@ -211,11 +211,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.rate_limiter = build_rate_limiter(resolved)
     from daari.auth.invalid_key_throttle import build_auth_throttle
     from daari.auth.key_lockout import build_key_lockout
+    from daari.gateway.responses_job_cancel import configure_job_cancel_store
     from daari.gateway.systemone import configure_systemone_breaker_store
 
     app.state.auth_throttle = build_auth_throttle(resolved)
     app.state.key_lockout = build_key_lockout(resolved)
     configure_systemone_breaker_store(resolved)
+    configure_job_cancel_store(resolved)
 
     cors_origins = [origin.strip() for origin in resolved.server.cors_origins if origin.strip()]
     cors_allow_headers = "Authorization, Content-Type, x-api-key, X-Daari-Meta"

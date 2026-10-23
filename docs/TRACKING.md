@@ -7813,6 +7813,15 @@ with a short security rationale and link to the GitHub release; aligns with
 `systemone.base_url` 0.32+ wording in the config reference. Covered by
 `tests/unit/test_vllm_local_tier_docs.py`.
 
+### Fleet-coordinate Responses background cancel ([#1874](https://github.com/naveenreddyalka/daari/issues/1874))
+
+<!-- tracking:#1874 -->
+**Status:** Done (2026-10-23). When `cache.backend=redis`, cancel/delete sets a
+shared Redis flag so the owning pod's cooperative watcher stops the in-flight
+background task; single-process stays local-only. Covered by
+`tests/unit/test_responses_fleet_cancel.py` and docs contracts; ops note in
+batches multi-replica + clients-and-gateways.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
