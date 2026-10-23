@@ -163,6 +163,21 @@ def render_prometheus(
     lines.append("# TYPE daari_gzip_compressed_bytes_total counter")
     lines.append(f"daari_gzip_compressed_bytes_total {int(snap.get('gzip_bytes_after', 0))}")
 
+    cache_writes = snap.get("cache_write_tokens") or {}
+    lines.append(
+        "# HELP daari_cache_write_tokens_total "
+        "Provider cache-write tokens by TTL class "
+        "(ttl=30m|12h|1h|unset)."
+    )
+    lines.append("# TYPE daari_cache_write_tokens_total counter")
+    if not cache_writes:
+        lines.append("daari_cache_write_tokens_total 0")
+    else:
+        for ttl, count in sorted(cache_writes.items()):
+            lines.append(
+                f"daari_cache_write_tokens_total{_labels(ttl=str(ttl))} {int(count)}"
+            )
+
     lines.append("# HELP daari_upstream_retries_total Transient upstream failures retried.")
     lines.append("# TYPE daari_upstream_retries_total counter")
     lines.append(f"daari_upstream_retries_total {snap.get('upstream_retries', 0)}")
