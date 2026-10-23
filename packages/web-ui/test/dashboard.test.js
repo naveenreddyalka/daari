@@ -1045,3 +1045,120 @@ test("spend export shows analyst 403 message", async (t) => {
   assert.match(status, /analyst/i);
   assert.ok(fetch.calls.some((c) => c.url.includes("/v1/daari/spend/export")));
 });
+
+test("spend export sends team and until query params", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/spend/export": { __http: 200, __text: "timestamp,cost_usd\n" },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  dom.window.URL.createObjectURL = () => "blob:test";
+  dom.window.URL.revokeObjectURL = () => {};
+  const origCreate = dom.window.document.createElement.bind(dom.window.document);
+  dom.window.document.createElement = (tag) => {
+    const el = origCreate(tag);
+    if (tag === "a") {
+      el.click = () => {};
+    }
+    return el;
+  };
+
+  doc.getElementById("spend-export-team").value = "platform";
+  doc.getElementById("spend-export-until").value = "2026-10-23T00:00:00Z";
+  doc.getElementById("spend-export-download").click();
+  await settle(20);
+
+  const call = fetch.calls.find((c) => c.url.includes("/v1/daari/spend/export"));
+  assert.ok(call, "expected spend/export fetch");
+  assert.match(call.url, /team=platform/);
+  assert.match(
+    call.url,
+    /until=2026-10-23T00%3A00%3A00Z|until=2026-10-23T00:00:00Z/
+  );
+});
+
+test("systemone breaker reset posts and refreshes status", async (t) => {
+  let statsPayload = {
+    ...STATS,
+    systemone_breaker: [
+      { base: "http://vllm.local:8000", state: "open", rejects: 2, cooldown_seconds: 30 },
+    ],
+  };
+  const closedBreaker = [
+    { base: "http://vllm.local:8000", state: "closed", rejects: 2, cooldown_seconds: 30 },
+  ];
+  const baseFetch = fakeFetch(routes());
+  const calls = [];
+  const wrapped = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    wrapped.calls = calls;
+    if (String(url).includes("/v1/daari/systemone/breaker/reset")) {
+      statsPayload = { ...STATS, systemone_breaker: closedBreaker };
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({ status: "ok", systemone_breaker: closedBreaker }),
+        text: async () => "",
+      };
+    }
+    if (String(url).includes("/v1/daari/stats")) {
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => statsPayload,
+        text: async () => JSON.stringify(statsPayload),
+      };
+    }
+    return baseFetch(url, init);
+  };
+  wrapped.calls = calls;
+
+  const dom = loadDashboard({ fetch: wrapped });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const status = doc.getElementById("systemone-breaker-status");
+  assert.match(status.textContent, /open/);
+  const apiKey = doc.getElementById("api-key");
+  if (apiKey) {
+    apiKey.value = "admin-key";
+    apiKey.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  }
+  doc.getElementById("systemone-breaker-reset").click();
+  await settle(30);
+
+  const resetCall = calls.find((c) => c.url.includes("/v1/daari/systemone/breaker/reset"));
+  assert.ok(resetCall, "expected breaker reset POST");
+  assert.equal(resetCall.init?.method, "POST");
+  assert.equal(resetCall.init?.headers?.Authorization, "Bearer admin-key");
+  assert.match(status.textContent, /closed/);
+  assert.match(doc.getElementById("systemone-breaker-reset-status").textContent, /reset/i);
+});
+
+test("systemone breaker reset shows admin 403 message", async (t) => {
+  const fetch = fakeFetch(
+    routes({ "/v1/daari/systemone/breaker/reset": { status: 403 } })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  doc.getElementById("systemone-breaker-reset").click();
+  await settle(20);
+
+  const msg = doc.getElementById("systemone-breaker-reset-status").textContent;
+  assert.match(msg, /403/);
+  assert.match(msg, /admin/i);
+  assert.ok(
+    fetch.calls.some((c) => c.url.includes("/v1/daari/systemone/breaker/reset"))
+  );
+});

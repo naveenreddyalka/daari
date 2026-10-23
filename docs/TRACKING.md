@@ -7786,6 +7786,15 @@ Legacy version / clean payloads do not increment. Covered by
 `tests/unit/test_anthropic_thinking_parity.py`; metrics-prometheus guide lists
 the kind.
 
+### Web console spend-export team/until + breaker reset ([#1871](https://github.com/naveenreddyalka/daari/issues/1871))
+
+<!-- tracking:#1871 -->
+**Status:** Done (2026-10-23). Packaged web UI spend export adds optional team
+and until inputs (query params on `/v1/daari/spend/export`); Local pool card
+gains a Reset breaker control posting `/v1/daari/systemone/breaker/reset` with
+admin 403 messaging. Covered by `packages/web-ui/test/dashboard.test.js`;
+chargeback + doctor-health note the console controls.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
