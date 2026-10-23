@@ -21,6 +21,8 @@ const backendSummaryHealthyNode = document.getElementById("backend-summary-healt
 const backendSummaryUnhealthyNode = document.getElementById("backend-summary-unhealthy");
 const backendSummaryOpenCircuitNode = document.getElementById("backend-summary-open-circuit");
 const systemoneBreakerStatusNode = document.getElementById("systemone-breaker-status");
+const systemoneBreakerResetButton = document.getElementById("systemone-breaker-reset");
+const systemoneBreakerResetStatusNode = document.getElementById("systemone-breaker-reset-status");
 const orgNode = document.getElementById("org-learning");
 const orgSummaryNode = document.getElementById("org-summary");
 const statusNode = document.getElementById("status");
@@ -42,6 +44,8 @@ const spendExportSinceNode = document.getElementById("spend-export-since");
 const spendExportFormatNode = document.getElementById("spend-export-format");
 const spendExportModelNode = document.getElementById("spend-export-model");
 const spendExportUsageSpeedNode = document.getElementById("spend-export-usage-speed");
+const spendExportTeamNode = document.getElementById("spend-export-team");
+const spendExportUntilNode = document.getElementById("spend-export-until");
 const spendExportDownloadButton = document.getElementById("spend-export-download");
 const spendExportStatusNode = document.getElementById("spend-export-status");
 const cacheTrustTableNode = document.getElementById("cache-trust-table");
@@ -1034,6 +1038,37 @@ function triggerBlobDownload(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
+async function resetSystemoneBreaker() {
+  if (!systemoneBreakerResetStatusNode) {
+    return;
+  }
+  systemoneBreakerResetStatusNode.textContent = "Resetting systemone breaker…";
+  try {
+    const response = await fetch(`${apiBaseUrl}/v1/daari/systemone/breaker/reset`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    if (response.status === 403) {
+      systemoneBreakerResetStatusNode.textContent =
+        "403 Forbidden — breaker reset requires an admin API key.";
+      return;
+    }
+    if (!response.ok) {
+      systemoneBreakerResetStatusNode.textContent = `Breaker reset failed: ${response.status}`;
+      return;
+    }
+    const payload = await response.json();
+    if (Array.isArray(payload.systemone_breaker)) {
+      renderSystemoneBreaker(payload.systemone_breaker);
+    } else {
+      await loadStats();
+    }
+    systemoneBreakerResetStatusNode.textContent = "Breaker reset.";
+  } catch (error) {
+    systemoneBreakerResetStatusNode.textContent = `Breaker reset failed: ${error.message}`;
+  }
+}
+
 async function downloadSpendExport() {
   if (!spendExportStatusNode || !spendExportDownloadButton) {
     return;
@@ -1043,6 +1078,8 @@ async function downloadSpendExport() {
   const model = (spendExportModelNode && spendExportModelNode.value.trim()) || "";
   const usageSpeed =
     (spendExportUsageSpeedNode && spendExportUsageSpeedNode.value.trim()) || "";
+  const team = (spendExportTeamNode && spendExportTeamNode.value.trim()) || "";
+  const until = (spendExportUntilNode && spendExportUntilNode.value.trim()) || "";
   const params = new URLSearchParams({ since });
   // HTTP accepts csv|json; jsonl is built client-side from the JSON page.
   params.set("format", uiFormat === "csv" ? "csv" : "json");
@@ -1051,6 +1088,12 @@ async function downloadSpendExport() {
   }
   if (usageSpeed) {
     params.set("usage_speed", usageSpeed);
+  }
+  if (team) {
+    params.set("team", team);
+  }
+  if (until) {
+    params.set("until", until);
   }
   const url = `${apiBaseUrl}/v1/daari/spend/export?${params.toString()}`;
   spendExportStatusNode.textContent = "Downloading spend export…";
@@ -1166,6 +1209,11 @@ exportButton.addEventListener("click", exportStats);
 if (spendExportDownloadButton) {
   spendExportDownloadButton.addEventListener("click", () => {
     void downloadSpendExport();
+  });
+}
+if (systemoneBreakerResetButton) {
+  systemoneBreakerResetButton.addEventListener("click", () => {
+    void resetSystemoneBreaker();
   });
 }
 themeToggleButton.addEventListener("click", toggleTheme);

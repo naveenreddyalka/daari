@@ -211,7 +211,11 @@
             <p id="backend-summary-open-circuit" class="metric">-</p>
           </article>
         </section>
-        <p id="systemone-breaker-status" class="subtle">Systemone breaker: -</p>
+        <div class="controls" style="flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center">
+          <p id="systemone-breaker-status" class="subtle" style="margin: 0">Systemone breaker: -</p>
+          <button id="systemone-breaker-reset" type="button">Reset breaker</button>
+        </div>
+        <p id="systemone-breaker-reset-status" class="subtle"></p>
         <table>
           <thead>
             <tr>
@@ -323,6 +327,14 @@
               <option value="fast">fast</option>
               <option value="standard">standard</option>
             </select>
+          </label>
+          <label>
+            Team
+            <input id="spend-export-team" type="text" placeholder="optional team id" aria-label="Spend export team filter" />
+          </label>
+          <label>
+            Until
+            <input id="spend-export-until" type="text" placeholder="optional ISO or 7d" aria-label="Spend export until filter" />
           </label>
           <button id="spend-export-download" type="button">Download spend export</button>
         </div>

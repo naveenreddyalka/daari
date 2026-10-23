@@ -7775,6 +7775,26 @@ dict remains the default; Redis errors fail open. Admin reset clears shared
 state fleet-wide and audit notes `backend`. `/ready`, stats, and doctor read
 the shared snapshot. Covered by `tests/unit/test_systemone_breaker_redis.py`.
 
+### soft_warning when 2026-10-21 strips sampling params ([#1869](https://github.com/naveenreddyalka/daari/issues/1869))
+
+<!-- tracking:#1869 -->
+**Status:** Done (2026-10-23). L6 Anthropic stream/non-stream payload build
+records `record_soft_warning("anthropic_sampling_stripped")` (stats +
+Prometheus) when API version `2026-10-21` omits `temperature`/`top_p`/`top_k`,
+and logs gateway event `anthropic_sampling_stripped` with the param list.
+Legacy version / clean payloads do not increment. Covered by
+`tests/unit/test_anthropic_thinking_parity.py`; metrics-prometheus guide lists
+the kind.
+
+### Web console spend-export team/until + breaker reset ([#1871](https://github.com/naveenreddyalka/daari/issues/1871))
+
+<!-- tracking:#1871 -->
+**Status:** Done (2026-10-23). Packaged web UI spend export adds optional team
+and until inputs (query params on `/v1/daari/spend/export`); Local pool card
+gains a Reset breaker control posting `/v1/daari/systemone/breaker/reset` with
+admin 403 messaging. Covered by `packages/web-ui/test/dashboard.test.js`;
+chargeback + doctor-health note the console controls.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
