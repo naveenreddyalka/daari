@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import base64
-import hashlib
-import hmac
 import json
 import time
 from pathlib import Path
@@ -13,7 +11,7 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from daari.config.settings import AnthropicSettings, Settings
+from daari.config.settings import AnthropicSettings
 from daari.enterprise.anthropic_org_webhooks import (
     ENFORCEMENT_OPENED,
     ENFORCEMENT_RESOLVED,
@@ -161,9 +159,7 @@ async def test_org_webhook_unknown_event_acked(settings, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_org_webhook_opened_updates_store_and_maps_end_users(
-    settings, tmp_path, monkeypatch
-):
+async def test_org_webhook_opened_updates_store_and_maps_end_users(settings, tmp_path, monkeypatch):
     settings.server.api_key = ""
     settings.server.virtual_keys.enabled = False
     profile_id = "uprof_011CZkZCu8hGbp5mYRQgUmz9"
@@ -246,9 +242,7 @@ async def test_org_webhook_opened_updates_store_and_maps_end_users(
 
 
 @pytest.mark.asyncio
-async def test_org_webhook_resolved_clears_unrestricted_profile(
-    settings, tmp_path, monkeypatch
-):
+async def test_org_webhook_resolved_clears_unrestricted_profile(settings, tmp_path, monkeypatch):
     settings.server.api_key = ""
     settings.server.virtual_keys.enabled = False
     profile_id = "uprof_clear_me"
@@ -300,9 +294,7 @@ async def test_org_webhook_resolved_clears_unrestricted_profile(
         lambda name, payload=None, **_: events.append(name),
     )
 
-    body = json.dumps(
-        _event(ENFORCEMENT_RESOLVED, profile_id=profile_id)
-    ).encode()
+    body = json.dumps(_event(ENFORCEMENT_RESOLVED, profile_id=profile_id)).encode()
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url="http://test"
     ) as client:
@@ -318,9 +310,9 @@ async def test_org_webhook_resolved_clears_unrestricted_profile(
 
 def test_docs_cover_org_webhook_enable_and_rotate() -> None:
     root = Path(__file__).resolve().parents[2]
-    guide = (
-        root / "docs/developer/guides/features/anthropic-enforcement-webhooks.md"
-    ).read_text(encoding="utf-8")
+    guide = (root / "docs/developer/guides/features/anthropic-enforcement-webhooks.md").read_text(
+        encoding="utf-8"
+    )
     assert "/v1/daari/webhooks/anthropic/org" in guide
     assert "org_webhook_signing_secret" in guide
     assert "org_webhook_signing_secret_previous" in guide

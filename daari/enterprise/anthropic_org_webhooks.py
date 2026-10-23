@@ -276,9 +276,7 @@ def ingest_org_webhook(
                 user_profiles=user_profiles,
                 updated_at=datetime.now(timezone.utc).isoformat(),
             )
-            rows = [
-                r for r in store.load() if str(r.get("profile_id") or "") != profile_id
-            ]
+            rows = [r for r in store.load() if str(r.get("profile_id") or "") != profile_id]
             rows.append(row)
             store.save(rows)
         else:
@@ -293,9 +291,7 @@ def ingest_org_webhook(
         # Best-effort without Admin API: opened → restricted; resolved → clear.
         if event_type == ENFORCEMENT_OPENED:
             status = "restricted"
-            actions = (
-                [{"id": action_id, "type": "restriction"}] if action_id else []
-            )
+            actions = [{"id": action_id, "type": "restriction"}] if action_id else []
             row = _upsert_store(
                 store,
                 profile_id=profile_id,
