@@ -159,6 +159,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `anthropic.enforcement_webhook_url` | str | `''` | Optional webhook for enforcement start/end transitions (#1866). Empty disables. Signed like budget alerts when enforcement_webhook_secret is set. |
 | `anthropic.enforcement_webhook_secret` | str | `''` | HMAC secret for enforcement webhooks (X-Daari-Signature) (#1866). |
 | `anthropic.enforcement_webhook_secret_previous` | str | `''` | Previous enforcement webhook HMAC secret during rotation grace (#1866). |
+| `anthropic.org_webhook_signing_secret` | str | `''` | Anthropic organization webhook signing secret (whsec_…). Empty disables POST /v1/daari/webhooks/anthropic/org (#1875). |
+| `anthropic.org_webhook_signing_secret_previous` | str | `''` | Previous Anthropic org webhook signing secret during rotation grace (#1875). |
 | `tools.unknown` | str | `'deny'` |  |
 | `tools.allow` | list | `['git status', 'git diff', 'pytest', 'eslint *']` |  |
 | `tools.block` | list | `['rm *', 'curl *\| sh', '*> /dev/*']` |  |
