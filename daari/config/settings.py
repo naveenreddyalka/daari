@@ -1516,7 +1516,9 @@ class ResponsesSettings(BaseModel):
         description=(
             "sqlite (default, path next to traces) or postgres "
             "(observability.postgres_url) so store:true / previous_response_id / "
-            "background polling work across replicas (#481)."
+            "background polling work across replicas (#481). "
+            "Fleet cancel of in-flight background jobs uses cache.backend=redis "
+            "(shared flag), not this setting (#1874)."
         ),
     )
     retention_days: int = Field(
