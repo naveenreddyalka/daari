@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import httpx
-import pytest
 
 from daari.config.settings import AnthropicSettings, Settings
 from daari.enterprise.enforcement_sync import (
