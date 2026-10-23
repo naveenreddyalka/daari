@@ -3163,6 +3163,12 @@ class Router:
                         flight_meta.output_tokens = bill[0].daari_meta.output_tokens
                         flight_meta.cached_tokens = bill[0].daari_meta.cached_tokens
                         flight_meta.cache_write_tokens = bill[0].daari_meta.cache_write_tokens
+                        flight_meta.service_tier = bill[0].daari_meta.service_tier
+                    stream_tier = getattr(
+                        self.frontier, "last_stream_service_tier", None
+                    )
+                    if stream_tier and not flight_meta.service_tier:
+                        flight_meta.service_tier = stream_tier
                     # Attach frontier param-compat drops/warnings for stream
                     # parity with non-stream execute (#1173).
                     apply_meta = getattr(

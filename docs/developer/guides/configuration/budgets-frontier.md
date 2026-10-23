@@ -407,6 +407,10 @@ for `gpt-6.1-sol` and `gpt-6-astra` (Astra Ultrafast is US/global only — an
 ultrafast_eu_unsupported`; unsupported models get
 `ultrafast_unsupported_model`), `standard` / `default` / `auto` / missing is
 1×. Unknown values log `service_tier_ignored` and bill as standard.
+When OpenAI rejects a requested tier under org/project service-tier
+restrictions (400 with `error.param=service_tier`), L6 retries once without
+the tier, stamps `service_tier_degraded`, and bills from the response's
+`service_tier` field.
 
 OpenAI regional processing (data residency) adds a further **1.10×** uplift on
 models released on or after 2026-03-05 when a key/team `region_pin` is `us` or
