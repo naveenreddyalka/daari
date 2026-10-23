@@ -7805,6 +7805,14 @@ uncompressed/compressed byte panels and cache-write tokens by TTL
 `tests/unit/test_cache_write_ttl_metrics.py`; metrics-prometheus guide lists
 the series + panels.
 
+### vLLM local-tier security floor ≥0.32.0 ([#1873](https://github.com/naveenreddyalka/daari/issues/1873))
+
+<!-- tracking:#1873 -->
+**Status:** Done (2026-10-23). `vllm-local-tier.md` recommends vLLM **≥0.32.0**
+with a short security rationale and link to the GitHub release; aligns with
+`systemone.base_url` 0.32+ wording in the config reference. Covered by
+`tests/unit/test_vllm_local_tier_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

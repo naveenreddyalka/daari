@@ -4,6 +4,17 @@
 server, LM Studio, SGLang, TGI) as a pool backend. Cache, budgets, and policy
 stay in front; inference stays on your GPU.
 
+## Minimum vLLM version
+
+For `kind: openai` slots that point at **vLLM**, run **≥0.32.0**. That cut
+closed a wave of security advisories (including one-request engine-crash DoS,
+template injection, and socket-exhaustion class issues) —
+[vLLM 0.32.0 release](https://github.com/vllm-project/vllm/releases/tag/v0.32.0).
+Older servers stay reachable through the same OpenAI-compatible probe, but
+operators who treat this guide as current should not stay below that floor.
+The same **0.32+** floor appears for vLLM `/v1/systemone` in the
+[config reference](../../reference/config.md) (`systemone.base_url`).
+
 ## Config
 
 `routing.local_pool.backends[].kind: openai` talks OpenAI chat-completions
@@ -41,4 +52,4 @@ Health: `kind: openai` and `kind: mlx` probe `/v1/models`. `kind: ollama`
 
 ## Next
 
-→ [Ollama backends](../backends/ollama.md) · [Speech-to-text](../backends/asr.md) · [Configuration overview](overview.md)
+→ [Ollama backends](../backends/ollama.md) · [Speech-to-text](../backends/asr.md) · [Configuration overview](overview.md) · [Config reference (`systemone`)](../../reference/config.md)
