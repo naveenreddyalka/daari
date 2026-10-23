@@ -69,6 +69,42 @@ def note_frontier_http_failure(response: Any) -> None:
     log_gateway_event("frontier_http_error", payload)
 
 
+def is_openai_service_tier_restriction(response: Any) -> bool:
+    """True for org/project service_tier policy 400s (OpenAI Oct 2026).
+
+    Scoped to ``error.param == service_tier`` (or message/code mentioning
+    service_tier). Other 400s must not trigger a degrade retry (#1867).
+    """
+    if getattr(response, "status_code", None) != 400:
+        return False
+    body: Any = None
+    json_fn = getattr(response, "json", None)
+    if callable(json_fn):
+        try:
+            body = json_fn()
+        except Exception:
+            body = None
+    if not isinstance(body, dict):
+        return False
+    error = body.get("error")
+    if not isinstance(error, dict):
+        return False
+    param = error.get("param")
+    if isinstance(param, str) and param.strip().lower() == "service_tier":
+        return True
+    code = str(error.get("code") or "").lower()
+    message = str(error.get("message") or "").lower()
+    return "service_tier" in code or "service_tier" in message
+
+
+def _openai_response_service_tier(data: dict[str, Any]) -> str | None:
+    """Actual tier from an OpenAI chat/completions body, if present."""
+    raw = data.get("service_tier")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip().lower()
+    return None
+
+
 def anthropic_fast_rate_headers(headers: httpx.Headers) -> dict[str, str]:
     """Allowlist of fast-mode rate-limit headers present on an upstream response."""
     found: dict[str, str] = {}
@@ -169,6 +205,9 @@ def _remember_stream_token_counts(
 
 def _remember_openai_stream_usage(executor: FrontierExecutor, chunk: dict[str, Any]) -> None:
     """Keep final-chunk usage (stream_options.include_usage) for L6 stream billing (#1865)."""
+    tier = _openai_response_service_tier(chunk)
+    if tier is not None:
+        executor.last_stream_service_tier = tier
     usage = chunk.get("usage") if isinstance(chunk.get("usage"), dict) else None
     if usage is None:
         return
@@ -200,6 +239,8 @@ class FrontierExecutor:
         default_factory=dict, init=False, repr=False
     )
     last_fast_degraded: bool = field(default=False, init=False, repr=False)
+    last_service_tier_degraded: bool = field(default=False, init=False, repr=False)
+    last_stream_service_tier: str | None = field(default=None, init=False, repr=False)
 
     def _remember_fast_rate_headers(self, response: Any) -> None:
         headers = getattr(response, "headers", None)
@@ -265,15 +306,28 @@ class FrontierExecutor:
             return
         meta.warning = "speed_ignored"
 
-    def apply_fast_degraded_warning(self, target: Any) -> None:
-        """Copy the stream fast-mode degrade note onto meta or a stream outcome."""
-        if not self.last_fast_degraded:
+    def _apply_degrade_note(self, target: Any, *, active: bool, note: str) -> None:
+        if not active:
             return
-        note = "fast_degraded_to_standard"
         existing = getattr(target, "warning", None)
         if existing and note in str(existing):
             return
         target.warning = f"{existing}; {note}" if existing else note
+
+    def apply_fast_degraded_warning(self, target: Any) -> None:
+        """Copy stream degrade notes onto meta or a stream outcome."""
+        self._apply_degrade_note(
+            target, active=self.last_fast_degraded, note="fast_degraded_to_standard"
+        )
+        self.apply_service_tier_degraded_warning(target)
+
+    def apply_service_tier_degraded_warning(self, target: Any) -> None:
+        """Copy the OpenAI service_tier degrade note onto meta or stream outcome."""
+        self._apply_degrade_note(
+            target,
+            active=self.last_service_tier_degraded,
+            note="service_tier_degraded",
+        )
 
     def _openai_payload(self, request: InternalRequest, *, stream: bool) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -406,8 +460,10 @@ class FrontierExecutor:
         self.last_stream_output_tokens = None
         self.last_stream_cached_tokens = None
         self.last_stream_cache_write_tokens = None
+        self.last_stream_service_tier = None
         self.last_fast_rate_headers = {}
         self.last_fast_degraded = False
+        self.last_service_tier_degraded = False
 
         if self._is_anthropic():
             payload = self._anthropic_payload(request, stream=True)
@@ -432,6 +488,7 @@ class FrontierExecutor:
 
         guard_upstream("L6")
         degraded_fast = False
+        degraded_service_tier = False
         while True:
             async with deadline_bounded_stream(
                 self._client(),
@@ -455,6 +512,22 @@ class FrontierExecutor:
                         self.metrics, "record_soft_warning"
                     ):
                         self.metrics.record_soft_warning("fast_degraded_to_standard")
+                    continue
+                if (
+                    not self._is_anthropic()
+                    and payload.get("service_tier")
+                    and not degraded_service_tier
+                    and is_openai_service_tier_restriction(response)
+                ):
+                    # 400 is not run_upstream-retryable — loop once without tier.
+                    note_frontier_http_failure(response)
+                    degraded_service_tier = True
+                    payload.pop("service_tier", None)
+                    self.last_service_tier_degraded = True
+                    if self.metrics is not None and hasattr(
+                        self.metrics, "record_soft_warning"
+                    ):
+                        self.metrics.record_soft_warning("service_tier_degraded")
                     continue
                 note_frontier_http_failure(response)
                 response.raise_for_status()
@@ -542,10 +615,12 @@ class FrontierExecutor:
 
         timeout = nonstream_timeout(self.timeout, "L6")
         degraded_fast = False
+        degraded_service_tier = False
         self.last_fast_rate_headers = {}
+        self.last_service_tier_degraded = False
 
         async def attempt() -> dict[str, Any]:
-            nonlocal degraded_fast
+            nonlocal degraded_fast, degraded_service_tier
             response = await self._client().post(
                 path, json=payload, headers=headers, timeout=timeout
             )
@@ -557,6 +632,20 @@ class FrontierExecutor:
             ):
                 degraded_fast = True
                 payload["speed"] = "standard"
+            if (
+                not anthropic
+                and payload.get("service_tier")
+                and not degraded_service_tier
+                and is_openai_service_tier_restriction(response)
+            ):
+                # 400 is not run_upstream-retryable — one inline retry without tier.
+                note_frontier_http_failure(response)
+                degraded_service_tier = True
+                self.last_service_tier_degraded = True
+                payload.pop("service_tier", None)
+                response = await self._client().post(
+                    path, json=payload, headers=headers, timeout=timeout
+                )
             note_frontier_http_failure(response)
             response.raise_for_status()
             self._remember_fast_rate_headers(response)
@@ -587,6 +676,12 @@ class FrontierExecutor:
         provider_prefs = (
             as_openrouter_payload(request.provider) if request.provider is not None else None
         )
+        if anthropic:
+            billed_tier = request.sampling.service_tier
+        else:
+            billed_tier = _openai_response_service_tier(data)
+            if billed_tier is None and not degraded_service_tier:
+                billed_tier = request.sampling.service_tier
         meta = DaariMeta(
             tier="L6",
             cache_hit=False,
@@ -605,7 +700,7 @@ class FrontierExecutor:
             cache_write_tokens=cache_write_tokens or None,
             provider_prefs=provider_prefs,
             daari_cost_usd=0.0,
-            service_tier=request.sampling.service_tier,
+            service_tier=billed_tier,
             agent_usage=agent_usage,
             usage_speed=_anthropic_usage_speed(data) if anthropic else None,
         )
@@ -615,6 +710,12 @@ class FrontierExecutor:
             meta.warning = f"{existing}; {gate_warning}" if existing else gate_warning
         if degraded_fast:
             note = "fast_degraded_to_standard"
+            existing = meta.warning
+            meta.warning = f"{existing}; {note}" if existing else note
+            if self.metrics is not None and hasattr(self.metrics, "record_soft_warning"):
+                self.metrics.record_soft_warning(note)
+        if degraded_service_tier:
+            note = "service_tier_degraded"
             existing = meta.warning
             meta.warning = f"{existing}; {note}" if existing else note
             if self.metrics is not None and hasattr(self.metrics, "record_soft_warning"):

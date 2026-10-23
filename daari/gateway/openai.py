@@ -2380,17 +2380,19 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             from daari.gateway.systemone import (
                 breaker_snapshot,
                 close_systemone_breakers,
+                systemone_breaker_backend,
             )
 
             before = list(breaker_snapshot())
+            backend = systemone_breaker_backend()
             after = close_systemone_breakers()
             audit_log_from_settings(ctx.settings).record(
                 actor=request.headers.get("x-daari-actor", "api"),
                 role=role,
                 action="systemone.breaker.reset",
-                detail={"before": before, "after": after},
+                detail={"before": before, "after": after, "backend": backend},
             )
-            return {"status": "ok", "systemone_breaker": after}
+            return {"status": "ok", "systemone_breaker": after, "backend": backend}
 
         @router.get("/v1/daari/mcp/activity")
         async def daari_mcp_activity_list(request: Request) -> dict[str, Any]:

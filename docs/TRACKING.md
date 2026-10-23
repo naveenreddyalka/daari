@@ -7756,6 +7756,25 @@ events, optional signed webhook, Prometheus
 `GET /v1/daari/anthropic/enforcement`. Covered by
 `tests/unit/test_anthropic_enforcement.py`.
 
+### Degrade OpenAI service_tier on org/project restriction ([#1867](https://github.com/naveenreddyalka/daari/issues/1867))
+
+<!-- tracking:#1867 -->
+**Status:** Done (2026-10-23). When OpenAI returns a scoped `service_tier`
+policy 400 (`error.param=service_tier`), L6 retries once without the tier on
+stream and non-stream; stamps `service_tier_degraded` on `daari_meta` /
+`x-daari-warning`, records soft_warning + Prometheus counter, and bills from
+the response `service_tier` (never the requested restricted tier). Other 400s
+passthrough. Covered by `tests/unit/test_service_tier_degrade.py`.
+
+### Fleet-shared systemone breaker via Redis ([#1868](https://github.com/naveenreddyalka/daari/issues/1868))
+
+<!-- tracking:#1868 -->
+**Status:** Done (2026-10-23). When `cache.backend=redis`, systemone breaker
+open/close + reject counts are shared across replicas (short TTL); process-local
+dict remains the default; Redis errors fail open. Admin reset clears shared
+state fleet-wide and audit notes `backend`. `/ready`, stats, and doctor read
+the shared snapshot. Covered by `tests/unit/test_systemone_breaker_redis.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
