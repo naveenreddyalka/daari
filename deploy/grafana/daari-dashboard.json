@@ -923,6 +923,68 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 45,
+      "title": "Gzip outcomes by result",
+      "description": "Buffered JSON gzip middleware outcomes (`daari_gzip_total`) by result (compressed|skipped). Skipped reasons stay on the series labels.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 176
+      },
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(daari_gzip_total[5m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "title": "Gzip bytes (uncompressed vs compressed)",
+      "description": "Egress bytes before/after gzip on compressed responses (`daari_gzip_uncompressed_bytes_total` / `daari_gzip_compressed_bytes_total`).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 176
+      },
+      "targets": [
+        {
+          "expr": "rate(daari_gzip_uncompressed_bytes_total[5m])",
+          "legendFormat": "uncompressed",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(daari_gzip_compressed_bytes_total[5m])",
+          "legendFormat": "compressed",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 47,
+      "title": "Cache-write tokens by TTL",
+      "description": "Provider cache-write tokens (`daari_cache_write_tokens_total`) by TTL class (30m / 12h / 1h / unset). Rising 12h vs 30m means invoice-true write premium pressure.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 184
+      },
+      "targets": [
+        {
+          "expr": "sum by (ttl) (rate(daari_cache_write_tokens_total[5m]))",
+          "legendFormat": "{{ttl}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

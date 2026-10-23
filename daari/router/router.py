@@ -1327,20 +1327,20 @@ class Router:
         reported_speed = getattr(response.daari_meta, "usage_speed", None)
         if bound is not None and reported_speed:
             bound.usage_speed = reported_speed
+        from daari.router.anthropic_messages import request_cache_ttl
+
+        cache_ttl = request_cache_ttl(request)
+        write_tokens = int(response.daari_meta.cache_write_tokens or 0)
         if bound is not None:
             bound.tool_cost_usd = float(getattr(response.daari_meta, "tool_cost_usd", 0.0) or 0.0)
-            from daari.router.anthropic_messages import request_cache_ttl
-
-            bound.cache_ttl = request_cache_ttl(request)
-            bound.cache_write_tokens = int(response.daari_meta.cache_write_tokens or 0)
+            bound.cache_ttl = cache_ttl
+            bound.cache_write_tokens = write_tokens
             bound.cached_tokens = int(response.daari_meta.cached_tokens or 0)
         # When the provider omitted usage.cost, bill from pricing + request TTL (#1843).
         if (
             response.daari_meta.cost_usd is None
             and (response.daari_meta.tier or "").upper() == "L6"
         ):
-            from daari.router.anthropic_messages import request_cache_ttl
-
             response.daari_meta.cost_usd = cost_usd(
                 response.daari_meta.model or response.model,
                 input_tokens,
@@ -1348,12 +1348,13 @@ class Router:
                 self.pricing,
                 fallback_per_1k=float(self.frontier_price_per_1k_tokens or 0.002),
                 cached_input_tokens=int(response.daari_meta.cached_tokens or 0),
-                cache_write_tokens=int(response.daari_meta.cache_write_tokens or 0),
-                cache_ttl=request_cache_ttl(request),
+                cache_write_tokens=write_tokens,
+                cache_ttl=cache_ttl,
                 service_tier=getattr(request.sampling, "service_tier", None),
                 region_pin=getattr(request.meta, "region_pin", None),
                 usage_speed=getattr(response.daari_meta, "usage_speed", None),
             )
+        self.metrics.record_cache_write(tokens=write_tokens, ttl=cache_ttl)
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,
@@ -3129,6 +3130,11 @@ class Router:
                             cached_tok = bill[0].daari_meta.cached_tokens
                             if cached_tok is not None:
                                 bound.cached_tokens = int(cached_tok)
+                        stream_ttl = getattr(bound, "cache_ttl", None) if bound else None
+                        if write_tok:
+                            self.metrics.record_cache_write(
+                                tokens=int(write_tok), ttl=stream_ttl
+                            )
                         record_kwargs: dict[str, Any] = {
                             "tier": "L6",
                             "cache_hit": False,
@@ -3304,6 +3310,11 @@ class Router:
                         bound.cache_write_tokens = int(write_tok)
                     if bound is not None and served.daari_meta.cached_tokens is not None:
                         bound.cached_tokens = int(served.daari_meta.cached_tokens)
+                    stream_ttl = getattr(bound, "cache_ttl", None) if bound else None
+                    if write_tok:
+                        self.metrics.record_cache_write(
+                            tokens=int(write_tok), ttl=stream_ttl
+                        )
                     self.usage_ledger.record(
                         tier=tier,
                         cache_hit=False,

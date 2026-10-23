@@ -548,3 +548,55 @@ def test_grafana_dashboard_includes_systemone_breaker_panel():
     assert any("rate(" in expr for expr in exprs)
     assert any("event" in expr for expr in exprs)
 
+
+
+def test_grafana_dashboard_includes_gzip_panels():
+    """Gzip outcome rate and byte counters should chart on the overview (#1872)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    outcomes = next(
+        (
+            p
+            for p in payload["panels"]
+            if "gzip" in p.get("title", "").lower()
+            and "byte" not in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert outcomes is not None, "expected a gzip outcomes panel in daari-dashboard.json"
+    outcome_exprs = [t.get("expr", "") for t in outcomes.get("targets", [])]
+    assert any("daari_gzip_total" in expr for expr in outcome_exprs)
+    assert any("rate(" in expr for expr in outcome_exprs)
+    assert any("result" in expr for expr in outcome_exprs)
+
+    bytes_panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "gzip" in p.get("title", "").lower()
+            and "byte" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert bytes_panel is not None, "expected a gzip bytes panel in daari-dashboard.json"
+    byte_exprs = [t.get("expr", "") for t in bytes_panel.get("targets", [])]
+    assert any("daari_gzip_uncompressed_bytes_total" in expr for expr in byte_exprs)
+    assert any("daari_gzip_compressed_bytes_total" in expr for expr in byte_exprs)
+
+
+def test_grafana_dashboard_includes_cache_write_ttl_panel():
+    """Cache-write tokens by TTL class should chart on the overview (#1872)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "cache write" in p.get("title", "").lower()
+            or "cache-write" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a cache-write TTL panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_cache_write_tokens_total" in expr for expr in exprs)
+    assert any("ttl" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
