@@ -2916,6 +2916,20 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 **_page_meta(total, limit=lim, offset=off, returned=len(entries)),
             }
 
+        @router.get("/v1/daari/anthropic/enforcement")
+        async def daari_anthropic_enforcement(request: Request) -> dict[str, Any]:
+            """Locally synced Anthropic user-profile enforcement state (#1866)."""
+            ctx: AppContext = request.app.state.ctx
+            _require_role(request, ctx, "analyst")
+            from daari.enterprise.enforcement_sync import store_from_settings
+
+            store = store_from_settings(ctx.settings)
+            profiles = store.load()
+            return {
+                "profiles": profiles,
+                "enforced_count": store.enforced_count(),
+            }
+
         @router.get("/v1/daari/events")
         async def daari_events_list(
             request: Request,

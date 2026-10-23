@@ -41,6 +41,7 @@ def render_prometheus(
     in_flight_scopes: list[dict[str, Any]] | None = None,
     virtual_keys: dict[str, Any] | None = None,
     schema_ok: bool | None = None,
+    anthropic_enforced_profiles: int | None = None,
 ) -> str:
     """Render the current Metrics snapshot (plus optional gauges) as exposition text."""
     snap = metrics.snapshot(include_histograms=True)
@@ -422,6 +423,16 @@ def render_prometheus(
             lines.append(
                 f"daari_virtual_keys{_labels(status=status)} {int(virtual_keys.get(status) or 0)}"
             )
+
+    if anthropic_enforced_profiles is not None:
+        lines.append(
+            "# HELP daari_anthropic_enforced_profiles "
+            "Mapped Anthropic user profiles currently restricted or banned (#1866)."
+        )
+        lines.append("# TYPE daari_anthropic_enforced_profiles gauge")
+        lines.append(
+            f"daari_anthropic_enforced_profiles {int(anthropic_enforced_profiles)}"
+        )
 
     pool = backend_pool or {}
     backends = list(pool.get("backends") or [])

@@ -147,6 +147,13 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
         schema_ok = bool(local_sqlite_schema_status(settings).schema_ok)
     except Exception:
         schema_ok = False
+    anthropic_enforced_profiles: int | None = None
+    try:
+        from daari.enterprise.enforcement_sync import store_from_settings
+
+        anthropic_enforced_profiles = store_from_settings(settings).enforced_count()
+    except Exception:
+        anthropic_enforced_profiles = 0
     return render_prometheus(
         ctx.metrics,
         budget_state=budget_state,
@@ -160,6 +167,7 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
         in_flight_scopes=in_flight_scopes,
         virtual_keys=virtual_keys,
         schema_ok=schema_ok,
+        anthropic_enforced_profiles=anthropic_enforced_profiles,
     )
 
 
