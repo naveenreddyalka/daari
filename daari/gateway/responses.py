@@ -32,6 +32,12 @@ from daari.gateway.content import extract_audio, extract_images
 from daari.gateway.internal import InternalRequest, InternalResponse, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
 from daari.gateway.response_store import ResponseStore
+from daari.gateway.responses_job_cancel import (
+    ensure_cancel_watcher,
+    is_cancel_requested,
+    register_local_job,
+    signal_cancel,
+)
 from daari.gateway.sampling import SamplingParams
 from daari.gateway.disconnect import (
     ClientDisconnected,
@@ -45,7 +51,6 @@ from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
 from daari.router.router import AppContext
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
-_BACKGROUND_JOBS: dict[str, asyncio.Task[None]] = {}
 # Clients feature-detect via the 400 detail allowlist (#1133).
 _SUPPORTED_INCLUDES: frozenset[str] = frozenset({"reasoning.encrypted_content"})
 # Hosted OpenAI tool types are rejected at ingress (#1135).
@@ -780,18 +785,15 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 conversation=list(stored.get("_conversation") or []),
                 stored=True,
             )
-            job = _BACKGROUND_JOBS.pop(response_id, None)
-            if job is not None and not job.done():
-                job.cancel()
+            # Local cancel + fleet flag when cache.backend=redis (#1874).
+            signal_cancel(response_id)
             return cancelled
 
         @router.delete("/v1/responses/{response_id}")
         async def delete_response(response_id: str, request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
             store, stored = _visible_stored_response(ctx, response_id, request)
-            job = _BACKGROUND_JOBS.pop(response_id, None)
-            if job is not None and not job.done():
-                job.cancel()
+            signal_cancel(response_id)
             store.delete(response_id)
             return {"id": stored.get("id") or response_id, "object": "response", "deleted": True}
 
@@ -1167,8 +1169,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                         include_encrypted=include_encrypted,
                     )
                 )
-                _BACKGROUND_JOBS[response_id] = task
-                task.add_done_callback(lambda _t, rid=response_id: _BACKGROUND_JOBS.pop(rid, None))
+                register_local_job(response_id, task)
+                ensure_cancel_watcher()
                 if idem_slot is not None:
                     idem_slot.complete(
                         status_code=200,
@@ -1327,11 +1329,19 @@ class ResponsesGatewayAdapter(GatewayAdapter):
     ) -> None:
         try:
             current = store.get(response_id)
-            if current is None or current.get("status") == "cancelled":
+            if (
+                current is None
+                or current.get("status") == "cancelled"
+                or is_cancel_requested(response_id)
+            ):
                 return
             result = await ctx.router.route(internal)
             current = store.get(response_id)
-            if current is None or current.get("status") == "cancelled":
+            if (
+                current is None
+                or current.get("status") == "cancelled"
+                or is_cancel_requested(response_id)
+            ):
                 return
             payload = _response_body(
                 response_id,
@@ -1348,9 +1358,16 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 stored=True,
                 owner_key_id=owner_key_id,
             )
+        except asyncio.CancelledError:
+            # Fleet or local cancel — do not overwrite cancelled / deleted rows.
+            raise
         except Exception as exc:  # noqa: BLE001 — persist failure for GET polling
             current = store.get(response_id)
-            if current is None or current.get("status") == "cancelled":
+            if (
+                current is None
+                or current.get("status") == "cancelled"
+                or is_cancel_requested(response_id)
+            ):
                 return
             store.put(
                 response_id,
