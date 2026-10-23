@@ -207,6 +207,66 @@ class TestPayloadEmission:
             assert name in compat.dropped_params
 
 
+def test_sampling_strip_records_soft_warning_and_prometheus():
+    """2026-10-21 sampling strip bumps soft_warning + Prom series (#1869)."""
+    from daari.observability.prometheus import render_prometheus
+
+    metrics = Metrics()
+    executor = FrontierExecutor(
+        api_key="sk-ant-test",
+        base_url="https://api.anthropic.com",
+        default_model="claude-sonnet-4-0",
+        provider="anthropic",
+        metrics=metrics,
+    )
+    request = InternalRequest(
+        messages=[Message(role="user", content="hi")],
+        model="daari",
+        temperature=0.4,
+        sampling=SamplingParams(top_p=0.8, top_k=10, max_tokens=50),
+        meta=RequestMeta(anthropic_version="2026-10-21"),
+    )
+    executor._anthropic_payload(request, stream=False)
+    assert metrics.soft_warnings.get("anthropic_sampling_stripped") == 1
+    text = render_prometheus(metrics)
+    assert 'daari_soft_warnings_total{kind="anthropic_sampling_stripped"} 1' in text
+
+    # Stream path shares _anthropic_payload — second strip increments again.
+    executor._anthropic_payload(request, stream=True)
+    assert metrics.soft_warnings.get("anthropic_sampling_stripped") == 2
+
+
+def test_sampling_strip_soft_warning_absent_when_clean_or_legacy():
+    """No soft_warning when nothing stripped or version is legacy (#1869)."""
+    metrics = Metrics()
+    executor = FrontierExecutor(
+        api_key="sk-ant-test",
+        base_url="https://api.anthropic.com",
+        default_model="claude-sonnet-4-0",
+        provider="anthropic",
+        metrics=metrics,
+    )
+    clean = InternalRequest(
+        messages=[Message(role="user", content="hi")],
+        model="daari",
+        temperature=None,  # omit default 0.7 so payload has no sampling knobs
+        sampling=SamplingParams(max_tokens=50),
+        meta=RequestMeta(anthropic_version="2026-10-21"),
+    )
+    executor._anthropic_payload(clean, stream=False)
+    assert metrics.soft_warnings.get("anthropic_sampling_stripped") is None
+
+    legacy = InternalRequest(
+        messages=[Message(role="user", content="hi")],
+        model="daari",
+        temperature=0.4,
+        sampling=SamplingParams(top_p=0.8, top_k=10, max_tokens=50),
+        meta=RequestMeta(anthropic_version="2023-06-01"),
+    )
+    executor._anthropic_payload(legacy, stream=False)
+    assert metrics.soft_warnings.get("anthropic_sampling_stripped") is None
+
+
 def _between_tools_request() -> InternalRequest:
     return InternalRequest(
         messages=[Message(role="user", content="hi")],
