@@ -379,6 +379,20 @@ class FrontierExecutor:
             )
             if note not in compat.warnings:
                 compat.warnings.append(note)
+        if version_drops:
+            # Operators need a Prom signal for clients still sending dead knobs (#1869).
+            if self.metrics is not None and hasattr(self.metrics, "record_soft_warning"):
+                self.metrics.record_soft_warning("anthropic_sampling_stripped")
+            from daari.gateway.request_log import log_gateway_event
+
+            log_gateway_event(
+                "anthropic_sampling_stripped",
+                {
+                    "params": list(version_drops),
+                    "anthropic_version": request.meta.anthropic_version,
+                    "request_id": getattr(request.meta, "request_id", None),
+                },
+            )
         return payload
 
     def _run_param_compat(
