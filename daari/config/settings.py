@@ -588,7 +588,7 @@ class FrontierParamCompatSettings(BaseModel):
 
 
 class AnthropicSettings(BaseModel):
-    """Anthropic-platform knobs (user profiles, etc.) (#1844)."""
+    """Anthropic-platform knobs (user profiles, etc.) (#1844, #1866)."""
 
     user_profiles: dict[str, str] = Field(
         default_factory=dict,
@@ -596,6 +596,34 @@ class AnthropicSettings(BaseModel):
             "Map daari end-user / key_id / team_id / client_id to an Anthropic "
             "user-profile id. Injected as anthropic-user-profile-id on the L6 "
             "Anthropic hop when the client did not send one."
+        ),
+    )
+    enforcement_state_path: str = Field(
+        default="~/.daari/anthropic-enforcement.json",
+        description=(
+            "JSON path for cached Anthropic user-profile enforcement status "
+            "(#1866). Written by `daari anthropic enforcement-sync`."
+        ),
+    )
+    enforcement_webhook_url: str = Field(
+        default="",
+        description=(
+            "Optional webhook for enforcement start/end transitions (#1866). "
+            "Empty disables. Signed like budget alerts when "
+            "enforcement_webhook_secret is set."
+        ),
+    )
+    enforcement_webhook_secret: str = Field(
+        default="",
+        description=(
+            "HMAC secret for enforcement webhooks (X-Daari-Signature) (#1866)."
+        ),
+    )
+    enforcement_webhook_secret_previous: str = Field(
+        default="",
+        description=(
+            "Previous enforcement webhook HMAC secret during rotation grace "
+            "(#1866)."
         ),
     )
 

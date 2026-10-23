@@ -94,6 +94,7 @@ backup_app = typer.Typer(help="Full-state backup and restore of durable stores."
 config_app = typer.Typer(help="Validate daari.yaml before restart.")
 alerts_app = typer.Typer(help="Operator webhook secrets and alert settings.")
 enterprise_app = typer.Typer(help="Enterprise fleet bootstrap and policy sync.")
+anthropic_app = typer.Typer(help="Anthropic user-profile enforcement sync.")
 service_app = typer.Typer(help="User-level stay-up service (systemd / launchd).")
 route_app = typer.Typer(help="Inspect routing without sending a generation.")
 app.add_typer(setup_app, name="setup")
@@ -1174,6 +1175,82 @@ def keys_import(
 
 
 app.add_typer(enterprise_app, name="enterprise")
+app.add_typer(anthropic_app, name="anthropic")
+
+
+@anthropic_app.command("enforcement-sync")
+def anthropic_enforcement_sync(
+    base_url: str = typer.Option(
+        "",
+        "--base-url",
+        help="Anthropic API root (default https://api.anthropic.com).",
+    ),
+) -> None:
+    """Poll Anthropic for restricted/banned user profiles (#1866)."""
+    from daari.enterprise.enforcement_sync import (
+        DEFAULT_BASE_URL,
+        store_from_settings,
+        sync_enforcement,
+    )
+
+    settings = get_settings()
+    api_key = settings.resolve_frontier_api_key() or ""
+    if not api_key:
+        typer.echo("No frontier API key configured.", err=True)
+        raise typer.Exit(code=1)
+    anthropic = settings.anthropic
+    root = (base_url or "").strip() or DEFAULT_BASE_URL
+    # Prefer Anthropic provider base_url when frontier is Anthropic-shaped.
+    if not (base_url or "").strip():
+        for entry in getattr(settings.frontier, "providers", None) or []:
+            provider = str(getattr(entry, "provider", "") or "").lower()
+            url = str(getattr(entry, "base_url", "") or "").strip()
+            if provider in {"anthropic", "claude"} or "anthropic.com" in url.lower():
+                if url:
+                    root = url
+                break
+        else:
+            if (settings.frontier.provider or "").lower() in {"anthropic", "claude"}:
+                root = settings.frontier.base_url or DEFAULT_BASE_URL
+    try:
+        result = sync_enforcement(
+            api_key=api_key,
+            user_profiles=dict(anthropic.user_profiles or {}),
+            store=store_from_settings(settings),
+            base_url=root,
+            webhook_url=anthropic.enforcement_webhook_url or "",
+            webhook_secret=anthropic.enforcement_webhook_secret or "",
+            webhook_secret_previous=anthropic.enforcement_webhook_secret_previous or "",
+        )
+    except Exception as exc:
+        typer.echo(f"enforcement sync failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(
+        f"enforced={result.enforced_count} "
+        f"started={len(result.started)} ended={len(result.ended)}"
+    )
+
+
+@anthropic_app.command("enforcement-list")
+def anthropic_enforcement_list(
+    json_out: bool = typer.Option(False, "--json", help="Print JSON array."),
+) -> None:
+    """List locally synced restricted/banned Anthropic user profiles (#1866)."""
+    from daari.enterprise.enforcement_sync import store_from_settings
+
+    rows = store_from_settings(get_settings()).load()
+    if json_out:
+        typer.echo(json.dumps(rows, indent=2))
+        return
+    if not rows:
+        typer.echo("No enforced Anthropic user profiles in local sync state.")
+        return
+    for row in rows:
+        users = ",".join(row.get("end_users") or []) or "-"
+        typer.echo(
+            f"{row.get('profile_id')}\t{row.get('enforcement_status')}\t"
+            f"end_users={users}"
+        )
 
 
 @events_app.command("list")

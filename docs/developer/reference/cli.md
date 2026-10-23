@@ -78,6 +78,7 @@ Encryption env / flags: `DAARI_BACKUP_PASS` (or `--passphrase-env`),
 | `project` | `init`, `show` |
 | `keys` | `create`, `update`, `list`, `revoke`, `rotate`, `lockouts`, `unlock-prefix`, `team-create`, `team-update`, `export`, `import` (`--priority high\|normal\|low` and `--max-in-flight N` on create / team-create; see [`keys`](#keys) for list filters) |
 | `enterprise` | `bootstrap`, `policy-sync`, `policy-status` |
+| `anthropic` | `enforcement-sync`, `enforcement-list` (restricted/banned user-profile poll; #1866) |
 | `service` | `install`, `status`, `restart`, `uninstall` (user systemd / launchd) |
 | `audit` | `list`, `export`, `verify` |
 | `events` | `list` (`--team`, `--kind`, `--limit`, `--cursor`) |

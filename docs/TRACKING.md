@@ -7745,6 +7745,17 @@ applies request TTL (30m / 12h) so streamed cost matches non-stream. Spend /
 usage ledger and cost headers get the write dims. Covered by
 `tests/unit/test_openai_cache_ttl_pricing.py`.
 
+### Anthropic user-profile enforcement sync ([#1866](https://github.com/naveenreddyalka/daari/issues/1866))
+
+<!-- tracking:#1866 -->
+**Status:** Done (2026-10-22). `daari anthropic enforcement-sync` / `enforcement-list`
+poll Anthropic Admin API for `restricted`/`banned` profiles, persist status keyed
+by profile id / mapped end user, emit `anthropic.enforcement_started|ended`
+events, optional signed webhook, Prometheus
+`daari_anthropic_enforced_profiles`, doctor tip, and
+`GET /v1/daari/anthropic/enforcement`. Covered by
+`tests/unit/test_anthropic_enforcement.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

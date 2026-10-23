@@ -127,6 +127,7 @@ def run_doctor(
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
     results.append(_check_key_expiry(cfg))
+    results.append(_check_anthropic_enforcement(cfg))
     results.append(_check_key_lockout(cfg))
     results.append(_check_vk_empty_allowlist(cfg))
     results.append(_check_budget_webhook_secret(cfg))
@@ -2058,6 +2059,46 @@ def _check_key_expiry(
         name="key_expiry",
         ok=False,
         detail="; ".join(parts),
+        optional=True,
+    )
+
+
+def _check_anthropic_enforcement(settings: Settings) -> CheckResult:
+    """Tip when a mapped Anthropic user profile is restricted or banned (#1866)."""
+    from daari.enterprise.enforcement_sync import ENFORCED_STATUSES, store_from_settings
+
+    store = store_from_settings(settings)
+    rows = [
+        row
+        for row in store.load()
+        if str(row.get("enforcement_status") or "").lower() in ENFORCED_STATUSES
+    ]
+    if not rows:
+        return CheckResult(
+            name="anthropic_enforcement",
+            ok=True,
+            detail="no restricted/banned Anthropic user profiles in local sync state",
+            optional=True,
+        )
+    bits = [
+        f"{row.get('profile_id')}={row.get('enforcement_status')}"
+        + (
+            f" end_users={','.join(row.get('end_users') or [])}"
+            if row.get("end_users")
+            else ""
+        )
+        for row in rows[:8]
+    ]
+    extra = f" (+{len(rows) - 8} more)" if len(rows) > 8 else ""
+    return CheckResult(
+        name="anthropic_enforcement",
+        ok=False,
+        detail=(
+            f"{len(rows)} Anthropic profile(s) restricted/banned: "
+            + "; ".join(bits)
+            + extra
+            + " (run `daari anthropic enforcement-sync`)"
+        ),
         optional=True,
     )
 
