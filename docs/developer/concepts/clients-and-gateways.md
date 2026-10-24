@@ -94,7 +94,9 @@ to a cloud endpoint unless you turn that flag on. See
 [local speech-to-text](../guides/backends/asr.md).
 
 `POST /v1/audio/speech` accepts the OpenAI JSON speech body and forwards it to
-`tts.base_url` when that is set. With no local TTS the route returns **501**.
+`tts.base_url` when that is set (including Ollama ≥0.40.9 Phonon at
+`{ollama.base_url}/v1`). Chunked upstream audio is streamed to the client;
+fixed-length backends stay buffered. With no local TTS the route returns **501**.
 See [local text-to-speech](../guides/backends/tts.md).
 
 `POST /v1/messages/count_tokens` is a local estimate (`estimate_tokens` on system +

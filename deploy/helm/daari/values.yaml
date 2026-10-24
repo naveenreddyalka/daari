@@ -206,6 +206,26 @@ prometheusRules:
     rateThreshold: 0.05
     for: 5m
     severity: warning
+  # OpenAI service_tier degrade soft-warnings (#1889).
+  serviceTierDegraded:
+    enabled: true
+    window: 5m
+    rateThreshold: 0.01
+    for: 10m
+    severity: warning
+  # Anthropic dead sampling knobs stripped (#1889).
+  anthropicSamplingStripped:
+    enabled: true
+    window: 5m
+    rateThreshold: 0
+    for: 5m
+    severity: warning
+  # Mapped users under Anthropic org enforcement (#1889).
+  anthropicEnforcedProfiles:
+    enabled: true
+    threshold: 0
+    for: 5m
+    severity: critical
 
 # Optional private Prometheus scrape listener (app observability.metrics_port).
 # 0 / unset = off (scrape API port /metrics). Non-zero binds 127.0.0.1-style

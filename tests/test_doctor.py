@@ -59,6 +59,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            version_response,  # tts Phonon tip probe when base_url empty (#1888)
             stats_response,
             stats_response,
             ready_response,
@@ -155,6 +156,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            version_response,  # tts Phonon tip probe when base_url empty (#1888)
             stats_response,
             stats_response,
             ready_response,
@@ -197,6 +199,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            version_response,  # tts Phonon tip probe when base_url empty (#1888)
             stats_response,
             stats_response,
             ready_response,
@@ -235,6 +238,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            version_response,  # tts Phonon tip probe when base_url empty (#1888)
             stats_response,
             stats_response,
             ready_response,
@@ -270,6 +274,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            version_response,  # tts Phonon tip probe when base_url empty (#1888)
             stats_response,
             stats_response,
             ready_response,
@@ -325,6 +330,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            version_response,  # tts Phonon tip probe when base_url empty (#1888)
             stats_response,
             stats_response,
             ready_response,
@@ -365,6 +371,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            version_response,  # tts Phonon tip probe when base_url empty (#1888)
             stats_response,
             stats_response,
             ready_response,
@@ -397,6 +404,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            version_response,  # tts Phonon tip probe when base_url empty (#1888)
             stats_response,
             stats_response,
             ready_response,
@@ -430,6 +438,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            version_response,  # tts Phonon tip probe when base_url empty (#1888)
             stats_response,
             stats_response,
             ready_response,
@@ -471,6 +480,7 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            version_response,  # tts Phonon tip probe when base_url empty (#1888)
             stats_response,
             org_cache_response,
             stats_response,

@@ -7859,6 +7859,24 @@ GA shape; decisions billing honors $0.01/1M cached input. Covered by
 and floors at 0.40.9 for Linux/Windows/macOS. Covered by
 `tests/unit/test_decisions_local_catalog.py` and `tests/test_setup.py`.
 
+### Stream /v1/audio/speech + Ollama Phonon tip ([#1888](https://github.com/naveenreddyalka/daari/issues/1888))
+
+<!-- tracking:#1888 -->
+**Status:** Done (2026-10-24). TTS relay streams chunked upstream audio
+(StreamingResponse) while Content-Length backends stay buffered; doctor tips
+`tts.base_url: {ollama.base_url}/v1` when Ollama ≥0.40.9 and TTS is empty (no
+auto-wire). Docs/settings mention Phonon. Covered by
+`tests/unit/test_speech.py`, `tests/unit/test_doctor_tts.py`,
+`tests/unit/test_tts_docs.py`.
+
+### Dashboard + alerts for tier degrade / sampling strip / enforced profiles ([#1889](https://github.com/naveenreddyalka/daari/issues/1889))
+
+<!-- tracking:#1889 -->
+**Status:** Done (2026-10-24). Grafana panels for `service_tier_degraded`,
+`anthropic_sampling_stripped`, and `daari_anthropic_enforced_profiles`; Helm
+PrometheusRule warnings/critical for the same series. Covered by
+`tests/unit/test_grafana_dashboard.py` and `tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -41,3 +41,10 @@ def test_overview_and_clients_link_tts_guide() -> None:
     assert "/v1/audio/speech" in overview or "/v1/audio/speech" in clients
     assert "tts.md" in clients or "backends/tts.md" in clients
     assert "/v1/audio/speech" in clients
+
+
+def test_tts_guide_mentions_ollama_phonon() -> None:
+    text = TTS_GUIDE.read_text(encoding="utf-8")
+    assert "Ollama" in text
+    assert "0.40.9" in text or "Phonon" in text
+    assert "stream" in text.lower()
