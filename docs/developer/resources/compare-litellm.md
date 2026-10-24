@@ -52,12 +52,21 @@ this GA cut. daari does **not** ship those.
 ## LiteLLM 1.106.0 GA
 
 LiteLLM [v1.106.0](https://github.com/BerriAI/litellm/releases/tag/v1.106.0)
-(18 Oct 2026) is **GA**. After same-day backports, the stable comparison
-floor is **[1.106.2 GA](https://github.com/BerriAI/litellm/releases/tag/v1.106.2)**.
-The 1.106 cut includes a native
+(18 Oct 2026) is **GA**. After trust backports, the stable comparison
+floor is **[1.106.3 GA](https://github.com/BerriAI/litellm/releases/tag/v1.106.3)**
+(24 Oct 2026; also backported as 1.103.8 / 1.104.6 / 1.105.4). The 1.106 cut
+includes a native
 [decision-model guardrail](https://docs.litellm.ai/docs/proxy/guardrails/decision_model)
 (`guardrail: decision_model`): yes/no questions against any `/v1/decisions`
 model, blocking or logging at a probability threshold.
+
+**1.106.3 trust actions:** LiteLLM rotated the image **cosign** signing key
+(commit [`e82a3c6`](https://github.com/BerriAI/litellm/commit/e82a3c6)) — buyers
+still verifying with the old `cosign.pub` will fail — and **removed the
+eMudhra root CA** from every trusted bundle. daari's local-first stance is
+independent of LiteLLM images; egress TLS defaults
+`upstream.distrust_emudhra_ca: true` (see [doctor-health](../guides/operations/doctor-health.md)
+`egress_tls_trust`) so outbound pools match that floor without pulling LiteLLM.
 
 daari does **not** ship a decision-model guardrail yet. Heuristic / regex
 guardrails plus the on-box `/v1/decisions` path remain the local route for
@@ -74,8 +83,9 @@ PyPI quarantined the version; the Docker image was removed from Docker Hub /
 GHCR. Indicators include `/tmp/.pc_once_*` and `/tmp/remote_code_loader.lock`.
 
 **Do not** `pip install litellm==1.107.0` or pull `litellm/litellm:1.107.0`.
-Stay on LiteLLM **1.106.2** (or skip LiteLLM entirely). Treat 1.107.0 as
-unsafe / do-not-install — not a feature comparison bar.
+Stay on LiteLLM **1.106.3** (or skip LiteLLM entirely). Treat 1.107.0 as
+unsafe / do-not-install — not a feature comparison bar. Do **not** advertise
+compromised 1.107 watchables as safe.
 
 daari does **not** depend on LiteLLM at runtime; the local-first install path
 never pulled the poisoned artifact.
