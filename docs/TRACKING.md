@@ -7905,6 +7905,24 @@ a background Responses job hits completed/failed/cancelled; reuse budget
 doctor tips on missing model / Ollama older than 0.40.10; ollama.md documents it.
 Covered by `tests/test_setup.py` and `tests/unit/test_doctor_nemotron_bolt.py`.
 
+### Distrust eMudhra/emSign on egress TLS ([#1907](https://github.com/naveenreddyalka/daari/issues/1907))
+
+<!-- tracking:#1907 -->
+**Status:** Done (2026-10-24). Default `upstream.distrust_emudhra_ca` filters
+eMudhra/emSign roots from the CA bundle used by shared httpx pools, MCP egress,
+and org-cache clients (LiteLLM 1.106.3 / Kong / Portkey parity). `daari doctor`
+`egress_tls_trust` tips when the knob is off while certifi still ships them.
+Covered by `tests/unit/test_egress_tls_trust.py` and
+`tests/unit/test_doctor_egress_tls_trust.py`.
+
+### Web-ui enforcement inventory + cache invalidate ([#1894](https://github.com/naveenreddyalka/daari/issues/1894))
+
+<!-- tracking:#1894 -->
+**Status:** Done (2026-10-24). Dashboard lists synced Anthropic enforcement
+profiles and an admin form posts `POST /v1/daari/cache/invalidate` with
+model/team/key scope. XSS-safe text rendering; jsdom happy/failure paths.
+Covered by `packages/web-ui/test/dashboard.test.js`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

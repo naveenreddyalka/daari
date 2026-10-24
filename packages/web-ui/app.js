@@ -58,6 +58,13 @@ const adminTeamsTableNode = document.getElementById("admin-teams-table");
 const adminTeamsStatusNode = document.getElementById("admin-teams-status");
 const lockoutsTableNode = document.getElementById("lockouts-table");
 const lockoutsStatusNode = document.getElementById("lockouts-status");
+const enforcementTableNode = document.getElementById("enforcement-table");
+const enforcementStatusNode = document.getElementById("enforcement-status");
+const cacheInvalidateModelNode = document.getElementById("cache-invalidate-model");
+const cacheInvalidateTeamNode = document.getElementById("cache-invalidate-team");
+const cacheInvalidateKeyNode = document.getElementById("cache-invalidate-key");
+const cacheInvalidateSubmitButton = document.getElementById("cache-invalidate-submit");
+const cacheInvalidateStatusNode = document.getElementById("cache-invalidate-status");
 const eventsTableNode = document.getElementById("events-table");
 const eventsStatusNode = document.getElementById("events-status");
 const eventsTeamFilterNode = document.getElementById("events-team-filter");
@@ -791,6 +798,88 @@ async function unlockPrefix(prefix) {
   }
 }
 
+function formatEnforcementActions(actions) {
+  if (!Array.isArray(actions) || actions.length === 0) {
+    return "—";
+  }
+  try {
+    return JSON.stringify(actions);
+  } catch {
+    return String(actions.length);
+  }
+}
+
+function renderEnforcement(profiles) {
+  if (!enforcementTableNode) {
+    return;
+  }
+  const rows = Array.isArray(profiles) ? profiles : [];
+  if (rows.length === 0) {
+    setEmptyRow(enforcementTableNode, 3, "No synced enforcement profiles.");
+    return;
+  }
+  clearNode(enforcementTableNode);
+  for (const entry of rows) {
+    const row = document.createElement("tr");
+    appendTextCells(row, [
+      entry && entry.profile_id != null ? entry.profile_id : "",
+      entry && entry.enforcement_status != null ? entry.enforcement_status : "",
+      formatEnforcementActions(entry && entry.enforcement_actions),
+    ]);
+    enforcementTableNode.appendChild(row);
+  }
+}
+
+async function loadEnforcement() {
+  if (!enforcementTableNode || !enforcementStatusNode) {
+    return;
+  }
+  try {
+    const payload = await fetchJson(`${apiBaseUrl}/v1/daari/anthropic/enforcement`);
+    const rows = Array.isArray(payload.profiles) ? payload.profiles : [];
+    renderEnforcement(rows);
+    const enforced =
+      payload.enforced_count != null ? Number(payload.enforced_count) : rows.length;
+    enforcementStatusNode.textContent = `${rows.length} profile(s); ${enforced} enforced.`;
+  } catch (error) {
+    renderEnforcement([]);
+    enforcementStatusNode.textContent = `Enforcement unavailable (${error.message}).`;
+  }
+}
+
+async function submitCacheInvalidate() {
+  if (!cacheInvalidateStatusNode) {
+    return;
+  }
+  const body = {};
+  const model = cacheInvalidateModelNode && cacheInvalidateModelNode.value.trim();
+  const teamId = cacheInvalidateTeamNode && cacheInvalidateTeamNode.value.trim();
+  const keyId = cacheInvalidateKeyNode && cacheInvalidateKeyNode.value.trim();
+  if (model) {
+    body.model = model;
+  }
+  if (teamId) {
+    body.team_id = teamId;
+  }
+  if (keyId) {
+    body.key_id = keyId;
+  }
+  cacheInvalidateStatusNode.textContent = "Invalidating…";
+  try {
+    const payload = await fetchJson(`${apiBaseUrl}/v1/daari/cache/invalidate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const removed = payload.removed != null ? payload.removed : 0;
+    const l0 = payload.l0_removed != null ? payload.l0_removed : 0;
+    const l1 = payload.l1_removed != null ? payload.l1_removed : 0;
+    cacheInvalidateStatusNode.textContent = `Removed ${removed} (L0 ${l0}, L1 ${l1}).`;
+  } catch (error) {
+    cacheInvalidateStatusNode.textContent = `Invalidate failed (${error.message}).`;
+  }
+}
+
 async function loadAdminTeams() {
   if (!adminTeamsTableNode || !adminTeamsStatusNode) {
     return;
@@ -954,6 +1043,7 @@ async function loadStats() {
     void loadAdminKeys();
     void loadAdminTeams();
     void loadLockouts();
+    void loadEnforcement();
     void loadEvents();
     void loadTraces();
   } catch (error) {
@@ -978,6 +1068,10 @@ async function loadStats() {
     renderLockouts([]);
     if (lockoutsStatusNode) {
       lockoutsStatusNode.textContent = "";
+    }
+    renderEnforcement([]);
+    if (enforcementStatusNode) {
+      enforcementStatusNode.textContent = "";
     }
     renderEvents([]);
     if (eventsStatusNode) {
@@ -1197,6 +1291,11 @@ if (lockoutsTableNode) {
     if (target) {
       void unlockPrefix(target.dataset.prefix || "");
     }
+  });
+}
+if (cacheInvalidateSubmitButton) {
+  cacheInvalidateSubmitButton.addEventListener("click", () => {
+    void submitCacheInvalidate();
   });
 }
 tracesTableNode.addEventListener("click", (event) => {

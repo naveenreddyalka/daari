@@ -143,7 +143,12 @@ class McpEgressProvider(HttpIntegrationProvider):
 
     def _client(self) -> httpx.AsyncClient:
         if self._http is None or self._http.is_closed:
-            self._http = httpx.AsyncClient(timeout=30.0)
+            from daari.security.egress_tls import resolve_httpx_verify
+
+            self._http = httpx.AsyncClient(
+                timeout=30.0,
+                verify=resolve_httpx_verify(settings=self.settings),
+            )
         return self._http
 
     async def aclose(self) -> None:

@@ -112,6 +112,7 @@ def run_doctor(
     results.append(_check_postgres_tls(cfg, strict=strict))
     results.append(_check_redis_tls(cfg, strict=strict))
     results.append(_check_egress_https(cfg, strict=strict))
+    results.append(_check_egress_tls_trust(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
     results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
@@ -2951,6 +2952,61 @@ def _check_egress_https(settings: Settings, *, strict: bool = False) -> CheckRes
             + " — use https:// (loopback http:// stays ok)"
         ),
         optional=not strict,
+    )
+
+
+def _check_egress_tls_trust(settings: Settings) -> CheckResult:
+    """Tip when egress still trusts eMudhra/emSign (LiteLLM 1.106.3 parity, #1907)."""
+    from daari.security.egress_tls import (
+        bundle_contains_distrusted_roots,
+        distrust_emudhra_enabled,
+        filtered_ca_bundle_path,
+        _source_ca_pem,
+    )
+
+    distrust = distrust_emudhra_enabled(settings)
+    if not distrust:
+        source = _source_ca_pem()
+        if bundle_contains_distrusted_roots(source):
+            return CheckResult(
+                name="egress_tls_trust",
+                ok=False,
+                detail=(
+                    "upstream.distrust_emudhra_ca is false and the active CA "
+                    "bundle still includes eMudhra/emSign roots — set "
+                    "upstream.distrust_emudhra_ca: true (LiteLLM 1.106.3 / Kong "
+                    "/ Portkey parity) or pin SSL_CERT_FILE to a bundle without "
+                    "them"
+                ),
+                optional=True,
+            )
+        return CheckResult(
+            name="egress_tls_trust",
+            ok=True,
+            detail="distrust off; active CA bundle has no eMudhra/emSign roots",
+            optional=True,
+        )
+
+    active_path = filtered_ca_bundle_path(distrust=True)
+    active = Path(active_path).read_text(encoding="utf-8")
+    if bundle_contains_distrusted_roots(active):
+        return CheckResult(
+            name="egress_tls_trust",
+            ok=False,
+            detail=(
+                f"filtered egress CA bundle {active_path} still includes "
+                "eMudhra/emSign roots — check SSL_CERT_FILE / certifi"
+            ),
+            optional=True,
+        )
+    return CheckResult(
+        name="egress_tls_trust",
+        ok=True,
+        detail=(
+            "eMudhra/emSign roots excluded from egress httpx verify "
+            "(LiteLLM 1.106.3 parity)"
+        ),
+        optional=True,
     )
 
 
