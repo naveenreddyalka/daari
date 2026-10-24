@@ -3246,10 +3246,16 @@ def _tts_ollama_phonon_detail(
     if parsed < _OLLAMA_PHONON_FLOOR:
         return None
     tip_url = f"{ollama_base}/v1"
+    catalog_note = ""
+    if parsed >= (0, 40, 11):
+        catalog_note = (
+            "; 0.40.11+ ships a Phonon voice catalog — "
+            "GET /v1/audio/voices after configuring tts.base_url"
+        )
     return (
         f"not configured — Ollama {raw} supports Phonon speech; "
         f"set tts.base_url: {tip_url} for local POST /v1/audio/speech "
-        "(no silent auto-wire)"
+        f"(no silent auto-wire){catalog_note}"
     )
 
 

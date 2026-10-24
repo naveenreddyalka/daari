@@ -13,7 +13,9 @@ tts:
   voice: ""    # optional default when the request omits voice
 ```
 
-**Ollama Phonon (local-first):** as of Ollama **0.40.9**, the same daemon that serves chat tiers exposes streaming `POST /v1/audio/speech`. Set `tts.base_url` to `{ollama.base_url}/v1` (for example `http://127.0.0.1:11434/v1`). daari does not auto-wire this — `daari doctor` tips when TTS is empty and Ollama reports a speech-capable version.
+**Ollama Phonon (local-first):** as of Ollama **0.40.9**, the same daemon that serves chat tiers exposes streaming `POST /v1/audio/speech`. Ollama **0.40.11+** adds Phonon's Gradium **voice catalog** (`ollama show phonon` / `/api/show` `voices`). Set `tts.base_url` to `{ollama.base_url}/v1` (for example `http://127.0.0.1:11434/v1`) and preferably `tts.model: phonon`. daari does not auto-wire this — `daari doctor` tips when TTS is empty and Ollama reports a speech-capable version.
+
+**List voices:** `GET /v1/audio/voices` returns an OpenAI-shaped `{object, data:[{id,…}]}` catalog when `tts.base_url` is set. For Phonon, daari merges the upstream catalog with common OpenAI voice aliases (`alloy`, `echo`, …). On `POST /v1/audio/speech`, those OpenAI names map onto Phonon entries (for example `alloy` → `Zoey`); unknown voices return **400** with the available list. Streaming relay for chunked Phonon audio is unchanged.
 
 Leave `base_url` empty and the route returns **501**. `daari doctor` stays quiet when Ollama is unreachable or older than 0.40.9. It warns when `tts.base_url` is set but `GET {base}/models` is unreachable.
 

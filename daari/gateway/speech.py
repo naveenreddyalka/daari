@@ -1,4 +1,4 @@
-"""POST /v1/audio/speech — local-first OpenAI-compatible TTS (#847, #1888)."""
+"""POST /v1/audio/speech — local-first OpenAI-compatible TTS (#847, #1888, #1909)."""
 
 from __future__ import annotations
 
@@ -29,6 +29,24 @@ _UNAVAILABLE = (
     "No local text-to-speech backend is configured. Set tts.base_url to an "
     "OpenAI-compatible server (the API root, including /v1)."
 )
+
+# OpenAI common voice ids → Ollama Phonon / Gradium catalog (#1909).
+_OPENAI_TO_PHONON: dict[str, str] = {
+    "alloy": "Zoey",
+    "ash": "Easton",
+    "ballad": "Easton",
+    "coral": "Freya",
+    "echo": "Easton",
+    "fable": "Freya",
+    "onyx": "Easton",
+    "nova": "Zoey",
+    "sage": "Easton",
+    "shimmer": "Freya",
+    "verse": "Zoey",
+}
+
+# Fallback when Ollama /api/show is unreachable (0.40.11+ ships a fuller catalog).
+_PHONON_FALLBACK_VOICES: tuple[str, ...] = ("default", "Zoey", "Easton", "Freya")
 
 _CONTENT_TYPES = {
     "mp3": "audio/mpeg",
@@ -88,6 +106,104 @@ def resolve_tts_target(settings: Any) -> TtsTarget | None:
         voice=str(getattr(tts, "voice", "") or "").strip(),
         timeout=timeout,
     )
+
+
+def is_phonon_tts(target: TtsTarget, model_name: str = "") -> bool:
+    """True when the configured TTS target is Ollama Phonon (#1909)."""
+    blob = f"{target.model} {model_name}".lower()
+    if "phonon" in blob:
+        return True
+    base = target.base_url.lower().rstrip("/")
+    return base.endswith(":11434/v1") or base.endswith("/11434/v1")
+
+
+def ollama_root_from_tts_base(base_url: str) -> str | None:
+    """Strip a trailing ``/v1`` OpenAI root to the Ollama daemon root."""
+    raw = (base_url or "").strip().rstrip("/")
+    if raw.lower().endswith("/v1"):
+        return raw[: -len("/v1")] or None
+    return None
+
+
+def phonon_fallback_voices() -> list[str]:
+    return list(_PHONON_FALLBACK_VOICES)
+
+
+def map_phonon_voice(
+    voice: str,
+    *,
+    catalog: Mapping[str, str] | None = None,
+) -> tuple[str | None, str | None]:
+    """Map an OpenAI or Phonon voice name; return ``(name, error_message)``.
+
+    ``catalog`` maps lowercased ids → canonical display names. When omitted,
+    the built-in fallback catalog is used.
+    """
+    raw = (voice or "").strip()
+    if not raw:
+        raw = "alloy"
+    catalog_map = {
+        str(k).casefold(): str(v)
+        for k, v in (catalog or {v: v for v in _PHONON_FALLBACK_VOICES}).items()
+    }
+    key = raw.casefold()
+    if key in _OPENAI_TO_PHONON:
+        mapped = _OPENAI_TO_PHONON[key]
+        canon = catalog_map.get(mapped.casefold(), mapped)
+        return canon, None
+    if key in catalog_map:
+        return catalog_map[key], None
+    available = ", ".join(
+        sorted({*_OPENAI_TO_PHONON.keys(), *catalog_map.values()}, key=str.casefold)
+    )
+    return None, (
+        f"Unknown voice {raw!r}. Available voices: {available}. "
+        "OpenAI names (alloy, echo, …) map onto the Phonon catalog."
+    )
+
+
+def build_voices_catalog(names: list[str]) -> dict[str, Any]:
+    """OpenAI-shaped list payload for ``GET /v1/audio/voices``."""
+    data = [
+        {"id": name, "object": "voice", "owned_by": "daari"}
+        for name in names
+        if str(name or "").strip()
+    ]
+    return {"object": "list", "data": data}
+
+
+async def fetch_phonon_voice_names(
+    target: TtsTarget,
+    *,
+    model_name: str = "",
+    client: httpx.AsyncClient | None = None,
+) -> list[str]:
+    """Load Phonon voices from Ollama ``/api/show``; fall back to built-ins."""
+    root = ollama_root_from_tts_base(target.base_url)
+    model = (target.model or model_name or "phonon").strip() or "phonon"
+    if root:
+        http = client or _shared_client()
+        try:
+            response = await http.post(
+                f"{root}/api/show",
+                json={"name": model},
+                timeout=min(5.0, float(target.timeout or 5.0)),
+            )
+            if response.status_code < 400:
+                payload = response.json()
+                voices = payload.get("voices") if isinstance(payload, dict) else None
+                if isinstance(voices, list) and voices:
+                    names = [str(v).strip() for v in voices if str(v).strip()]
+                    if names and "default" not in {n.casefold() for n in names}:
+                        names = ["default", *names]
+                    if names:
+                        return names
+        except Exception:
+            log_gateway_event(
+                "tts_phonon_voices_error",
+                {"op": "api_show", "model": model},
+            )
+    return phonon_fallback_voices()
 
 
 def tts_response_is_streaming(headers: Mapping[str, str] | httpx.Headers) -> bool:
@@ -242,6 +358,34 @@ def _audio_deadline_seconds(request: Request, settings: Any) -> float | None:
     return resolve_deadline_seconds(header_ms, setting)
 
 
+async def handle_list_voices(request: Request) -> JSONResponse:
+    """GET /v1/audio/voices — discover local / Phonon TTS voices (#1909)."""
+    ctx = request.app.state.ctx
+    target = resolve_tts_target(ctx.settings)
+    if target is None:
+        return _error(501, "tts_unavailable", _UNAVAILABLE)
+    model_name = (target.model or "phonon").strip() or "phonon"
+    if is_phonon_tts(target, model_name):
+        names = await fetch_phonon_voice_names(target, model_name=model_name)
+        # Also advertise OpenAI aliases clients already send.
+        alias_targets = sorted(
+            {_OPENAI_TO_PHONON[k] for k in _OPENAI_TO_PHONON}, key=str.casefold
+        )
+        # Prefer catalog order; append OpenAI alias labels as separate ids so
+        # clients can still send alloy/echo while discovering Phonon names.
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for name in [*names, *sorted(_OPENAI_TO_PHONON.keys()), *alias_targets]:
+            key = name.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(name)
+        return JSONResponse(build_voices_catalog(ordered))
+    # Non-Phonon OpenAI-compatible TTS: advertise common OpenAI voice ids.
+    return JSONResponse(build_voices_catalog(list(_OPENAI_TO_PHONON.keys())))
+
+
 async def handle_speech(
     request: Request,
     *,
@@ -321,6 +465,14 @@ async def handle_speech(
     text = policy.text
 
     voice_name = ((voice or "").strip() or target.voice or "alloy").strip()
+    if is_phonon_tts(target, model_name):
+        names = await fetch_phonon_voice_names(target, model_name=model_name)
+        catalog = {n: n for n in names}
+        mapped, voice_err = map_phonon_voice(voice_name, catalog=catalog)
+        if voice_err is not None or mapped is None:
+            abandon_slot(idem_slot)
+            return _error(400, "invalid_request_error", voice_err or "Unknown voice")
+        voice_name = mapped
     payload: dict[str, Any] = {
         "model": model_name,
         "input": text,

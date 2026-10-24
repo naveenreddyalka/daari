@@ -7946,6 +7946,16 @@ unchanged without Redis; Redis errors fail open. Local-pool stats/`/ready`
 expose shared `circuit` + `rejects`. Covered by
 `tests/unit/test_pool_breaker_redis.py`; doctor-health documents key prefixes.
 
+### Phonon voice catalog + OpenAI voice map ([#1909](https://github.com/naveenreddyalka/daari/issues/1909))
+
+<!-- tracking:#1909 -->
+**Status:** Done (2026-10-24). `GET /v1/audio/voices` lists Phonon/OpenAI TTS
+voices when `tts.base_url` is set; OpenAI common names map onto Phonon catalog
+entries on speech; unknown voices return 400. Doctor tips 0.40.11+ catalog;
+TTS guide documents list + map. Streaming relay unchanged. Covered by
+`tests/unit/test_speech.py`, `tests/unit/test_doctor_tts.py`,
+`tests/unit/test_tts_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

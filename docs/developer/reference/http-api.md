@@ -23,6 +23,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/audio/speech` | Audio Speech |
 | `POST` | `/v1/audio/transcriptions` | Audio Transcriptions |
 | `POST` | `/v1/audio/translations` | Audio Translations |
+| `GET` | `/v1/audio/voices` | Audio Voices |
 | `GET` | `/v1/batches` | List Batches |
 | `POST` | `/v1/batches` | Create Batch |
 | `GET` | `/v1/batches/{batch_id}` | Retrieve Batch |

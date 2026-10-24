@@ -115,3 +115,18 @@ def test_configured_tts_skips_phonon_tip(settings):
     assert result.ok
     assert "reachable" in result.detail
     assert "Phonon" not in result.detail
+
+
+def test_unconfigured_tts_tips_voice_catalog_on_0_40_11(settings):
+    settings.ollama.base_url = "http://127.0.0.1:11434"
+    settings.tts.base_url = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/version"):
+            return httpx.Response(200, json={"version": "0.40.11"})
+        return httpx.Response(404)
+
+    result = _check_tts(settings, _client(handler))
+    assert result.ok
+    assert "0.40.11" in result.detail or "voice catalog" in result.detail
+    assert "/v1/audio/voices" in result.detail
