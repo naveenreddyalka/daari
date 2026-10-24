@@ -63,7 +63,7 @@ def test_decisions_path_gpt_6_luna_is_input_only():
     )
     assert price.input_per_1m == pytest.approx(0.10)
     assert price.output_per_1m == pytest.approx(0.0)
-    assert price.cached_input_per_1m == pytest.approx(0.0)
+    assert price.cached_input_per_1m == pytest.approx(0.01)
     decisions = cost_usd(
         "gpt-6-luna",
         input_tokens=1_000_000,
@@ -75,8 +75,8 @@ def test_decisions_path_gpt_6_luna_is_input_only():
         cache_ttl="1h",
         billing_path="decisions",
     )
-    # Cache read/write and output are $0; only the uncached 900k input bills.
-    assert decisions == pytest.approx(0.09)
+    # Output + cache write stay $0; uncached 900k @ $0.10 + 100k cached @ $0.01 (#1886).
+    assert decisions == pytest.approx(0.091)
 
 
 def test_decisions_rates_do_not_apply_without_billing_path():
@@ -108,3 +108,4 @@ def test_budgets_guide_pins_chat_and_decisions_luna_rates():
     assert "`gpt-6-luna`" in text
     assert "POST /v1/decisions" in text
     assert "$0 out" in text
+    assert "$0.01 cached" in text

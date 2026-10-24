@@ -1348,8 +1348,8 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
     },
     # OpenAI gpt-6-luna chat/responses: $0.10 / 1M input, $0.01 cached,
     # $0.50 / 1M output. POST /v1/decisions bills the same id input-only
-    # ($0.10, $0 out, $0 cache) via daari.pricing billing_path="decisions" —
-    # do not put those zeros here.
+    # ($0.10 in, $0.01 cached, $0 out) via daari.pricing billing_path="decisions" —
+    # do not put Decisions overlay rates here.
     # https://developers.openai.com/api/docs/guides/decisions
     # https://developers.openai.com/api/docs/changelog
     "gpt-6-luna": {

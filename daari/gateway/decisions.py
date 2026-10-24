@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from daari.gateway.client_errors import backend_unavailable_message, summarize_upstream_failure
 from daari.gateway.l6_passthrough import (
@@ -84,12 +84,17 @@ class DecisionLevel(BaseModel):
     description: str | None = None
 
 
+# OpenAI Decisions GA ceiling (was 200 in public beta) (#1886).
+_MAX_DECISIONS_QUESTIONS = 400
+
+
 class DecisionQuestion(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     type: str
     name: str | None = None
-    instructions: str
+    # GA: string or content-part array (input_text / input_image) (#1886).
+    instructions: str | list[Any]
     choices: list[DecisionChoiceOption] | None = None
     levels: list[DecisionLevel] | None = None
 
@@ -98,9 +103,17 @@ class DecisionsRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     model: str | None = None
-    input: Any
-    questions: list[DecisionQuestion] = Field(min_length=1)
+    input: Any | None = None
+    # Top-level structured evidence (accepted + folded; GA also uses content parts) (#1886).
+    input_json: Any | None = None
+    questions: list[DecisionQuestion] = Field(min_length=1, max_length=_MAX_DECISIONS_QUESTIONS)
     user: str | None = None
+
+    @model_validator(mode="after")
+    def _require_input_or_input_json(self) -> DecisionsRequest:
+        if self.input is None and self.input_json is None:
+            raise ValueError("Either input or input_json is required")
+        return self
 
 
 def _error(status: int, code: str, message: str) -> JSONResponse:
@@ -121,6 +134,13 @@ def parse_decisions_body(raw: Any) -> DecisionsRequest | JSONResponse:
             "invalid_request",
             "Streaming is unsupported for POST /v1/decisions; "
             "omit stream or set stream=false.",
+        )
+    questions = raw.get("questions")
+    if isinstance(questions, list) and len(questions) > _MAX_DECISIONS_QUESTIONS:
+        return _error(
+            400,
+            "invalid_request",
+            f"At most {_MAX_DECISIONS_QUESTIONS} questions are allowed per request.",
         )
     try:
         return DecisionsRequest.model_validate(raw)
@@ -389,8 +409,52 @@ def _elapsed_ms(started: float) -> int:
     return max(0, millis)
 
 
+def _image_url_to_base64(url: Any) -> str | None:
+    if isinstance(url, dict):
+        url = url.get("url")
+    raw = str(url or "").strip()
+    if not raw:
+        return None
+    match = _DATA_URI_RE.match(raw)
+    if match:
+        return match.group("data")
+    if "," in raw and "base64" in raw.lower():
+        return raw.split(",", 1)[1]
+    # Plain base64 blob without data URI prefix (or remote URL kept as-is for local).
+    return raw
+
+
+def _extract_content_parts_text_and_images(parts: Any) -> tuple[str, list[str]]:
+    """Flatten OpenAI content-part arrays (input_text / input_image / input_json)."""
+    texts: list[str] = []
+    images: list[str] = []
+    if not isinstance(parts, list):
+        return "", []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        ptype = str(part.get("type") or "")
+        if ptype in {"input_text", "text"}:
+            text = part.get("text")
+            if text is not None:
+                texts.append(str(text))
+        elif ptype == "input_json":
+            data = part.get("data", part.get("json"))
+            try:
+                texts.append(json.dumps(data, default=str))
+            except Exception:
+                texts.append(str(data))
+        elif ptype in {"input_image", "image_url"}:
+            blob = _image_url_to_base64(part.get("image_url"))
+            if blob:
+                images.append(blob)
+    return "\n".join(texts).strip(), images
+
+
 def _extract_input_text_and_images(value: Any) -> tuple[str, list[str]]:
     """OpenAI Decisions input → (state text, base64 images)."""
+    if value is None:
+        return "", []
     if isinstance(value, str):
         return value, []
     texts: list[str] = []
@@ -409,30 +473,69 @@ def _extract_input_text_and_images(value: Any) -> tuple[str, list[str]]:
             continue
         if not isinstance(content, list):
             continue
-        for part in content:
-            if not isinstance(part, dict):
-                continue
-            ptype = str(part.get("type") or "")
-            if ptype in {"input_text", "text"}:
-                text = part.get("text")
-                if text is not None:
-                    texts.append(str(text))
-            elif ptype in {"input_image", "image_url"}:
-                url = part.get("image_url")
-                if isinstance(url, dict):
-                    url = url.get("url")
-                raw = str(url or "").strip()
-                if not raw:
-                    continue
-                match = _DATA_URI_RE.match(raw)
-                if match:
-                    images.append(match.group("data"))
-                elif "," in raw and "base64" in raw.lower():
-                    images.append(raw.split(",", 1)[1])
-                else:
-                    # Plain base64 blob without data URI prefix.
-                    images.append(raw)
+        part_text, part_images = _extract_content_parts_text_and_images(content)
+        if part_text:
+            texts.append(part_text)
+        images.extend(part_images)
     return "\n".join(texts).strip(), images
+
+
+def _extract_instructions_text_and_images(
+    instructions: str | list[Any],
+) -> tuple[str, list[str]]:
+    """Question instructions: string or GA content-part array (#1886)."""
+    if isinstance(instructions, str):
+        return instructions, []
+    return _extract_content_parts_text_and_images(instructions)
+
+
+def _json_evidence_text(value: Any) -> str:
+    try:
+        return json.dumps(value, default=str)
+    except Exception:
+        return str(value)
+
+
+def _resolve_local_state_and_images(body: DecisionsRequest) -> tuple[str, list[str]]:
+    """Fold input + top-level input_json + per-question images into systemone state (#1886)."""
+    texts: list[str] = []
+    images: list[str] = []
+    if body.input is not None:
+        state, input_images = _extract_input_text_and_images(body.input)
+        if state:
+            texts.append(state)
+        images.extend(input_images)
+    if body.input_json is not None:
+        texts.append(_json_evidence_text(body.input_json))
+    for question in body.questions:
+        _instr_text, instr_images = _extract_instructions_text_and_images(
+            question.instructions
+        )
+        images.extend(instr_images)
+    return "\n".join(texts).strip(), images
+
+
+def _frontier_decisions_payload(model: str, body: DecisionsRequest) -> dict[str, Any]:
+    """Build OpenAI Decisions body; wrap top-level input_json when input is absent."""
+    payload: dict[str, Any] = {
+        "model": model,
+        "questions": [q.model_dump(exclude_none=True) for q in body.questions],
+    }
+    if body.input is not None:
+        payload["input"] = body.input
+    elif body.input_json is not None:
+        payload["input"] = [
+            {
+                "role": "user",
+                "content": [{"type": "input_json", "data": body.input_json}],
+            }
+        ]
+    if body.input_json is not None and body.input is not None:
+        # Preserve top-level field when clients send both (not silently dropped).
+        payload["input_json"] = body.input_json
+    if body.user is not None:
+        payload["user"] = body.user
+    return payload
 
 
 def _openai_questions_to_systemone(questions: list[DecisionQuestion]) -> dict[str, Any]:
@@ -440,7 +543,8 @@ def _openai_questions_to_systemone(questions: list[DecisionQuestion]) -> dict[st
     for index, question in enumerate(questions):
         name = (question.name or f"q{index}").strip() or f"q{index}"
         qtype = (question.type or "").strip().lower()
-        entry: dict[str, Any] = {"instructions": question.instructions}
+        instr_text, _images = _extract_instructions_text_and_images(question.instructions)
+        entry: dict[str, Any] = {"instructions": instr_text}
         if qtype == "predicate":
             entry["type"] = "boolean"
         elif qtype == "choice":
@@ -488,12 +592,12 @@ def _systemone_answers_to_openai(answers: Any) -> list[dict[str, Any]]:
 
 
 def _decisions_input_text(body: DecisionsRequest) -> str:
-    """Flatten input + questions for input guardrail screening (#1497)."""
+    """Flatten input + input_json + questions for input guardrail screening (#1497 / #1886)."""
     parts: list[str] = []
-    state, _images = _extract_input_text_and_images(body.input)
+    state, _images = _resolve_local_state_and_images(body)
     if state:
         parts.append(state)
-    else:
+    elif body.input is not None:
         try:
             parts.append(json.dumps(body.input, default=str))
         except Exception:
@@ -728,7 +832,11 @@ def _prompt_chars(state: str, questions: list[DecisionQuestion]) -> int:
             )
         )
     except Exception:
-        return len(state) + sum(len(q.instructions) for q in questions)
+        instr_lens = 0
+        for q in questions:
+            text, _ = _extract_instructions_text_and_images(q.instructions)
+            instr_lens += len(text)
+        return len(state) + instr_lens
 
 
 def _no_cache_requested(request: Request) -> bool:
@@ -748,11 +856,12 @@ def _decisions_cache_enabled(settings: Any) -> bool:
 
 
 def _decisions_cache_fingerprint(model: str, body: DecisionsRequest) -> str:
-    """Stable exact-match payload for L0 keys (#1508)."""
+    """Stable exact-match payload for L0 keys (#1508 / #1886)."""
     return json.dumps(
         {
             "model": model,
             "input": body.input,
+            "input_json": body.input_json,
             "questions": [q.model_dump(exclude_none=True) for q in body.questions],
         },
         sort_keys=True,
@@ -853,7 +962,7 @@ def _serve_decisions_cache_hit(
         output_tokens = int(usage.get("output_tokens") or 0)
     except (TypeError, ValueError):
         output_tokens = 0
-    state, _images = _extract_input_text_and_images(body.input)
+    state, _images = _resolve_local_state_and_images(body)
     prompt_chars = _prompt_chars(state, body.questions)
     if input_tokens <= 0:
         input_tokens = max(0, prompt_chars // 4)
@@ -985,7 +1094,7 @@ async def _handle_local(
             request, ctx, model=model, body=body, cached=cached, started=started
         )
 
-    state, images = _extract_input_text_and_images(body.input)
+    state, images = _resolve_local_state_and_images(body)
     payload: dict[str, Any] = {
         "model": model,
         "state": state,
@@ -1203,11 +1312,7 @@ async def _handle_frontier(
             request, ctx, model=model, body=body, cached=cached, started=started
         )
 
-    payload = {
-        "model": model,
-        "input": body.input,
-        "questions": [q.model_dump(exclude_none=True) for q in body.questions],
-    }
+    payload = _frontier_decisions_payload(model, body)
     retry_settings = getattr(getattr(settings, "upstream", None), "retry", None)
     last_exc: Exception | None = None
     last_upstream: httpx.Response | None = None
@@ -1299,7 +1404,7 @@ async def _handle_frontier(
             output_tokens = int(usage.get("output_tokens") or usage.get("completion_tokens") or 0)
         except (TypeError, ValueError):
             output_tokens = 0
-        state, _images = _extract_input_text_and_images(body.input)
+        state, _images = _resolve_local_state_and_images(body)
         prompt_chars = _prompt_chars(state, body.questions)
         if input_tokens <= 0:
             input_tokens = max(0, prompt_chars // 4)
