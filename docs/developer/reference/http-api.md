@@ -117,6 +117,10 @@ When `starting_after` is omitted, a non-negative integer `Last-Event-ID` header 
 
 Non-terminal (in-flight / `queued`) responses return **409** when `stream=true`. Plain GET (no `stream`) remains JSON.
 
+## Decisions
+
+`POST /v1/decisions` accepts the OpenAI Decisions GA shape: optional top-level `input_json` (or `input_json` content parts inside `input`), per-question `instructions` as a string or content-part array (including images), and up to **400** questions per request. Local catalog models fold structured evidence into systemone `state`/`images`; `gpt-6-luna` forwards the GA payload to the frontier. Frontier billing is input-only with shared-input cache discounts ($0.10/1M input, $0.01/1M cached). Honors `Idempotency-Key`.
+
 ## Systemone
 
 `POST /v1/systemone` proxies Ollama decision models. The body accepts optional `images` (list of base64 strings, Ollama 0.35.1+ Clef multimodal) forwarded verbatim when present; omit the field for text-only scoring. Honors `Idempotency-Key` with the same replay / 409 conflict / in-flight wait semantics as `POST /v1/decisions`.

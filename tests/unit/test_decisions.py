@@ -426,7 +426,7 @@ async def test_unknown_decisions_model_returns_400(settings, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_gpt_6_luna_decisions_cost_ignores_output_and_cache(settings, monkeypatch):
+async def test_gpt_6_luna_decisions_cost_ignores_output_honors_cache(settings, monkeypatch):
     billed = {
         **_OPENAI_OK,
         "usage": {
@@ -456,8 +456,9 @@ async def test_gpt_6_luna_decisions_cost_ignores_output_and_cache(settings, monk
         response = await client.post("/v1/decisions", json={**_BODY, "model": "gpt-6-luna"})
 
     assert response.status_code == 200, response.text
-    assert response.json()["daari_meta"]["cost_usd"] == pytest.approx(0.09)
-    assert float(response.headers["x-daari-response-cost"]) == pytest.approx(0.09)
+    # Output ignored; 900k @ $0.10 + 100k cached @ $0.01 = 0.091 (#1886).
+    assert response.json()["daari_meta"]["cost_usd"] == pytest.approx(0.091)
+    assert float(response.headers["x-daari-response-cost"]) == pytest.approx(0.091)
 
 
 @pytest.mark.asyncio
@@ -929,3 +930,277 @@ async def test_decisions_guardrail_block_does_not_poison_cache(settings, monkeyp
         meta=RequestMeta(),
     )
     assert app.state.ctx.router.cache.get(probe) is None
+
+
+# --- OpenAI Decisions GA parity (#1886) ---
+
+
+@pytest.mark.asyncio
+async def test_input_json_only_judges_locally(settings, monkeypatch):
+    """Top-level input_json (no input) is folded into systemone state, not dropped."""
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.read()))
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.decisions.cache_enabled = False
+    app = _app(settings)
+    body = {
+        "model": "nimble",
+        "input_json": {
+            "ticket": {"body": "Please refund the duplicate charge."},
+            "order": {"charges": [49, 49]},
+        },
+        "questions": [
+            {
+                "type": "choice",
+                "name": "department",
+                "instructions": "Which department should handle this complaint?",
+                "choices": [
+                    {"value": "billing", "description": "Payments and refunds"},
+                    {"value": "technical", "description": "Product problems"},
+                    {"value": "shipping", "description": "Delivery"},
+                    {"value": "other", "description": "Everything else"},
+                ],
+            }
+        ],
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json=body)
+
+    assert response.status_code == 200, response.text
+    assert seen, "systemone must be called"
+    state = seen[0]["state"]
+    assert "duplicate charge" in state
+    assert "49" in state
+    assert response.json()["answers"][0]["choice"] == "billing"
+
+
+@pytest.mark.asyncio
+async def test_input_json_content_part_folded_and_forwarded(settings, monkeypatch):
+    """GA content-part input_json is folded locally and forwarded verbatim on frontier."""
+    local_seen: list[dict] = []
+    frontier_seen: list[dict] = []
+
+    def local_handler(request: httpx.Request) -> httpx.Response:
+        local_seen.append(json.loads(request.read()))
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    def frontier_handler(request: httpx.Request) -> httpx.Response:
+        frontier_seen.append(json.loads(request.read()))
+        return httpx.Response(200, json=_OPENAI_OK)
+
+    _patch_local(monkeypatch, local_handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.decisions.cache_enabled = False
+    app = _app(settings)
+    ga_input = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "Evaluate the ticket."},
+                {
+                    "type": "input_json",
+                    "data": {"ticket": "refund duplicate charge"},
+                },
+            ],
+        }
+    ]
+    body = {
+        "model": "nimble",
+        "input": ga_input,
+        "questions": [
+            {
+                "type": "predicate",
+                "name": "duplicate",
+                "instructions": "Is this a duplicate charge?",
+            }
+        ],
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        local = await client.post("/v1/decisions", json=body)
+
+    assert local.status_code == 200, local.text
+    assert "Evaluate the ticket." in local_seen[0]["state"]
+    assert "refund duplicate charge" in local_seen[0]["state"]
+
+    _patch_frontier(monkeypatch, frontier_handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            keys=["sk-test"],
+        )
+    ]
+    app = _app(settings)
+    body_f = {**body, "model": "gpt-6-luna"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        frontier = await client.post("/v1/decisions", json=body_f)
+
+    assert frontier.status_code == 200, frontier.text
+    assert frontier_seen[0]["input"] == ga_input
+
+
+@pytest.mark.asyncio
+async def test_question_instructions_content_array_with_images(settings, monkeypatch):
+    """Per-question instruction images: local extracts text+images; frontier forwards verbatim."""
+    local_seen: list[dict] = []
+    frontier_seen: list[dict] = []
+
+    def local_handler(request: httpx.Request) -> httpx.Response:
+        local_seen.append(json.loads(request.read()))
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    def frontier_handler(request: httpx.Request) -> httpx.Response:
+        frontier_seen.append(json.loads(request.read()))
+        return httpx.Response(200, json=_OPENAI_OK)
+
+    instructions = [
+        {
+            "type": "input_text",
+            "text": "Is candidate B a variant of reference A?",
+        },
+        {
+            "type": "input_image",
+            "image_url": "data:image/png;base64,Y2FuZGlkYXRl",
+        },
+    ]
+    body = {
+        "model": "clef",
+        "input": "shared reference context",
+        "questions": [
+            {
+                "type": "predicate",
+                "name": "variant",
+                "instructions": instructions,
+            }
+        ],
+    }
+
+    _patch_local(monkeypatch, local_handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.decisions.cache_enabled = False
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        local = await client.post("/v1/decisions", json=body)
+
+    assert local.status_code == 200, local.text
+    assert "variant of reference" in local_seen[0]["questions"]["variant"]["instructions"]
+    assert "Y2FuZGlkYXRl" in local_seen[0].get("images", [])
+
+    _patch_frontier(monkeypatch, frontier_handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            keys=["sk-test"],
+        )
+    ]
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        frontier = await client.post(
+            "/v1/decisions", json={**body, "model": "gpt-6-luna"}
+        )
+
+    assert frontier.status_code == 200, frontier.text
+    assert frontier_seen[0]["questions"][0]["instructions"] == instructions
+
+
+@pytest.mark.asyncio
+async def test_questions_ceiling_400_ok_401_rejected(settings, monkeypatch):
+    seen = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["n"] += 1
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.decisions.cache_enabled = False
+    app = _app(settings)
+
+    base_q = {
+        "type": "predicate",
+        "instructions": "Is this true?",
+    }
+    ok_body = {
+        "model": "nimble",
+        "input": "shared",
+        "questions": [{**base_q, "name": f"q{i}"} for i in range(400)],
+    }
+    over_body = {
+        "model": "nimble",
+        "input": "shared",
+        "questions": [{**base_q, "name": f"q{i}"} for i in range(401)],
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        ok = await client.post("/v1/decisions", json=ok_body)
+        over = await client.post("/v1/decisions", json=over_body)
+
+    assert ok.status_code == 200, ok.text
+    assert seen["n"] == 1
+    assert over.status_code == 400
+    err = over.json()["error"]
+    assert err["type"] == "invalid_request"
+    assert "400" in err["message"]
+
+
+@pytest.mark.asyncio
+async def test_frontier_decisions_honors_cached_input_billing(settings, monkeypatch):
+    billed = {
+        **_OPENAI_OK,
+        "usage": {
+            "input_tokens": 1_000_000,
+            "output_tokens": 0,
+            "input_tokens_details": {"cached_tokens": 100_000},
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=billed)
+
+    _patch_frontier(monkeypatch, handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            keys=["sk-test"],
+        )
+    ]
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json={**_BODY, "model": "gpt-6-luna"})
+
+    assert response.status_code == 200, response.text
+    # 900k @ $0.10 + 100k cached @ $0.01 = 0.091; output stays $0 on decisions path
+    assert response.json()["daari_meta"]["cost_usd"] == pytest.approx(0.091)
+    assert float(response.headers["x-daari-response-cost"]) == pytest.approx(0.091)
+
+
+def test_decisions_ga_docs_note_parity():
+    from pathlib import Path
+
+    http_api = Path("docs/developer/reference/http-api.md").read_text(encoding="utf-8")
+    budgets = Path(
+        "docs/developer/guides/configuration/budgets-frontier.md"
+    ).read_text(encoding="utf-8")
+    assert "input_json" in http_api
+    assert "400" in http_api
+    assert "$0.01" in budgets or "0.01" in budgets
+    assert "POST /v1/decisions" in budgets

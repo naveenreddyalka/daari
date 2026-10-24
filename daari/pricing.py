@@ -188,13 +188,14 @@ class ResolvedPrice:
     input_threshold_tokens: int | None = None
 
 
-# Decisions API reuses the chat model id but bills input-only (#1484).
+# Decisions API reuses the chat model id but bills input-only (#1484 / #1886).
+# GA prompt-cache discounts: cached reads at $0.01/1M; output stays $0.
 # Chat/Responses stay on pricing.models; this overlay must not leak the other way.
 _DECISIONS_MODEL_PRICES: dict[str, dict[str, float]] = {
     "gpt-6-luna": {
         "input_per_1m": 0.10,
         "output_per_1m": 0.0,
-        "cached_input_per_1m": 0.0,
+        "cached_input_per_1m": 0.01,
         "cache_write_per_1m": 0.0,
         "cache_write_1h_per_1m": 0.0,
     },

@@ -7842,6 +7842,15 @@ priority/flex factor). Stream bill meta carries `last_stream_service_tier`.
 Covered by `tests/unit/test_service_tier_degrade.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### OpenAI Decisions GA parity ([#1886](https://github.com/naveenreddyalka/daari/issues/1886))
+
+<!-- tracking:#1886 -->
+**Status:** Done (2026-10-24). `POST /v1/decisions` accepts top-level / content-part
+`input_json`, per-question instruction content arrays (incl. images), and a
+400-question ceiling; local hops fold evidence into systemone; frontier forwards
+GA shape; decisions billing honors $0.01/1M cached input. Covered by
+`tests/unit/test_decisions.py` and `tests/unit/test_gpt_6_luna_decisions_pricing.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

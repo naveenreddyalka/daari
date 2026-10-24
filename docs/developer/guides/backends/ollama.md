@@ -54,7 +54,9 @@ routing:
 Ollama 0.35+ exposes TypeSafe/Jev-style decision models at `/v1/systemone`.
 daari proxies the same shape through the gateway (and OpenAI-shaped
 `POST /v1/decisions`) so clients keep API-key auth, spend metering, and
-`daari_meta`.
+`daari_meta`. OpenAI Decisions GA parity: `input_json` (top-level or content
+part), images inside per-question `instructions`, and a 400-question ceiling;
+local hops fold that evidence into systemone `state`/`images`.
 
 Built-in local catalog: `clef`, `clef-flash`, `nimble`, `tev1`, `drex-1.5`,
 `microsoft-decision-1` (vendor/`:tag` variants accepted). Extend via
