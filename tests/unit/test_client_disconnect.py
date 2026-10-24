@@ -327,7 +327,7 @@ async def test_asr_disconnect_cancels_upstream(settings, monkeypatch, path, phas
 
 @pytest.mark.asyncio
 async def test_tts_disconnect_cancels_upstream(settings, monkeypatch):
-    import httpx
+    from contextlib import asynccontextmanager
 
     from daari.gateway import speech as speech_mod
 
@@ -336,16 +336,17 @@ async def test_tts_disconnect_cancels_upstream(settings, monkeypatch):
     started = asyncio.Event()
     cancelled = asyncio.Event()
 
-    async def hanging_post(*args, **kwargs):
+    @asynccontextmanager
+    async def hanging_stream(*args, **kwargs):
         started.set()
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
             cancelled.set()
             raise
-        return httpx.Response(200, content=b"should-not")
+        yield None  # pragma: no cover
 
-    monkeypatch.setattr(speech_mod, "post_speech", hanging_post)
+    monkeypatch.setattr(speech_mod, "deadline_bounded_stream", hanging_stream)
 
     async def is_disconnected(self: Request) -> bool:
         return started.is_set()
@@ -367,18 +368,30 @@ async def test_tts_disconnect_cancels_upstream(settings, monkeypatch):
 @pytest.mark.asyncio
 async def test_tts_happy_path_does_not_increment_cancelled(settings, monkeypatch):
     import httpx
+    from contextlib import asynccontextmanager
 
     from daari.gateway import speech as speech_mod
 
     app = _app(settings)
     settings.tts.base_url = "http://tts.local/v1"
 
-    async def ok_post(*args, **kwargs):
-        return httpx.Response(
-            200, content=b"ID3ok", headers={"content-type": "audio/mpeg"}
+    class _OkUpstream:
+        status_code = 200
+        headers = httpx.Headers(
+            {"content-type": "audio/mpeg", "content-length": "5"}
         )
 
-    monkeypatch.setattr(speech_mod, "post_speech", ok_post)
+        async def aread(self):
+            return b"ID3ok"
+
+        async def aiter_bytes(self, chunk_size: int = 65536):
+            yield b"ID3ok"
+
+    @asynccontextmanager
+    async def ok_stream(*args, **kwargs):
+        yield _OkUpstream()
+
+    monkeypatch.setattr(speech_mod, "deadline_bounded_stream", ok_stream)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/v1/audio/speech",

@@ -12,12 +12,13 @@ def _client(handler) -> httpx.Client:
 
 
 def test_unconfigured_tts_is_quiet(settings):
-    result = _check_tts(settings, None)
+    # Empty tts.base_url stays quiet when Ollama is not speech-capable / unreachable.
+    down = _client(lambda request: httpx.Response(500))
+    result = _check_tts(settings, down)
     assert result.name == "tts"
     assert result.ok
     assert result.optional
     assert "not configured" in result.detail
-    down = _client(lambda request: httpx.Response(500))
     row = next(item for item in run_doctor(settings, httpx_client=down) if item.name == "tts")
     assert row.ok
 
@@ -52,3 +53,65 @@ def test_http_error_is_unreachable(settings):
     result = _check_tts(settings, _client(lambda request: httpx.Response(503)))
     assert not result.ok
     assert "503" in result.detail
+
+
+def test_unconfigured_tts_tips_ollama_phonon_when_speech_capable(settings):
+    """Ollama ≥0.40.9 + empty tts.base_url → tip to point at Ollama /v1 (#1888)."""
+    settings.ollama.base_url = "http://127.0.0.1:11434"
+    settings.tts.base_url = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/version"):
+            return httpx.Response(200, json={"version": "0.40.9"})
+        return httpx.Response(404)
+
+    result = _check_tts(settings, _client(handler))
+    assert result.name == "tts"
+    assert result.ok
+    assert result.optional
+    assert "tts.base_url" in result.detail
+    assert "11434/v1" in result.detail or "http://127.0.0.1:11434/v1" in result.detail
+    assert "Phonon" in result.detail or "0.40.9" in result.detail
+
+
+def test_unconfigured_tts_stays_quiet_when_ollama_old(settings):
+    settings.ollama.base_url = "http://127.0.0.1:11434"
+    settings.tts.base_url = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/version"):
+            return httpx.Response(200, json={"version": "0.40.5"})
+        return httpx.Response(404)
+
+    result = _check_tts(settings, _client(handler))
+    assert result.ok
+    assert "not configured" in result.detail
+    assert "tts.base_url" not in result.detail or "set tts.base_url" not in result.detail.lower()
+
+
+def test_unconfigured_tts_stays_quiet_when_ollama_unreachable(settings):
+    settings.tts.base_url = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused")
+
+    result = _check_tts(settings, _client(handler))
+    assert result.ok
+    assert "not configured" in result.detail
+
+
+def test_configured_tts_skips_phonon_tip(settings):
+    settings.tts.base_url = "http://tts.local/v1"
+    settings.ollama.base_url = "http://127.0.0.1:11434"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url).endswith("/models"):
+            return httpx.Response(200, json={"data": []})
+        if request.url.path.endswith("/api/version"):
+            return httpx.Response(200, json={"version": "0.40.9"})
+        return httpx.Response(404)
+
+    result = _check_tts(settings, _client(handler))
+    assert result.ok
+    assert "reachable" in result.detail
+    assert "Phonon" not in result.detail

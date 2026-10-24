@@ -1,22 +1,25 @@
-"""POST /v1/audio/speech — local-first OpenAI-compatible TTS (#847)."""
+"""POST /v1/audio/speech — local-first OpenAI-compatible TTS (#847, #1888)."""
 
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 from fastapi import Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from daari.gateway.client_errors import request_deadline_response, summarize_upstream_failure
 from daari.gateway.disconnect import ClientDisconnected, await_unless_disconnected
 from daari.gateway.request_log import log_gateway_event
 from daari.router.deadline import (
     RequestDeadlineExceeded,
+    aiter_with_ttft_deadline,
     bind_request_deadline,
     deadline_active,
+    deadline_bounded_stream,
     nonstream_timeout,
     parse_deadline_ms,
     resolve_deadline_seconds,
@@ -85,6 +88,23 @@ def resolve_tts_target(settings: Any) -> TtsTarget | None:
         voice=str(getattr(tts, "voice", "") or "").strip(),
         timeout=timeout,
     )
+
+
+def tts_response_is_streaming(headers: Mapping[str, str] | httpx.Headers) -> bool:
+    """True when upstream is delivering audio without a fixed Content-Length (#1888)."""
+    try:
+        te = str(headers.get("transfer-encoding") or headers.get("Transfer-Encoding") or "")
+    except Exception:
+        te = ""
+    if "chunked" in te.lower():
+        return True
+    try:
+        cl = headers.get("content-length") or headers.get("Content-Length")
+    except Exception:
+        cl = None
+    if cl is None or str(cl).strip() == "":
+        return True
+    return False
 
 
 async def post_speech(
@@ -309,20 +329,27 @@ async def handle_speech(
     }
     url = f"{target.base_url}/audio/speech"
     started = time.perf_counter()
-    try:
-        timeout = nonstream_timeout(target.timeout, "tts")
-        from daari.observability.otel import inject_trace_headers
+    timeout = nonstream_timeout(target.timeout, "tts")
+    from daari.observability.otel import inject_trace_headers
 
-        retry_settings = getattr(getattr(ctx.settings, "upstream", None), "retry", None)
-        upstream = await await_unless_disconnected(
+    trace_headers = inject_trace_headers({})
+    try:
+        return await await_unless_disconnected(
             request,
-            post_speech(
-                url,
-                headers=inject_trace_headers({}),
+            _relay_speech(
+                request,
+                ctx=ctx,
+                url=url,
+                headers=trace_headers,
                 payload=payload,
                 timeout=timeout,
-                retry=retry_settings,
-                metrics=ctx.metrics,
+                started=started,
+                model_name=model_name,
+                voice_name=voice_name,
+                fmt=fmt,
+                text=text,
+                user=user,
+                idem_slot=idem_slot,
             ),
             metrics=ctx.metrics,
             phase="tts",
@@ -345,19 +372,50 @@ async def handle_speech(
     except httpx.HTTPError as exc:
         abandon_slot(idem_slot)
         return _error(502, "tts_upstream_error", summarize_upstream_failure(exc))
-    latency_ms = _elapsed_ms(started)
 
-    if upstream.status_code < 200 or upstream.status_code >= 300:
-        abandon_slot(idem_slot)
-        return _error(
-            502,
-            "tts_upstream_error",
-            f"TTS upstream returned HTTP {upstream.status_code}",
-        )
-    audio = upstream.content or b""
-    if not audio:
-        abandon_slot(idem_slot)
-        return _error(502, "tts_upstream_error", "TTS upstream returned an empty body")
+
+def _speech_response_headers(
+    request: Request,
+    ctx: Any,
+    *,
+    model_name: str,
+    text: str,
+    audio_bytes: int,
+) -> dict[str, str]:
+    request_id = str(getattr(request.state, "request_id", None) or "")
+    from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
+
+    headers = modality_response_headers(
+        ctx.settings,
+        tier="tts",
+        model=model_name,
+        prompt_chars=len(text),
+        completion_chars=0,
+        input_tokens=max(0, len(text) // 4),
+        output_tokens=max(0, audio_bytes // 4),
+        session_id=session_id_from_request(request),
+        savings=getattr(getattr(ctx, "router", None), "session_savings", None),
+    )
+    if request_id:
+        headers = {**headers, "X-Request-ID": request_id}
+    return headers
+
+
+def _finalize_speech(
+    request: Request,
+    ctx: Any,
+    *,
+    model_name: str,
+    voice_name: str,
+    fmt: str,
+    text: str,
+    audio: bytes,
+    started: float,
+    user: str | None,
+    idem_slot: Any | None,
+    media_type: str,
+) -> None:
+    from daari.gateway.idempotency import complete_binary_slot
 
     log_gateway_event(
         "audio_speech",
@@ -379,31 +437,164 @@ async def handle_speech(
         model=model_name,
         input_text=text,
         audio_bytes=len(audio),
-        latency_ms=latency_ms,
+        latency_ms=_elapsed_ms(started),
     )
-    media = upstream.headers.get("content-type") or _CONTENT_TYPES[fmt]
-    request_id = str(getattr(request.state, "request_id", None) or "")
-    from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
-
-    headers = modality_response_headers(
-        ctx.settings,
-        tier="tts",
-        model=model_name,
-        prompt_chars=len(text),
-        completion_chars=0,
-        input_tokens=max(0, len(text) // 4),
-        output_tokens=max(0, len(audio) // 4),
-        session_id=session_id_from_request(request),
-        savings=getattr(getattr(ctx, "router", None), "session_savings", None),
-    )
-    if request_id:
-        headers = {**headers, "X-Request-ID": request_id}
-    media_type = media.split(";")[0].strip()
     complete_binary_slot(
         idem_slot, status_code=200, data=audio, media_type=media_type
     )
-    return Response(
-        content=audio,
-        media_type=media_type,
+
+
+async def _relay_speech(
+    request: Request,
+    *,
+    ctx: Any,
+    url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    timeout: float,
+    started: float,
+    model_name: str,
+    voice_name: str,
+    fmt: str,
+    text: str,
+    user: str | None,
+    idem_slot: Any | None,
+) -> Response | JSONResponse | StreamingResponse:
+    from daari.gateway.idempotency import abandon_slot
+
+    # Open the upstream stream manually so a StreamingResponse can keep it alive
+    # until the client has drained chunks (async-with would close too early).
+    stream_cm = deadline_bounded_stream(
+        _shared_client(),
+        "POST",
+        url,
         headers=headers,
+        json=payload,
+        timeout=timeout,
     )
+    upstream = await stream_cm.__aenter__()
+    close_needed = True
+
+    async def _close_upstream() -> None:
+        nonlocal close_needed
+        if not close_needed:
+            return
+        close_needed = False
+        await stream_cm.__aexit__(None, None, None)
+
+    try:
+        if upstream.status_code < 200 or upstream.status_code >= 300:
+            abandon_slot(idem_slot)
+            try:
+                await upstream.aread()
+            except Exception:
+                pass
+            return _error(
+                502,
+                "tts_upstream_error",
+                f"TTS upstream returned HTTP {upstream.status_code}",
+            )
+
+        media = upstream.headers.get("content-type") or _CONTENT_TYPES[fmt]
+        media_type = media.split(";")[0].strip()
+
+        if not tts_response_is_streaming(upstream.headers):
+            audio = await upstream.aread() or b""
+            if not audio:
+                abandon_slot(idem_slot)
+                return _error(
+                    502, "tts_upstream_error", "TTS upstream returned an empty body"
+                )
+            _finalize_speech(
+                request,
+                ctx,
+                model_name=model_name,
+                voice_name=voice_name,
+                fmt=fmt,
+                text=text,
+                audio=audio,
+                started=started,
+                user=user,
+                idem_slot=idem_slot,
+                media_type=media_type,
+            )
+            return Response(
+                content=audio,
+                media_type=media_type,
+                headers=_speech_response_headers(
+                    request,
+                    ctx,
+                    model_name=model_name,
+                    text=text,
+                    audio_bytes=len(audio),
+                ),
+            )
+
+        # Streaming path: peek first byte so empty bodies stay 502 before headers.
+        byte_iter = aiter_with_ttft_deadline(upstream.aiter_bytes()).__aiter__()
+        try:
+            first = await byte_iter.__anext__()
+        except StopAsyncIteration:
+            abandon_slot(idem_slot)
+            return _error(
+                502, "tts_upstream_error", "TTS upstream returned an empty body"
+            )
+        except RequestDeadlineExceeded:
+            abandon_slot(idem_slot)
+            raise
+
+        while not first:
+            try:
+                first = await byte_iter.__anext__()
+            except StopAsyncIteration:
+                abandon_slot(idem_slot)
+                return _error(
+                    502, "tts_upstream_error", "TTS upstream returned an empty body"
+                )
+
+        collected = bytearray(first)
+        close_needed = False  # generator owns shutdown
+
+        async def _chunks() -> AsyncIterator[bytes]:
+            try:
+                yield first
+                async for chunk in byte_iter:
+                    if not chunk:
+                        continue
+                    collected.extend(chunk)
+                    yield chunk
+            finally:
+                audio = bytes(collected)
+                if audio:
+                    _finalize_speech(
+                        request,
+                        ctx,
+                        model_name=model_name,
+                        voice_name=voice_name,
+                        fmt=fmt,
+                        text=text,
+                        audio=audio,
+                        started=started,
+                        user=user,
+                        idem_slot=idem_slot,
+                        media_type=media_type,
+                    )
+                else:
+                    abandon_slot(idem_slot)
+                await stream_cm.__aexit__(None, None, None)
+
+        # Output token count unknown until the stream ends; spend/metrics use the
+        # collected size in finally. Headers use a prompt-based estimate.
+        return StreamingResponse(
+            _chunks(),
+            media_type=media_type,
+            headers=_speech_response_headers(
+                request,
+                ctx,
+                model_name=model_name,
+                text=text,
+                audio_bytes=max(0, len(text) // 4),
+            ),
+        )
+    finally:
+        await _close_upstream()
