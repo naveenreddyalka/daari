@@ -18,6 +18,15 @@ FLINT_RECIPE_NOTE = (
     "on Linux, Windows, and macOS. Pull with: ollama pull flint"
 )
 
+# Nemotron 3.5 Bolt E4B — optional local VLM (Ollama ≥ 0.40.10) (#1893).
+NEMOTRON_BOLT_MODEL = "nemotron-3.5-bolt:e4b"
+NEMOTRON_BOLT_OLLAMA_FLOOR = (0, 40, 10)
+NEMOTRON_BOLT_RECIPE_NOTE = (
+    "Optional Nemotron 3.5 Bolt E4B L3 VLM recipe "
+    f"(models.l3={NEMOTRON_BOLT_MODEL}). Requires Ollama ≥ 0.40.10. "
+    f"Pull with: ollama pull {NEMOTRON_BOLT_MODEL}"
+)
+
 
 @dataclass
 class ModelSetupResult:
@@ -174,6 +183,33 @@ def apply_flint_l4_recipe(
     return write_models_config(FLINT_MODEL, tier="l4", config_path=path)
 
 
+def apply_nemotron_bolt_l3_recipe(
+    *,
+    config_path: Path | None = None,
+    dry_run: bool = False,
+) -> ModelSetupResult:
+    """Set ``models.l3`` to Nemotron Bolt E4B without pulling weights (#1893)."""
+    path = config_path or Path.home() / ".daari" / "config.yaml"
+    if dry_run:
+        current_l3: str | None = None
+        if path.is_file():
+            with path.open(encoding="utf-8") as handle:
+                loaded = yaml.safe_load(handle) or {}
+            if isinstance(loaded, dict):
+                models = loaded.get("models") or {}
+                if isinstance(models, dict):
+                    raw = models.get("l3")
+                    current_l3 = str(raw) if raw is not None else None
+        changed = current_l3 != NEMOTRON_BOLT_MODEL
+        return ModelSetupResult(
+            tier="l3",
+            model=NEMOTRON_BOLT_MODEL,
+            config_path=path,
+            changed=changed,
+        )
+    return write_models_config(NEMOTRON_BOLT_MODEL, tier="l3", config_path=path)
+
+
 def write_models_config(
     model: str | None = None,
     *,
@@ -232,6 +268,7 @@ def setup_models_interactive(
     model: str | None = None,
     list_only: bool = False,
     flint: bool = False,
+    nemotron_bolt: bool = False,
     config_path: Path | None = None,
     httpx_client: httpx.Client | None = None,
 ) -> ModelSetupResult | None:
@@ -250,6 +287,12 @@ def setup_models_interactive(
         typer.echo(FLINT_RECIPE_NOTE)
         result = apply_flint_l4_recipe(config_path=path, dry_run=False)
         typer.echo(f"Set models.l4 = {FLINT_MODEL} in {path}")
+        return result
+
+    if nemotron_bolt:
+        typer.echo(NEMOTRON_BOLT_RECIPE_NOTE)
+        result = apply_nemotron_bolt_l3_recipe(config_path=path, dry_run=False)
+        typer.echo(f"Set models.l3 = {NEMOTRON_BOLT_MODEL} in {path}")
         return result
 
     if model is not None:
@@ -308,6 +351,15 @@ def setup_models_interactive(
     typer.echo(f"Wrote models.{tier} = {picked} to {path}")
     typer.echo(f"Wrote routing.prefer = {prefer} to {path}")
 
+    if tier == "l3" and picked != NEMOTRON_BOLT_MODEL:
+        typer.echo(NEMOTRON_BOLT_RECIPE_NOTE)
+        if typer.confirm(
+            f"Apply optional Nemotron Bolt E4B L3 VLM recipe "
+            f"(set models.l3={NEMOTRON_BOLT_MODEL})?",
+            default=False,
+        ):
+            result = apply_nemotron_bolt_l3_recipe(config_path=path, dry_run=False)
+            typer.echo(f"Set models.l3 = {NEMOTRON_BOLT_MODEL} in {path}")
     if tier == "l4" and picked != FLINT_MODEL:
         typer.echo(FLINT_RECIPE_NOTE)
         if typer.confirm(
