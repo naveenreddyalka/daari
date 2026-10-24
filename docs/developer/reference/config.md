@@ -200,6 +200,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `upstream.retry.jitter` | float | `0.5` | Fraction of each backoff that is randomized, keeping the delay in [d*(1-jitter), d]. Spreads retries from requests that failed together instead of returning them in lockstep. |
 | `upstream.pool_max_connections` | int | `100` | Max concurrent connections across the shared upstream httpx pool (Ollama, OpenAI-compat, MLX, frontier, embedder, TTS, ASR). |
 | `upstream.pool_keepalive_connections` | int | `20` | Max idle keepalive connections retained in the shared upstream httpx pool. Cuts TCP/TLS handshake cost on repeated local hops. |
+| `upstream.distrust_emudhra_ca` | bool | `True` | When true (default), outbound httpx clients (frontier, MCP egress, TTS, org-cache, shared pools) use a CA bundle with eMudhra/emSign roots removed — LiteLLM 1.106.3 / Kong / Portkey parity. Set false only if you must trust those roots; daari doctor tips when off while certifi still ships them. Env: DAARI_UPSTREAM__DISTRUST_EMUDHRA_CA. |
 | `trace.enabled` | bool | `True` |  |
 | `trace.path` | str | `'~/.daari/traces/traces.sqlite3'` |  |
 | `trace.max_entries` | int | `200` |  |

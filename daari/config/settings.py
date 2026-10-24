@@ -1131,6 +1131,16 @@ class UpstreamSettings(BaseModel):
             "httpx pool. Cuts TCP/TLS handshake cost on repeated local hops."
         ),
     )
+    distrust_emudhra_ca: bool = Field(
+        default=True,
+        description=(
+            "When true (default), outbound httpx clients (frontier, MCP egress, "
+            "TTS, org-cache, shared pools) use a CA bundle with eMudhra/emSign "
+            "roots removed — LiteLLM 1.106.3 / Kong / Portkey parity. Set false "
+            "only if you must trust those roots; daari doctor tips when off while "
+            "certifi still ships them. Env: DAARI_UPSTREAM__DISTRUST_EMUDHRA_CA."
+        ),
+    )
 
 
 class ModelPrice(BaseModel):
