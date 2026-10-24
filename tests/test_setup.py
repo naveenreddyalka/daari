@@ -276,6 +276,15 @@ class TestSetupModels:
         text = config_path.read_text(encoding="utf-8")
         assert f"l4: {FLINT_MODEL}" in text or f'l4: "{FLINT_MODEL}"' in text
 
+    def test_flint_recipe_note_linux_windows_0409_floor(self):
+        from daari.setup.models import FLINT_OLLAMA_FLOOR, FLINT_RECIPE_NOTE
+
+        assert FLINT_OLLAMA_FLOOR == (0, 40, 9)
+        assert "0.40.9" in FLINT_RECIPE_NOTE
+        assert "Linux" in FLINT_RECIPE_NOTE
+        assert "Windows" in FLINT_RECIPE_NOTE
+        assert "Mac-first" not in FLINT_RECIPE_NOTE
+
 
 class TestSetupCLI:
     def test_smoke_cursor_dry_run_script_exists(self):

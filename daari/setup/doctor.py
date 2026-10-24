@@ -395,7 +395,7 @@ def _ollama_q2_0_warning(http: httpx.Client, base: str) -> CheckResult | None:
 
 
 def _ollama_flint_warning(http: httpx.Client, base: str, l4_model: str) -> CheckResult | None:
-    """Tip when models.l4 is Flint but Ollama is older than 0.40.8 (#1852)."""
+    """Tip when models.l4 is Flint but Ollama is older than 0.40.9 (#1852 / #1887)."""
     from daari.setup.models import FLINT_MODEL, FLINT_OLLAMA_FLOOR
 
     name = (l4_model or "").strip()
@@ -407,8 +407,8 @@ def _ollama_flint_warning(http: httpx.Client, base: str, l4_model: str) -> Check
             name="ollama_flint",
             ok=False,
             detail=(
-                f"models.l4={name} needs Ollama ≥ 0.40.8 "
-                "(0.40.8-rc0 is Mac-first; other GPUs follow later RCs)"
+                f"models.l4={name} needs Ollama ≥ 0.40.9 "
+                "(Linux, Windows, and macOS)"
             ),
             optional=True,
         )
@@ -419,8 +419,8 @@ def _ollama_flint_warning(http: httpx.Client, base: str, l4_model: str) -> Check
         name="ollama_flint",
         ok=False,
         detail=(
-            f"Ollama {raw} — models.l4={name} needs Ollama ≥ 0.40.8 "
-            "(0.40.8-rc0 is Mac-first; other GPUs follow later RCs)"
+            f"Ollama {raw} — models.l4={name} needs Ollama ≥ 0.40.9 "
+            "(Linux, Windows, and macOS)"
         ),
         optional=True,
     )

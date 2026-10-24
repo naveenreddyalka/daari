@@ -31,6 +31,12 @@ BUILTIN_LOCAL_MODELS = frozenset(
         "tev1",
         "drex-1.5",
         "microsoft-decision-1",
+        # Ollama 0.40.9 d3 decision-model family (vLLM Semantic Router lineage) (#1887).
+        "d3",
+        "d3:2b",
+        "d3:4b",
+        "d3:9b",
+        "d3:27b",
     }
 )
 # Back-compat alias for importers/tests that still reference the old name.

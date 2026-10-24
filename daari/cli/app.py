@@ -3248,7 +3248,7 @@ def setup_models(
     flint: bool = typer.Option(
         False,
         "--flint",
-        help="Apply optional Flint L4 coding recipe (models.l4=flint; Ollama ≥ 0.40.8).",
+        help="Apply optional Flint L4 coding recipe (models.l4=flint; Ollama ≥ 0.40.9).",
     ),
 ) -> None:
     """Pick an Ollama model for a daari tier."""

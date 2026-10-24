@@ -10,12 +10,12 @@ import yaml
 
 from daari.config.settings import Settings
 
-# Recursive Flint — optional L4 coding MoE (Ollama ≥ 0.40.8; Mac-first in rc0) (#1852).
+# Recursive Flint — optional L4 coding MoE (Ollama ≥ 0.40.9; Linux/Windows/macOS) (#1852 / #1887).
 FLINT_MODEL = "flint"
-FLINT_OLLAMA_FLOOR = (0, 40, 8)
+FLINT_OLLAMA_FLOOR = (0, 40, 9)
 FLINT_RECIPE_NOTE = (
-    "Optional Flint L4 coding recipe (models.l4=flint). Requires Ollama ≥ 0.40.8; "
-    "0.40.8-rc0 is Mac-first — other GPUs follow later RCs. Pull with: ollama pull flint"
+    "Optional Flint L4 coding recipe (models.l4=flint). Requires Ollama ≥ 0.40.9 "
+    "on Linux, Windows, and macOS. Pull with: ollama pull flint"
 )
 
 

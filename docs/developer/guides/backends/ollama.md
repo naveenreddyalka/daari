@@ -12,10 +12,9 @@ daari serve
 daari doctor
 ```
 
-Optional **Flint** L4 coding recipe (Ollama ≥ 0.40.8): `daari setup models --flint`
-sets `models.l4=flint` without pulling weights. Ollama 0.40.8-rc0 is Mac-first;
-other GPUs follow later RCs — do not assume Linux/GPU support beyond what your
-installed Ollama build documents. Pull later with `ollama pull flint`.
+Optional **Flint** L4 coding recipe (Ollama ≥ 0.40.9): `daari setup models --flint`
+sets `models.l4=flint` without pulling weights. As of Ollama 0.40.9, Flint runs on
+Linux, Windows, and macOS. Pull later with `ollama pull flint`.
 
 Compose stack pulls models for you (`docker compose up`).
 
@@ -59,7 +58,8 @@ part), images inside per-question `instructions`, and a 400-question ceiling;
 local hops fold that evidence into systemone `state`/`images`.
 
 Built-in local catalog: `clef`, `clef-flash`, `nimble`, `tev1`, `drex-1.5`,
-`microsoft-decision-1` (vendor/`:tag` variants accepted). Extend via
+`microsoft-decision-1`, and the Ollama 0.40.9 **d3** family (`d3`, `d3:2b`,
+`d3:4b`, `d3:9b`, `d3:27b`) (vendor/`:tag` variants accepted). Extend via
 `decisions.local_models` without a daari release. When `systemone.enabled`
 (default true), those ids also appear on OpenAI `GET /v1/models`, Anthropic-shaped
 `GET /v1/models` (Accept / `anthropic-version` / `x-api-key` clients get
