@@ -7888,6 +7888,15 @@ PrometheusRule warnings/critical for the same series. Covered by
 `tests/unit/test_anthropic_content_strip.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Responses background completion webhooks ([#1892](https://github.com/naveenreddyalka/daari/issues/1892))
+
+<!-- tracking:#1892 -->
+**Status:** Done (2026-10-24). `alerts.responses_completion_webhook_url` /
+`responses_completion_webhook_secret` (default off) POST a signed payload when
+a background Responses job hits completed/failed/cancelled; reuse budget
+`sign_webhook` helpers; soft-fail when URL unset. Covered by
+`tests/unit/test_responses_completion_webhook.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
