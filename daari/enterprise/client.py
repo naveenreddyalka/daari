@@ -11,7 +11,15 @@ from pydantic import BaseModel, Field
 from daari.cache.exact import cache_key
 from daari.cache.semantic import extract_embed_text, semantic_context_key
 from daari.gateway.internal import InternalRequest, InternalResponse
+from daari.security.egress_tls import resolve_httpx_verify
 from daari.security.secret_refs import current_secret
+
+
+def _egress_client_kwargs(**kwargs: Any) -> dict[str, Any]:
+    """httpx kwargs with eMudhra/emSign CA distrust applied (#1907)."""
+    opts = dict(kwargs)
+    opts["verify"] = resolve_httpx_verify(opts.get("verify"))
+    return opts
 
 
 def org_l0_key(request: InternalRequest) -> str:
@@ -55,7 +63,12 @@ class OrgCacheClient:
         attempts = max(1, self.max_retries + 1)
         for attempt in range(attempts):
             try:
-                async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self.transport) as client:
+                async with httpx.AsyncClient(
+                    **_egress_client_kwargs(
+                        timeout=self.timeout_seconds,
+                        transport=self.transport,
+                    )
+                ) as client:
                     return await client.request(
                         method,
                         url,
@@ -221,7 +234,12 @@ class OrgLearningClient:
             return
         url = f"{self.base_url.rstrip('/')}/v1/org-learning/feedback"
         try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self.transport) as client:
+            async with httpx.AsyncClient(
+                **_egress_client_kwargs(
+                    timeout=self.timeout_seconds,
+                    transport=self.transport,
+                )
+            ) as client:
                 await client.post(url, json=feedback.model_dump(exclude_none=True), headers=self._auth_headers())
         except Exception:
             return
@@ -231,7 +249,12 @@ class OrgLearningClient:
             return None
         url = f"{self.base_url.rstrip('/')}/v1/org-learning/profile"
         try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self.transport) as client:
+            async with httpx.AsyncClient(
+                **_egress_client_kwargs(
+                    timeout=self.timeout_seconds,
+                    transport=self.transport,
+                )
+            ) as client:
                 response = await client.get(url, headers=self._auth_headers())
                 if response.status_code != 200:
                     return None
@@ -245,7 +268,7 @@ class OrgLearningClient:
             return None
         url = f"{self.base_url.rstrip('/')}/v1/org-learning/profile"
         try:
-            with httpx.Client(timeout=self.timeout_seconds) as client:
+            with httpx.Client(**_egress_client_kwargs(timeout=self.timeout_seconds)) as client:
                 response = client.get(url, headers=self._auth_headers())
                 if response.status_code != 200:
                     return None
@@ -279,7 +302,7 @@ class OrgLearningClient:
             return False
         url = f"{self.base_url.rstrip('/')}/v1/org-learning/profile"
         try:
-            with httpx.Client(timeout=self.timeout_seconds) as client:
+            with httpx.Client(**_egress_client_kwargs(timeout=self.timeout_seconds)) as client:
                 response = client.put(url, json=payload, headers=self._auth_headers())
                 return response.status_code == 200
         except Exception:

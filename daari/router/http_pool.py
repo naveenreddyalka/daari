@@ -46,7 +46,13 @@ def build_async_client(
     transport: httpx.AsyncBaseTransport | None = None,
     **kwargs: Any,
 ) -> httpx.AsyncClient:
-    """Long-lived client: no baked-in request timeout (pass per call)."""
+    """Long-lived client: no baked-in request timeout (pass per call).
+
+    Applies eMudhra/emSign CA distrust on ``verify`` unless the caller already
+    passed an explicit non-default ``verify`` (#1907).
+    """
+    from daari.security.egress_tls import resolve_httpx_verify
+
     pool = limits or PoolLimits()
     opts: dict[str, Any] = {
         "limits": pool.as_httpx(),
@@ -57,6 +63,7 @@ def build_async_client(
     if transport is not None:
         opts["transport"] = transport
     opts.update(kwargs)
+    opts["verify"] = resolve_httpx_verify(opts.get("verify"))
     return httpx_mod.AsyncClient(**opts)
 
 
