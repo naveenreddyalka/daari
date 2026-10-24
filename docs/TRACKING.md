@@ -7936,6 +7936,16 @@ to reverse). Docs: ready.md, doctor-health.md, upgrade.md. Covered by
 `tests/unit/test_ready_postgres_schema_ok.py` and migrate downgrade cases in
 `tests/unit/test_migrate_schema.py`.
 
+### Fleet-share frontier / local / MCP breakers via Redis ([#1908](https://github.com/naveenreddyalka/daari/issues/1908))
+
+<!-- tracking:#1908 -->
+**Status:** Done (2026-10-24). When `cache.backend=redis`, frontier / local-pool
+/ MCP egress `CircuitBreaker` open state and reject counters are shared across
+pods (`daari:breaker:{family}:{id}`, `daari:breaker_rejects:{…}`); process-local
+unchanged without Redis; Redis errors fail open. Local-pool stats/`/ready`
+expose shared `circuit` + `rejects`. Covered by
+`tests/unit/test_pool_breaker_redis.py`; doctor-health documents key prefixes.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

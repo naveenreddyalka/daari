@@ -7,6 +7,7 @@ from typing import Any
 
 from daari.gateway.internal import InternalRequest, InternalResponse
 from daari.observability.trace import add_step
+from daari.router.breaker_redis import share_key_for
 from daari.router.circuit_breaker import CircuitBreaker
 
 
@@ -208,6 +209,7 @@ class LocalBackendPool:
                 "status": slot.last_check,
                 "outstanding": slot.outstanding,
                 "circuit": slot.breaker.state,
+                "rejects": slot.breaker.reject_count(),
             }
             for slot in self.slots
         ]
@@ -241,6 +243,7 @@ class LocalBackendPool:
                     "requests": slot.requests,
                     "last_check": slot.last_check,
                     "circuit": slot.breaker.state,
+                    "rejects": slot.breaker.reject_count(),
                 }
                 for slot in self.slots
             ],
@@ -281,6 +284,9 @@ def build_local_pool(settings: Any) -> LocalBackendPool:
                         cooldown_seconds=max(
                             1.0, float(getattr(entry, "cooldown_seconds", 30.0) or 30.0)
                         ),
+                        share_key=share_key_for(
+                            "local", getattr(entry, "id", None) or f"backend-{index}"
+                        ),
                     ),
                 )
             )
@@ -292,6 +298,7 @@ def build_local_pool(settings: Any) -> LocalBackendPool:
                 kind="ollama",
                 model=settings.models.l3,
                 tiers=["L3", "L4", "L5"],
+                breaker=CircuitBreaker(share_key=share_key_for("local", "ollama")),
             )
         )
         mlx = getattr(settings, "mlx", None)
@@ -303,6 +310,7 @@ def build_local_pool(settings: Any) -> LocalBackendPool:
                     kind="mlx",
                     model="",
                     tiers=list(mlx.models.keys()),
+                    breaker=CircuitBreaker(share_key=share_key_for("local", "mlx")),
                 )
             )
     return LocalBackendPool(
