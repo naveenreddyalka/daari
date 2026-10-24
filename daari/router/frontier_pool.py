@@ -22,6 +22,7 @@ from daari.gateway.provider_prefs import (
     require_zdr_slot,
 )
 from daari.observability.trace import add_step
+from daari.router.breaker_redis import share_key_for
 from daari.router.circuit_breaker import CircuitBreaker, counts_as_hard_provider_failure
 from daari.router.retry import RetryPolicy, is_retryable, resolve_upstream_policy, status_of
 from daari.router.frontier import FrontierExecutor
@@ -378,6 +379,7 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
                 breaker=CircuitBreaker(
                     failure_threshold=max(1, int(entry.failure_threshold)),
                     cooldown_seconds=max(1.0, float(entry.cooldown_seconds)),
+                    share_key=share_key_for("frontier", entry.id),
                 ),
             )
         )

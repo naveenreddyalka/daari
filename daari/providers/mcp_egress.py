@@ -19,6 +19,7 @@ import httpx
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
 from daari.gateway.mcp_guardrails import McpGuardrails, first_rule
 from daari.providers.integrations import HttpIntegrationProvider
+from daari.router.breaker_redis import share_key_for
 from daari.router.circuit_breaker import CircuitBreaker
 from daari.router.retry import RetryPolicy, run_upstream
 
@@ -124,7 +125,9 @@ class McpEgressProvider(HttpIntegrationProvider):
         self.server_policy = server_policy
         self.allow_private_networks = allow_private_networks
         self.retry = retry or RetryPolicy()
-        self.breaker = breaker or CircuitBreaker()
+        self.breaker = breaker or CircuitBreaker(
+            share_key=share_key_for("mcp", server.id),
+        )
         self.metrics = metrics
         self.rate_limiter = rate_limiter
         self.settings = settings
@@ -667,6 +670,7 @@ def build_mcp_providers(
                 breaker=CircuitBreaker(
                     failure_threshold=max(1, int(failure_threshold)),
                     cooldown_seconds=max(1.0, float(cooldown_seconds)),
+                    share_key=share_key_for("mcp", cfg.id),
                 ),
                 metrics=metrics,
                 rate_limiter=rate_limiter,
