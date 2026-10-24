@@ -19,10 +19,13 @@ ROOT = Path(__file__).resolve().parents[2]
 OLLAMA_GUIDE = ROOT / "docs/developer/guides/backends/ollama.md"
 
 
-def test_builtin_includes_drex_and_microsoft():
+def test_builtin_includes_drex_microsoft_and_d3_family():
     assert "drex-1.5" in BUILTIN_LOCAL_MODELS
     assert "microsoft-decision-1" in BUILTIN_LOCAL_MODELS
     assert "nimble" in BUILTIN_LOCAL_MODELS
+    for model_id in ("d3", "d3:2b", "d3:4b", "d3:9b", "d3:27b"):
+        assert model_id in BUILTIN_LOCAL_MODELS
+        assert is_local_decisions_model(model_id)
 
 
 def test_normalize_accepts_new_ids_and_variants():
@@ -32,6 +35,14 @@ def test_normalize_accepts_new_ids_and_variants():
     assert normalize_decisions_model("microsoft-decision-1") == "microsoft-decision-1"
     assert normalize_decisions_model("microsoft/microsoft-decision-1") == "microsoft-decision-1"
     assert normalize_decisions_model("microsoft-decision-1:q4") == "microsoft-decision-1"
+    assert normalize_decisions_model("d3") == "d3"
+    assert normalize_decisions_model("d3:2b") == "d3:2b"
+    assert normalize_decisions_model("d3:4b") == "d3:4b"
+    assert normalize_decisions_model("d3:9b") == "d3:9b"
+    assert normalize_decisions_model("d3:27b") == "d3:27b"
+    # Vendor slash keeps a local catalog id (tag may collapse to base `d3`).
+    assert normalize_decisions_model("ollama/d3:4b") in {"d3", "d3:4b"}
+    assert is_local_decisions_model("ollama/d3:4b")
     assert normalize_decisions_model("gpt-4o") is None
     assert normalize_decisions_model("unknown-judge") is None
 
@@ -148,7 +159,30 @@ def test_ollama_guide_documents_catalog_and_extension():
     text = OLLAMA_GUIDE.read_text(encoding="utf-8")
     assert "drex-1.5" in text
     assert "microsoft-decision-1" in text
+    assert "d3" in text
+    assert "d3:2b" in text
+    assert "0.40.9" in text
+    assert "Linux" in text and "Windows" in text
+    assert "Mac-first" not in text
     assert "decisions.local_models" in text
     assert "/v1/models" in text
     assert "/api/tags" in text
     assert "decision" in text
+
+
+def test_doctor_tip_lists_d3_when_catalog_missing():
+    settings = Settings.model_validate(
+        {
+            "systemone": {"enabled": True},
+            "ollama": {"base_url": "http://ollama.test"},
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"models": [{"name": "llama3.2:3b"}]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    result = _check_decisions_local_models(settings, client)
+    assert result is not None
+    assert result.ok is False
+    assert "d3" in result.detail

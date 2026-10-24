@@ -354,7 +354,7 @@ class DecisionsSettings(BaseModel):
         default_factory=list,
         description=(
             "Extra local decisions model ids that extend the built-in catalog "
-            "(clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1). "
+            "(clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1, d3 family). "
             "Operators can add future Ollama judge models without a daari release. "
             "Advertised on OpenAI + Anthropic-shaped /v1/models and /api/tags "
             "when systemone.enabled."
@@ -1348,8 +1348,8 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
     },
     # OpenAI gpt-6-luna chat/responses: $0.10 / 1M input, $0.01 cached,
     # $0.50 / 1M output. POST /v1/decisions bills the same id input-only
-    # ($0.10, $0 out, $0 cache) via daari.pricing billing_path="decisions" —
-    # do not put those zeros here.
+    # ($0.10 in, $0.01 cached, $0 out) via daari.pricing billing_path="decisions" —
+    # do not put Decisions overlay rates here.
     # https://developers.openai.com/api/docs/guides/decisions
     # https://developers.openai.com/api/docs/changelog
     "gpt-6-luna": {
