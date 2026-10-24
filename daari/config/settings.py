@@ -2374,6 +2374,20 @@ class AlertSettings(BaseModel):
             "Env: DAARI_ALERTS__KEY_EXPIRY_WARN_DAYS."
         ),
     )
+    responses_completion_webhook_url: str = Field(
+        default="",
+        description=(
+            "Opt-in webhook when a background Responses job reaches a terminal "
+            "status (#1892). Empty disables (no network call)."
+        ),
+    )
+    responses_completion_webhook_secret: str = Field(
+        default="",
+        description=(
+            "HMAC secret for Responses completion webhooks "
+            "(X-Daari-Signature). Supports secret:// refs (#1892)."
+        ),
+    )
 
     @field_validator("budget_thresholds")
     @classmethod
