@@ -2438,11 +2438,11 @@ def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckRe
 
 
 def _check_schema_ok(settings: Settings) -> CheckResult:
-    """Warn when a local SQLite file's user_version lags STORE_SCHEMA_VERSIONS (#1727)."""
-    from daari.ops.backup import local_sqlite_schema_status
+    """Warn when SQLite user_version or PG migrate probes lag the binary (#1727/#1895)."""
+    from daari.setup.migrate import store_schema_status
 
     try:
-        status = local_sqlite_schema_status(settings)
+        status = store_schema_status(settings)
     except Exception as exc:
         return CheckResult(
             name="schema_ok",
@@ -2455,13 +2455,17 @@ def _check_schema_ok(settings: Settings) -> CheckResult:
         return CheckResult(
             name="schema_ok",
             ok=True,
-            detail="local sqlite schemas match the binary",
+            detail="local sqlite and postgres store schemas match the binary",
             optional=True,
         )
-    parts = [
-        f"{row.name} user_version={row.actual} expected={row.expected} ({row.state})"
-        for row in skewed
-    ]
+    parts: list[str] = []
+    for row in skewed:
+        if row.name.startswith("postgres."):
+            parts.append(f"{row.name} schema pending ({row.state})")
+        else:
+            parts.append(
+                f"{row.name} user_version={row.actual} expected={row.expected} ({row.state})"
+            )
     return CheckResult(
         name="schema_ok",
         ok=False,

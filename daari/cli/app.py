@@ -2727,15 +2727,23 @@ def migrate(
         "--dry-run",
         help="Inspect stores and print pending additive migrations without applying.",
     ),
+    downgrade: bool = typer.Option(
+        False,
+        "--downgrade",
+        help=(
+            "Reverse the latest additive Postgres column batch (dry-run with "
+            "--dry-run); no-ops when nothing to reverse (#1895)."
+        ),
+    ),
 ) -> None:
     """Open durable stores (or dry-run inspect) and report schema migrate status (#942)."""
     from daari.setup.migrate import inspect_stores, run_migrate
 
     settings = get_settings()
-    lines = run_migrate(settings, dry_run=dry_run)
+    lines = run_migrate(settings, dry_run=dry_run, downgrade=downgrade)
     for line in lines:
         typer.echo(line)
-    if dry_run:
+    if dry_run and not downgrade:
         notes = inspect_stores(settings)
         if any(not n.additive_safe for n in notes):
             raise typer.Exit(code=1)

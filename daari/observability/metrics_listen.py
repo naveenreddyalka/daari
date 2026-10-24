@@ -142,9 +142,9 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
             virtual_keys = None
     schema_ok: bool | None = None
     try:
-        from daari.ops.backup import local_sqlite_schema_status
+        from daari.setup.migrate import store_schema_status
 
-        schema_ok = bool(local_sqlite_schema_status(settings).schema_ok)
+        schema_ok = bool(store_schema_status(settings).schema_ok)
     except Exception:
         schema_ok = False
     anthropic_enforced_profiles: int | None = None
