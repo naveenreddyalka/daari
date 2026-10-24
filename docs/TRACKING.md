@@ -7869,6 +7869,14 @@ auto-wire). Docs/settings mention Phonon. Covered by
 `tests/unit/test_speech.py`, `tests/unit/test_doctor_tts.py`,
 `tests/unit/test_tts_docs.py`.
 
+### Dashboard + alerts for tier degrade / sampling strip / enforced profiles ([#1889](https://github.com/naveenreddyalka/daari/issues/1889))
+
+<!-- tracking:#1889 -->
+**Status:** Done (2026-10-24). Grafana panels for `service_tier_degraded`,
+`anthropic_sampling_stripped`, and `daari_anthropic_enforced_profiles`; Helm
+PrometheusRule warnings/critical for the same series. Covered by
+`tests/unit/test_grafana_dashboard.py` and `tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

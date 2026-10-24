@@ -116,4 +116,37 @@ spec:
             description: "sum(rate(daari_systemone_breaker_total{event=~\"open|reject\"})) exceeds {{ ($pr.systemoneBreaker).rateThreshold | default 0.05 }}."
             runbook_url: {{ ($pr.systemoneBreaker).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
         {{- end }}
+        {{- if ($pr.serviceTierDegraded).enabled | default true }}
+        - alert: DaariServiceTierDegraded
+          expr: sum(rate(daari_soft_warnings_total{kind="service_tier_degraded"}[{{ ($pr.serviceTierDegraded).window | default "5m" }}])) > {{ ($pr.serviceTierDegraded).rateThreshold | default 0.01 }}
+          for: {{ ($pr.serviceTierDegraded).for | default "10m" }}
+          labels:
+            severity: {{ ($pr.serviceTierDegraded).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari OpenAI service_tier degrade rate elevated"
+            description: "sum(rate(daari_soft_warnings_total{kind=\"service_tier_degraded\"})) exceeds {{ ($pr.serviceTierDegraded).rateThreshold | default 0.01 }} — provider restricting priority/flex tiers."
+            runbook_url: {{ ($pr.serviceTierDegraded).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
+        {{- if ($pr.anthropicSamplingStripped).enabled | default true }}
+        - alert: DaariAnthropicSamplingStripped
+          expr: sum(rate(daari_soft_warnings_total{kind="anthropic_sampling_stripped"}[{{ ($pr.anthropicSamplingStripped).window | default "5m" }}])) > {{ ($pr.anthropicSamplingStripped).rateThreshold | default 0 }}
+          for: {{ ($pr.anthropicSamplingStripped).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.anthropicSamplingStripped).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari Anthropic sampling knobs being stripped"
+            description: "sum(rate(daari_soft_warnings_total{kind=\"anthropic_sampling_stripped\"})) exceeds {{ ($pr.anthropicSamplingStripped).rateThreshold | default 0 }} — clients sending dead sampling parameters."
+            runbook_url: {{ ($pr.anthropicSamplingStripped).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
+        {{- if ($pr.anthropicEnforcedProfiles).enabled | default true }}
+        - alert: DaariAnthropicEnforcedProfiles
+          expr: daari_anthropic_enforced_profiles > {{ ($pr.anthropicEnforcedProfiles).threshold | default 0 }}
+          for: {{ ($pr.anthropicEnforcedProfiles).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.anthropicEnforcedProfiles).severity | default "critical" | quote }}
+          annotations:
+            summary: "daari Anthropic org enforcement active on mapped profiles"
+            description: "daari_anthropic_enforced_profiles is above {{ ($pr.anthropicEnforcedProfiles).threshold | default 0 }} — a mapped end user is restricted or banned."
+            runbook_url: {{ ($pr.anthropicEnforcedProfiles).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
 {{- end }}

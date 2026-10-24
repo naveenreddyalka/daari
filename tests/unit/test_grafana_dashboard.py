@@ -583,6 +583,62 @@ def test_grafana_dashboard_includes_gzip_panels():
     assert any("daari_gzip_compressed_bytes_total" in expr for expr in byte_exprs)
 
 
+def test_grafana_dashboard_includes_service_tier_degraded_panel():
+    """OpenAI service_tier degrade soft-warnings should chart (#1889)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "service-tier" in p.get("title", "").lower()
+            or "service_tier" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a service_tier_degraded panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_soft_warnings_total" in expr for expr in exprs)
+    assert any("service_tier_degraded" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_anthropic_sampling_stripped_panel():
+    """Anthropic sampling-strip soft-warnings should chart (#1889)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "sampling" in p.get("title", "").lower()
+            and "stripped" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected an anthropic_sampling_stripped panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_soft_warnings_total" in expr for expr in exprs)
+    assert any("anthropic_sampling_stripped" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_anthropic_enforced_profiles_panel():
+    """Anthropic enforced-profiles gauge should chart (#1889)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "enforced" in p.get("title", "").lower()
+            and "profile" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a daari_anthropic_enforced_profiles panel"
+    assert panel.get("type") == "stat"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_anthropic_enforced_profiles" in expr for expr in exprs)
+
+
 def test_grafana_dashboard_includes_cache_write_ttl_panel():
     """Cache-write tokens by TTL class should chart on the overview (#1872)."""
     payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))

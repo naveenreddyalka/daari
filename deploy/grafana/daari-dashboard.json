@@ -985,6 +985,63 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 48,
+      "title": "Service-tier degraded rate",
+      "description": "OpenAI service_tier degrade soft-warnings (`daari_soft_warnings_total{kind=\"service_tier_degraded\"}`) \u2014 provider restricting priority/flex tiers (#1889).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 192
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_soft_warnings_total{kind=\"service_tier_degraded\"}[5m]))",
+          "legendFormat": "service_tier_degraded/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 49,
+      "title": "Anthropic sampling stripped rate",
+      "description": "Clients sending dead Anthropic sampling knobs (`daari_soft_warnings_total{kind=\"anthropic_sampling_stripped\"}`) (#1889).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 192
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_soft_warnings_total{kind=\"anthropic_sampling_stripped\"}[5m]))",
+          "legendFormat": "anthropic_sampling_stripped/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 50,
+      "title": "Anthropic enforced profiles",
+      "description": "Mapped end users currently restricted/banned via Anthropic org enforcement (`daari_anthropic_enforced_profiles`) (#1889).",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 192
+      },
+      "targets": [
+        {
+          "expr": "daari_anthropic_enforced_profiles",
+          "legendFormat": "enforced_profiles",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",
