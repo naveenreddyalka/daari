@@ -48,3 +48,10 @@ def test_tts_guide_mentions_ollama_phonon() -> None:
     assert "Ollama" in text
     assert "0.40.9" in text or "Phonon" in text
     assert "stream" in text.lower()
+
+
+def test_tts_guide_documents_voice_catalog_and_list() -> None:
+    text = TTS_GUIDE.read_text(encoding="utf-8")
+    assert "0.40.11" in text
+    assert "/v1/audio/voices" in text
+    assert "alloy" in text

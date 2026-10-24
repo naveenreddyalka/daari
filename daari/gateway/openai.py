@@ -1357,6 +1357,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 user=user,
             )
 
+        @router.get("/v1/audio/voices", response_model=None)
+        async def audio_voices(request: Request) -> Any:
+            """List local / Phonon TTS voices (#1909)."""
+            from daari.gateway.speech import handle_list_voices
+
+            return await handle_list_voices(request)
+
         @router.post("/v1/audio/speech", response_model=None)
         async def audio_speech(request: Request) -> Any:
             """OpenAI-compatible local TTS proxy (#847)."""

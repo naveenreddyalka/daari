@@ -307,3 +307,123 @@ async def test_tts_streams_chunks_without_full_buffer(settings, monkeypatch):
 
     assert order.index("client_first") < order.index("upstream_second")
     await speech.aclose_http()
+
+
+def test_map_phonon_voice_openai_aliases():
+    from daari.gateway.speech import map_phonon_voice
+
+    mapped, err = map_phonon_voice("alloy")
+    assert err is None
+    assert mapped == "Zoey"
+    mapped, err = map_phonon_voice("ECHO")
+    assert err is None
+    assert mapped == "Easton"
+    mapped, err = map_phonon_voice("Freya")
+    assert err is None
+    assert mapped == "Freya"
+    mapped, err = map_phonon_voice("not-a-voice")
+    assert mapped is None
+    assert err is not None
+    assert "Unknown voice" in err
+    assert "alloy" in err
+
+
+def test_is_phonon_tts_detection(settings):
+    from daari.gateway.speech import TtsTarget, is_phonon_tts
+
+    ollama = TtsTarget(
+        base_url="http://127.0.0.1:11434/v1", model="", voice="", timeout=30.0
+    )
+    assert is_phonon_tts(ollama, "tts-1")
+    phonon = TtsTarget(
+        base_url="http://tts.local/v1", model="phonon", voice="", timeout=30.0
+    )
+    assert is_phonon_tts(phonon, "tts-1")
+    other = TtsTarget(
+        base_url="http://tts.local/v1", model="kokoro", voice="", timeout=30.0
+    )
+    assert not is_phonon_tts(other, "tts-1")
+
+
+@pytest.mark.asyncio
+async def test_list_voices_unconfigured_is_501(settings):
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/audio/voices")
+    assert response.status_code == 501
+    assert response.json()["error"]["type"] == "tts_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_list_voices_phonon_fallback_catalog(settings, monkeypatch):
+    from daari.gateway import speech
+
+    async def _boom(*_a, **_k):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(speech, "fetch_phonon_voice_names", lambda *a, **k: _boom())
+    # Bypass network: patch to return fallback synchronously via async wrapper
+    async def _fallback(target, model_name="", client=None):
+        return speech.phonon_fallback_voices()
+
+    monkeypatch.setattr(speech, "fetch_phonon_voice_names", _fallback)
+    settings.tts.base_url = "http://127.0.0.1:11434/v1"
+    settings.tts.model = "phonon"
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/audio/voices")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["object"] == "list"
+    ids = {row["id"] for row in body["data"]}
+    assert "Zoey" in ids
+    assert "alloy" in ids
+
+
+@pytest.mark.asyncio
+async def test_phonon_maps_openai_voice_on_speech(settings, monkeypatch):
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/show"):
+            return httpx.Response(200, json={"voices": ["default", "Zoey", "Easton", "Freya"]})
+        seen.append(request)
+        return httpx.Response(200, content=AUDIO, headers={"content-type": "audio/mpeg"})
+
+    _patch_upstream(monkeypatch, handler)
+    settings.tts.base_url = "http://127.0.0.1:11434/v1"
+    settings.tts.model = "phonon"
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/speech",
+            json={"model": "ignored", "input": "hi", "voice": "alloy"},
+        )
+    assert response.status_code == 200, response.text
+    import json
+
+    payload = json.loads(seen[0].read())
+    assert payload["voice"] == "Zoey"
+    assert payload["model"] == "phonon"
+
+
+@pytest.mark.asyncio
+async def test_phonon_unknown_voice_is_400(settings, monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/show"):
+            return httpx.Response(200, json={"voices": ["Zoey", "Easton"]})
+        raise AssertionError(f"unexpected {request.url}")
+
+    _patch_upstream(monkeypatch, handler)
+    settings.tts.base_url = "http://127.0.0.1:11434/v1"
+    settings.tts.model = "phonon"
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/speech",
+            json={"model": "phonon", "input": "hi", "voice": "definitely-not-real"},
+        )
+    assert response.status_code == 400
+    err = response.json()["error"]
+    assert err["type"] == "invalid_request_error"
+    assert "Unknown voice" in err["message"]
