@@ -3250,10 +3250,23 @@ def setup_models(
         "--flint",
         help="Apply optional Flint L4 coding recipe (models.l4=flint; Ollama ≥ 0.40.9).",
     ),
+    nemotron_bolt: bool = typer.Option(
+        False,
+        "--nemotron-bolt",
+        help=(
+            "Apply optional Nemotron 3.5 Bolt E4B L3 VLM recipe "
+            "(models.l3=nemotron-3.5-bolt:e4b; Ollama ≥ 0.40.10)."
+        ),
+    ),
 ) -> None:
     """Pick an Ollama model for a daari tier."""
     setup_models_interactive(
-        get_settings(), tier=tier, model=model, list_only=list_models, flint=flint
+        get_settings(),
+        tier=tier,
+        model=model,
+        list_only=list_models,
+        flint=flint,
+        nemotron_bolt=nemotron_bolt,
     )
 
 

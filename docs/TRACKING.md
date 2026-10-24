@@ -7897,6 +7897,14 @@ a background Responses job hits completed/failed/cancelled; reuse budget
 `sign_webhook` helpers; soft-fail when URL unset. Covered by
 `tests/unit/test_responses_completion_webhook.py`.
 
+### Nemotron 3.5 Bolt E4B local VLM recipe ([#1893](https://github.com/naveenreddyalka/daari/issues/1893))
+
+<!-- tracking:#1893 -->
+**Status:** Done (2026-10-24). `daari setup models --nemotron-bolt` sets
+`models.l3=nemotron-3.5-bolt:e4b` without pulling; wizard offers the recipe;
+doctor tips on missing model / Ollama older than 0.40.10; ollama.md documents it.
+Covered by `tests/test_setup.py` and `tests/unit/test_doctor_nemotron_bolt.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

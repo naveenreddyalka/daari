@@ -426,6 +426,48 @@ def _ollama_flint_warning(http: httpx.Client, base: str, l4_model: str) -> Check
     )
 
 
+def _ollama_nemotron_bolt_warning(
+    http: httpx.Client,
+    base: str,
+    l3_model: str,
+    *,
+    l3_present: bool | None = None,
+) -> CheckResult | None:
+    """Tip when models.l3 is Bolt E4B but missing or Ollama < 0.40.10 (#1893)."""
+    from daari.setup.models import NEMOTRON_BOLT_MODEL, NEMOTRON_BOLT_OLLAMA_FLOOR
+
+    name = (l3_model or "").strip()
+    if name != NEMOTRON_BOLT_MODEL and not name.startswith("nemotron-3.5-bolt"):
+        return None
+    version = _ollama_version_payload(http, base)
+    if version is None:
+        return CheckResult(
+            name="ollama_nemotron_bolt",
+            ok=False,
+            detail=f"models.l3={name} needs Ollama ≥ 0.40.10",
+            optional=True,
+        )
+    raw, parsed = version
+    if parsed < NEMOTRON_BOLT_OLLAMA_FLOOR:
+        return CheckResult(
+            name="ollama_nemotron_bolt",
+            ok=False,
+            detail=f"Ollama {raw} — models.l3={name} needs Ollama ≥ 0.40.10",
+            optional=True,
+        )
+    if l3_present is False:
+        return CheckResult(
+            name="ollama_nemotron_bolt",
+            ok=False,
+            detail=(
+                f"{name} missing — run: ollama pull {NEMOTRON_BOLT_MODEL} "
+                "(Nemotron Bolt E4B VLM recipe)"
+            ),
+            optional=True,
+        )
+    return None
+
+
 def _check_ollama(
     settings: Settings,
     client: httpx.Client | None,
@@ -546,6 +588,11 @@ def _check_ollama(
         flint_warning = _ollama_flint_warning(http, base, l4_model)
         if flint_warning is not None:
             results.append(flint_warning)
+        bolt_warning = _ollama_nemotron_bolt_warning(
+            http, base, l3_model, l3_present=l3_present
+        )
+        if bolt_warning is not None:
+            results.append(bolt_warning)
         return results
     except Exception as exc:
         return [
