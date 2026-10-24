@@ -219,7 +219,10 @@ async def test_no_tools_hint_leads_and_neutralizes_tool_prompt(app, monkeypatch)
         "model": "daari",
         "stream": True,
         "messages": [
-            {"role": "system", "content": "You are a coding agent. Use the read_file and shell tools when needed."},
+            {
+                "role": "system",
+                "content": "You are a coding agent. Use the read_file and shell tools when needed.",
+            },
             {"role": "user", "content": [{"type": "text", "text": "what is two plus two?"}]},
             {"role": "assistant", "content": "Four."},
             {"role": "user", "content": [{"type": "text", "text": "yes go ahead"}]},
@@ -411,7 +414,7 @@ async def test_stream_emits_openai_tool_call_deltas(app, monkeypatch):
     for line in response.text.splitlines():
         if not line.startswith("data: ") or line == "data: [DONE]":
             continue
-        chunk = json.loads(line[len("data: "):])
+        chunk = json.loads(line[len("data: ") :])
         for choice in chunk.get("choices", []):
             if choice.get("finish_reason"):
                 finish_reasons.append(choice["finish_reason"])
@@ -474,11 +477,7 @@ async def test_stream_l0_cache_hit_on_repeat(app, monkeypatch):
         for p in usage_chunks
         if p.get("usage") and p["usage"].get("prompt_tokens_details")
     ]
-    prompts = [
-        p["usage"]["prompt_tokens"]
-        for p in usage_chunks
-        if p.get("usage")
-    ]
+    prompts = [p["usage"]["prompt_tokens"] for p in usage_chunks if p.get("usage")]
     assert cached and prompts and cached[-1] == prompts[-1]
 
 
@@ -631,7 +630,10 @@ async def test_report_endpoint_tracks_route_and_stream_usage(app, monkeypatch):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await client.post(
             "/v1/chat/completions",
-            json={"model": "daari", "messages": [{"role": "user", "content": "usage ledger check"}]},
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "usage ledger check"}],
+            },
         )
         await client.post(
             "/v1/chat/completions",
@@ -710,7 +712,9 @@ async def test_tier_cap_header_caps_long_prompt_at_l3(app, monkeypatch):
             return InternalResponse(
                 content="a confident answer that is long enough to avoid escalation",
                 model=f"model-{tier.lower()}",
-                daari_meta=DaariMeta(tier=tier, executor="ollama", provider_id="ollama", latency_ms=5),
+                daari_meta=DaariMeta(
+                    tier=tier, executor="ollama", provider_id="ollama", latency_ms=5
+                ),
             )
 
         return fake_execute
@@ -745,7 +749,9 @@ async def test_cost_tier_body_caps_long_prompt_at_l3(app, monkeypatch):
             return InternalResponse(
                 content="a confident answer that is long enough to avoid escalation",
                 model=f"model-{tier.lower()}",
-                daari_meta=DaariMeta(tier=tier, executor="ollama", provider_id="ollama", latency_ms=5),
+                daari_meta=DaariMeta(
+                    tier=tier, executor="ollama", provider_id="ollama", latency_ms=5
+                ),
             )
 
         return fake_execute
@@ -865,8 +871,14 @@ async def test_cursor_input_text_content_returns_text(app, monkeypatch):
                 "stream": True,
                 "messages": [
                     {"role": "system", "content": "You are a coding assistant."},
-                    {"role": "user", "content": [{"type": "input_text", "text": "What is 2 plus 2?"}]},
-                    {"role": "user", "content": [{"type": "input_text", "text": "What is 2 plus 2?"}]},
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "What is 2 plus 2?"}],
+                    },
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "What is 2 plus 2?"}],
+                    },
                 ],
                 "tools": tools,
             },
@@ -1001,9 +1013,7 @@ async def test_anthropic_models_list_via_x_api_key(app):
             "/v1/models",
             headers={"x-api-key": "test-key", "anthropic-version": "2023-06-01"},
         )
-        bearer = await client.get(
-            "/v1/models", headers={"Authorization": "Bearer test-key"}
-        )
+        bearer = await client.get("/v1/models", headers={"Authorization": "Bearer test-key"})
     assert response.status_code == 200
     body = response.json()
     assert body["has_more"] is False
@@ -1018,7 +1028,12 @@ async def test_reload_caches_endpoint_refreshes_app_context_handles(app, monkeyp
     monkeypatch.setattr(
         app.state.ctx,
         "reload_cache_handles",
-        lambda: {"reloaded": True, "l0_path": "/tmp/l0", "l1_path": "/tmp/l1", "ccs_path": "/tmp/ccs"},
+        lambda: {
+            "reloaded": True,
+            "l0_path": "/tmp/l0",
+            "l1_path": "/tmp/l1",
+            "ccs_path": "/tmp/ccs",
+        },
     )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -1106,7 +1121,11 @@ async def test_stream_chunks_are_openai_compatible(app, monkeypatch):
         )
 
     assert response.status_code == 200
-    lines = [line for line in response.text.splitlines() if line.startswith("data: ") and line != "data: [DONE]"]
+    lines = [
+        line
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and line != "data: [DONE]"
+    ]
     first_payload = json.loads(lines[0].replace("data: ", ""))
     assert first_payload["model"] == "daari"
     assert first_payload["choices"][0]["delta"]["role"] == "assistant"
@@ -1172,7 +1191,11 @@ async def test_stream_include_usage_chunk(app, monkeypatch):
         )
 
     assert response.status_code == 200
-    lines = [line for line in response.text.splitlines() if line.startswith("data: ") and line != "data: [DONE]"]
+    lines = [
+        line
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and line != "data: [DONE]"
+    ]
     usage_payload = json.loads(lines[-1].replace("data: ", ""))
     assert usage_payload["choices"] == []
     assert usage_payload["usage"]["total_tokens"] >= 1
@@ -1359,7 +1382,9 @@ async def test_anthropic_stream_passes_tool_history_through(app, monkeypatch):
             Message(
                 role="assistant",
                 content=None,
-                tool_calls=[{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}],
+                tool_calls=[
+                    {"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}
+                ],
             ),
             Message(role="tool", content="result"),
             Message(role="user", content="continue please"),
@@ -1472,7 +1497,9 @@ async def test_router_integration_prefix_routes_before_l3(app, monkeypatch):
         return InternalResponse(
             content="sourcegraph-result",
             model="llama3.2:3b",
-            daari_meta=DaariMeta(tier="Lt", executor="integration", provider_id="integration:sourcegraph"),
+            daari_meta=DaariMeta(
+                tier="Lt", executor="integration", provider_id="integration:sourcegraph"
+            ),
         )
 
     monkeypatch.setattr(app.state.ctx.router.ollama, "execute", fail_if_model_called)
@@ -1506,7 +1533,9 @@ async def test_router_gitlab_prefix_routes_before_l3(app, monkeypatch):
         return InternalResponse(
             content="gitlab-result",
             model="llama3.2:3b",
-            daari_meta=DaariMeta(tier="Lt", executor="integration", provider_id="integration:gitlab"),
+            daari_meta=DaariMeta(
+                tier="Lt", executor="integration", provider_id="integration:gitlab"
+            ),
         )
 
     monkeypatch.setattr(app.state.ctx.router.ollama, "execute", fail_if_model_called)
@@ -1917,7 +1946,9 @@ async def test_user_attribution_and_per_user_cap(settings, tmp_path):
             },
             headers=headers,
         )
-        report = await client.get("/v1/daari/report?days=1", headers={"Authorization": "Bearer master"})
+        report = await client.get(
+            "/v1/daari/report?days=1", headers={"Authorization": "Bearer master"}
+        )
 
     assert attributed.status_code == 200
     assert no_user.status_code == 200
@@ -2241,9 +2272,7 @@ async def test_reasoning_effort_mapped_on_thinking_local_tier(settings, monkeypa
     async def fake_execute(request: InternalRequest) -> InternalResponse:
         captured.append(request)
         # Exercise the real payload builder for think mapping.
-        payload = application.state.ctx.router.ollama._payload(
-            request, "gpt-oss:20b", stream=False
-        )
+        payload = application.state.ctx.router.ollama._payload(request, "gpt-oss:20b", stream=False)
         assert payload.get("think") == "medium"
         return InternalResponse(
             content="thoughtful",
@@ -2543,9 +2572,7 @@ async def test_frontier_omits_dropped_params_header(settings, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_anthropic_2026_10_21_omits_and_strips_sampling_on_l6(
-    settings, monkeypatch
-):
+async def test_anthropic_2026_10_21_omits_and_strips_sampling_on_l6(settings, monkeypatch):
     """#1849: API version 2026-10-21 must not put sampling knobs on L6 Anthropic."""
     settings.frontier.enabled = True
     settings.frontier.confidence_threshold = 0.99
@@ -2861,7 +2888,9 @@ async def test_stall_escalation_lands_one_tier_higher(settings, monkeypatch):
                 ],
             }
         )
-        messages.append({"role": "tool", "content": "print('hello')", "tool_call_id": f"call_{index}"})
+        messages.append(
+            {"role": "tool", "content": "print('hello')", "tool_call_id": f"call_{index}"}
+        )
 
     transport = ASGITransport(app=application)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -3019,9 +3048,7 @@ async def test_phase_routing_stall_overrides_explore_downgrade(settings, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_session_affinity_pins_tool_continuation_and_reroutes_new_user(
-    settings, monkeypatch
-):
+async def test_session_affinity_pins_tool_continuation_and_reroutes_new_user(settings, monkeypatch):
     """A tool-result turn stays on the pinned model; a new user turn re-routes."""
     settings.routing.session_affinity = True
     application = create_app(settings)
@@ -3058,7 +3085,11 @@ async def test_session_affinity_pins_tool_continuation_and_reroutes_new_user(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         first = await client.post(
             "/v1/chat/completions",
-            json={"model": "daari", "user": "agent-1", "messages": [{"role": "user", "content": long_user}]},
+            json={
+                "model": "daari",
+                "user": "agent-1",
+                "messages": [{"role": "user", "content": long_user}],
+            },
             headers=META_HEADERS,
         )
         follow = await client.post(
@@ -3695,7 +3726,9 @@ async def test_files_and_batches_scoped_to_creating_key(settings, tmp_path, monk
         assert {item["id"] for item in listed_master.json()["data"]} == {alice_fid, bob_fid}
 
         assert (await client.get(f"/v1/files/{bob_fid}", headers=alice_h)).status_code == 404
-        assert (await client.get(f"/v1/files/{bob_fid}/content", headers=alice_h)).status_code == 404
+        assert (
+            await client.get(f"/v1/files/{bob_fid}/content", headers=alice_h)
+        ).status_code == 404
         assert (await client.delete(f"/v1/files/{bob_fid}", headers=alice_h)).status_code == 404
         assert (await client.get(f"/v1/files/{bob_fid}", headers=master_h)).status_code == 200
 
@@ -3741,11 +3774,13 @@ async def test_files_and_batches_scoped_to_creating_key(settings, tmp_path, monk
         assert bob_batch.status_code == 200, bob_batch.text
         bob_bid = bob_batch.json()["id"]
 
-        assert {j["id"] for j in (await client.get("/v1/batches", headers=alice_h)).json()["data"]} == {
-            alice_bid
-        }
+        assert {
+            j["id"] for j in (await client.get("/v1/batches", headers=alice_h)).json()["data"]
+        } == {alice_bid}
         assert (await client.get(f"/v1/batches/{bob_bid}", headers=alice_h)).status_code == 404
-        assert (await client.post(f"/v1/batches/{bob_bid}/cancel", headers=alice_h)).status_code == 404
+        assert (
+            await client.post(f"/v1/batches/{bob_bid}/cancel", headers=alice_h)
+        ).status_code == 404
         assert (await client.get(f"/v1/batches/{bob_bid}", headers=master_h)).status_code == 200
 
         final = await _poll_batch(client, alice_bid, headers=alice_h)
@@ -3914,9 +3949,7 @@ async def test_oversized_chat_body_returns_413(settings, monkeypatch):
         denied = await client.post(
             "/v1/chat/completions",
             content=(
-                b'{"model":"daari","messages":[{"role":"user","content":"'
-                + (b"x" * 400)
-                + b'"}]}'
+                b'{"model":"daari","messages":[{"role":"user","content":"' + (b"x" * 400) + b'"}]}'
             ),
             headers={**META_HEADERS, "content-type": "application/json"},
         )
@@ -3952,11 +3985,8 @@ async def test_invalid_key_throttle_returns_429(settings):
         throttled = await client.get("/v1/models", headers={"Authorization": "Bearer bad"})
         assert throttled.status_code == 429
         assert throttled.json()["error"]["code"] == "auth_throttled"
-        ok = await client.get(
-            "/v1/models", headers={"Authorization": "Bearer master-secret"}
-        )
+        ok = await client.get("/v1/models", headers={"Authorization": "Bearer master-secret"})
         assert ok.status_code == 200
-
 
 
 @pytest.mark.asyncio
@@ -4194,3 +4224,93 @@ async def test_retired_chat_410_before_admission(settings, monkeypatch):
     assert masked.status_code == 410
     assert routed["n"] == 1
     assert limiter.in_flight == 0
+
+
+@pytest.mark.asyncio
+async def test_streamed_service_tier_degrade_bills_served_tier(settings, monkeypatch):
+    """#1885: streamed priority→default degrade warns and bills served-tier cost."""
+    from daari.gateway.cost_headers import COST_HEADER, WARNING_HEADER
+    from daari.pricing import cost_usd
+    from daari.router.frontier import FrontierExecutor
+
+    settings.frontier.enabled = True
+    settings.frontier.confidence_threshold = 0.99
+    settings.frontier.provider = "openai"
+    settings.frontier.model = "gpt-4o-mini"
+    settings.cache.l0.enabled = False
+    settings.server.sse_keepalive_seconds = 0
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    class _DegradeStreamFrontier(FrontierExecutor):
+        def __init__(self) -> None:
+            super().__init__(
+                base_url="https://api.openai.com/v1",
+                default_model="gpt-4o-mini",
+                api_key="sk-test",
+                provider="openai",
+            )
+
+        async def stream(self, request, escalated_from=None, local_confidence=None):
+            self.last_service_tier_degraded = True
+            self.last_stream_service_tier = "default"
+            self.last_stream_input_tokens = 3
+            self.last_stream_output_tokens = 2
+            yield "ok"
+
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.ctx.router.frontier = _DegradeStreamFrontier()
+    application.state.ctx.router.frontier_enabled = True
+
+    async def short_local(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="no",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=1),
+        )
+
+    async def short_stream(request: InternalRequest, **kwargs):
+        yield {"message": {"content": "no"}}
+        yield {"done": True}
+
+    for tier in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        exe = getattr(application.state.ctx.router, tier)
+        monkeypatch.setattr(exe, "execute", short_local)
+        monkeypatch.setattr(exe, "stream", short_stream)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "escalate stream"}],
+                "service_tier": "priority",
+                "stream": True,
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200, response.text
+    assert "ok" in response.text
+    assert WARNING_HEADER in response.headers, response.headers
+    assert "service_tier_degraded" in response.headers[WARNING_HEADER]
+    expected = cost_usd(
+        "gpt-4o-mini",
+        3,
+        2,
+        settings.pricing,
+        fallback_per_1k=float(settings.frontier.price_per_1k_tokens or 0.002),
+        service_tier="default",
+    )
+    usage_cost = None
+    for line in response.text.splitlines():
+        if not line.startswith("data: ") or line.strip() == "data: [DONE]":
+            continue
+        payload = json.loads(line[6:])
+        usage = payload.get("usage") or {}
+        if "cost" in usage:
+            usage_cost = float(usage["cost"])
+    if COST_HEADER in response.headers:
+        assert float(response.headers[COST_HEADER]) == pytest.approx(expected)
+    else:
+        assert usage_cost == pytest.approx(expected)

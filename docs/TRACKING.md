@@ -7833,6 +7833,15 @@ events. Mis-signed → 401; disabled → 404. Covered by
 `tests/unit/test_anthropic_org_webhooks.py` and
 `docs/developer/guides/features/anthropic-enforcement-webhooks.md`.
 
+### Bill served service_tier after degrade ([#1885](https://github.com/naveenreddyalka/daari/issues/1885))
+
+<!-- tracking:#1885 -->
+**Status:** Done (2026-10-24). After OpenAI `service_tier` degrade, spend ledger
+and stream/non-stream cost headers bill the **served** tier (not the requested
+priority/flex factor). Stream bill meta carries `last_stream_service_tier`.
+Covered by `tests/unit/test_service_tier_degrade.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
