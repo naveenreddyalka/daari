@@ -252,7 +252,7 @@ async def handle_speech(
     user: str | None = None,
     idem_slot: Any | None = None,
 ) -> Response | JSONResponse:
-    from daari.gateway.idempotency import abandon_slot, complete_binary_slot
+    from daari.gateway.idempotency import abandon_slot
 
     fmt = (response_format or "mp3").strip().lower() or "mp3"
     if fmt not in _CONTENT_TYPES:
