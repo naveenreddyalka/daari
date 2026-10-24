@@ -60,7 +60,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `systemone.api_key` | str | `''` | Optional Bearer token for the systemone upstream (vLLM --api-key or a reverse-proxy secret). Sent as Authorization on POST /v1/systemone, local POST /v1/decisions, decision-guardrail predicates, the routing difficulty hop, and doctor catalog probes when set. Supports secret:// refs. Empty leaves requests unauthenticated. Not exposed on GET/PATCH /v1/daari/config. |
 | `systemone.breaker_fails_ready` | bool | `False` | When true, an open systemone upstream circuit marks GET /ready as not_ready (HTTP 503). Default false keeps the probe degraded (HTTP 200) so pods stay in service while the judge hop is fenced. |
 | `decisions.cache_enabled` | bool | `True` | When true (default), identical typed decision requests are served from the L0 exact cache. Requires cache.l0.enabled. Clients can bypass with X-Daari-No-Cache: true. |
-| `decisions.local_models` | list | `[]` | Extra local decisions model ids that extend the built-in catalog (clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1). Operators can add future Ollama judge models without a daari release. Advertised on OpenAI + Anthropic-shaped /v1/models and /api/tags when systemone.enabled. |
+| `decisions.local_models` | list | `[]` | Extra local decisions model ids that extend the built-in catalog (clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1, d3 family). Operators can add future Ollama judge models without a daari release. Advertised on OpenAI + Anthropic-shaped /v1/models and /api/tags when systemone.enabled. |
 | `mlx.enabled` | bool | `False` |  |
 | `mlx.base_url` | str | `'http://127.0.0.1:11440'` |  |
 | `mlx.models` | dict | `{}` |  |
