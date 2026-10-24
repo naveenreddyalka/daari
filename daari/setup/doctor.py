@@ -3120,45 +3120,74 @@ def _check_cors_origins(settings: Settings) -> CheckResult:
     )
 
 
+_OLLAMA_PHONON_FLOOR = (0, 40, 9)
+
+
+def _tts_ollama_phonon_detail(
+    settings: Settings, http: httpx.Client
+) -> str | None:
+    """Advisory detail when Ollama ≥0.40.9 can serve Phonon TTS (#1888)."""
+    if str(getattr(settings.tts, "base_url", "") or "").strip():
+        return None
+    ollama_base = str(getattr(settings.ollama, "base_url", "") or "").strip().rstrip("/")
+    if not ollama_base:
+        return None
+    version = _ollama_version_payload(http, ollama_base)
+    if version is None:
+        return None
+    raw, parsed = version
+    if parsed < _OLLAMA_PHONON_FLOOR:
+        return None
+    tip_url = f"{ollama_base}/v1"
+    return (
+        f"not configured — Ollama {raw} supports Phonon speech; "
+        f"set tts.base_url: {tip_url} for local POST /v1/audio/speech "
+        "(no silent auto-wire)"
+    )
+
+
 def _check_tts(settings: Settings, client: httpx.Client | None) -> CheckResult:
-    """Local TTS reachability. Optional; unconfigured speech stays 501 (#869)."""
+    """Local TTS reachability. Optional; unconfigured speech stays 501 (#869, #1888)."""
     tts = settings.tts
     base = str(tts.base_url or "").strip().rstrip("/")
-    if not base:
-        return CheckResult(
-            name="tts",
-            ok=True,
-            detail="not configured (POST /v1/audio/speech returns 501)",
-            optional=True,
-        )
     own_client = client is None
     http = client or httpx.Client(timeout=3.0)
-    url = f"{base}/models"
     try:
-        response = http.get(url)
-    except Exception as exc:
+        if not base:
+            detail = _tts_ollama_phonon_detail(settings, http)
+            return CheckResult(
+                name="tts",
+                ok=True,
+                detail=detail
+                or "not configured (POST /v1/audio/speech returns 501)",
+                optional=True,
+            )
+        url = f"{base}/models"
+        try:
+            response = http.get(url)
+        except Exception as exc:
+            return CheckResult(
+                name="tts",
+                ok=False,
+                detail=f"unreachable at {base}: {exc}",
+                optional=True,
+            )
+        if response.status_code == 200:
+            return CheckResult(
+                name="tts",
+                ok=True,
+                detail=f"reachable at {base}",
+                optional=True,
+            )
         return CheckResult(
             name="tts",
             ok=False,
-            detail=f"unreachable at {base}: {exc}",
+            detail=f"unreachable at {base} (HTTP {response.status_code})",
             optional=True,
         )
     finally:
         if own_client:
             http.close()
-    if response.status_code == 200:
-        return CheckResult(
-            name="tts",
-            ok=True,
-            detail=f"reachable at {base}",
-            optional=True,
-        )
-    return CheckResult(
-        name="tts",
-        ok=False,
-        detail=f"unreachable at {base} (HTTP {response.status_code})",
-        optional=True,
-    )
 
 
 def _check_mcp_servers(

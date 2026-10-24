@@ -448,7 +448,8 @@ class TtsSettings(BaseModel):
         default="",
         description=(
             "OpenAI-compatible TTS base URL, including /v1 "
-            "(openedai-speech, Kokoro-FastAPI, or similar). "
+            "(Ollama ≥0.40.9 Phonon at ollama.base_url/v1, openedai-speech, "
+            "Kokoro-FastAPI, or similar). "
             "Empty leaves POST /v1/audio/speech unconfigured."
         ),
     )

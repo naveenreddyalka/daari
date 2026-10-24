@@ -210,3 +210,100 @@ async def test_tts_model_allowlist_blocks(settings, tmp_path, monkeypatch):
         )
     assert response.status_code == 403
     assert response.json()["error"]["type"] == "model_not_allowed"
+
+
+def test_tts_upstream_stream_detection():
+    from daari.gateway.speech import tts_response_is_streaming
+
+    assert tts_response_is_streaming({"transfer-encoding": "chunked"})
+    assert tts_response_is_streaming({"Transfer-Encoding": "chunked, gzip"})
+    assert not tts_response_is_streaming({"content-length": "12"})
+    assert tts_response_is_streaming({})  # no length → stream as bytes arrive
+
+
+@pytest.mark.asyncio
+async def test_tts_streams_chunks_without_full_buffer(settings, monkeypatch):
+    """Chunked upstream audio is yielded before the body finishes (#1888)."""
+    import asyncio
+    from contextlib import asynccontextmanager
+
+    from fastapi.responses import StreamingResponse
+
+    from daari.gateway import speech
+
+    gate = asyncio.Event()
+    order: list[str] = []
+
+    class _FakeUpstream:
+        status_code = 200
+        headers = httpx.Headers(
+            {"content-type": "audio/mpeg", "transfer-encoding": "chunked"}
+        )
+
+        async def aiter_bytes(self, chunk_size: int = 65536):
+            order.append("upstream_first")
+            yield b"FIRST"
+            order.append("upstream_waiting")
+            await gate.wait()
+            order.append("upstream_second")
+            yield b"SECOND"
+
+        async def aread(self):
+            raise AssertionError("stream path must not buffer via aread")
+
+    @asynccontextmanager
+    async def _fake_stream(client, method, url, **kwargs):
+        assert method == "POST"
+        assert str(url).endswith("/audio/speech")
+        yield _FakeUpstream()
+
+    monkeypatch.setattr(speech, "deadline_bounded_stream", _fake_stream)
+    speech._http = httpx.AsyncClient()
+    settings.tts.base_url = "http://tts.local/v1"
+    app = _app(settings)
+
+    from starlette.requests import Request
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/v1/audio/speech",
+        "raw_path": b"/v1/audio/speech",
+        "query_string": b"",
+        "headers": [(b"host", b"test")],
+        "client": ("127.0.0.1", 123),
+        "server": ("test", 80),
+        "app": app,
+    }
+
+    async def _receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    request = Request(scope, _receive)
+    response = await speech.handle_speech(
+        request,
+        model="tts-1",
+        input_text="stream me",
+        voice="alloy",
+        response_format="mp3",
+    )
+    assert isinstance(response, StreamingResponse)
+    assert response.media_type == "audio/mpeg"
+
+    iterator = response.body_iterator.__aiter__()
+    first = await iterator.__anext__()
+    assert first == b"FIRST"
+    order.append("client_first")
+    assert "upstream_second" not in order
+    gate.set()
+    second = await iterator.__anext__()
+    assert second == b"SECOND"
+    order.append("client_second")
+    with pytest.raises(StopAsyncIteration):
+        await iterator.__anext__()
+
+    assert order.index("client_first") < order.index("upstream_second")
+    await speech.aclose_http()
