@@ -7822,6 +7822,17 @@ background task; single-process stays local-only. Covered by
 `tests/unit/test_responses_fleet_cancel.py` and docs contracts; ops note in
 batches multi-replica + clients-and-gateways.
 
+### Anthropic org enforcement webhook ingest ([#1875](https://github.com/naveenreddyalka/daari/issues/1875))
+
+<!-- tracking:#1875 -->
+**Status:** Done (2026-10-23). Opt-in `POST /v1/daari/webhooks/anthropic/org`
+verifies Anthropic Standard Webhooks (`whsec_`) signatures, applies
+`user_profile.enforcement_action_opened|resolved` against
+`anthropic.user_profiles`, updates the enforcement cache, and emits gateway
+events. Mis-signed → 401; disabled → 404. Covered by
+`tests/unit/test_anthropic_org_webhooks.py` and
+`docs/developer/guides/features/anthropic-enforcement-webhooks.md`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

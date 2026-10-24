@@ -2932,6 +2932,58 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "enforced_count": store.enforced_count(),
             }
 
+        @router.post("/v1/daari/webhooks/anthropic/org")
+        async def daari_anthropic_org_webhook(request: Request) -> dict[str, Any]:
+            """Ingest Anthropic organization enforcement webhooks (#1875)."""
+            ctx: AppContext = request.app.state.ctx
+            from daari.enterprise.anthropic_org_webhooks import (
+                OrgWebhookDisabled,
+                OrgWebhookUnauthorized,
+                ingest_org_webhook,
+            )
+            from daari.enterprise.enforcement_sync import (
+                DEFAULT_BASE_URL,
+                store_from_settings,
+            )
+
+            anthropic = ctx.settings.anthropic
+            secret = (anthropic.org_webhook_signing_secret or "").strip()
+            if not secret:
+                raise HTTPException(status_code=404, detail="Not Found")
+            body = await request.body()
+            headers = {k: v for k, v in request.headers.items()}
+            base_url = DEFAULT_BASE_URL
+            for entry in getattr(ctx.settings.frontier, "providers", None) or []:
+                provider = str(getattr(entry, "provider", "") or "").lower()
+                url = str(getattr(entry, "base_url", "") or "").strip()
+                if provider in {"anthropic", "claude"} or "anthropic.com" in url.lower():
+                    if url:
+                        base_url = url
+                    break
+            else:
+                if (ctx.settings.frontier.provider or "").lower() in {
+                    "anthropic",
+                    "claude",
+                }:
+                    base_url = ctx.settings.frontier.base_url or DEFAULT_BASE_URL
+            try:
+                return ingest_org_webhook(
+                    body=body,
+                    headers=headers,
+                    signing_secret=secret,
+                    signing_secret_previous=(
+                        anthropic.org_webhook_signing_secret_previous or ""
+                    ),
+                    user_profiles=dict(anthropic.user_profiles or {}),
+                    store=store_from_settings(ctx.settings),
+                    api_key=ctx.settings.resolve_frontier_api_key() or "",
+                    base_url=base_url,
+                )
+            except OrgWebhookDisabled:
+                raise HTTPException(status_code=404, detail="Not Found") from None
+            except OrgWebhookUnauthorized as exc:
+                raise HTTPException(status_code=401, detail=str(exc)) from None
+
         @router.get("/v1/daari/events")
         async def daari_events_list(
             request: Request,
