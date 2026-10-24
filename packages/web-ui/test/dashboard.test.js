@@ -131,6 +131,7 @@ function routes(overrides = {}) {
     "/v1/daari/teams": ADMIN_TEAMS,
     "/v1/daari/traces/abcd1234efgh": TRACE_DETAIL,
     "/v1/daari/traces": TRACES,
+    "/v1/daari/anthropic/enforcement": { profiles: [], enforced_count: 0 },
     "/v1/org-learning/profile": { status: 404 },
     "/ready": { status: "ready", schema_ok: true },
     ...overrides,
@@ -1161,4 +1162,101 @@ test("systemone breaker reset shows admin 403 message", async (t) => {
   assert.ok(
     fetch.calls.some((c) => c.url.includes("/v1/daari/systemone/breaker/reset"))
   );
+});
+
+test("enforcement panel renders profiles as text (XSS-safe)", async (t) => {
+  const xss = '<img src=x onerror=window.__xss=1><script>window.__xss=1</script>';
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/anthropic/enforcement": {
+        profiles: [
+          {
+            profile_id: xss,
+            enforcement_status: "restricted",
+            enforcement_actions: [{ type: xss }],
+          },
+        ],
+        enforced_count: 1,
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const table = doc.getElementById("enforcement-table");
+  assert.match(table.textContent, /onerror/);
+  assert.match(table.textContent, /restricted/);
+  assert.equal(doc.querySelectorAll("#enforcement-table script").length, 0);
+  assert.equal(doc.querySelectorAll("#enforcement-table img").length, 0);
+  assert.equal(dom.window.__xss, undefined);
+  assert.match(doc.getElementById("enforcement-status").textContent, /1 profile/);
+  assert.ok(fetch.calls.some((c) => c.url.includes("/v1/daari/anthropic/enforcement")));
+});
+
+test("enforcement panel shows clear error when fetch fails", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/anthropic/enforcement": { status: 503 },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  assert.match(doc.getElementById("enforcement-status").textContent, /unavailable/i);
+  assert.match(doc.getElementById("enforcement-table").textContent, /No synced/i);
+});
+
+test("cache invalidate form posts scope and shows removed counts", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/cache/invalidate": {
+        removed: 3,
+        l0_removed: 2,
+        l1_removed: 1,
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  doc.getElementById("cache-invalidate-model").value = "llama";
+  doc.getElementById("cache-invalidate-team").value = "eng";
+  doc.getElementById("cache-invalidate-key").value = "k1";
+  doc.getElementById("cache-invalidate-submit").click();
+  await settle(20);
+
+  const call = fetch.calls.find(
+    (c) => c.url.includes("/v1/daari/cache/invalidate") && c.init?.method === "POST"
+  );
+  assert.ok(call, "expected cache invalidate POST");
+  const body = JSON.parse(call.init.body);
+  assert.equal(body.model, "llama");
+  assert.equal(body.team_id, "eng");
+  assert.equal(body.key_id, "k1");
+  assert.match(doc.getElementById("cache-invalidate-status").textContent, /Removed 3/);
+  assert.match(doc.getElementById("cache-invalidate-status").textContent, /L0 2/);
+});
+
+test("cache invalidate form shows error text on failure", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/cache/invalidate": { status: 403 },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  doc.getElementById("cache-invalidate-submit").click();
+  await settle(20);
+
+  assert.match(doc.getElementById("cache-invalidate-status").textContent, /Invalidate failed/);
+  assert.match(doc.getElementById("cache-invalidate-status").textContent, /403/);
 });

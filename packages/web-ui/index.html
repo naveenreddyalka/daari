@@ -414,6 +414,42 @@
           <tbody id="lockouts-table"></tbody>
         </table>
         <p id="lockouts-status" class="subtle">Loading...</p>
+
+        <h3>Anthropic enforcement</h3>
+        <p class="subtle">From <code>GET /v1/daari/anthropic/enforcement</code> (synced inventory).</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Profile</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="enforcement-table"></tbody>
+        </table>
+        <p id="enforcement-status" class="subtle">Loading...</p>
+
+        <h3>Cache invalidate</h3>
+        <p class="subtle">
+          Admin <code>POST /v1/daari/cache/invalidate</code> with optional
+          <code>model</code>, <code>team_id</code>, and <code>key_id</code> scope fields.
+        </p>
+        <div class="controls" style="flex-wrap: wrap; gap: 0.5rem; align-items: center">
+          <label>
+            Model
+            <input id="cache-invalidate-model" type="text" placeholder="optional model" aria-label="Cache invalidate model" />
+          </label>
+          <label>
+            Team
+            <input id="cache-invalidate-team" type="text" placeholder="optional team_id" aria-label="Cache invalidate team" />
+          </label>
+          <label>
+            Key
+            <input id="cache-invalidate-key" type="text" placeholder="optional key_id" aria-label="Cache invalidate key" />
+          </label>
+          <button id="cache-invalidate-submit" type="button">Invalidate cache</button>
+        </div>
+        <p id="cache-invalidate-status" class="subtle"></p>
       </section>
 
       <section class="card">
