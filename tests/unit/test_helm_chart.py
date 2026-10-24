@@ -368,6 +368,8 @@ _PROMETHEUS_RULE_METRICS = (
     "daari_cache_invalidate_total",
     "daari_schema_ok",
     "daari_systemone_breaker_total",
+    "daari_soft_warnings_total",
+    "daari_anthropic_enforced_profiles",
 )
 
 
@@ -443,6 +445,11 @@ class TestHelmPrometheusRules:
         assert "DaariCacheInvalidateErrors" in alert_names
         assert "DaariSchemaLagged" in alert_names
         assert "DaariSystemoneBreakerSpike" in alert_names
+        assert "DaariServiceTierDegraded" in alert_names
+        assert "DaariAnthropicSamplingStripped" in alert_names
+        assert "DaariAnthropicEnforcedProfiles" in alert_names
+        assert "service_tier_degraded" in all_expr
+        assert "anthropic_sampling_stripped" in all_expr
         for group in groups:
             for alert in group.get("rules") or []:
                 if "alert" not in alert:
