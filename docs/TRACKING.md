@@ -7915,6 +7915,14 @@ and org-cache clients (LiteLLM 1.106.3 / Kong / Portkey parity). `daari doctor`
 Covered by `tests/unit/test_egress_tls_trust.py` and
 `tests/unit/test_doctor_egress_tls_trust.py`.
 
+### Web-ui enforcement inventory + cache invalidate ([#1894](https://github.com/naveenreddyalka/daari/issues/1894))
+
+<!-- tracking:#1894 -->
+**Status:** Done (2026-10-24). Dashboard lists synced Anthropic enforcement
+profiles and an admin form posts `POST /v1/daari/cache/invalidate` with
+model/team/key scope. XSS-safe text rendering; jsdom happy/failure paths.
+Covered by `packages/web-ui/test/dashboard.test.js`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
