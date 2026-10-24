@@ -7877,6 +7877,17 @@ auto-wire). Docs/settings mention Phonon. Covered by
 PrometheusRule warnings/critical for the same series. Covered by
 `tests/unit/test_grafana_dashboard.py` and `tests/unit/test_helm_chart.py`.
 
+### Anthropic 2026-10-21 document + citations strip ([#1891](https://github.com/naveenreddyalka/daari/issues/1891))
+
+<!-- tracking:#1891 -->
+**Status:** Done (2026-10-24). Version-keyed sanitizer omits top-level assistant
+`document` blocks and non-empty user/`search_result` `citations` arrays under
+`anthropic-version` `2026-10-21`; nested tool documents and
+`citations: {enabled: true}` stay. Soft_warnings
+`anthropic_document_stripped` / `anthropic_citations_stripped`. Covered by
+`tests/unit/test_anthropic_content_strip.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

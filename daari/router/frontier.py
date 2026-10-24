@@ -19,6 +19,7 @@ from daari.router.anthropic_messages import (
     anthropic_headers_for_request,
     anthropic_messages_path,
     anthropic_tool_event_from_sse_data,
+    apply_anthropic_version_content_compat,
     apply_anthropic_version_sampling_compat,
     infer_frontier_kind,
     text_delta_from_sse_data,
@@ -369,6 +370,9 @@ class FrontierExecutor:
         version_drops = apply_anthropic_version_sampling_compat(
             payload, request.meta.anthropic_version
         )
+        content_kinds = apply_anthropic_version_content_compat(
+            payload, request.meta.anthropic_version
+        )
         compat = self._run_param_compat(payload, has_tools=bool(request.tools))
         for name in version_drops:
             if name not in compat.dropped_params:
@@ -393,6 +397,20 @@ class FrontierExecutor:
                     "request_id": getattr(request.meta, "request_id", None),
                 },
             )
+        if content_kinds:
+            # Same Prom/soft_warning path as sampling for document/citations (#1891).
+            from daari.gateway.request_log import log_gateway_event
+
+            for kind in content_kinds:
+                if self.metrics is not None and hasattr(self.metrics, "record_soft_warning"):
+                    self.metrics.record_soft_warning(kind)
+                log_gateway_event(
+                    kind,
+                    {
+                        "anthropic_version": request.meta.anthropic_version,
+                        "request_id": getattr(request.meta, "request_id", None),
+                    },
+                )
         return payload
 
     def _run_param_compat(
