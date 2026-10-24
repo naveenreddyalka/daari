@@ -626,6 +626,20 @@ class AnthropicSettings(BaseModel):
             "(#1866)."
         ),
     )
+    org_webhook_signing_secret: str = Field(
+        default="",
+        description=(
+            "Anthropic organization webhook signing secret (whsec_…). "
+            "Empty disables POST /v1/daari/webhooks/anthropic/org (#1875)."
+        ),
+    )
+    org_webhook_signing_secret_previous: str = Field(
+        default="",
+        description=(
+            "Previous Anthropic org webhook signing secret during rotation "
+            "grace (#1875)."
+        ),
+    )
 
 
 class FrontierSettings(RuntimeSettings):

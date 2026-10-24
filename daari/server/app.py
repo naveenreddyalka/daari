@@ -320,6 +320,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "/oauth/token",
             "/oauth/revoke",
             "/v1/mcp/registry.json",
+            # Anthropic signs deliveries; no daari API key (#1875).
+            "/v1/daari/webhooks/anthropic/org",
         }
         if not master_keys:
             open_paths.add("/metrics")
@@ -920,7 +922,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         )
             return response
 
-    open_rate_paths = {"/health", "/ready", "/v1/messages/health", "/metrics", "/v1/daari/stats"}
+    open_rate_paths = {
+        "/health",
+        "/ready",
+        "/v1/messages/health",
+        "/metrics",
+        "/v1/daari/stats",
+        "/v1/daari/webhooks/anthropic/org",
+    }
     # Batch/files admin traffic must not look like interactive load (#444).
     non_interactive_prefixes = ("/v1/batches", "/v1/files")
 
