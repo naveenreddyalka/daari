@@ -7956,6 +7956,14 @@ TTS guide documents list + map. Streaming relay unchanged. Covered by
 `tests/unit/test_speech.py`, `tests/unit/test_doctor_tts.py`,
 `tests/unit/test_tts_docs.py`.
 
+### compare-litellm: pin GA floor at 1.106.3 ([#1910](https://github.com/naveenreddyalka/daari/issues/1910))
+
+<!-- tracking:#1910 -->
+**Status:** Done (2026-10-24). Compare page pins LiteLLM **1.106.3** as the GA
+floor (cosign key `e82a3c6`, eMudhra CA drop); keeps 1.107.0 do-not-install.
+Points at daari `upstream.distrust_emudhra_ca`. Covered by
+`tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
