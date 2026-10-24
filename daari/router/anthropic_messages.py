@@ -39,6 +39,68 @@ def apply_anthropic_version_sampling_compat(
     return dropped
 
 
+def apply_anthropic_version_content_compat(
+    payload: dict[str, Any], version: str | None
+) -> list[str]:
+    """Strip assistant ``document`` blocks and user ``citations`` under 2026-10-21 (#1891).
+
+    Mutates ``payload`` in place. Returns soft_warning kinds that fired
+    (``anthropic_document_stripped`` / ``anthropic_citations_stripped``).
+    Nested documents inside tool/web-fetch results are kept. Document
+    ``citations: {enabled: true}`` and assistant-message citations stay.
+    """
+    if effective_anthropic_version(version) != ANTHROPIC_VERSION_NO_SAMPLING:
+        return []
+    stripped_docs = False
+    stripped_citations = False
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        if role == "assistant":
+            kept: list[Any] = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "document":
+                    stripped_docs = True
+                    continue
+                kept.append(block)
+            message["content"] = kept
+        elif role == "user":
+            if _strip_user_text_citations(content):
+                stripped_citations = True
+    kinds: list[str] = []
+    if stripped_docs:
+        kinds.append("anthropic_document_stripped")
+    if stripped_citations:
+        kinds.append("anthropic_citations_stripped")
+    return kinds
+
+
+def _strip_user_text_citations(blocks: list[Any]) -> bool:
+    """Remove non-empty citations arrays on user text / search_result text."""
+    changed = False
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        if block_type == "text":
+            citations = block.get("citations")
+            if isinstance(citations, list) and citations:
+                del block["citations"]
+                changed = True
+        elif block_type == "search_result":
+            nested = block.get("content")
+            if isinstance(nested, list) and _strip_user_text_citations(nested):
+                changed = True
+    return changed
+
+
 def infer_frontier_kind(provider: str, base_url: str = "") -> str:
     if (provider or "").lower() in {"anthropic", "claude"}:
         return "anthropic"

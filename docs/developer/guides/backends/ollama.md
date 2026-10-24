@@ -16,6 +16,10 @@ Optional **Flint** L4 coding recipe (Ollama ≥ 0.40.9): `daari setup models --f
 sets `models.l4=flint` without pulling weights. As of Ollama 0.40.9, Flint runs on
 Linux, Windows, and macOS. Pull later with `ollama pull flint`.
 
+Optional **Nemotron 3.5 Bolt E4B** L3 VLM recipe (Ollama ≥ 0.40.10):
+`daari setup models --nemotron-bolt` sets `models.l3=nemotron-3.5-bolt:e4b`
+without pulling weights. Pull later with `ollama pull nemotron-3.5-bolt:e4b`.
+
 Compose stack pulls models for you (`docker compose up`).
 
 ## Config

@@ -2679,6 +2679,157 @@ async def test_anthropic_2026_10_21_omits_and_strips_sampling_on_l6(settings, mo
 
 
 @pytest.mark.asyncio
+async def test_anthropic_2026_10_21_strips_documents_and_citations_on_l6(
+    settings, monkeypatch
+):
+    """#1891: API version 2026-10-21 strips assistant documents + user citations."""
+    settings.frontier.enabled = True
+    settings.frontier.confidence_threshold = 0.99
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    banned_messages = [
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "see attached"},
+                {
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": "AQID",
+                    },
+                },
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "quoted",
+                    "citations": [{"type": "char_location", "cited_text": "x"}],
+                }
+            ],
+        },
+    ]
+
+    async def short_local(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="no",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    frontier_bodies: list[dict] = []
+    soft_kinds: list[str] = []
+
+    async def fake_l6(
+        request: InternalRequest,
+        *,
+        escalated_from: str,
+        local_confidence: float,
+    ) -> InternalResponse:
+        from daari.observability.metrics import Metrics
+        from daari.router import frontier as frontier_mod
+        from daari.router.frontier import FrontierExecutor
+
+        metrics = Metrics()
+        stub = FrontierExecutor(
+            api_key="sk-ant-test",
+            base_url="https://api.anthropic.com",
+            default_model="claude-sonnet-4-0",
+            provider="anthropic",
+            metrics=metrics,
+        )
+        prev = frontier_mod.to_anthropic_payload
+
+        def fake_to_anthropic_payload(req, **kwargs):
+            import copy
+
+            return {
+                "model": "claude-sonnet-4-0",
+                "messages": copy.deepcopy(banned_messages),
+                "max_tokens": 64,
+                "stream": False,
+            }
+
+        frontier_mod.to_anthropic_payload = fake_to_anthropic_payload
+        try:
+            body = stub._anthropic_payload(request, stream=False)
+        finally:
+            frontier_mod.to_anthropic_payload = prev
+        frontier_bodies.append(body)
+        soft_kinds.extend(k for k, v in metrics.soft_warnings.items() if v)
+        return InternalResponse(
+            content="Frontier answer with enough detail for the user.",
+            model="claude-sonnet-4-0",
+            daari_meta=DaariMeta(
+                tier="L6",
+                executor="frontier",
+                provider_id="anthropic",
+                latency_ms=20,
+                escalated_from=escalated_from,
+                confidence=local_confidence,
+            ),
+        )
+
+    for tier in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        monkeypatch.setattr(getattr(application.state.ctx.router, tier), "execute", short_local)
+    monkeypatch.setattr(application.state.ctx.router.frontier, "execute", fake_l6)
+
+    transport = ASGITransport(app=application)
+    headers = {
+        "anthropic-version": "2026-10-21",
+        "x-api-key": "test-key",
+        "X-Daari-No-Cache": "true",
+    }
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        new_ver = await client.post(
+            "/v1/messages",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "escalate please"}],
+                "max_tokens": 64,
+            },
+            headers=headers,
+        )
+        legacy = await client.post(
+            "/v1/messages",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "escalate legacy"}],
+                "max_tokens": 64,
+            },
+            headers={
+                "anthropic-version": "2023-06-01",
+                "x-api-key": "test-key",
+                "X-Daari-No-Cache": "true",
+            },
+        )
+
+    assert new_ver.status_code == 200, new_ver.text
+    assert legacy.status_code == 200, legacy.text
+    assert len(frontier_bodies) == 2
+    stripped, kept = frontier_bodies
+    assert all(b.get("type") != "document" for b in stripped["messages"][0]["content"])
+    assert "citations" not in stripped["messages"][1]["content"][0]
+    assert any(b.get("type") == "document" for b in kept["messages"][0]["content"])
+    assert "citations" in kept["messages"][1]["content"][0]
+    assert "anthropic_document_stripped" in soft_kinds
+    assert "anthropic_citations_stripped" in soft_kinds
+
+
+@pytest.mark.asyncio
 async def test_input_audio_escalates_to_l6_with_openai_payload(settings, monkeypatch):
     """#1000: chat input_audio reaches L6 OpenAI payload (integration pin)."""
     import base64

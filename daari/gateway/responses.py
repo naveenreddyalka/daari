@@ -45,6 +45,7 @@ from daari.gateway.disconnect import (
     note_request_cancelled,
 )
 from daari.gateway.streaming import SSE_KEEPALIVE_FRAME, stream_with_keepalive
+from daari.observability.responses_webhooks import deliver_responses_completion_webhook
 from daari.observability.tokens import estimate_tokens
 from daari.router.capabilities import UnsupportedCapability
 from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
@@ -405,6 +406,28 @@ def _public_body(stored: dict[str, Any]) -> dict[str, Any]:
 
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+
+
+def _notify_responses_completion(ctx: Any, body: dict[str, Any]) -> None:
+    """Best-effort signed completion webhook; never raises (#1892)."""
+    alerts = getattr(getattr(ctx, "settings", None), "alerts", None)
+    if alerts is None:
+        return
+    try:
+        deliver_responses_completion_webhook(
+            url=getattr(alerts, "responses_completion_webhook_url", "") or "",
+            secret=getattr(alerts, "responses_completion_webhook_secret", "") or "",
+            body=body,
+        )
+    except Exception as exc:  # noqa: BLE001 — finalizer must not crash
+        log_gateway_event(
+            "responses.completion_webhook_failed",
+            {
+                "error": f"{type(exc).__name__}: {exc}",
+                "id": body.get("id"),
+                "status": body.get("status"),
+            },
+        )
 
 
 def _visible_stored_response(
@@ -787,6 +810,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             )
             # Local cancel + fleet flag when cache.backend=redis (#1874).
             signal_cancel(response_id)
+            _notify_responses_completion(ctx, cancelled)
             return cancelled
 
         @router.delete("/v1/responses/{response_id}")
@@ -1358,6 +1382,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 stored=True,
                 owner_key_id=owner_key_id,
             )
+            _notify_responses_completion(ctx, payload)
         except asyncio.CancelledError:
             # Fleet or local cancel — do not overwrite cancelled / deleted rows.
             raise
@@ -1369,19 +1394,21 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 or is_cancel_requested(response_id)
             ):
                 return
+            failed = {
+                "id": response_id,
+                "object": "response",
+                "status": "failed",
+                "error": {"code": "server_error", "message": safe_detail(exc)[:300]},
+                "output": [],
+            }
             store.put(
                 response_id,
-                {
-                    "id": response_id,
-                    "object": "response",
-                    "status": "failed",
-                    "error": {"code": "server_error", "message": safe_detail(exc)[:300]},
-                    "output": [],
-                },
+                failed,
                 conversation=[],
                 stored=True,
                 owner_key_id=owner_key_id,
             )
+            _notify_responses_completion(ctx, failed)
 
     @staticmethod
     async def _event_stream(
