@@ -102,6 +102,18 @@ PG_STORE_COLUMNS: dict[str, dict[str, frozenset[str]]] = {
 }
 
 
+# Latest reversible additive column batch per PG store (#1895).
+# ``daari migrate --downgrade`` drops these when present; empty store → noop.
+PG_LATEST_ADDITIVE: dict[str, dict[str, frozenset[str]]] = {
+    "postgres.request-log": {},
+    "postgres.virtual-keys": {
+        "virtual_keys": frozenset({"priority", "cache_scope", "last_used_at"}),
+        "teams": frozenset({"priority", "cache_scope"}),
+    },
+    "postgres.audit": {},
+}
+
+
 class PgSchemaInspector(Protocol):
     """Column probe for Postgres migrate dry-run / apply (#1655)."""
 
@@ -114,6 +126,8 @@ class PgSchemaInspector(Protocol):
     def columns(self, table: str) -> set[str]: ...
 
     def apply_additive(self, store: str, pending: list[str]) -> list[str]: ...
+
+    def drop_additive(self, store: str, items: list[str]) -> list[str]: ...
 
 
 @dataclass
@@ -142,6 +156,19 @@ class DictPgInspector:
             cols = self.tables.setdefault(table, set())
             if col not in cols:
                 cols.add(col)
+                changed.append(item)
+        self.applied.extend(changed)
+        return changed
+
+    def drop_additive(self, store: str, items: list[str]) -> list[str]:
+        changed: list[str] = []
+        for item in items:
+            if "." not in item:
+                continue
+            table, col = item.split(".", 1)
+            cols = self.tables.get(table)
+            if cols is not None and col in cols:
+                cols.discard(col)
                 changed.append(item)
         self.applied.extend(changed)
         return changed
@@ -211,6 +238,32 @@ class LivePgInspector:
             self.error = str(exc)[:200]
             return []
         return list(pending)
+
+    def drop_additive(self, store: str, items: list[str]) -> list[str]:
+        """Drop reversible additive columns from the latest batch (#1895)."""
+        if self._memory:
+            return list(items)
+        if not self.reachable:
+            return []
+        dropped: list[str] = []
+        try:
+            import psycopg
+
+            with psycopg.connect(self.dsn, connect_timeout=5) as conn:
+                with conn.cursor() as cur:
+                    for item in items:
+                        if "." not in item:
+                            continue
+                        table, col = item.split(".", 1)
+                        cur.execute(
+                            f'ALTER TABLE "{table}" DROP COLUMN IF EXISTS "{col}"'
+                        )
+                        dropped.append(item)
+                conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            self.error = str(exc)[:200]
+            return []
+        return dropped
 
 
 def responses_sqlite_path(settings: Settings) -> Path:
@@ -567,9 +620,12 @@ def _apply_stores(
     return out
 
 
-def format_notes(notes: list[StoreNote], *, dry_run: bool) -> list[str]:
+def format_notes(notes: list[StoreNote], *, dry_run: bool, downgrade: bool = False) -> list[str]:
     lines: list[str] = []
-    mode = "dry-run" if dry_run else "migrate"
+    if downgrade:
+        mode = "downgrade dry-run" if dry_run else "downgrade"
+    else:
+        mode = "dry-run" if dry_run else "migrate"
     lines.append(f"daari migrate ({mode})")
     additive_ok = True
     for note in notes:
@@ -578,27 +634,226 @@ def format_notes(notes: list[StoreNote], *, dry_run: bool) -> list[str]:
         if not note.additive_safe:
             additive_ok = False
     if dry_run:
-        if additive_ok:
+        if downgrade:
+            reversible = [n for n in notes if n.pending or n.changed]
+            if not reversible:
+                lines.append("nothing to reverse (noop)")
+            else:
+                lines.append(
+                    "would drop: "
+                    + ", ".join(
+                        f"{n.name}[{'|'.join(n.pending or n.changed)}]" for n in reversible
+                    )
+                )
+        elif additive_ok:
             lines.append("additive-safe: ok (exit 0)")
         else:
             lines.append("additive-safe: no — fix errors above")
     else:
         changed = [n for n in notes if n.changed]
         if changed:
+            label = "reversed" if downgrade else "changed"
             lines.append(
-                "changed: " + ", ".join(f"{n.name}[{'|'.join(n.changed)}]" for n in changed)
+                f"{label}: " + ", ".join(f"{n.name}[{'|'.join(n.changed)}]" for n in changed)
             )
         else:
-            lines.append("changed: none")
+            lines.append("nothing to reverse (noop)" if downgrade else "changed: none")
     return lines
+
+
+def _pg_reversible_items(name: str, inspector: PgSchemaInspector) -> list[str]:
+    """Columns from ``PG_LATEST_ADDITIVE`` that currently exist on the store."""
+    items: list[str] = []
+    for table, cols in PG_LATEST_ADDITIVE.get(name, {}).items():
+        present = inspector.columns(table)
+        for col in sorted(cols):
+            if col in present:
+                items.append(f"{table}.{col}")
+    return items
+
+
+def _plan_downgrade(
+    settings: Settings,
+    *,
+    pg_inspector: PgSchemaInspector | None = None,
+) -> list[StoreNote]:
+    dsn = _pg_url(settings)
+    if not dsn:
+        return []
+    stores = _configured_pg_stores(settings)
+    probe = pg_inspector if pg_inspector is not None else LivePgInspector(dsn)
+    notes: list[StoreNote] = []
+    for name in stores:
+        path = Path(f"postgres:{name.removeprefix('postgres.')}")
+        if not probe.reachable:
+            notes.append(
+                StoreNote(
+                    name=name,
+                    path=path,
+                    status="error",
+                    notes=[f"postgres unreachable: {probe.error or 'unreachable'}"],
+                )
+            )
+            continue
+        items = _pg_reversible_items(name, probe)
+        if items:
+            notes.append(
+                StoreNote(
+                    name=name,
+                    path=path,
+                    status="pending",
+                    notes=["latest additive step reversible"],
+                    pending=items,
+                )
+            )
+        else:
+            notes.append(
+                StoreNote(
+                    name=name,
+                    path=path,
+                    status="current",
+                    notes=["nothing to reverse"],
+                )
+            )
+    return notes
+
+
+def _apply_downgrade(
+    settings: Settings,
+    before: list[StoreNote],
+    *,
+    pg_inspector: PgSchemaInspector | None = None,
+) -> list[StoreNote]:
+    dsn = _pg_url(settings)
+    probe = pg_inspector if pg_inspector is not None else (LivePgInspector(dsn) if dsn else None)
+    out: list[StoreNote] = []
+    for note in before:
+        if not note.name.startswith("postgres.") or not note.pending:
+            out.append(
+                StoreNote(
+                    name=note.name,
+                    path=note.path,
+                    status="current" if note.status != "error" else note.status,
+                    notes=list(note.notes) or ["nothing to reverse"],
+                )
+            )
+            continue
+        if probe is None or not probe.reachable:
+            out.append(
+                StoreNote(
+                    name=note.name,
+                    path=note.path,
+                    status="error",
+                    notes=["cannot drop: postgres unreachable"],
+                    pending=list(note.pending),
+                )
+            )
+            continue
+        dropped = probe.drop_additive(note.name, list(note.pending))
+        out.append(
+            StoreNote(
+                name=note.name,
+                path=note.path,
+                status="applied" if dropped else "current",
+                notes=["dropped latest additive columns"] if dropped else ["nothing to reverse"],
+                changed=list(dropped),
+            )
+        )
+    return out
+
+
+@dataclass(frozen=True)
+class StoreSchemaRow:
+    """SQLite or Postgres schema probe row for ``schema_ok`` (#1727 / #1895)."""
+
+    name: str
+    path: str
+    expected: int
+    actual: int | None
+    state: str  # match | behind | ahead | absent | error | unreachable
+
+
+@dataclass(frozen=True)
+class StoreSchemaStatus:
+    schema_ok: bool
+    rows: list[StoreSchemaRow]
+
+
+def store_schema_status(
+    settings: Settings,
+    *,
+    pg_inspector: PgSchemaInspector | None = None,
+) -> StoreSchemaStatus:
+    """Combine local SQLite ``user_version`` and Postgres migrate probes (#1895).
+
+    Missing SQLite files stay ok. Postgres connect failures are ``unreachable``
+    and do **not** clear ``schema_ok`` (``/ready`` ``checks.postgres`` covers
+    that). Pending/missing PG tables or columns set ``schema_ok`` false.
+    """
+    from daari.ops.backup import local_sqlite_schema_status
+
+    sqlite = local_sqlite_schema_status(settings)
+    rows: list[StoreSchemaRow] = [
+        StoreSchemaRow(
+            name=row.name,
+            path=row.path,
+            expected=row.expected,
+            actual=row.actual,
+            state=row.state,
+        )
+        for row in sqlite.rows
+    ]
+    schema_ok = bool(sqlite.schema_ok)
+    for note in inspect_postgres_stores(settings, inspector=pg_inspector):
+        expected = int(PG_SCHEMA_VERSIONS.get(note.name, 1))
+        if note.status == "error":
+            rows.append(
+                StoreSchemaRow(
+                    name=note.name,
+                    path=str(note.path),
+                    expected=expected,
+                    actual=None,
+                    state="unreachable",
+                )
+            )
+            continue
+        if note.status == "pending":
+            schema_ok = False
+            rows.append(
+                StoreSchemaRow(
+                    name=note.name,
+                    path=str(note.path),
+                    expected=expected,
+                    actual=0,
+                    state="behind",
+                )
+            )
+            continue
+        rows.append(
+            StoreSchemaRow(
+                name=note.name,
+                path=str(note.path),
+                expected=expected,
+                actual=expected,
+                state="match",
+            )
+        )
+    return StoreSchemaStatus(schema_ok=schema_ok, rows=rows)
 
 
 def run_migrate(
     settings: Settings,
     *,
     dry_run: bool = True,
+    downgrade: bool = False,
     pg_inspector: PgSchemaInspector | None = None,
 ) -> list[str]:
+    if downgrade:
+        before = _plan_downgrade(settings, pg_inspector=pg_inspector)
+        if dry_run:
+            return format_notes(before, dry_run=True, downgrade=True)
+        after = _apply_downgrade(settings, before, pg_inspector=pg_inspector)
+        return format_notes(after, dry_run=False, downgrade=True)
     before = inspect_stores(settings, pg_inspector=pg_inspector)
     if dry_run:
         return format_notes(before, dry_run=True)

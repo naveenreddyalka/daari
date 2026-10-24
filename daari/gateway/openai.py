@@ -1745,7 +1745,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             coordinated shutdown, returns 503 ``shutting_down`` immediately
             so load balancers stop sending traffic (#1104). ``schema_ok`` is
             false and the probe is 503 ``not_ready`` when a local SQLite file
-            lags ``STORE_SCHEMA_VERSIONS`` (#1727)."""
+            lags ``STORE_SCHEMA_VERSIONS`` (#1727) or a configured Postgres
+            store is missing required tables/columns (#1895). Connect failures
+            stay on ``checks.postgres`` (degraded), distinct from skew."""
             if getattr(request.app.state, "shutting_down", False):
                 return JSONResponse(status_code=503, content={"status": "shutting_down"})
             ctx: AppContext = request.app.state.ctx
@@ -1796,9 +1798,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 checks["postgres"] = pg_check
                 if pg_check != "ok" and http_status == 200 and status in ("ready", "degraded"):
                     status = "degraded"
-            from daari.ops.backup import local_sqlite_schema_status
+            from daari.setup.migrate import store_schema_status
 
-            schema = local_sqlite_schema_status(ctx.settings)
+            schema = store_schema_status(ctx.settings)
             if not schema.schema_ok and http_status == 200:
                 status = "not_ready"
                 http_status = 503

@@ -7923,6 +7923,19 @@ profiles and an admin form posts `POST /v1/daari/cache/invalidate` with
 model/team/key scope. XSS-safe text rendering; jsdom happy/failure paths.
 Covered by `packages/web-ui/test/dashboard.test.js`.
 
+### Postgres schema_ok skew gate + migrate --downgrade ([#1895](https://github.com/naveenreddyalka/daari/issues/1895))
+
+<!-- tracking:#1895 -->
+**Status:** Done (2026-10-24). `store_schema_status` combines SQLite
+`user_version` with Postgres migrate probes; `/ready` sets `schema_ok` false
+(and 503 `not_ready`) when required PG tables/columns are missing. Connect
+failures stay on `checks.postgres` (degraded). Doctor `schema_ok` names the
+lagging PG store and points at `daari migrate`. `daari migrate --downgrade`
+reverses `PG_LATEST_ADDITIVE` columns (dry-run supported; noop when nothing
+to reverse). Docs: ready.md, doctor-health.md, upgrade.md. Covered by
+`tests/unit/test_ready_postgres_schema_ok.py` and migrate downgrade cases in
+`tests/unit/test_migrate_schema.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

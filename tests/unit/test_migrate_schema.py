@@ -293,3 +293,87 @@ def test_upgrade_docs_mention_pg_migrate_order():
     from daari.gateway.postgres_request_log import SCHEMA_VERSION
 
     assert SCHEMA_VERSION >= 1
+
+
+def test_pg_downgrade_dry_run_reports_reversible_columns(tmp_path: Path):
+    from daari.setup.migrate import (
+        DictPgInspector,
+        PG_LATEST_ADDITIVE,
+        PG_STORE_COLUMNS,
+        run_migrate,
+    )
+
+    settings = _pg_settings(tmp_path)
+    tables: dict[str, set[str]] = {}
+    for store_cols in PG_STORE_COLUMNS.values():
+        for table, cols in store_cols.items():
+            tables[table] = set(cols)
+    inspector = DictPgInspector(tables=tables)
+    lines = run_migrate(settings, dry_run=True, downgrade=True, pg_inspector=inspector)
+    joined = "\n".join(lines)
+    assert "downgrade" in joined.lower()
+    # At least one store has a reversible latest-additive batch.
+    assert any(PG_LATEST_ADDITIVE.values())
+    assert "would" in joined.lower() or "drop" in joined.lower() or "reverse" in joined.lower()
+
+
+def test_pg_downgrade_noop_when_nothing_to_reverse(tmp_path: Path):
+    from daari.setup.migrate import DictPgInspector, PG_STORE_COLUMNS, run_migrate
+
+    settings = _pg_settings(tmp_path)
+    # Baseline tables without latest-additive columns → nothing to reverse.
+    from daari.setup.migrate import PG_LATEST_ADDITIVE
+
+    tables: dict[str, set[str]] = {}
+    for store, store_cols in PG_STORE_COLUMNS.items():
+        latest = PG_LATEST_ADDITIVE.get(store, {})
+        for table, cols in store_cols.items():
+            drop = latest.get(table, frozenset())
+            tables[table] = set(cols) - set(drop)
+    inspector = DictPgInspector(tables=tables)
+    lines = run_migrate(settings, dry_run=True, downgrade=True, pg_inspector=inspector)
+    joined = "\n".join(lines)
+    assert "nothing to reverse" in joined.lower() or "noop" in joined.lower() or "none" in joined.lower()
+
+
+def test_pg_downgrade_applies_via_inspector(tmp_path: Path):
+    from daari.setup.migrate import (
+        DictPgInspector,
+        PG_LATEST_ADDITIVE,
+        PG_STORE_COLUMNS,
+        run_migrate,
+    )
+
+    settings = _pg_settings(tmp_path)
+    tables: dict[str, set[str]] = {}
+    for store_cols in PG_STORE_COLUMNS.values():
+        for table, cols in store_cols.items():
+            tables[table] = set(cols)
+    inspector = DictPgInspector(tables=tables)
+    lines = run_migrate(settings, dry_run=False, downgrade=True, pg_inspector=inspector)
+    joined = "\n".join(lines)
+    assert "downgrade" in joined.lower() or "reversed" in joined.lower() or "dropped" in joined.lower()
+    for store, latest in PG_LATEST_ADDITIVE.items():
+        for table, cols in latest.items():
+            for col in cols:
+                assert col not in inspector.columns(table), (store, table, col)
+
+
+def test_cli_migrate_downgrade_dry_run(tmp_path: Path, monkeypatch):
+    from daari.setup.migrate import DictPgInspector, PG_STORE_COLUMNS
+
+    settings = _pg_settings(tmp_path)
+    tables: dict[str, set[str]] = {}
+    for store_cols in PG_STORE_COLUMNS.values():
+        for table, cols in store_cols.items():
+            tables[table] = set(cols)
+    inspector = DictPgInspector(tables=tables)
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+    monkeypatch.setattr(
+        "daari.setup.migrate.LivePgInspector",
+        lambda dsn: inspector,
+    )
+    runner = CliRunner()
+    result = runner.invoke(cli_app, ["migrate", "--downgrade", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "downgrade" in result.output.lower()
