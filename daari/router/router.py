@@ -38,7 +38,11 @@ from daari.observability.tokens import ollama_token_usage, response_token_usage
 from daari.observability.usage import UsageLedger
 from daari.policy.engine import PolicyEngine
 from daari.pricing import cost_usd, is_ollama_cloud_model
-from daari.providers.integrations import GitHubEnterpriseProvider, GitLabProvider, SourcegraphProvider
+from daari.providers.integrations import (
+    GitHubEnterpriseProvider,
+    GitLabProvider,
+    SourcegraphProvider,
+)
 from daari.providers.registry import ProviderRegistry
 from daari.rules.dev_commands import DevCommandMatch, match_dev_command
 from daari.rules.engine import apply_l2_rules
@@ -53,11 +57,7 @@ from daari.tools.shell import ShellExecutor
 
 def _openai_stream_error_frame(*, error_type: str, message: str) -> str:
     """In-band OpenAI SSE error (matches stream_idle_timeout shape; #973)."""
-    return (
-        "data: "
-        + json.dumps({"error": {"type": error_type, "message": message}})
-        + "\n\n"
-    )
+    return "data: " + json.dumps({"error": {"type": error_type, "message": message}}) + "\n\n"
 
 
 def _anthropic_stream_error_frame(*, error_type: str, message: str) -> str:
@@ -100,9 +100,7 @@ def _build_l0_cache(settings: Settings, l0_path: Path) -> ExactCache:
             prefix=settings.cache.redis_prefix,
             enabled=settings.cache.l0.enabled,
             ttl_seconds=settings.cache.l0.ttl_seconds,
-            timeout_seconds=float(
-                getattr(settings.cache, "redis_timeout_seconds", 2.0) or 2.0
-            ),
+            timeout_seconds=float(getattr(settings.cache, "redis_timeout_seconds", 2.0) or 2.0),
         )
     return ExactCache(
         path=str(l0_path),
@@ -133,9 +131,7 @@ def _build_l1_cache(
             normalize_inputs=settings.cache.l1.normalize_inputs,
             verifier=verifier,
             metrics=metrics,
-            timeout_seconds=float(
-                getattr(settings.cache, "redis_timeout_seconds", 2.0) or 2.0
-            ),
+            timeout_seconds=float(getattr(settings.cache, "redis_timeout_seconds", 2.0) or 2.0),
         )
     return SemanticCache(
         path=str(l1_path),
@@ -416,9 +412,7 @@ class OllamaExecutor:
         ) as response:
             if response.status_code >= 400:
                 body = (await response.aread()).decode("utf-8", errors="replace")
-                raise OllamaRequestError(
-                    response.status_code, str(response.request.url), body
-                )
+                raise OllamaRequestError(response.status_code, str(response.request.url), body)
             async for line in aiter_with_ttft_deadline(response.aiter_lines()):
                 if not line:
                     continue
@@ -548,20 +542,35 @@ class Router:
         self.cache = cache
         self._l0_singleflight = SingleFlight()
         self.semantic_cache = semantic_cache
-        self.ollama_l3 = ollama_l3 or ollama or OllamaExecutor(
-            base_url="http://127.0.0.1:11434",
-            default_model="llama3.2:3b",
-            tier="L3",
+        self.ollama_l3 = (
+            ollama_l3
+            or ollama
+            or OllamaExecutor(
+                base_url="http://127.0.0.1:11434",
+                default_model="llama3.2:3b",
+                tier="L3",
+            )
         )
-        self.ollama_l4 = ollama_l4 or ollama_l3 or ollama or OllamaExecutor(
-            base_url=self.ollama_l3.base_url,
-            default_model=self.ollama_l3.default_model,
-            tier="L4",
+        self.ollama_l4 = (
+            ollama_l4
+            or ollama_l3
+            or ollama
+            or OllamaExecutor(
+                base_url=self.ollama_l3.base_url,
+                default_model=self.ollama_l3.default_model,
+                tier="L4",
+            )
         )
-        self.ollama_l5 = ollama_l5 or ollama_l4 or ollama_l3 or ollama or OllamaExecutor(
-            base_url=self.ollama_l3.base_url,
-            default_model=self.ollama_l4.default_model,
-            tier="L5",
+        self.ollama_l5 = (
+            ollama_l5
+            or ollama_l4
+            or ollama_l3
+            or ollama
+            or OllamaExecutor(
+                base_url=self.ollama_l3.base_url,
+                default_model=self.ollama_l4.default_model,
+                tier="L5",
+            )
         )
         self.metrics = metrics
         self.frontier = frontier
@@ -689,12 +698,8 @@ class Router:
 
         from daari.router.capabilities import anthropic_lifecycle_fields
 
-        settings = SimpleNamespace(
-            models=SimpleNamespace(lifecycle=self.models_lifecycle)
-        )
-        stage = anthropic_lifecycle_fields(request.model or "", settings).get(
-            "lifecycle"
-        )
+        settings = SimpleNamespace(models=SimpleNamespace(lifecycle=self.models_lifecycle))
+        stage = anthropic_lifecycle_fields(request.model or "", settings).get("lifecycle")
         if stage != "deprecated":
             return
         existing = response.daari_meta.warning
@@ -806,8 +811,10 @@ class Router:
 
         if request.meta.no_frontier:
             raise WebSearchUnavailable("no_frontier")
-        if not self.frontier_enabled or self.frontier is None or not bool(
-            getattr(self.frontier, "api_key", None)
+        if (
+            not self.frontier_enabled
+            or self.frontier is None
+            or not bool(getattr(self.frontier, "api_key", None))
         ):
             raise WebSearchUnavailable("frontier_disabled")
         if not self._frontier_reachable(request):
@@ -826,8 +833,10 @@ class Router:
 
         if request.meta.no_frontier:
             raise MultiAgentUnavailable("no_frontier")
-        if not self.frontier_enabled or self.frontier is None or not bool(
-            getattr(self.frontier, "api_key", None)
+        if (
+            not self.frontier_enabled
+            or self.frontier is None
+            or not bool(getattr(self.frontier, "api_key", None))
         ):
             raise MultiAgentUnavailable("frontier_disabled")
         if not self._frontier_reachable(request):
@@ -902,9 +911,7 @@ class Router:
                 detail=hit.detail,
             )
             if hasattr(self.metrics, "record_guardrail"):
-                self.metrics.record_guardrail(
-                    hit.action, kind=getattr(hit, "kind", None) or "deny"
-                )
+                self.metrics.record_guardrail(hit.action, kind=getattr(hit, "kind", None) or "deny")
             if hit.action == "block":
                 self._audit_guardrail_block(hit)
         if warning:
@@ -966,9 +973,7 @@ class Router:
         log_gateway_event(
             "stream_guardrail",
             {
-                "hits": [
-                    {"stage": h.stage, "rule": h.rule, "action": h.action} for h in hits
-                ],
+                "hits": [{"stage": h.stage, "rule": h.rule, "action": h.action} for h in hits],
                 "blocked": bool(getattr(scanner, "blocked", False)),
                 "warning": warning,
             },
@@ -1038,9 +1043,7 @@ class Router:
                 if tool_scan.hits:
                     self._apply_guardrail_hits(tool_scan.hits, warning=tool_scan.warning)
                 if tool_scan.blocked:
-                    policy.refusal = blocked_response(
-                        request, self.guardrails.block_message
-                    )
+                    policy.refusal = blocked_response(request, self.guardrails.block_message)
                     policy.refusal_tier = "guardrail"
                     return policy
                 policy.warning = tool_scan.warning or policy.warning
@@ -1059,9 +1062,7 @@ class Router:
             response.daari_meta.warning = outbound.warning
         return response
 
-    async def _apply_output_policy_async(
-        self, response: InternalResponse
-    ) -> InternalResponse:
+    async def _apply_output_policy_async(self, response: InternalResponse) -> InternalResponse:
         """Async output guardrails with decision-rule offload (#1610)."""
         if self.guardrails is None or not getattr(self.guardrails, "enabled", False):
             return response
@@ -1084,6 +1085,7 @@ class Router:
             deadline_active,
             resolve_deadline_seconds,
         )
+
         if not deadline_active():
             seconds = resolve_deadline_seconds(
                 getattr(request.meta, "deadline_ms", None),
@@ -1227,9 +1229,7 @@ class Router:
     _MODEL_TIERS = {"L3", "L4", "L5", "L6"}
 
     @staticmethod
-    def _stamp_agent_turn(
-        request: InternalRequest, response: InternalResponse
-    ) -> InternalResponse:
+    def _stamp_agent_turn(request: InternalRequest, response: InternalResponse) -> InternalResponse:
         """Surface ADR-0004 agent-turn detection on daari_meta (#604)."""
         if bool(request.tools) or request.has_tool_calls_in_history:
             response.daari_meta.agent_turn = True
@@ -1327,6 +1327,10 @@ class Router:
         reported_speed = getattr(response.daari_meta, "usage_speed", None)
         if bound is not None and reported_speed:
             bound.usage_speed = reported_speed
+        # Bill the tier actually served (e.g. after service_tier degrade) (#1885).
+        served_tier = getattr(response.daari_meta, "service_tier", None)
+        if bound is not None and served_tier:
+            bound.service_tier = served_tier
         from daari.router.anthropic_messages import request_cache_ttl
 
         cache_ttl = request_cache_ttl(request)
@@ -1336,6 +1340,7 @@ class Router:
             bound.cache_ttl = cache_ttl
             bound.cache_write_tokens = write_tokens
             bound.cached_tokens = int(response.daari_meta.cached_tokens or 0)
+        bill_tier = served_tier or getattr(request.sampling, "service_tier", None)
         # When the provider omitted usage.cost, bill from pricing + request TTL (#1843).
         if (
             response.daari_meta.cost_usd is None
@@ -1350,7 +1355,7 @@ class Router:
                 cached_input_tokens=int(response.daari_meta.cached_tokens or 0),
                 cache_write_tokens=write_tokens,
                 cache_ttl=cache_ttl,
-                service_tier=getattr(request.sampling, "service_tier", None),
+                service_tier=bill_tier,
                 region_pin=getattr(request.meta, "region_pin", None),
                 usage_speed=getattr(response.daari_meta, "usage_speed", None),
             )
@@ -1442,9 +1447,7 @@ class Router:
         )
         return profile.model_copy(update={"category": category})
 
-    def _record_decision_classifier(
-        self, *, outcome: str, latency_ms: int = 0
-    ) -> None:
+    def _record_decision_classifier(self, *, outcome: str, latency_ms: int = 0) -> None:
         metrics = getattr(self, "metrics", None)
         if metrics is None or not hasattr(metrics, "record_decision_classifier"):
             return
@@ -1489,9 +1492,7 @@ class Router:
             )
         except Exception as exc:
             latency_ms = int((time.perf_counter() - started) * 1000)
-            self._record_decision_classifier(
-                outcome="heuristic_fallback", latency_ms=latency_ms
-            )
+            self._record_decision_classifier(outcome="heuristic_fallback", latency_ms=latency_ms)
             detail = {
                 "error": str(exc),
                 "model": self.decision_classifier_model,
@@ -1577,14 +1578,10 @@ class Router:
         ):
             return
         category = (
-            profile.category
-            if profile is not None
-            else build_prompt_profile(request).category
+            profile.category if profile is not None else build_prompt_profile(request).category
         )
         try:
-            task = asyncio.create_task(
-                self._shadow_check(request, cached_content, category)
-            )
+            task = asyncio.create_task(self._shadow_check(request, cached_content, category))
         except RuntimeError:
             return
         self._shadow_tasks.add(task)
@@ -1834,7 +1831,9 @@ class Router:
                 # be served; it can still assist generation via the draft band.
                 add_step("l1_verification_rejected", similarity=round(nearest_similarity, 4))
                 semantic_hit = None
-            add_step("l1_lookup", hit=semantic_hit is not None, similarity=round(nearest_similarity, 4))
+            add_step(
+                "l1_lookup", hit=semantic_hit is not None, similarity=round(nearest_similarity, 4)
+            )
             if (
                 semantic_hit is None
                 and nearest_response is not None
@@ -1908,7 +1907,9 @@ class Router:
         (#155). Agent turns are excluded: they carry their own tool protocol.
         """
         if dev_match is not None and dev_match.action == "execute" and dev_match.command:
-            confirmed = request.meta.confirm_tool or bool(re.search(r"(?i)(?:^|\s)--yes(?:\s|$)", last_user))
+            confirmed = request.meta.confirm_tool or bool(
+                re.search(r"(?i)(?:^|\s)--yes(?:\s|$)", last_user)
+            )
             policy = self.policy.evaluate(dev_match.command, confirmed=confirmed)
             if policy.outcome == "deny":
                 denial = InternalResponse(
@@ -2114,9 +2115,7 @@ class Router:
                 response = fallback
                 pool_frontier_fallback = True
         if not pool_frontier_fallback:
-            response = await self._maybe_escalate(
-                gen_request, response, started, profile=profile
-            )
+            response = await self._maybe_escalate(gen_request, response, started, profile=profile)
         self._finish_session_pin(request, response)
         if (
             not request.meta.no_cache
@@ -2192,7 +2191,11 @@ class Router:
     def _with_skills_prefix(self, request: InternalRequest) -> InternalRequest:
         if not self.skills_system_prefix:
             return request
-        if request.messages and request.messages[0].role == "system" and request.messages[0].content == self.skills_system_prefix:
+        if (
+            request.messages
+            and request.messages[0].role == "system"
+            and request.messages[0].content == self.skills_system_prefix
+        ):
             return request
         req = request.model_copy(deep=True)
         req.messages = [Message(role="system", content=self.skills_system_prefix), *req.messages]
@@ -2248,9 +2251,7 @@ class Router:
         client_model = request.model or self.ollama_l3.default_model
         profile, reused = self._resolve_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
-        self._open_spend_context(
-            request, trace.trace_id if trace is not None else chunk_id
-        )
+        self._open_spend_context(request, trace.trace_id if trace is not None else chunk_id)
         dropped = list(request.sampling.dropped_param_names())
         if dropped:
             outcome.dropped_params = dropped
@@ -2294,10 +2295,7 @@ class Router:
         agent_flow = bool(request.tools) or request.has_tool_calls_in_history
         # G1 / ADR-0004: exact L0 is on for agent turns. L1 stays off — a
         # semantic near-match must not overwrite a different tool result.
-        cacheable = (
-            not request.meta.no_cache
-            and not self._category_cache_skip(profile)
-        )
+        cacheable = not request.meta.no_cache and not self._category_cache_skip(profile)
         stream_request = request.model_copy(deep=True)
         if not agent_flow:
             stream_request.tools = None
@@ -2308,10 +2306,16 @@ class Router:
 
         log_gateway_event(
             "stream_tier_chain",
-            {"tiers": tier_chain, "model": client_model, "message_count": len(stream_request.messages)},
+            {
+                "tiers": tier_chain,
+                "model": client_model,
+                "message_count": len(stream_request.messages),
+            },
         )
 
-        def chunk_payload(*, delta: dict[str, Any], finish_reason: str | None = None) -> dict[str, Any]:
+        def chunk_payload(
+            *, delta: dict[str, Any], finish_reason: str | None = None
+        ) -> dict[str, Any]:
             choice: dict[str, Any] = {"index": 0, "delta": delta}
             if finish_reason is not None:
                 choice["finish_reason"] = finish_reason
@@ -2504,9 +2508,7 @@ class Router:
                             client_id=request.meta.client_id,
                             user_id=request.meta.user,
                         )
-                    log_gateway_event(
-                        "stream_cache_hit", {"tier": "L0-org", "model": client_model}
-                    )
+                    log_gateway_event("stream_cache_hit", {"tier": "L0-org", "model": client_model})
                     outcome.note("L0-org", cache_hit=True)
                     yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                     yield f"data: {json.dumps(chunk_payload(delta={'content': org_l0_hit.content}))}\n\n"
@@ -2665,7 +2667,10 @@ class Router:
                                 exclude=tried_hosts,
                             )
                         except Exception as pick_exc:
-                            from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
+                            from daari.router.local_pool import (
+                                BackendUnavailable,
+                                CloudEgressBlocked,
+                            )
 
                             if isinstance(pick_exc, CloudEgressBlocked):
                                 raise
@@ -2777,9 +2782,7 @@ class Router:
                         ollama_request = self._maybe_scrub_cloud(
                             stream_request.model_copy(
                                 update={
-                                    "messages": hoist_system_messages(
-                                        list(stream_request.messages)
-                                    )
+                                    "messages": hoist_system_messages(list(stream_request.messages))
                                 }
                             ),
                             ollama_model,
@@ -2875,9 +2878,7 @@ class Router:
                                     reason="context_too_long",
                                 )
                             else:
-                                add_step(
-                                    "fallback", from_tier=tier, error=str(exc)[:120]
-                                )
+                                add_step("fallback", from_tier=tier, error=str(exc)[:120])
                         elif content_sent:
                             for chunk in pending_chunks:
                                 yield chunk
@@ -2899,9 +2900,7 @@ class Router:
                             if getattr(self, "otel_enabled", False) and trace is not None:
                                 from daari.observability.otel import export_trace
 
-                                export_trace(
-                                    trace, request=request, error_type=type(exc).__name__
-                                )
+                                export_trace(trace, request=request, error_type=type(exc).__name__)
                             finish_trace(None)
                             return
                         else:
@@ -2911,9 +2910,7 @@ class Router:
                             if getattr(self, "otel_enabled", False) and trace is not None:
                                 from daari.observability.otel import export_trace
 
-                                export_trace(
-                                    trace, request=request, error_type=type(exc).__name__
-                                )
+                                export_trace(trace, request=request, error_type=type(exc).__name__)
                             finish_trace(None)
                             return
                     finally:
@@ -3094,9 +3091,7 @@ class Router:
                         return
                     finish_reason = "tool_calls" if relayed_tool_calls else "stop"
                     yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
-                    bill = self._anthropic_stream_bill(
-                        relayed_text, fallback_model=served.model
-                    )
+                    bill = self._anthropic_stream_bill(relayed_text, fallback_model=served.model)
                     yield usage_chunk(
                         len(relayed_text),
                         stream_tier="L6",
@@ -3130,11 +3125,15 @@ class Router:
                             cached_tok = bill[0].daari_meta.cached_tokens
                             if cached_tok is not None:
                                 bound.cached_tokens = int(cached_tok)
+                            # Served stream tier (priority success or degrade) (#1885).
+                            served_stream_tier = bill[0].daari_meta.service_tier or getattr(
+                                self.frontier, "last_stream_service_tier", None
+                            )
+                            if served_stream_tier:
+                                bound.service_tier = served_stream_tier
                         stream_ttl = getattr(bound, "cache_ttl", None) if bound else None
                         if write_tok:
-                            self.metrics.record_cache_write(
-                                tokens=int(write_tok), ttl=stream_ttl
-                            )
+                            self.metrics.record_cache_write(tokens=int(write_tok), ttl=stream_ttl)
                         record_kwargs: dict[str, Any] = {
                             "tier": "L6",
                             "cache_hit": False,
@@ -3170,16 +3169,12 @@ class Router:
                         flight_meta.cached_tokens = bill[0].daari_meta.cached_tokens
                         flight_meta.cache_write_tokens = bill[0].daari_meta.cache_write_tokens
                         flight_meta.service_tier = bill[0].daari_meta.service_tier
-                    stream_tier = getattr(
-                        self.frontier, "last_stream_service_tier", None
-                    )
+                    stream_tier = getattr(self.frontier, "last_stream_service_tier", None)
                     if stream_tier and not flight_meta.service_tier:
                         flight_meta.service_tier = stream_tier
                     # Attach frontier param-compat drops/warnings for stream
                     # parity with non-stream execute (#1173).
-                    apply_meta = getattr(
-                        self.frontier, "_apply_param_compat_meta", None
-                    )
+                    apply_meta = getattr(self.frontier, "_apply_param_compat_meta", None)
                     if callable(apply_meta):
                         apply_meta(flight_meta)
                     else:
@@ -3312,9 +3307,7 @@ class Router:
                         bound.cached_tokens = int(served.daari_meta.cached_tokens)
                     stream_ttl = getattr(bound, "cache_ttl", None) if bound else None
                     if write_tok:
-                        self.metrics.record_cache_write(
-                            tokens=int(write_tok), ttl=stream_ttl
-                        )
+                        self.metrics.record_cache_write(tokens=int(write_tok), ttl=stream_ttl)
                     self.usage_ledger.record(
                         tier=tier,
                         cache_hit=False,
@@ -3369,7 +3362,12 @@ class Router:
                         )
                     except Exception:
                         pass
-                if cacheable and not tool_calls_sent and streamed_text.strip() and tier in {"L3", "L4", "L5"}:
+                if (
+                    cacheable
+                    and not tool_calls_sent
+                    and streamed_text.strip()
+                    and tier in {"L3", "L4", "L5"}
+                ):
                     streamed_response = served.model_copy(deep=True)
                     streamed_response.daari_meta.latency_ms = latency_ms
                     try:
@@ -3387,9 +3385,7 @@ class Router:
                 if getattr(self, "otel_enabled", False) and trace is not None:
                     from daari.observability.otel import export_trace
 
-                    first_chunk_s = (
-                        first_delta_at - started if first_delta_at is not None else None
-                    )
+                    first_chunk_s = first_delta_at - started if first_delta_at is not None else None
                     per_chunk_s = None
                     if first_delta_at is not None and last_delta_at is not None and delta_count > 1:
                         per_chunk_s = (last_delta_at - first_delta_at) / (delta_count - 1)
@@ -3406,7 +3402,11 @@ class Router:
                 return
 
         finally:
-            if stream_flight_fut is not None and stream_flight_key is not None and not stream_flight_fut.done():
+            if (
+                stream_flight_fut is not None
+                and stream_flight_key is not None
+                and not stream_flight_fut.done()
+            ):
                 if stream_flight_result is not None:
                     self._l0_singleflight.finish(
                         stream_flight_key, stream_flight_fut, result=stream_flight_result
@@ -3484,10 +3484,7 @@ class Router:
         agent_flow = bool(request.tools) or request.has_tool_calls_in_history
         # G1 / ADR-0004: exact L0 is on for agent turns. L1 stays off on this
         # path unless a later change specifies Anthropic stream L1 (#600).
-        cacheable = (
-            not request.meta.no_cache
-            and not self._category_cache_skip(profile)
-        )
+        cacheable = not request.meta.no_cache and not self._category_cache_skip(profile)
         stream_request = request.model_copy(deep=True)
         if not agent_flow:
             stream_request.tools = None
@@ -3716,9 +3713,7 @@ class Router:
                             yield event
                         return
                     tried_hosts.add(stream_slot.id)
-                    stream_executor = self.local_pool.bind_executor(
-                        stream_slot, stream_executor
-                    )
+                    stream_executor = self.local_pool.bind_executor(stream_slot, stream_executor)
                     self.local_pool.acquire(stream_slot)
                     add_step(
                         "backend_pick",
@@ -3803,9 +3798,7 @@ class Router:
                     ollama_request = self._maybe_scrub_cloud(
                         stream_request.model_copy(
                             update={
-                                "messages": hoist_system_messages(
-                                    list(stream_request.messages)
-                                )
+                                "messages": hoist_system_messages(list(stream_request.messages))
                             }
                         ),
                         model_name,
@@ -3854,9 +3847,7 @@ class Router:
                                             "index": block_index,
                                             "delta": {
                                                 "type": "input_json_delta",
-                                                "partial_json": call["function"][
-                                                    "arguments"
-                                                ],
+                                                "partial_json": call["function"]["arguments"],
                                             },
                                             "daari_meta": meta,
                                         },
@@ -3909,11 +3900,7 @@ class Router:
                         },
                     )
                     more_hosts = False
-                    if (
-                        not any_output
-                        and self.local_pool is not None
-                        and stream_slot is not None
-                    ):
+                    if not any_output and self.local_pool is not None and stream_slot is not None:
                         more_hosts = any(
                             slot.id not in tried_hosts
                             for slot in self.local_pool._eligible(
@@ -4279,7 +4266,9 @@ class Router:
         if last_error is not None:
             raise last_error
 
-    def _resolve_ccs_hit(self, dev_match: DevCommandMatch | None, request: InternalRequest) -> InternalResponse | None:
+    def _resolve_ccs_hit(
+        self, dev_match: DevCommandMatch | None, request: InternalRequest
+    ) -> InternalResponse | None:
         if self.command_context is None or request.meta.no_cache:
             return None
 
@@ -4290,7 +4279,9 @@ class Router:
         if dev_match.action == "ccs_read":
             for command in known_commands:
                 try:
-                    entry = self.command_context.get(repo_root=os.getcwd(), cwd=os.getcwd(), command=command)
+                    entry = self.command_context.get(
+                        repo_root=os.getcwd(), cwd=os.getcwd(), command=command
+                    )
                 except Exception:
                     return None
                 if entry is not None:
@@ -4309,7 +4300,11 @@ class Router:
                     )
             return None
 
-        if dev_match.action == "execute" and dev_match.command and not (dev_match.needs_rerun or request.meta.rerun_command):
+        if (
+            dev_match.action == "execute"
+            and dev_match.command
+            and not (dev_match.needs_rerun or request.meta.rerun_command)
+        ):
             try:
                 entry = self.command_context.get(
                     repo_root=os.getcwd(),
@@ -4361,11 +4356,7 @@ class Router:
 
     async def _compact_context(self, request: InternalRequest) -> InternalRequest:
         """Trust PRD T2b: summarize over-limit history instead of dropping it."""
-        if (
-            not self.context_compact
-            or request.tools
-            or request.has_tool_calls_in_history
-        ):
+        if not self.context_compact or request.tools or request.has_tool_calls_in_history:
             return request
         non_system = [(i, m) for i, m in enumerate(request.messages) if m.role != "system"]
         if len(non_system) <= self.context_max_history:
@@ -4431,7 +4422,9 @@ class Router:
         )
         return compacted
 
-    async def _failover_context_length(self, request: InternalRequest, exc: BaseException) -> InternalResponse:
+    async def _failover_context_length(
+        self, request: InternalRequest, exc: BaseException
+    ) -> InternalResponse:
         for tier in ("L4", "L5"):
             try:
                 response = await self._run_model_tier(tier, request)
@@ -4563,9 +4556,11 @@ class Router:
                 warm_models=self._warm_models,
                 skip_cloud_reason=reason,
                 on_cloud_skip=(
-                    (lambda slot, model, tier=tier, reason=reason: self._note_cloud_skip(
-                        tier, model, reason or "", backend_id=slot.id
-                    ))
+                    (
+                        lambda slot, model, tier=tier, reason=reason: self._note_cloud_skip(
+                            tier, model, reason or "", backend_id=slot.id
+                        )
+                    )
                     if reason
                     else None
                 ),
@@ -4631,9 +4626,7 @@ class Router:
                 return "ua"
         return None
 
-    def _resolve_prompt_profile(
-        self, request: InternalRequest
-    ) -> tuple[PromptProfile, bool]:
+    def _resolve_prompt_profile(self, request: InternalRequest) -> tuple[PromptProfile, bool]:
         """Build or reuse a profile. Returns (profile, reused).
 
         When `classify_user_turn` is on (or the agent UA shortcut applies), a
@@ -4654,9 +4647,7 @@ class Router:
 
         prefix = conversation_prefix_hash(request.messages)
         key = session_key(request.meta, prefix)
-        tokens_est = max(
-            1, sum(len(message.content or "") for message in request.messages) // 4
-        )
+        tokens_est = max(1, sum(len(message.content or "") for message in request.messages) // 4)
         if is_tool_continuation(request.messages):
             pin = self.profile_pins.get(key)
             if pin is not None and pin.prefix_hash == prefix:
@@ -4720,9 +4711,7 @@ class Router:
             )
         return profile
 
-    def _remember_user_turn_profile(
-        self, request: InternalRequest, profile: PromptProfile
-    ) -> None:
+    def _remember_user_turn_profile(self, request: InternalRequest, profile: PromptProfile) -> None:
         if self._classify_user_turn_source(request) is None:
             return
         from daari.router.session_affinity import conversation_prefix_hash, session_key
@@ -4872,9 +4861,7 @@ class Router:
         if slots:
             for slot in slots:
                 executor = slot.executor
-                entries.append(
-                    {"id": slot.id, **policy_snapshot(executor.timeout, executor.retry)}
-                )
+                entries.append({"id": slot.id, **policy_snapshot(executor.timeout, executor.retry)})
         elif frontier is not None:
             entries.append(
                 {
@@ -5267,15 +5254,26 @@ class Router:
             l5_weight = self.model_weights.get(l5_name, {"latency": 0.2, "accuracy": 0.95})
 
             if self.model_preference == "latency":
-                scores = {"L3": l3_weight.get("latency", 0.0), "L4": l4_weight.get("latency", 0.0), "L5": l5_weight.get("latency", 0.0)}
+                scores = {
+                    "L3": l3_weight.get("latency", 0.0),
+                    "L4": l4_weight.get("latency", 0.0),
+                    "L5": l5_weight.get("latency", 0.0),
+                }
             elif self.model_preference == "accuracy":
-                scores = {"L3": l3_weight.get("accuracy", 0.0), "L4": l4_weight.get("accuracy", 0.0), "L5": l5_weight.get("accuracy", 0.0)}
+                scores = {
+                    "L3": l3_weight.get("accuracy", 0.0),
+                    "L4": l4_weight.get("accuracy", 0.0),
+                    "L5": l5_weight.get("accuracy", 0.0),
+                }
             else:
                 # Balanced: blend both dimensions and pick the stronger score.
                 scores = {
-                    "L3": 0.5 * l3_weight.get("latency", 0.0) + 0.5 * l3_weight.get("accuracy", 0.0),
-                    "L4": 0.5 * l4_weight.get("latency", 0.0) + 0.5 * l4_weight.get("accuracy", 0.0),
-                    "L5": 0.5 * l5_weight.get("latency", 0.0) + 0.5 * l5_weight.get("accuracy", 0.0),
+                    "L3": 0.5 * l3_weight.get("latency", 0.0)
+                    + 0.5 * l3_weight.get("accuracy", 0.0),
+                    "L4": 0.5 * l4_weight.get("latency", 0.0)
+                    + 0.5 * l4_weight.get("accuracy", 0.0),
+                    "L5": 0.5 * l5_weight.get("latency", 0.0)
+                    + 0.5 * l5_weight.get("accuracy", 0.0),
                 }
             chosen = self._pick_with_warm_preference(scores)
 
@@ -5702,9 +5700,7 @@ class Router:
         state = "ok"
         windows: list[tuple[float, Any]] = []
         if self.frontier_daily_budget_usd > 0:
-            windows.append(
-                (self.frontier_daily_budget_usd, self.usage_ledger.frontier_spend_usd)
-            )
+            windows.append((self.frontier_daily_budget_usd, self.usage_ledger.frontier_spend_usd))
         if self.frontier_monthly_budget_usd > 0:
             windows.append(
                 (
@@ -5756,6 +5752,7 @@ class Router:
             return None, None
         tokens = (int(in_tok or 0), int(out_tok or 0))
         model = getattr(self.frontier, "default_model", None) or fallback_model
+        stream_tier = getattr(self.frontier, "last_stream_service_tier", None)
         served = InternalResponse(
             content=content,
             model=model or "",
@@ -5770,6 +5767,7 @@ class Router:
                 cached_tokens=int(cached_tok) if cached_tok is not None else None,
                 cache_write_tokens=int(write_tok) if write_tok is not None else None,
                 usage_speed=speed.strip().lower() if has_speed else None,
+                service_tier=stream_tier,
             ),
         )
         return served, tokens
@@ -5778,10 +5776,14 @@ class Router:
         served, tokens = self._anthropic_stream_bill("", fallback_model=None)
         if served is None or tokens is None:
             return
-        # Cost header before first chunk: fast-mode speed (#1737) or cache writes (#1865).
+        # Cost header before first chunk: fast-mode speed (#1737), cache writes
+        # (#1865), or served service_tier (incl. after degrade) (#1885).
         speed = getattr(served.daari_meta, "usage_speed", None)
         writes = int(served.daari_meta.cache_write_tokens or 0)
-        if not (isinstance(speed, str) and speed.strip()) and writes <= 0:
+        tier = getattr(served.daari_meta, "service_tier", None)
+        has_speed = isinstance(speed, str) and bool(speed.strip())
+        has_tier = isinstance(tier, str) and bool(tier.strip())
+        if not has_speed and writes <= 0 and not has_tier:
             return
         cost = self._stream_usage_cost(
             "L6",
@@ -5905,9 +5907,7 @@ class Router:
                 served=served,
             ),
         }
-        cached = self._stream_cached_tokens(
-            tier, prompt_tokens=prompt_tokens, served=served
-        )
+        cached = self._stream_cached_tokens(tier, prompt_tokens=prompt_tokens, served=served)
         if cached:
             usage["cache_read_input_tokens"] = cached
         rollup = self._record_session_avoided(
@@ -5971,7 +5971,9 @@ class Router:
             return None
         return match.group(1).rstrip(".,")
 
-    async def _run_live_fetch(self, request: InternalRequest, url: str, started: float) -> InternalResponse:
+    async def _run_live_fetch(
+        self, request: InternalRequest, url: str, started: float
+    ) -> InternalResponse:
         try:
             async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
                 response = await client.get(url)
@@ -6069,7 +6071,9 @@ class AppContext:
         if self.settings.enterprise.enabled and self.settings.enterprise.resolved_org_id:
             l0_path = resolve_org_scoped_path(l0_path, self.settings.enterprise, leaf="l0")
             l1_path = resolve_org_scoped_path(l1_path, self.settings.enterprise, leaf="l1")
-            context_path = resolve_org_scoped_path(context_path, self.settings.enterprise, leaf="ccs")
+            context_path = resolve_org_scoped_path(
+                context_path, self.settings.enterprise, leaf="ccs"
+            )
         return l0_path, l1_path, context_path
 
     @staticmethod
@@ -6333,7 +6337,9 @@ class AppContext:
                 ),
                 similarity_threshold=settings.cache.l1.similarity_threshold,
             )
-        learning_enabled = settings.enterprise.learning_enabled or settings.enterprise.learning.enabled
+        learning_enabled = (
+            settings.enterprise.learning_enabled or settings.enterprise.learning.enabled
+        )
         if learning_enabled and settings.enterprise.learning_url:
             org_learning_client = OrgLearningClient(
                 base_url=settings.enterprise.learning_url,
@@ -6434,7 +6440,11 @@ class AppContext:
         providers.register(GitHubEnterpriseProvider(base_url=settings.integrations.ghe.url))
         providers.register(GitLabProvider(base_url=settings.integrations.gitlab.url))
         # F5 live sources (issue #120): Open-Meteo / wttr.in / generic REST.
-        from daari.providers.live_sources import build_live_providers, live_triggers, load_sources_config
+        from daari.providers.live_sources import (
+            build_live_providers,
+            live_triggers,
+            load_sources_config,
+        )
 
         sources_cfg = load_sources_config()
         for live_provider in build_live_providers(sources_cfg):
@@ -6458,9 +6468,7 @@ class AppContext:
             server_policy=McpServerPolicy.from_mapping(
                 getattr(settings.integrations.mcp_policy, "servers", None)
             ),
-            allow_private_networks=bool(
-                getattr(mcp_egress, "allow_private_networks", False)
-            ),
+            allow_private_networks=bool(getattr(mcp_egress, "allow_private_networks", False)),
             retry=RetryPolicy.from_settings(settings.upstream.retry),
             failure_threshold=int(getattr(mcp_egress, "failure_threshold", 3) or 3),
             cooldown_seconds=float(getattr(mcp_egress, "cooldown_seconds", 30.0) or 30.0),
@@ -6634,9 +6642,7 @@ class AppContext:
             session_affinity=settings.routing.session_affinity,
             session_affinity_ttl_seconds=settings.routing.session_affinity_ttl_seconds,
             session_affinity_redis_url=(
-                settings.cache.redis_url
-                if settings.cache.backend == "redis"
-                else None
+                settings.cache.redis_url if settings.cache.backend == "redis" else None
             ),
             session_affinity_redis_timeout_seconds=float(
                 getattr(settings.cache, "redis_timeout_seconds", 2.0) or 2.0
@@ -6707,9 +6713,7 @@ class AppContext:
                     file_store=file_store,
                     yield_to_interactive=settings.batches.yield_to_interactive,
                     idle_poll_seconds=settings.batches.idle_poll_seconds,
-                    claim_ttl_seconds=int(
-                        getattr(settings.batches, "claim_ttl_seconds", 90) or 90
-                    ),
+                    claim_ttl_seconds=int(getattr(settings.batches, "claim_ttl_seconds", 90) or 90),
                 )
             else:
                 batch_store = BatchStore(
