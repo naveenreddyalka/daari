@@ -38,6 +38,7 @@ _COLUMNS = (
     "cost_avoided_usd",
     "cache_hit",
     "usage_speed",
+    "service_tier",
 )
 
 EXPORT_FIELDS = (
@@ -59,7 +60,27 @@ EXPORT_FIELDS = (
     "cost_avoided_usd",
     "cache_hit",
     "usage_speed",
+    "service_tier",
 )
+
+GROUP_BY_DIMS = (
+    "model",
+    "team",
+    "key",
+    "user",
+    "tier",
+    "usage_speed",
+    "service_tier",
+)
+_GROUP_BY_COLUMNS = {
+    "model": "model",
+    "team": "team_id",
+    "key": "key_id",
+    "user": "user_id",
+    "tier": "tier",
+    "usage_speed": "usage_speed",
+    "service_tier": "service_tier",
+}
 
 _SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS spend_requests (
@@ -80,7 +101,8 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     cost_usd REAL NOT NULL DEFAULT 0,
     cost_avoided_usd REAL NOT NULL DEFAULT 0,
     cache_hit INTEGER NOT NULL DEFAULT 0,
-    usage_speed TEXT NOT NULL DEFAULT ''
+    usage_speed TEXT NOT NULL DEFAULT '',
+    service_tier TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_spend_requests_ts ON spend_requests (ts);
 CREATE INDEX IF NOT EXISTS idx_spend_requests_key ON spend_requests (key_id);
@@ -106,7 +128,8 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
     cost_avoided_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
     cache_hit INTEGER NOT NULL DEFAULT 0,
-    usage_speed TEXT NOT NULL DEFAULT ''
+    usage_speed TEXT NOT NULL DEFAULT '',
+    service_tier TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_spend_requests_ts ON spend_requests (ts);
 CREATE INDEX IF NOT EXISTS idx_spend_requests_key ON spend_requests (key_id);
@@ -135,6 +158,13 @@ _PG_SPEND_USAGE_SPEED_MIGRATE = (
 )
 _PG_SPEND_PROVIDER_MIGRATE = (
     "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT ''"
+)
+_SPEND_SERVICE_TIER_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN service_tier TEXT NOT NULL DEFAULT ''"
+)
+_PG_SPEND_SERVICE_TIER_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS "
+    "service_tier TEXT NOT NULL DEFAULT ''"
 )
 
 
@@ -250,7 +280,44 @@ def export_dict(row: dict[str, Any]) -> dict[str, Any]:
         "cost_avoided_usd": float(row["cost_avoided_usd"]),
         "cache_hit": bool(row["cache_hit"]),
         "usage_speed": row.get("usage_speed") or "",
+        "service_tier": row.get("service_tier") or "",
     }
+
+
+def parse_group_by(raw: str | list[str] | None) -> list[str]:
+    """Normalize ``model,service_tier`` / list into validated dim names."""
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+    else:
+        parts = [str(p).strip() for p in raw if str(p).strip()]
+    unknown = [p for p in parts if p not in _GROUP_BY_COLUMNS]
+    if unknown:
+        raise ValueError(
+            "group_by dims must be in "
+            + ", ".join(GROUP_BY_DIMS)
+            + f"; unknown: {', '.join(unknown)}"
+        )
+    # Preserve order, drop dupes.
+    seen: set[str] = set()
+    out: list[str] = []
+    for part in parts:
+        if part not in seen:
+            seen.add(part)
+            out.append(part)
+    return out
+
+
+def _bucket_expr(bucket: str | None, *, dialect: str = "sqlite") -> str | None:
+    if not bucket:
+        return None
+    key = bucket.strip().lower()
+    if key == "day":
+        return "substr(ts, 1, 10)"
+    if key == "month":
+        return "substr(ts, 1, 7)"
+    raise ValueError("bucket must be day or month")
 
 
 def annotate_model_group(
@@ -337,6 +404,8 @@ class SpendLedger:
             conn.execute(_SPEND_PROVIDER_MIGRATE)
         if columns and "usage_speed" not in columns:
             conn.execute(_SPEND_USAGE_SPEED_MIGRATE)
+        if columns and "service_tier" not in columns:
+            conn.execute(_SPEND_SERVICE_TIER_MIGRATE)
         if columns:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_spend_requests_user ON spend_requests (user_id)"
@@ -369,6 +438,7 @@ class SpendLedger:
         cost_avoided_usd: float = 0.0,
         cache_hit: bool = False,
         usage_speed: str = "",
+        service_tier: str = "",
     ) -> None:
         if not self.enabled:
             return
@@ -379,8 +449,8 @@ class SpendLedger:
                     INSERT INTO spend_requests (
                         ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,
                         input_tokens, output_tokens, cached_tokens, cache_write_tokens,
-                        cost_usd, cost_avoided_usd, cache_hit, usage_speed
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         ts or _now_iso(),
@@ -400,6 +470,7 @@ class SpendLedger:
                         float(cost_avoided_usd),
                         1 if cache_hit else 0,
                         usage_speed or "",
+                        service_tier or "",
                     ),
                 )
         except Exception:
@@ -462,6 +533,7 @@ class SpendLedger:
             cost_avoided_usd=avoided,
             cache_hit=bool(kwargs.get("cache_hit")),
             usage_speed=str(getattr(bound, "usage_speed", None) or ""),
+            service_tier=str(getattr(bound, "service_tier", None) or ""),
         )
 
     def count_rows(
@@ -527,7 +599,7 @@ class SpendLedger:
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,"
             " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
-            " cost_usd, cost_avoided_usd, cache_hit, usage_speed"
+            " cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
         )
         if limit is not None:
@@ -544,6 +616,89 @@ class SpendLedger:
                         yield _tuple_to_row(values)
         except Exception:
             return
+
+    def grouped_report(
+        self,
+        *,
+        since: str,
+        group_by: list[str] | str,
+        bucket: str | None = None,
+        until: str | None = None,
+        team_id: str | None = None,
+        key_id: str | None = None,
+        user_id: str | None = None,
+        tier: str | None = None,
+        model: str | None = None,
+        usage_speed: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Multi-dimension spend rollup with optional day/month UTC buckets (#1931)."""
+        if not self.enabled:
+            return []
+        dims = parse_group_by(group_by)
+        if not dims:
+            raise ValueError("group_by requires at least one dimension")
+        bucket_sql = _bucket_expr(bucket)
+        ph = "%s" if hasattr(self, "dsn") else "?"
+        where, params = _where(
+            since,
+            key_id,
+            team_id,
+            ph,
+            tier=tier,
+            user_id=user_id,
+            model=model,
+            usage_speed=usage_speed,
+            until=until,
+        )
+        select_cols: list[str] = []
+        group_cols: list[str] = []
+        out_keys: list[str] = []
+        if bucket_sql:
+            select_cols.append(f"{bucket_sql} AS bucket")
+            group_cols.append(bucket_sql)
+            out_keys.append("bucket")
+        for dim in dims:
+            col = _GROUP_BY_COLUMNS[dim]
+            select_cols.append(col)
+            group_cols.append(col)
+            out_keys.append(dim)
+        select_cols.extend(
+            [
+                "COUNT(*) AS requests",
+                "SUM(input_tokens) AS input_tokens",
+                "SUM(output_tokens) AS output_tokens",
+                "SUM(cost_usd) AS cost_usd",
+                "SUM(cost_avoided_usd) AS cost_avoided_usd",
+            ]
+        )
+        sql = (
+            f"SELECT {', '.join(select_cols)} FROM spend_requests WHERE {where}"
+            f" GROUP BY {', '.join(group_cols)}"
+            " ORDER BY SUM(cost_usd) DESC"
+        )
+        try:
+            with self._lock, self._connect() as conn:
+                if hasattr(self, "dsn"):
+                    with conn.cursor() as cur:
+                        cur.execute(sql, params)
+                        rows = cur.fetchall()
+                else:
+                    rows = conn.execute(sql, params).fetchall()
+        except Exception:
+            return []
+        results: list[dict[str, Any]] = []
+        for values in rows:
+            entry: dict[str, Any] = {}
+            for idx, key in enumerate(out_keys):
+                entry[key] = values[idx] or ""
+            base = len(out_keys)
+            entry["requests"] = int(values[base] or 0)
+            entry["input_tokens"] = int(values[base + 1] or 0)
+            entry["output_tokens"] = int(values[base + 2] or 0)
+            entry["cost_usd"] = float(values[base + 3] or 0.0)
+            entry["cost_avoided_usd"] = float(values[base + 4] or 0.0)
+            results.append(entry)
+        return results
 
     def by_user(
         self,
@@ -700,6 +855,7 @@ class PostgresSpendLedger(SpendLedger):
                     cur.execute(_PG_SPEND_USER_ID_MIGRATE)
                     cur.execute(_PG_SPEND_PROVIDER_MIGRATE)
                     cur.execute(_PG_SPEND_USAGE_SPEED_MIGRATE)
+                    cur.execute(_PG_SPEND_SERVICE_TIER_MIGRATE)
                     cur.execute(
                         "CREATE INDEX IF NOT EXISTS idx_spend_requests_user "
                         "ON spend_requests (user_id)"
@@ -737,6 +893,7 @@ class PostgresSpendLedger(SpendLedger):
         cost_avoided_usd: float = 0.0,
         cache_hit: bool = False,
         usage_speed: str = "",
+        service_tier: str = "",
     ) -> None:
         if not self.enabled:
             return
@@ -748,8 +905,8 @@ class PostgresSpendLedger(SpendLedger):
                         INSERT INTO spend_requests (
                             ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,
                             input_tokens, output_tokens, cached_tokens, cache_write_tokens,
-                            cost_usd, cost_avoided_usd, cache_hit, usage_speed
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             ts or _now_iso(),
@@ -769,6 +926,7 @@ class PostgresSpendLedger(SpendLedger):
                             float(cost_avoided_usd),
                             1 if cache_hit else 0,
                             usage_speed or "",
+                            service_tier or "",
                         ),
                     )
                 conn.commit()
@@ -840,7 +998,7 @@ class PostgresSpendLedger(SpendLedger):
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,"
             " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
-            " cost_usd, cost_avoided_usd, cache_hit, usage_speed"
+            " cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
         )
         if limit is not None:

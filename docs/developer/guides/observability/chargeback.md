@@ -28,6 +28,7 @@ daari spend export --since 7d --format jsonl --tier embed --team platform
 daari spend export --since 7d --format csv --model '%:cloud'
 daari spend export --since 7d --format jsonl --model '%:cloud' --usage-speed fast
 daari spend report --since 30d --team platform --by-user
+daari spend report --since 7d --group-by model,service_tier --bucket day --format json
 ```
 
 HTTP (analyst-gated, same filters; team-scoped when claims pin a team):
@@ -53,6 +54,20 @@ Each row has: timestamp, request id, key id, team id, client id, **user id** (Op
 provider id (the `provider` column written by MCP metering, e.g. `mcp:weather`).
 Chat rows without a provider fall back to `model`. Pass exactly one of
 `--by-user` or `--by-tool`.
+
+For Anthropic-parity dimension reports, use `--group-by` with one or more of
+`model,team,key,user,tier,usage_speed,service_tier` and optional `--bucket day|month`
+(UTC). Example matching Admin API usage-by-dimension:
+
+```bash
+daari spend report --since 7d --group-by model,service_tier --bucket day --format csv
+curl -H "Authorization: Bearer $TOKEN" \
+  "$BASE/v1/daari/spend/report?since=7d&group_by=model,service_tier&bucket=day"
+```
+
+Each group row includes `requests`, `input_tokens`, `output_tokens`, `cost_usd`, and
+`cost_avoided_usd`. The ledger persists `service_tier` per request so served-tier
+chargeback survives export.
 
 `cost_avoided_usd` uses `pricing.models` for the model the client asked for. Models missing from that table use `usage.frontier_price_per_1k_tokens`. Frontier (`L6`) rows keep the real cost and record $0 avoided. A successful transcription exports as `tier` `asr` (local) or `L6` (frontier fallback). A successful translation exports as `tier` `translation` (local) or `L6` (frontier fallback). Speech synthesis exports as `tier` `tts`. Embedding calls export as `tier` `embed` with the caller's key and team. An unknown embedding model returns 400 and writes no row. Allowlist 403 and unconfigured transcription/translation/speech 501 write no row.
 

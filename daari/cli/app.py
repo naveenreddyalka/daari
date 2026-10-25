@@ -2110,6 +2110,9 @@ def spend_report(
     since: str = typer.Option(
         ..., "--since", help="ISO-8601 timestamp or relative window (7d, 12h)."
     ),
+    until: str | None = typer.Option(
+        None, "--until", help="Exclusive end bound (ISO-8601 or relative)."
+    ),
     team: str | None = typer.Option(None, "--team", help="Exact team id."),
     key: str | None = typer.Option(None, "--key", help="Exact virtual-key id."),
     by_user: bool = typer.Option(False, "--by-user", help="Roll spend up per end-user / user_id."),
@@ -2118,24 +2121,107 @@ def spend_report(
         "--by-tool",
         help="Roll spend up per MCP tool / provider id (falls back to model).",
     ),
+    group_by: str | None = typer.Option(
+        None,
+        "--group-by",
+        help=(
+            "Comma-separated dims: model,team,key,user,tier,usage_speed,service_tier "
+            "(#1931)."
+        ),
+    ),
+    bucket: str | None = typer.Option(
+        None, "--bucket", help="UTC time bucket: day or month (with --group-by)."
+    ),
+    format: str = typer.Option(
+        "table", "--format", help="table (default), csv, or json (with --group-by)."
+    ),
 ) -> None:
-    """Member or tool×spend rollup for chargeback (#1132, #1217)."""
-    from daari.enterprise.audit import parse_since
-    from daari.observability.spend import spend_ledger_from_settings
+    """Member, tool, or multi-dimension spend rollup for chargeback (#1132, #1217, #1931)."""
+    import csv
+    import io
+    import json
 
-    if by_user == by_tool:
-        typer.echo("Pass exactly one of --by-user or --by-tool.", err=True)
+    from daari.enterprise.audit import parse_since
+    from daari.observability.spend import parse_group_by, spend_ledger_from_settings
+
+    grouped = bool((group_by or "").strip())
+    if grouped and (by_user or by_tool):
+        typer.echo("Pass --group-by alone, or exactly one of --by-user / --by-tool.", err=True)
+        raise typer.Exit(code=1)
+    if not grouped and by_user == by_tool:
+        typer.echo(
+            "Pass --group-by <dims>, or exactly one of --by-user or --by-tool.",
+            err=True,
+        )
         raise typer.Exit(code=1)
     try:
         cutoff = parse_since(since)
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
+    until_cut: str | None = None
+    if until is not None and str(until).strip():
+        try:
+            until_cut = parse_since(str(until).strip())
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
     settings = get_settings()
     ledger = spend_ledger_from_settings(settings)
     if not ledger.enabled:
         typer.echo("Spend log is disabled (settings: usage.spend.enabled).", err=True)
         raise typer.Exit(code=1)
+    if grouped:
+        try:
+            dims = parse_group_by(group_by)
+            entries = ledger.grouped_report(
+                since=cutoff,
+                until=until_cut,
+                group_by=dims,
+                bucket=bucket,
+                team_id=team,
+                key_id=key,
+            )
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        if not entries:
+            typer.echo("No spend rows matched.")
+            return
+        fmt = (format or "table").strip().lower()
+        if fmt == "json":
+            typer.echo(json.dumps(entries, separators=(",", ":"), sort_keys=True))
+            return
+        if fmt == "csv":
+            fields = (
+                (["bucket"] if bucket else [])
+                + list(dims)
+                + ["requests", "input_tokens", "output_tokens", "cost_usd", "cost_avoided_usd"]
+            )
+            buffer = io.StringIO()
+            writer = csv.DictWriter(buffer, fieldnames=fields, lineterminator="\n")
+            writer.writeheader()
+            for entry in entries:
+                writer.writerow({k: entry.get(k, "") for k in fields})
+            typer.echo(buffer.getvalue().rstrip("\n"))
+            return
+        if fmt != "table":
+            typer.echo("format must be table, csv, or json.", err=True)
+            raise typer.Exit(code=1)
+        headers = (["bucket"] if bucket else []) + list(dims) + ["requests", "tokens", "cost $"]
+        typer.echo(" ".join(f"{h:>12}" for h in headers))
+        for entry in entries:
+            tokens = int(entry.get("input_tokens") or 0) + int(entry.get("output_tokens") or 0)
+            cells = []
+            if bucket:
+                cells.append(str(entry.get("bucket") or ""))
+            for dim in dims:
+                cells.append(str(entry.get(dim) or "(none)"))
+            cells.append(str(entry["requests"]))
+            cells.append(str(tokens))
+            cells.append(f"{float(entry['cost_usd']):.4f}")
+            typer.echo(" ".join(f"{c:>12}" for c in cells))
+        return
     if by_tool:
         entries = ledger.by_tool(since=cutoff, team_id=team, key_id=key)
         if not entries:
