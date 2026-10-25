@@ -19,6 +19,11 @@ _FAMILY_KEYS = {
         "previous": "key_expiry_webhook_secret_previous",
         "rotated_at": "key_expiry_webhook_secret_rotated_at",
     },
+    "responses": {
+        "current": "responses_completion_webhook_secret",
+        "previous": "responses_completion_webhook_secret_previous",
+        "rotated_at": "responses_completion_webhook_secret_rotated_at",
+    },
 }
 
 

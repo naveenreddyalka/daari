@@ -217,6 +217,7 @@ class Metrics:
     backends: dict[str, int] = field(default_factory=dict)
     tier_shadow: dict[str, int] = field(default_factory=dict)
     budget_alerts: dict[str, int] = field(default_factory=dict)
+    responses_webhooks: dict[str, int] = field(default_factory=dict)
     soft_warnings: dict[str, int] = field(default_factory=dict)
     rejects: dict[str, int] = field(default_factory=dict)
     ttft_preferences: dict[str, int] = field(default_factory=dict)
@@ -329,6 +330,12 @@ class Metrics:
         key = f"{scope}:{threshold:g}"
         with self._lock:
             self.budget_alerts[key] = self.budget_alerts.get(key, 0) + 1
+
+    def record_responses_webhook(self, result: str) -> None:
+        """Responses completion webhook delivery outcome (#1913)."""
+        label = (result or "").strip().lower() or "error"
+        with self._lock:
+            self.responses_webhooks[label] = self.responses_webhooks.get(label, 0) + 1
 
     def record_soft_warning(self, kind: str) -> None:
         """Soft band before hard 402/429 (request_quota or rate_limit, #526)."""
@@ -509,6 +516,7 @@ class Metrics:
                 "backends": dict(self.backends),
                 "tier_shadow": dict(self.tier_shadow),
                 "budget_alerts": dict(self.budget_alerts),
+                "responses_webhooks": dict(self.responses_webhooks),
                 "soft_warnings": dict(self.soft_warnings),
                 "rejects": dict(self.rejects),
                 "ttft_preferences": dict(self.ttft_preferences),

@@ -45,7 +45,7 @@ from daari.gateway.disconnect import (
     note_request_cancelled,
 )
 from daari.gateway.streaming import SSE_KEEPALIVE_FRAME, stream_with_keepalive
-from daari.observability.responses_webhooks import deliver_responses_completion_webhook
+from daari.observability.responses_webhooks import schedule_responses_completion_webhook
 from daari.observability.tokens import estimate_tokens
 from daari.router.capabilities import UnsupportedCapability
 from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
@@ -409,15 +409,27 @@ _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
 
 def _notify_responses_completion(ctx: Any, body: dict[str, Any]) -> None:
-    """Best-effort signed completion webhook; never raises (#1892)."""
+    """Best-effort signed completion webhook off the event loop (#1892, #1913)."""
     alerts = getattr(getattr(ctx, "settings", None), "alerts", None)
     if alerts is None:
         return
+    settings = getattr(ctx, "settings", None)
+    cache = getattr(settings, "cache", None) if settings is not None else None
+    redis_url = ""
+    if cache is not None and str(getattr(cache, "backend", "") or "") == "redis":
+        redis_url = str(getattr(cache, "redis_url", "") or "")
+    metrics = getattr(ctx, "metrics", None)
     try:
-        deliver_responses_completion_webhook(
+        schedule_responses_completion_webhook(
             url=getattr(alerts, "responses_completion_webhook_url", "") or "",
             secret=getattr(alerts, "responses_completion_webhook_secret", "") or "",
+            previous_secret=getattr(
+                alerts, "responses_completion_webhook_secret_previous", ""
+            )
+            or "",
             body=body,
+            redis_url=redis_url,
+            metrics=metrics,
         )
     except Exception as exc:  # noqa: BLE001 — finalizer must not crash
         log_gateway_event(

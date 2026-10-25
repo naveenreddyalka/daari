@@ -489,6 +489,18 @@ def render_prometheus(
                 f"daari_budget_alerts_total{_labels(scope=scope, threshold=threshold)} {int(count)}"
             )
 
+    responses_webhooks = snap.get("responses_webhooks") or {}
+    if responses_webhooks:
+        lines.append(
+            "# HELP daari_responses_webhooks_total Background Responses completion "
+            "webhook deliveries, by result (ok, error, skipped, deduped)."
+        )
+        lines.append("# TYPE daari_responses_webhooks_total counter")
+        for result, count in sorted(responses_webhooks.items()):
+            lines.append(
+                f"daari_responses_webhooks_total{_labels(result=result)} {int(count)}"
+            )
+
     soft_warnings = snap.get("soft_warnings") or {}
     if soft_warnings:
         lines.append(

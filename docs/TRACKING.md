@@ -7972,6 +7972,15 @@ gateway middleware enforces per attributed OpenAI `user` on chat + decisions
 (429, `X-RateLimit-Scope: user`); doctor lists keys with end-user RPD; key/team
 unbounded-rpd tip unchanged. Covered by `tests/unit/test_user_rpd.py`.
 
+### Harden Responses completion webhook delivery ([#1913](https://github.com/naveenreddyalka/daari/issues/1913))
+
+<!-- tracking:#1913 -->
+**Status:** Done (2026-10-25). Completion webhooks run off the event loop with
+one retry on 5xx/transport, Redis SET NX fleet claim, Prometheus
+`daari_responses_webhooks_total{result=...}`, and `rotate-secret responses`
+(+ doctor stale-previous). Covered by
+`tests/unit/test_responses_completion_webhook.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -2398,6 +2398,22 @@ class AlertSettings(BaseModel):
             "(X-Daari-Signature). Supports secret:// refs (#1892)."
         ),
     )
+    responses_completion_webhook_secret_previous: str = Field(
+        default="",
+        description=(
+            "Previous Responses completion webhook HMAC secret during "
+            "rotation grace (#1913). Signing uses "
+            "responses_completion_webhook_secret; receivers verify against "
+            "either. Set via `daari alerts rotate-secret responses`."
+        ),
+    )
+    responses_completion_webhook_secret_rotated_at: str = Field(
+        default="",
+        description=(
+            "ISO-8601 timestamp when responses_completion_webhook_secret_previous "
+            "was last set by rotation (#1913)."
+        ),
+    )
 
     @field_validator("budget_thresholds")
     @classmethod
