@@ -2408,6 +2408,11 @@ def _check_webhook_secret_previous_stale(settings: Settings) -> CheckResult | No
             getattr(alerts, "key_expiry_webhook_secret_previous", "") or "",
             getattr(alerts, "key_expiry_webhook_secret_rotated_at", "") or "",
         ),
+        (
+            "responses",
+            getattr(alerts, "responses_completion_webhook_secret_previous", "") or "",
+            getattr(alerts, "responses_completion_webhook_secret_rotated_at", "") or "",
+        ),
     ):
         if not str(previous).strip():
             continue

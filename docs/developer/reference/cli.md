@@ -21,7 +21,7 @@ Entry point: `daari` (Typer).
 | `route` | Routing helpers (`preview`) |
 | `audit` | Enterprise audit log (`list` / `export` / `verify`) |
 | `events` | Gateway event log (`list` — `--team`, `--kind`, `--limit`, `--cursor`) |
-| `alerts` | Webhook signing-secret rotation (`rotate-secret`) — dual-secret grace for budget / key-expiry |
+| `alerts` | Webhook signing-secret rotation (`rotate-secret`) — dual-secret grace for budget / key-expiry / responses |
 | `configure` | Interactive config helpers |
 | `config` | Validate `config.yaml` (`validate`) |
 | `prune` | Retention prune (traces / usage / feedback) |
@@ -82,7 +82,7 @@ Encryption env / flags: `DAARI_BACKUP_PASS` (or `--passphrase-env`),
 | `service` | `install`, `status`, `restart`, `uninstall` (user systemd / launchd) |
 | `audit` | `list`, `export`, `verify` |
 | `events` | `list` (`--team`, `--kind`, `--limit`, `--cursor`) |
-| `alerts` | `rotate-secret` (`budget` / `key-expiry`, `--secret`, `--config`) |
+| `alerts` | `rotate-secret` (`budget` / `key-expiry` / `responses`, `--secret`, `--config`) |
 
 ## `keys`
 
