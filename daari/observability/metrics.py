@@ -218,6 +218,7 @@ class Metrics:
     tier_shadow: dict[str, int] = field(default_factory=dict)
     budget_alerts: dict[str, int] = field(default_factory=dict)
     responses_webhooks: dict[str, int] = field(default_factory=dict)
+    org_enforcement_webhooks: dict[str, int] = field(default_factory=dict)
     soft_warnings: dict[str, int] = field(default_factory=dict)
     rejects: dict[str, int] = field(default_factory=dict)
     ttft_preferences: dict[str, int] = field(default_factory=dict)
@@ -336,6 +337,14 @@ class Metrics:
         label = (result or "").strip().lower() or "error"
         with self._lock:
             self.responses_webhooks[label] = self.responses_webhooks.get(label, 0) + 1
+
+    def record_org_enforcement_webhook(self, result: str) -> None:
+        """Anthropic org enforcement webhook ingest outcome (#1914)."""
+        label = (result or "").strip().lower() or "error"
+        with self._lock:
+            self.org_enforcement_webhooks[label] = (
+                self.org_enforcement_webhooks.get(label, 0) + 1
+            )
 
     def record_soft_warning(self, kind: str) -> None:
         """Soft band before hard 402/429 (request_quota or rate_limit, #526)."""
@@ -517,6 +526,7 @@ class Metrics:
                 "tier_shadow": dict(self.tier_shadow),
                 "budget_alerts": dict(self.budget_alerts),
                 "responses_webhooks": dict(self.responses_webhooks),
+                "org_enforcement_webhooks": dict(self.org_enforcement_webhooks),
                 "soft_warnings": dict(self.soft_warnings),
                 "rejects": dict(self.rejects),
                 "ttft_preferences": dict(self.ttft_preferences),
