@@ -177,8 +177,9 @@ class ServerSettings(BaseModel):
         description=(
             "Hard cap on inbound request body size (#933). Oversized requests "
             "return 413 before the body is buffered. 0 disables the cap. "
-            "File/audio upload routes may use a higher floor so "
-            "files.max_total_bytes still applies. Env: DAARI_SERVER__MAX_BODY_BYTES."
+            "File and multipart audio upload routes may use a higher floor so "
+            "files.max_total_bytes still applies; JSON /v1/audio/speech stays "
+            "on this cap (#1916). Env: DAARI_SERVER__MAX_BODY_BYTES."
         ),
     )
     header_policy: HeaderPolicySettings = Field(
@@ -465,6 +466,16 @@ class TtsSettings(BaseModel):
         description=(
             "Optional default voice when the request omits voice "
             "(OpenAI alloy/echo/… or the local server's voice id)."
+        ),
+    )
+    max_input_chars: int = Field(
+        default=4096,
+        ge=1,
+        description=(
+            "Maximum length of POST /v1/audio/speech ``input`` (#1916). "
+            "Oversized text returns 400 invalid_request_error before guardrails "
+            "or upstream TTS. Matches OpenAI's 4096-char speech cap by default. "
+            "Env: DAARI_TTS__MAX_INPUT_CHARS."
         ),
     )
 

@@ -58,6 +58,7 @@ def test_default_tts_settings_are_unset(settings):
     assert settings.tts.base_url == ""
     assert settings.tts.model == ""
     assert settings.tts.voice == ""
+    assert settings.tts.max_input_chars == 4096
     assert resolve_tts_target(settings) is None
 
 
@@ -150,6 +151,30 @@ async def test_tts_empty_input_is_400(settings, monkeypatch):
         )
     assert response.status_code == 400
     assert response.json()["error"]["type"] == "invalid_request_error"
+
+
+@pytest.mark.asyncio
+async def test_tts_input_over_max_chars_is_400(settings, monkeypatch):
+    """input longer than tts.max_input_chars fails fast before upstream (#1916)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("must not call upstream")
+
+    _patch_upstream(monkeypatch, handler)
+    settings.tts.base_url = "http://tts.local/v1"
+    settings.tts.max_input_chars = 32
+    app = _app(settings)
+    oversized = "x" * 33
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/speech",
+            json={"model": "tts-1", "input": oversized, "voice": "alloy"},
+        )
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["type"] == "invalid_request_error"
+    assert "32" in error["message"]
+    assert "max_input_chars" in error["message"] or "4096" not in error["message"]
 
 
 @pytest.mark.asyncio

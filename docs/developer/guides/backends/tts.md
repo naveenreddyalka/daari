@@ -11,6 +11,7 @@ tts:
   base_url: http://127.0.0.1:11434/v1   # Ollama Phonon (0.40.9+); or Kokoro/openedai-speech
   model: ""    # optional; when set, replaces the client model
   voice: ""    # optional default when the request omits voice
+  max_input_chars: 4096   # OpenAI-shaped cap; oversize input → 400 before guardrails/TTS
 ```
 
 **Ollama Phonon (local-first):** as of Ollama **0.40.9**, the same daemon that serves chat tiers exposes streaming `POST /v1/audio/speech`. Ollama **0.40.11+** adds Phonon's Gradium **voice catalog** (`ollama show phonon` / `/api/show` `voices`). Set `tts.base_url` to `{ollama.base_url}/v1` (for example `http://127.0.0.1:11434/v1`) and preferably `tts.model: phonon`. daari does not auto-wire this — `daari doctor` tips when TTS is empty and Ollama reports a speech-capable version.
@@ -23,7 +24,7 @@ Helm fleets can set `tts.baseUrl`. Optional chart values `tts.model` / `tts.voic
 
 ## Request
 
-OpenAI JSON body: `model` (required unless `tts.model` is set), `input` (non-empty text), optional `voice` (falls back to `tts.voice`, then `alloy`), and `response_format` (for example `mp3`). The response is raw audio bytes with a matching `Content-Type`. When the upstream uses chunked transfer (Ollama Phonon), daari **streams** those bytes to the client as they arrive; backends that send a fixed `Content-Length` stay fully buffered.
+OpenAI JSON body: `model` (required unless `tts.model` is set), `input` (non-empty text, at most `tts.max_input_chars`, default **4096**), optional `voice` (falls back to `tts.voice`, then `alloy`), and `response_format` (for example `mp3`). Longer `input` returns **400** `invalid_request_error` naming the limit before guardrails or upstream. The JSON body itself is bounded by `server.max_body_bytes` (speech is carved out of the 100 MB `/v1/audio/` upload floor used by transcriptions). The response is raw audio bytes with a matching `Content-Type`. When the upstream uses chunked transfer (Ollama Phonon), daari **streams** those bytes to the client as they arrive; backends that send a fixed `Content-Length` stay fully buffered.
 
 Auth, virtual-key request budgets, rate limits, model allowlists, and `X-Daari-Deadline-Ms` apply the same way as other gated routes. A key or team model allowlist is checked against the resolved model before any upstream call. Leave `base_url` empty and the route returns **501** without calling a cloud TTS API.
 
