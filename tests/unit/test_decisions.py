@@ -422,7 +422,50 @@ async def test_unknown_decisions_model_returns_400(settings, monkeypatch):
 
     assert response.status_code == 400
     assert response.json()["error"]["type"] == "invalid_request"
-    assert "gpt-4o" in response.json()["error"]["message"]
+    msg = response.json()["error"]["message"]
+    assert "gpt-4o" in msg
+    # Live catalog, not a hard-coded subset (#1917).
+    assert "d3" in msg
+    assert "drex-1.5" in msg
+    assert "microsoft-decision-1" in msg
+    assert "clef-flash" in msg
+
+
+@pytest.mark.asyncio
+async def test_gpt_6_luna_decisions_honors_reported_usage_cost(settings, monkeypatch):
+    """Provider usage.cost wins over pricing-card re-derivation (#1917)."""
+    billed = {
+        **_OPENAI_OK,
+        "usage": {
+            "input_tokens": 1_000_000,
+            "output_tokens": 1_000_000,
+            "cost": 1.23,
+            "prompt_tokens_details": {"cached_tokens": 100_000},
+            "cache_creation_input_tokens": 50_000,
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=billed)
+
+    _patch_frontier(monkeypatch, handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            keys=["sk-test"],
+        )
+    ]
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json={**_BODY, "model": "gpt-6-luna"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["daari_meta"]["cost_usd"] == pytest.approx(1.23)
+    assert float(response.headers["x-daari-response-cost"]) == pytest.approx(1.23)
 
 
 @pytest.mark.asyncio

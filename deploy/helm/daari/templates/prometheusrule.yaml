@@ -138,6 +138,28 @@ spec:
             description: "sum(rate(daari_soft_warnings_total{kind=\"anthropic_sampling_stripped\"})) exceeds {{ ($pr.anthropicSamplingStripped).rateThreshold | default 0 }} — clients sending dead sampling parameters."
             runbook_url: {{ ($pr.anthropicSamplingStripped).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
         {{- end }}
+        {{- if ($pr.anthropicDocumentStripped).enabled | default true }}
+        - alert: DaariAnthropicDocumentStripped
+          expr: sum(rate(daari_soft_warnings_total{kind="anthropic_document_stripped"}[{{ ($pr.anthropicDocumentStripped).window | default "5m" }}])) > {{ ($pr.anthropicDocumentStripped).rateThreshold | default 0 }}
+          for: {{ ($pr.anthropicDocumentStripped).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.anthropicDocumentStripped).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari Anthropic document blocks being stripped"
+            description: "sum(rate(daari_soft_warnings_total{kind=\"anthropic_document_stripped\"})) exceeds {{ ($pr.anthropicDocumentStripped).rateThreshold | default 0 }} — assistant document blocks dropped under anthropic-version 2026-10-21."
+            runbook_url: {{ ($pr.anthropicDocumentStripped).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
+        {{- if ($pr.anthropicCitationsStripped).enabled | default true }}
+        - alert: DaariAnthropicCitationsStripped
+          expr: sum(rate(daari_soft_warnings_total{kind="anthropic_citations_stripped"}[{{ ($pr.anthropicCitationsStripped).window | default "5m" }}])) > {{ ($pr.anthropicCitationsStripped).rateThreshold | default 0 }}
+          for: {{ ($pr.anthropicCitationsStripped).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.anthropicCitationsStripped).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari Anthropic citations being stripped"
+            description: "sum(rate(daari_soft_warnings_total{kind=\"anthropic_citations_stripped\"})) exceeds {{ ($pr.anthropicCitationsStripped).rateThreshold | default 0 }} — citation metadata dropped under anthropic-version 2026-10-21."
+            runbook_url: {{ ($pr.anthropicCitationsStripped).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
         {{- if ($pr.anthropicEnforcedProfiles).enabled | default true }}
         - alert: DaariAnthropicEnforcedProfiles
           expr: daari_anthropic_enforced_profiles > {{ ($pr.anthropicEnforcedProfiles).threshold | default 0 }}

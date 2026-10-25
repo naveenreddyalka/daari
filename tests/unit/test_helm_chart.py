@@ -447,9 +447,13 @@ class TestHelmPrometheusRules:
         assert "DaariSystemoneBreakerSpike" in alert_names
         assert "DaariServiceTierDegraded" in alert_names
         assert "DaariAnthropicSamplingStripped" in alert_names
+        assert "DaariAnthropicDocumentStripped" in alert_names
+        assert "DaariAnthropicCitationsStripped" in alert_names
         assert "DaariAnthropicEnforcedProfiles" in alert_names
         assert "service_tier_degraded" in all_expr
         assert "anthropic_sampling_stripped" in all_expr
+        assert "anthropic_document_stripped" in all_expr
+        assert "anthropic_citations_stripped" in all_expr
         for group in groups:
             for alert in group.get("rules") or []:
                 if "alert" not in alert:

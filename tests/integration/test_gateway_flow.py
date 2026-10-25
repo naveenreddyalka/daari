@@ -2770,17 +2770,19 @@ async def test_anthropic_2026_10_21_strips_documents_and_citations_on_l6(
             frontier_mod.to_anthropic_payload = prev
         frontier_bodies.append(body)
         soft_kinds.extend(k for k, v in metrics.soft_warnings.items() if v)
+        meta = DaariMeta(
+            tier="L6",
+            executor="frontier",
+            provider_id="anthropic",
+            latency_ms=20,
+            escalated_from=escalated_from,
+            confidence=local_confidence,
+        )
+        stub._apply_param_compat_meta(meta)
         return InternalResponse(
             content="Frontier answer with enough detail for the user.",
             model="claude-sonnet-4-0",
-            daari_meta=DaariMeta(
-                tier="L6",
-                executor="frontier",
-                provider_id="anthropic",
-                latency_ms=20,
-                escalated_from=escalated_from,
-                confidence=local_confidence,
-            ),
+            daari_meta=meta,
         )
 
     for tier in ("ollama_l3", "ollama_l4", "ollama_l5"):
@@ -2827,6 +2829,9 @@ async def test_anthropic_2026_10_21_strips_documents_and_citations_on_l6(
     assert "citations" in kept["messages"][1]["content"][0]
     assert "anthropic_document_stripped" in soft_kinds
     assert "anthropic_citations_stripped" in soft_kinds
+    warning = (new_ver.json().get("daari_meta") or {}).get("warning") or ""
+    assert "anthropic_document_stripped" in warning
+    assert "anthropic_citations_stripped" in warning
 
 
 @pytest.mark.asyncio

@@ -621,6 +621,44 @@ def test_grafana_dashboard_includes_anthropic_sampling_stripped_panel():
     assert any("rate(" in expr for expr in exprs)
 
 
+def test_grafana_dashboard_includes_anthropic_document_stripped_panel():
+    """Anthropic document-strip soft-warnings should chart (#1917)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "document" in p.get("title", "").lower()
+            and "stripped" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected an anthropic_document_stripped panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_soft_warnings_total" in expr for expr in exprs)
+    assert any("anthropic_document_stripped" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_anthropic_citations_stripped_panel():
+    """Anthropic citations-strip soft-warnings should chart (#1917)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "citation" in p.get("title", "").lower()
+            and "stripped" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected an anthropic_citations_stripped panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_soft_warnings_total" in expr for expr in exprs)
+    assert any("anthropic_citations_stripped" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+
 def test_grafana_dashboard_includes_anthropic_enforced_profiles_panel():
     """Anthropic enforced-profiles gauge should chart (#1889)."""
     payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))

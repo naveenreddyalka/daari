@@ -1423,18 +1423,22 @@ async def _handle_frontier(
         fallback = float(getattr(usage_settings, "frontier_price_per_1k_tokens", 0.002) or 0.002)
         from daari.gateway.provider_prefs import usage_cost_and_cache
 
-        _reported, cached_tokens, cache_write_tokens = usage_cost_and_cache(data)
-        spent = cost_usd(
-            resolved_model,
-            input_tokens,
-            max(0, output_tokens),
-            pricing,
-            fallback_per_1k=fallback,
-            cached_input_tokens=int(cached_tokens or 0),
-            cache_write_tokens=int(cache_write_tokens or 0),
-            billing_path="decisions",
-            region_pin=region_pin_from_request(request),
-        )
+        reported, cached_tokens, cache_write_tokens = usage_cost_and_cache(data)
+        # Honor provider usage.cost when present (chat L6 parity, #1917).
+        if reported is not None:
+            spent = float(reported)
+        else:
+            spent = cost_usd(
+                resolved_model,
+                input_tokens,
+                max(0, output_tokens),
+                pricing,
+                fallback_per_1k=fallback,
+                cached_input_tokens=int(cached_tokens or 0),
+                cache_write_tokens=int(cache_write_tokens or 0),
+                billing_path="decisions",
+                region_pin=region_pin_from_request(request),
+            )
         caller = _caller_client_id(request)
         _bind_spend_context(
             request, ctx, model=resolved_model, client_id=caller, user_id=body.user
@@ -1537,11 +1541,12 @@ async def _dispatch_decisions(request: Request, body: DecisionsRequest) -> Any:
 
     canonical = normalize_decisions_model(requested, settings=settings)
     if canonical is None:
+        catalog = ", ".join(sorted(local_decisions_models(settings)))
         return _error(
             400,
             "invalid_request",
             f"Unknown decisions model '{requested}'. "
-            "Use a local decision model (clef, clef-flash, nimble, tev1) "
+            f"Use a local decision model ({catalog}) "
             "or a gpt-6-luna Decisions alias.",
         )
     if is_frontier_decisions_model(canonical):

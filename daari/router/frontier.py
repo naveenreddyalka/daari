@@ -398,10 +398,12 @@ class FrontierExecutor:
                 },
             )
         if content_kinds:
-            # Same Prom/soft_warning path as sampling for document/citations (#1891).
+            # Same Prom/soft_warning + client-visible warning path as sampling (#1891/#1917).
             from daari.gateway.request_log import log_gateway_event
 
             for kind in content_kinds:
+                if kind not in compat.warnings:
+                    compat.warnings.append(kind)
                 if self.metrics is not None and hasattr(self.metrics, "record_soft_warning"):
                     self.metrics.record_soft_warning(kind)
                 log_gateway_event(

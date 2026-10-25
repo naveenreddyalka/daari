@@ -206,6 +206,10 @@ def test_content_strip_records_soft_warnings_and_prometheus(monkeypatch):
     text = render_prometheus(metrics)
     assert 'daari_soft_warnings_total{kind="anthropic_document_stripped"} 1' in text
     assert 'daari_soft_warnings_total{kind="anthropic_citations_stripped"} 1' in text
+    compat = executor.last_param_compat
+    assert compat is not None
+    assert "anthropic_document_stripped" in compat.warnings
+    assert "anthropic_citations_stripped" in compat.warnings
 
 
 def test_content_strip_soft_warning_absent_when_clean_or_legacy(monkeypatch):
