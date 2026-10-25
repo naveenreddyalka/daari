@@ -8019,6 +8019,16 @@ unknown-model 400 lists the live local catalog. Covered by
 `tests/unit/test_anthropic_content_strip.py`, `tests/unit/test_decisions.py`,
 `tests/integration/test_gateway_flow.py`.
 
+### Gateway-flow coverage for the 10-24/25 wave ([#1930](https://github.com/naveenreddyalka/daari/issues/1930))
+
+<!-- tracking:#1930 -->
+**Status:** Done (2026-10-25). Hermetic integration coverage for streamed TTS
+spend, Responses completion webhooks, org enforcement ingest, Decisions
+`input_json`+image L0, Anthropic stream `cache_creation_input_tokens` spend,
+`user_rpd` isolation, fleet-shared breakers, and `/ready` `schema_ok`. Covered
+by `tests/integration/test_wave_gateway_coverage.py`,
+`tests/integration/test_ready_probe.py`, `tests/unit/test_speech.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

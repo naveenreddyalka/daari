@@ -2,13 +2,27 @@
 
 from __future__ import annotations
 
+import sqlite3
+from pathlib import Path
+
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from daari.gateway.openai import check_model_backend
+from daari.ops.backup import STORE_SCHEMA_VERSIONS
 from daari.router.router import AppContext
 from daari.server.app import create_app
+
+
+def _stamp(path: Path, version: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute(f"PRAGMA user_version = {int(version)}")
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _app(settings):
@@ -98,6 +112,42 @@ async def test_ready_redis_degraded_when_redis_down(settings, tmp_path, monkeypa
     assert body["checks"]["redis"] == "ConnectionError"
     assert body["checks"]["cache"] == "ok"
     assert body["checks"]["model_backend"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_ready_not_ready_when_schema_ok_false(settings, monkeypatch):
+    """SQLite schema lag → schema_ok false and 503 not_ready (#1930 / #1727)."""
+    monkeypatch.setitem(STORE_SCHEMA_VERSIONS, "ledger", 2)
+    _stamp(Path(settings.usage.path), 1)
+
+    async def backend_ok(probe_url: str, timeout: float = 2.0) -> str:
+        return "ok"
+
+    monkeypatch.setattr("daari.gateway.openai.check_model_backend", backend_ok)
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/ready")
+    body = response.json()
+    assert body["schema_ok"] is False
+    assert response.status_code == 503
+    assert body["status"] == "not_ready"
+
+
+@pytest.mark.asyncio
+async def test_ready_schema_ok_true_when_stores_match(settings, monkeypatch):
+    _stamp(Path(settings.usage.path), STORE_SCHEMA_VERSIONS["ledger"])
+
+    async def backend_ok(probe_url: str, timeout: float = 2.0) -> str:
+        return "ok"
+
+    monkeypatch.setattr("daari.gateway.openai.check_model_backend", backend_ok)
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/ready")
+    body = response.json()
+    assert body["schema_ok"] is True
+    assert response.status_code == 200
+    assert body["status"] == "ready"
 
 
 class TestCheckModelBackend:
