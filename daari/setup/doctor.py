@@ -127,6 +127,7 @@ def run_doctor(
     results.append(_check_scoped_cache_fleet(cfg))
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
+    results.append(_check_user_rpd(cfg))
     results.append(_check_key_expiry(cfg))
     results.append(_check_anthropic_enforcement(cfg))
     results.append(_check_key_lockout(cfg))
@@ -1892,6 +1893,43 @@ def _check_unbounded_rpd(settings: Settings) -> CheckResult:
         name="rpd",
         ok=False,
         detail=f"rpm set and rpd unlimited (0) on {shown}{extra}",
+        optional=True,
+    )
+
+
+def _user_rpd_key_names(settings: Settings) -> list[str]:
+    """Keys with per-end-user RPD set (does not replace key/team rpd) (#1911)."""
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return []
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception:
+        return []
+    names: list[str] = []
+    for key in store.list():
+        if int(getattr(key, "user_rpd", 0) or 0) > 0:
+            names.append(f"{key.name}={int(key.user_rpd)}")
+    return names
+
+
+def _check_user_rpd(settings: Settings) -> CheckResult:
+    """Surface keys that fence attributed end-users with user_rpd (#1911)."""
+    names = _user_rpd_key_names(settings)
+    if not names:
+        return CheckResult(
+            name="user_rpd",
+            ok=True,
+            detail="no keys set end-user RPD (user_rpd)",
+            optional=True,
+        )
+    shown = ", ".join(names[:8])
+    extra = f" (+{len(names) - 8} more)" if len(names) > 8 else ""
+    return CheckResult(
+        name="user_rpd",
+        ok=True,
+        detail=f"end-user RPD set on {shown}{extra}",
         optional=True,
     )
 

@@ -267,6 +267,7 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     budget_windows_json TEXT NOT NULL DEFAULT '[]',
     metadata_json TEXT NOT NULL DEFAULT '{}',
     user_daily_usd_cap REAL NOT NULL DEFAULT 0,
+    user_rpd INTEGER NOT NULL DEFAULT 0,
     allowed_models_json TEXT,
     model_groups_json TEXT,
     cache_scope TEXT NOT NULL DEFAULT 'global',
@@ -354,6 +355,8 @@ class VirtualKey:
     previous_expires_at: str | None = None
     # Per end-user daily L6 cap on this shared key (0 = unlimited) (#410).
     user_daily_usd_cap: float = 0.0
+    # Per end-user requests per UTC day on this shared key (0 = unlimited) (#1911).
+    user_rpd: int = 0
     # L6 residency pin (#466). Empty/None = unrestricted.
     region_pin: str | None = None
     # Model allowlist (#708). None = unrestricted; empty = deny all.
@@ -487,6 +490,10 @@ class VirtualKeyStore:
         if "user_daily_usd_cap" not in cols:
             conn.execute(
                 "ALTER TABLE virtual_keys ADD COLUMN user_daily_usd_cap REAL NOT NULL DEFAULT 0"
+            )
+        if "user_rpd" not in cols:
+            conn.execute(
+                "ALTER TABLE virtual_keys ADD COLUMN user_rpd INTEGER NOT NULL DEFAULT 0"
             )
         if "region_pin" not in cols:
             conn.execute("ALTER TABLE virtual_keys ADD COLUMN region_pin TEXT")
@@ -899,6 +906,7 @@ class VirtualKeyStore:
         metadata: dict[str, Any] | None = None,
         expires_at: str | None = None,
         user_daily_usd_cap: float = 0.0,
+        user_rpd: int = 0,
         region_pin: str | None = None,
         allowed_models: list[str] | tuple[str, ...] | None = None,
         model_groups: list[str] | tuple[str, ...] | None = None,
@@ -952,8 +960,8 @@ class VirtualKeyStore:
                 " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                 " team_id, budget_windows_json, metadata_json, expires_at, user_daily_usd_cap,"
                 " region_pin, allowed_models_json, model_groups_json, rpd, cache_scope,"
-                " priority)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " priority, user_rpd)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     self._hash(plaintext),
                     key_id,
@@ -977,6 +985,7 @@ class VirtualKeyStore:
                     max(0, int(rpd)),
                     scope,
                     prio,
+                    max(0, int(user_rpd)),
                 ),
             )
         return CreatedKey(
@@ -997,6 +1006,7 @@ class VirtualKeyStore:
                 metadata=meta,
                 expires_at=expires_at,
                 user_daily_usd_cap=float(user_daily_usd_cap),
+                user_rpd=max(0, int(user_rpd)),
                 region_pin=pin,
                 allowed_models=models,
                 model_groups=groups,
@@ -1077,6 +1087,17 @@ class VirtualKeyStore:
             cur = conn.execute(
                 "UPDATE virtual_keys SET rpd = ? WHERE key_id = ? AND revoked_at IS NULL",
                 (max(0, int(rpd)), key_id),
+            )
+            return cur.rowcount > 0
+
+    def update_user_rpd(self, key_id: str, user_rpd: int) -> bool:
+        """Set per-end-user calendar-day request cap. ``0`` means unlimited (#1911)."""
+        if not self.enabled:
+            return False
+        with self._lock, self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE virtual_keys SET user_rpd = ? WHERE key_id = ? AND revoked_at IS NULL",
+                (max(0, int(user_rpd)), key_id),
             )
             return cur.rowcount > 0
 
@@ -1233,7 +1254,7 @@ class VirtualKeyStore:
             row = conn.execute(
                 "SELECT key_hash, prefix, name, daily_budget_usd, monthly_budget_usd,"
                 " rpm, tpm, tier_cap, client_id, team_id, budget_windows_json,"
-                " metadata_json, expires_at, user_daily_usd_cap, rpd"
+                " metadata_json, expires_at, user_daily_usd_cap, rpd, user_rpd"
                 " FROM virtual_keys WHERE key_id = ? AND revoked_at IS NULL",
                 (key_id,),
             ).fetchone()
@@ -1256,6 +1277,7 @@ class VirtualKeyStore:
                 user_daily_usd_cap,
             ) = row[:14]
             rpd = int(row[14] or 0) if len(row) > 14 else 0
+            user_rpd = int(row[15] or 0) if len(row) > 15 else 0
             conn.execute(
                 "UPDATE virtual_keys SET key_hash = ?, prefix = ?,"
                 " previous_key_hash = ?, previous_prefix = ?, previous_expires_at = ?"
@@ -1294,6 +1316,7 @@ class VirtualKeyStore:
                 expires_at=expires_at,
                 previous_expires_at=grace_until,
                 user_daily_usd_cap=float(user_daily_usd_cap or 0),
+                user_rpd=user_rpd,
             ),
             plaintext=plaintext,
         )
@@ -1307,6 +1330,7 @@ class VirtualKeyStore:
         expires_at: str | None = None,
         previous_expires_at: str | None = None,
         user_daily_usd_cap: float = 0.0,
+        user_rpd: int = 0,
         allowed_models: tuple[str, ...] | None = None,
         model_groups: tuple[str, ...] | None = None,
         rpd: int = 0,
@@ -1356,6 +1380,7 @@ class VirtualKeyStore:
             expires_at=expires_at,
             previous_expires_at=previous_expires_at,
             user_daily_usd_cap=float(user_daily_usd_cap or 0),
+            user_rpd=max(0, int(user_rpd or 0)),
             region_pin=pin,
             allowed_models=allowed_models,
             model_groups=model_groups,
@@ -1375,7 +1400,7 @@ class VirtualKeyStore:
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                 " v.previous_expires_at, v.user_daily_usd_cap,"
                 " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope,"
-                " v.last_used_at"
+                " v.last_used_at, v.user_rpd"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " ORDER BY v.created_at DESC"
@@ -1393,6 +1418,7 @@ class VirtualKeyStore:
                 rpd=int(r[19] or 0) if len(r) > 19 else 0,
                 cache_scope=coerce_cache_scope(r[20]) if len(r) > 20 else "global",
                 last_used_at=r[21] if len(r) > 21 else None,
+                user_rpd=int(r[22] or 0) if len(r) > 22 else 0,
             )
             for r in rows
         ]
@@ -1408,7 +1434,7 @@ class VirtualKeyStore:
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                 " v.previous_expires_at, v.user_daily_usd_cap, v.key_hash, v.previous_key_hash,"
                 " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope,"
-                " v.last_used_at"
+                " v.last_used_at, v.user_rpd"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " WHERE v.key_hash = ? OR v.previous_key_hash = ?",
@@ -1435,6 +1461,7 @@ class VirtualKeyStore:
             rpd=int(row[21] or 0) if len(row) > 21 else 0,
             cache_scope=coerce_cache_scope(row[22]) if len(row) > 22 else "global",
             last_used_at=row[23] if len(row) > 23 else None,
+            user_rpd=int(row[24] or 0) if len(row) > 24 else 0,
         )
 
     def touch_last_used(
@@ -1510,6 +1537,7 @@ class VirtualKeyStore:
             "expires_at": key.expires_at,
             "previous_expires_at": key.previous_expires_at,
             "user_daily_usd_cap": key.user_daily_usd_cap,
+            "user_rpd": key.user_rpd,
             "last_used_at": key.last_used_at,
             "status": key.status(),
             "cache_scope": key.cache_scope,
@@ -1578,7 +1606,7 @@ class VirtualKeyStore:
                 " team_id, budget_windows_json, metadata_json, user_daily_usd_cap,"
                 " previous_key_hash, previous_prefix, previous_expires_at, region_pin,"
                 " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
-                " last_used_at"
+                " last_used_at, user_rpd"
                 " FROM virtual_keys ORDER BY created_at ASC, key_id ASC"
             ).fetchall()
         teams = [
@@ -1646,6 +1674,7 @@ class VirtualKeyStore:
                     if len(row) > 25 and row[25] is not None
                     else "normal",
                     "last_used_at": row[26] if len(row) > 26 else None,
+                    "user_rpd": int(row[27] or 0) if len(row) > 27 else 0,
                 }
             )
         return {
@@ -1848,6 +1877,7 @@ class VirtualKeyStore:
                     scope,
                     prio,
                     last_used,
+                    max(0, int(key.get("user_rpd") or 0)),
                 )
                 existing = conn.execute(
                     "SELECT key_hash, name, prefix, created_at, revoked_at, expires_at,"
@@ -1855,7 +1885,7 @@ class VirtualKeyStore:
                     " team_id, budget_windows_json, metadata_json, user_daily_usd_cap,"
                     " previous_key_hash, previous_prefix, previous_expires_at, region_pin,"
                     " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
-                    " last_used_at"
+                    " last_used_at, user_rpd"
                     " FROM virtual_keys WHERE key_id = ?",
                     (key_id,),
                 ).fetchone()
@@ -1869,9 +1899,9 @@ class VirtualKeyStore:
                             " budget_windows_json, metadata_json, user_daily_usd_cap,"
                             " previous_key_hash, previous_prefix, previous_expires_at,"
                             " region_pin, allowed_models_json, model_groups_json, rpd,"
-                            " cache_scope, priority, last_used_at)"
+                            " cache_scope, priority, last_used_at, user_rpd)"
                             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                            " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (
                                 values[0],
                                 key_id,
@@ -1900,6 +1930,7 @@ class VirtualKeyStore:
                                 values[23],
                                 values[24],
                                 values[25],
+                                values[26],
                             ),
                         )
                 else:
@@ -1933,6 +1964,7 @@ class VirtualKeyStore:
                         if len(existing) > 24 and existing[24] is not None
                         else "normal",
                         existing[25] if len(existing) > 25 else None,
+                        int(existing[26] or 0) if len(existing) > 26 else 0,
                     )
                     desired_cmp = (
                         values[0],
@@ -1960,6 +1992,7 @@ class VirtualKeyStore:
                         values[23],
                         values[24],
                         values[25],
+                        values[26],
                     )
                     if current == desired_cmp:
                         summary["keys"]["skipped"] += 1
@@ -1984,7 +2017,8 @@ class VirtualKeyStore:
                                 " previous_key_hash = ?, previous_prefix = ?,"
                                 " previous_expires_at = ?, region_pin = ?,"
                                 " allowed_models_json = ?, model_groups_json = ?, rpd = ?,"
-                                " cache_scope = ?, priority = ?, last_used_at = ?"
+                                " cache_scope = ?, priority = ?, last_used_at = ?,"
+                                " user_rpd = ?"
                                 " WHERE key_id = ?",
                                 (
                                     values[0],
@@ -2012,6 +2046,7 @@ class VirtualKeyStore:
                                     values[23],
                                     values[24],
                                     values[25],
+                                    values[26],
                                     key_id,
                                 ),
                             )

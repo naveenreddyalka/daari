@@ -206,6 +206,11 @@ def keys_create(
         "--user-daily-cap",
         help="Per end-user daily L6 USD cap on this shared key (0=unlimited)",
     ),
+    user_rpd: int = typer.Option(
+        0,
+        "--user-rpd",
+        help="Per end-user requests per UTC day on this shared key (0=unlimited)",
+    ),
     region_pin: str | None = typer.Option(
         None,
         "--region-pin",
@@ -313,6 +318,7 @@ def keys_create(
         metadata=metadata,
         expires_at=expires_at,
         user_daily_usd_cap=user_daily_cap,
+        user_rpd=user_rpd,
         region_pin=region_pin,
         allowed_models=allowed_model or None,
         model_groups=model_group or None,
@@ -373,6 +379,11 @@ def keys_update(
     rpd: int | None = typer.Option(
         None, "--rpd", help="Requests per UTC day (0=unlimited). Omit to leave unchanged."
     ),
+    user_rpd: int | None = typer.Option(
+        None,
+        "--user-rpd",
+        help="Per end-user requests/UTC day (0=unlimited). Omit to leave unchanged.",
+    ),
 ) -> None:
     """Update a virtual key's model allowlist (#708) or daily request cap (#717)."""
     import os
@@ -380,12 +391,15 @@ def keys_update(
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
     from daari.auth.virtual_keys import _UNSET
 
-    if rpd is None and not allowed_model and not model_group:
-        typer.echo("pass --rpd, --allowed-model, and/or --model-group", err=True)
+    if rpd is None and user_rpd is None and not allowed_model and not model_group:
+        typer.echo("pass --rpd, --user-rpd, --allowed-model, and/or --model-group", err=True)
         raise typer.Exit(code=1)
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
     if rpd is not None and not store.update_rpd(key_id, rpd):
+        typer.echo(f"No active key {key_id}", err=True)
+        raise typer.Exit(code=1)
+    if user_rpd is not None and not store.update_user_rpd(key_id, user_rpd):
         typer.echo(f"No active key {key_id}", err=True)
         raise typer.Exit(code=1)
     if allowed_model or model_group:
@@ -401,6 +415,8 @@ def keys_update(
     typer.echo(f"key_id: {key_id}")
     if key is not None and rpd is not None:
         typer.echo(f"rpd:    {key.rpd}")
+    if key is not None and user_rpd is not None:
+        typer.echo(f"user_rpd: {key.user_rpd}")
     if key is not None and key.allowed_models is not None:
         typer.echo(f"models: {', '.join(key.allowed_models)}")
     if key is not None and key.model_groups is not None:

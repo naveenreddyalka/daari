@@ -7964,6 +7964,14 @@ floor (cosign key `e82a3c6`, eMudhra CA drop); keeps 1.107.0 do-not-install.
 Points at daari `upstream.distrust_emudhra_ca`. Covered by
 `tests/unit/test_compare_litellm_1104.py`.
 
+### Per-end-user RPD alongside user_daily_usd_cap ([#1911](https://github.com/naveenreddyalka/daari/issues/1911))
+
+<!-- tracking:#1911 -->
+**Status:** Done (2026-10-25). Virtual keys persist `user_rpd` (0 = unlimited);
+gateway middleware enforces per attributed OpenAI `user` on chat + decisions
+(429, `X-RateLimit-Scope: user`); doctor lists keys with end-user RPD; key/team
+unbounded-rpd tip unchanged. Covered by `tests/unit/test_user_rpd.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

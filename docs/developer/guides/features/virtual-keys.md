@@ -7,7 +7,7 @@
 ```bash
 daari keys team-create eng --daily-budget 5 --rpm 120 --tpm 80000 --rpd 5000
 daari keys create ci --daily-budget 2 --rpm 60 --tpm 40000 --rpd 2000 --team eng --window 7d=10
-daari keys create shared-agent --user-daily-cap 2
+daari keys create shared-agent --user-daily-cap 2 --user-rpd 200
 daari keys list
 daari keys list --status active
 daari keys list --idle-days 90
@@ -15,7 +15,7 @@ daari report --by-team
 daari usage --by-user
 ```
 
-`--rpd` is requests per UTC day on the key or team. `0`, or omitting the flag, means unlimited.
+`--rpd` is requests per UTC day on the key or team. `0`, or omitting the flag, means unlimited. `--user-rpd` is the same day window for each attributed OpenAI `user` on a shared key (`0` = unlimited); it does not replace key/team `rpd`.
 `daari keys list --status` filters `active` / `expired` / `revoked`. `--idle-days N`
 returns keys whose `last_used_at` is older than N days (or never used). Successful
 auth updates `last_used_at` (throttled to once per 60s per key).
