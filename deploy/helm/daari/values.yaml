@@ -220,6 +220,20 @@ prometheusRules:
     rateThreshold: 0
     for: 5m
     severity: warning
+  # Anthropic document blocks stripped under 2026-10-21 (#1917).
+  anthropicDocumentStripped:
+    enabled: true
+    window: 5m
+    rateThreshold: 0
+    for: 5m
+    severity: warning
+  # Anthropic citation metadata stripped under 2026-10-21 (#1917).
+  anthropicCitationsStripped:
+    enabled: true
+    window: 5m
+    rateThreshold: 0
+    for: 5m
+    severity: warning
   # Mapped users under Anthropic org enforcement (#1889).
   anthropicEnforcedProfiles:
     enabled: true

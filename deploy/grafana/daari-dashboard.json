@@ -1042,6 +1042,44 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 51,
+      "title": "Anthropic document stripped rate",
+      "description": "Assistant document blocks stripped under anthropic-version 2026-10-21 (`daari_soft_warnings_total{kind=\"anthropic_document_stripped\"}`) (#1917).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 200
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_soft_warnings_total{kind=\"anthropic_document_stripped\"}[5m]))",
+          "legendFormat": "anthropic_document_stripped/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "title": "Anthropic citations stripped rate",
+      "description": "Citation metadata stripped under anthropic-version 2026-10-21 (`daari_soft_warnings_total{kind=\"anthropic_citations_stripped\"}`) (#1917).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 200
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_soft_warnings_total{kind=\"anthropic_citations_stripped\"}[5m]))",
+          "legendFormat": "anthropic_citations_stripped/s",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

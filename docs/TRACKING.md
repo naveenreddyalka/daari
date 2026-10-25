@@ -8009,6 +8009,16 @@ system CA store (`update-ca-certificates --fresh`). Compare page pins LiteLLM
 Covered by `tests/unit/test_docker_supply_chain.py`,
 `tests/unit/test_compare_litellm_1104.py`.
 
+### Client-visible content-strip warnings + Decisions reported cost ([#1917](https://github.com/naveenreddyalka/daari/issues/1917))
+
+<!-- tracking:#1917 -->
+**Status:** Done (2026-10-25). Document/citations strips append kinds to
+`compat.warnings` (client `daari_meta.warning`); Grafana + PrometheusRule
+cover both strip kinds; Decisions billing honors `usage.cost` when reported;
+unknown-model 400 lists the live local catalog. Covered by
+`tests/unit/test_anthropic_content_strip.py`, `tests/unit/test_decisions.py`,
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
