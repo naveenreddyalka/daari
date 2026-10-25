@@ -334,6 +334,102 @@ async def test_tts_streams_chunks_without_full_buffer(settings, monkeypatch):
     await speech.aclose_http()
 
 
+@pytest.mark.asyncio
+async def test_tts_stream_finalizes_spend_row(settings, tmp_path, monkeypatch):
+    """Streamed TTS still writes a spend row after the body drains (#1930)."""
+    import asyncio
+    from contextlib import asynccontextmanager
+
+    from fastapi.responses import StreamingResponse
+
+    from daari.gateway import speech
+
+    class _FakeUpstream:
+        status_code = 200
+        headers = httpx.Headers(
+            {"content-type": "audio/mpeg", "transfer-encoding": "chunked"}
+        )
+
+        async def aiter_bytes(self, chunk_size: int = 65536):
+            yield b"AA"
+            yield b"BB"
+
+        async def aread(self):
+            raise AssertionError("stream path must not buffer via aread")
+
+    @asynccontextmanager
+    async def _fake_stream(client, method, url, **kwargs):
+        yield _FakeUpstream()
+
+    monkeypatch.setattr(speech, "deadline_bounded_stream", _fake_stream)
+    speech._http = httpx.AsyncClient()
+    _enable_spend(settings, tmp_path)
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.tts.base_url = "http://tts.local/v1"
+    settings.tts.model = "kokoro"
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    key = store.create("stream-bot", client_id="client-stream", team="eng")
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+
+    from starlette.requests import Request
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/v1/audio/speech",
+        "raw_path": b"/v1/audio/speech",
+        "query_string": b"",
+        "headers": [
+            (b"host", b"test"),
+            (b"authorization", f"Bearer {key.plaintext}".encode()),
+        ],
+        "client": ("127.0.0.1", 123),
+        "server": ("test", 80),
+        "app": app,
+    }
+
+    async def _receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    request = Request(scope, _receive)
+    # Auth claims normally set by middleware; bind spend via app state VK.
+    request.state.auth_claims = type(
+        "Claims",
+        (),
+        {
+            "key_id": key.key.key_id,
+            "client_id": key.key.client_id,
+            "team_id": key.key.team_id,
+            "virtual_key": key.key,
+        },
+    )()
+    response = await speech.handle_speech(
+        request,
+        model="tts-1",
+        input_text="stream charge me",
+        voice="alloy",
+        response_format="mp3",
+    )
+    assert isinstance(response, StreamingResponse)
+    collected = b""
+    async for chunk in response.body_iterator:
+        collected += chunk
+    assert collected == b"AABB"
+    # StreamingResponse background/finalize runs when iterator exhausts.
+    await asyncio.sleep(0)
+    rows = _spend_rows(app)
+    assert len(rows) == 1
+    assert rows[0]["tier"] == "tts"
+    assert rows[0]["model"] == "kokoro"
+    await speech.aclose_http()
+
+
 def test_map_phonon_voice_openai_aliases():
     from daari.gateway.speech import map_phonon_voice
 
