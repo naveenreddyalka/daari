@@ -66,9 +66,17 @@ def run_doctor(
     decisions_models_tip = _check_decisions_local_models(cfg, httpx_client)
     if decisions_models_tip is not None:
         results.append(decisions_models_tip)
-    breaker_tip = _check_systemone_breaker(cfg, httpx_client=httpx_client)
+    daemon_stats = _daemon_stats_payload(cfg, httpx_client)
+    breaker_tip = _check_systemone_breaker(
+        cfg, httpx_client=httpx_client, daemon_stats=daemon_stats
+    )
     if breaker_tip is not None:
         results.append(breaker_tip)
+    fleet_breaker_tip = _check_fleet_breakers(
+        cfg, httpx_client=httpx_client, daemon_stats=daemon_stats
+    )
+    if fleet_breaker_tip is not None:
+        results.append(fleet_breaker_tip)
     results.append(_check_responses_stream_resume(cfg))
     results.append(_check_moderations(cfg))
     results.append(_check_rerank(cfg))
@@ -868,11 +876,11 @@ def _check_decisions(settings: Settings) -> CheckResult:
     )
 
 
-def _systemone_breaker_rows_from_daemon(
+def _daemon_stats_payload(
     settings: Settings,
     client: httpx.Client | None,
-) -> list[dict[str, Any]] | None:
-    """Fetch ``systemone_breaker`` from the live daemon stats, or None (#1842)."""
+) -> dict[str, Any] | None:
+    """One GET /v1/daari/stats for breaker tips (#1842 / #1932)."""
     host = settings.server.host
     port = settings.server.port
     url = f"http://{host}:{port}/v1/daari/stats"
@@ -887,10 +895,7 @@ def _systemone_breaker_rows_from_daemon(
         if response.status_code != 200:
             return None
         payload = response.json()
-        rows = payload.get("systemone_breaker")
-        if isinstance(rows, list):
-            return [row for row in rows if isinstance(row, dict)]
-        return None
+        return payload if isinstance(payload, dict) else None
     except Exception:
         return None
     finally:
@@ -898,10 +903,29 @@ def _systemone_breaker_rows_from_daemon(
             http.close()
 
 
+def _systemone_breaker_rows_from_daemon(
+    settings: Settings,
+    client: httpx.Client | None,
+    *,
+    daemon_stats: dict[str, Any] | None = None,
+) -> list[dict[str, Any]] | None:
+    """Read ``systemone_breaker`` from daemon stats, or None (#1842)."""
+    payload = daemon_stats
+    if payload is None:
+        payload = _daemon_stats_payload(settings, client)
+    if payload is None:
+        return None
+    rows = payload.get("systemone_breaker")
+    if isinstance(rows, list):
+        return [row for row in rows if isinstance(row, dict)]
+    return None
+
+
 def _check_systemone_breaker(
     settings: Settings,
     *,
     httpx_client: httpx.Client | None = None,
+    daemon_stats: dict[str, Any] | None = None,
 ) -> CheckResult | None:
     """Tip when a systemone upstream circuit is open (#1822 / #1842).
 
@@ -913,7 +937,9 @@ def _check_systemone_breaker(
         return None
     from daari.gateway.systemone import breaker_snapshot
 
-    rows = _systemone_breaker_rows_from_daemon(settings, httpx_client)
+    rows = _systemone_breaker_rows_from_daemon(
+        settings, httpx_client, daemon_stats=daemon_stats
+    )
     if rows is None:
         rows = list(breaker_snapshot())
     open_rows = [row for row in rows if str(row.get("state") or "") == "open"]
@@ -930,6 +956,53 @@ def _check_systemone_breaker(
             "systemone upstream circuit open for "
             + ", ".join(parts)
             + " — /v1/systemone and decisions hops fast-fail until cooldown"
+        ),
+        optional=True,
+    )
+
+
+def _fleet_breaker_rows_from_payload(
+    payload: dict[str, Any] | None,
+) -> list[dict[str, Any]] | None:
+    """Extract ``breakers`` inventory from a stats payload (#1932)."""
+    if payload is None:
+        return None
+    rows = payload.get("breakers")
+    if isinstance(rows, list):
+        return [row for row in rows if isinstance(row, dict)]
+    return None
+
+
+def _check_fleet_breakers(
+    settings: Settings,
+    *,
+    httpx_client: httpx.Client | None = None,
+    daemon_stats: dict[str, Any] | None = None,
+) -> CheckResult | None:
+    """Warn when any fleet breaker family is open (#1932)."""
+    from daari.router.breaker_inventory import collect_breaker_inventory
+
+    payload = daemon_stats
+    if payload is None:
+        payload = _daemon_stats_payload(settings, httpx_client)
+    rows = _fleet_breaker_rows_from_payload(payload)
+    if rows is None:
+        rows = list(collect_breaker_inventory())
+    open_rows = [row for row in rows if str(row.get("state") or "") == "open"]
+    if not open_rows:
+        return None
+    parts = [
+        f"{row.get('family') or '?'}:{row.get('target') or '?'}"
+        for row in open_rows
+    ]
+    return CheckResult(
+        name="fleet_breakers",
+        ok=False,
+        detail=(
+            "circuit open for "
+            + ", ".join(parts)
+            + " — failovers skip those targets until cooldown; "
+            "POST /v1/daari/breakers/reset (admin) to close early"
         ),
         optional=True,
     )

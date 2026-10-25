@@ -8038,6 +8038,17 @@ by `tests/integration/test_wave_gateway_coverage.py`,
 Anthropic-parity example. Covered by `tests/unit/test_spend_grouped_report.py`,
 `tests/unit/test_chargeback_docs.py`.
 
+### Per-family breaker state, alerts, and reset ([#1932](https://github.com/naveenreddyalka/daari/issues/1932))
+
+<!-- tracking:#1932 -->
+**Status:** Done (2026-10-25). Prometheus exports `daari_breaker_state` /
+`daari_breaker_total` across frontier, local_pool, mcp_egress, and systemone
+(systemone gauges kept); `/v1/daari/stats` includes a `breakers` inventory;
+`POST /v1/daari/breakers/reset` (admin) closes circuits; doctor
+`fleet_breakers` tip; Grafana panel + PrometheusRule for open >5m; web-ui
+fleet inventory with per-target reset. Covered by
+`tests/unit/test_fleet_breaker_inventory.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

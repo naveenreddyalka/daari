@@ -206,6 +206,11 @@ prometheusRules:
     rateThreshold: 0.05
     for: 5m
     severity: warning
+  # Any fleet breaker open for >5m (#1932).
+  fleetBreakerOpen:
+    enabled: true
+    for: 5m
+    severity: warning
   # OpenAI service_tier degrade soft-warnings (#1889).
   serviceTierDegraded:
     enabled: true

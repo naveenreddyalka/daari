@@ -1944,10 +1944,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "mcp_grant_denied": 0,
                 }
             from daari.gateway.systemone import breaker_snapshot
+            from daari.router.breaker_inventory import inventory_from_ctx
 
             systemone_breaker = list(
                 full.get("systemone_breaker_state") or breaker_snapshot()
             )
+            breakers = list(full.get("breaker_state") or inventory_from_ctx(ctx))
             payload: dict[str, Any] = {
                 "total_requests": total,
                 "errors": full["errors"],
@@ -1956,6 +1958,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "backends": backends,
                 "backend_summary": backend_summary,
                 "systemone_breaker": systemone_breaker,
+                "breakers": breakers,
                 "soft_warnings": full.get("soft_warnings") or {},
                 "rejects": full.get("rejects") or {},
                 "team_rate_limits": _stats_team_rate_limits(request, team_id=scope),
@@ -2493,6 +2496,42 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 detail={"before": before, "after": after, "backend": backend},
             )
             return {"status": "ok", "systemone_breaker": after, "backend": backend}
+
+        @router.post("/v1/daari/breakers/reset")
+        async def daari_breakers_reset(request: Request) -> dict[str, Any]:
+            """Close open circuits across breaker families (#1932)."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_admin_role(request, ctx)
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.router.breaker_inventory import inventory_from_ctx, reset_breakers
+
+            body: dict[str, Any] = {}
+            try:
+                raw = await request.json()
+                if isinstance(raw, dict):
+                    body = raw
+            except Exception:
+                body = {}
+            family = body.get("family") or request.query_params.get("family")
+            target = body.get("target") or request.query_params.get("target")
+            before = inventory_from_ctx(ctx)
+            after = reset_breakers(
+                ctx,
+                family=str(family) if family else None,
+                target=str(target) if target else None,
+            )
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="breakers.reset",
+                detail={
+                    "before": before,
+                    "after": after,
+                    "family": family,
+                    "target": target,
+                },
+            )
+            return {"status": "ok", "breakers": after}
 
         @router.get("/v1/daari/mcp/activity")
         async def daari_mcp_activity_list(request: Request) -> dict[str, Any]:

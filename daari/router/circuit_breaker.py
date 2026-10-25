@@ -37,6 +37,7 @@ class CircuitBreaker:
     cooldown_seconds: float = 30.0
     failures: int = 0
     opened_at: float | None = None
+    opened_at_wall: float | None = None
     share_key: str | None = None
     rejects: int = 0
     _lock: Lock = field(default_factory=Lock, repr=False)
@@ -82,6 +83,7 @@ class CircuitBreaker:
         with self._lock:
             self.failures = 0
             self.opened_at = None
+            self.opened_at_wall = None
             if self.share_key:
                 from daari.router import breaker_redis
 
@@ -92,6 +94,7 @@ class CircuitBreaker:
             self.failures += 1
             if self.failures >= self.failure_threshold:
                 self.opened_at = time.monotonic()
+                self.opened_at_wall = time.time()
                 if self.share_key:
                     from daari.router import breaker_redis
 

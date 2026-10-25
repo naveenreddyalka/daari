@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import Any
@@ -228,6 +229,8 @@ class Metrics:
     mcp_egress: dict[str, int] = field(default_factory=dict)
     # event (open|trip|reject) → count for systemone upstream breaker (#1801).
     systemone_breaker: dict[str, int] = field(default_factory=dict)
+    # family:event → count for fleet-wide breaker trips (#1932).
+    breaker_events: dict[str, int] = field(default_factory=dict)
     cancelled: dict[str, int] = field(default_factory=dict)
     deadline_exhausted: int = 0
     compact_to_fit_applied: int = 0
@@ -246,6 +249,10 @@ class Metrics:
     gzip_bytes_after: int = 0
     # Cache-write tokens by TTL class (30m|12h|1h|unset) (#1872).
     cache_write_tokens: dict[str, int] = field(default_factory=dict)
+    # Optional full-fleet inventory provider (set by AppContext) (#1932).
+    breaker_inventory_fn: Callable[[], list[dict[str, Any]]] | None = field(
+        default=None, repr=False
+    )
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -385,6 +392,16 @@ class Metrics:
         label = (event or "").strip().lower() or "trip"
         with self._lock:
             self.systemone_breaker[label] = self.systemone_breaker.get(label, 0) + 1
+            key = f"systemone:{label}"
+            self.breaker_events[key] = self.breaker_events.get(key, 0) + 1
+
+    def record_breaker(self, *, family: str, event: str) -> None:
+        """Fleet breaker event counter by family (#1932)."""
+        fam = (family or "").strip().lower() or "unknown"
+        label = (event or "").strip().lower() or "trip"
+        key = f"{fam}:{label}"
+        with self._lock:
+            self.breaker_events[key] = self.breaker_events.get(key, 0) + 1
 
     def _systemone_breaker_state(self) -> list[dict[str, Any]]:
         """Live per-upstream open/closed (+ rejects) for exporters (#1822)."""
@@ -392,6 +409,17 @@ class Metrics:
             from daari.gateway.systemone import breaker_snapshot
 
             return list(breaker_snapshot())
+        except Exception:
+            return []
+
+    def _breaker_state(self) -> list[dict[str, Any]]:
+        """Fleet inventory for ``daari_breaker_state`` (#1932)."""
+        try:
+            if self.breaker_inventory_fn is not None:
+                return list(self.breaker_inventory_fn())
+            from daari.router.breaker_inventory import collect_breaker_inventory
+
+            return collect_breaker_inventory()
         except Exception:
             return []
 
@@ -535,6 +563,8 @@ class Metrics:
                 "mcp_egress": dict(self.mcp_egress),
                 "systemone_breaker": dict(self.systemone_breaker),
                 "systemone_breaker_state": self._systemone_breaker_state(),
+                "breaker_events": dict(self.breaker_events),
+                "breaker_state": self._breaker_state(),
                 "cancelled": dict(self.cancelled),
                 "deadline_exhausted": self.deadline_exhausted,
                 "compact_to_fit_applied": self.compact_to_fit_applied,

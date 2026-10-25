@@ -600,6 +600,21 @@ def render_prometheus(
                 f"daari_systemone_breaker_total{_labels(event=str(event))} {int(count)}"
             )
 
+    breaker_events = snap.get("breaker_events") or {}
+    if breaker_events:
+        lines.append(
+            "# HELP daari_breaker_total Circuit breaker events by family "
+            "(frontier, local_pool, mcp_egress, systemone)."
+        )
+        lines.append("# TYPE daari_breaker_total counter")
+        for key, count in sorted(breaker_events.items()):
+            family, _, event = str(key).partition(":")
+            lines.append(
+                f"daari_breaker_total"
+                f"{_labels(family=family or 'unknown', event=event or 'trip')} "
+                f"{int(count)}"
+            )
+
     systemone_state = snap.get("systemone_breaker_state") or []
     if systemone_state:
         lines.append(
@@ -615,6 +630,25 @@ def render_prometheus(
             value = 1 if state == "open" else 0
             lines.append(
                 f"daari_systemone_breaker_state{_labels(base=base, state=state)} {value}"
+            )
+
+    breaker_state = snap.get("breaker_state") or []
+    if breaker_state:
+        lines.append(
+            "# HELP daari_breaker_state Circuit breaker open state by family "
+            "and target (1=open, 0=closed/half_open)."
+        )
+        lines.append("# TYPE daari_breaker_state gauge")
+        for row in breaker_state:
+            if not isinstance(row, dict):
+                continue
+            family = str(row.get("family") or "unknown")
+            target = str(row.get("target") or row.get("base") or "default")
+            state = str(row.get("state") or "closed")
+            value = 1 if state == "open" else 0
+            lines.append(
+                f"daari_breaker_state"
+                f"{_labels(family=family, target=target, state=state)} {value}"
             )
 
     cancelled = snap.get("cancelled") or {}

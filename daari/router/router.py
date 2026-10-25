@@ -6751,5 +6751,8 @@ class AppContext:
             batch_store=batch_store,
             file_store=file_store,
         )
+        from daari.router.breaker_inventory import inventory_from_ctx
+
+        metrics.breaker_inventory_fn = lambda ctx=context: inventory_from_ctx(ctx)
         context.sync_org_learning_profile_startup()
         return context
