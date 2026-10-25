@@ -501,6 +501,19 @@ def render_prometheus(
                 f"daari_responses_webhooks_total{_labels(result=result)} {int(count)}"
             )
 
+    org_enforcement_webhooks = snap.get("org_enforcement_webhooks") or {}
+    if org_enforcement_webhooks:
+        lines.append(
+            "# HELP daari_org_enforcement_webhooks_total Anthropic org enforcement "
+            "webhook ingest outcomes (ingested, ignored, unauthorized, duplicate)."
+        )
+        lines.append("# TYPE daari_org_enforcement_webhooks_total counter")
+        for result, count in sorted(org_enforcement_webhooks.items()):
+            lines.append(
+                f"daari_org_enforcement_webhooks_total{_labels(result=result)} "
+                f"{int(count)}"
+            )
+
     soft_warnings = snap.get("soft_warnings") or {}
     if soft_warnings:
         lines.append(

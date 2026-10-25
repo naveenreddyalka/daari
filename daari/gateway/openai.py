@@ -2943,7 +2943,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.post("/v1/daari/webhooks/anthropic/org")
         async def daari_anthropic_org_webhook(request: Request) -> dict[str, Any]:
-            """Ingest Anthropic organization enforcement webhooks (#1875)."""
+            """Ingest Anthropic organization enforcement webhooks (#1875, #1914)."""
+            import asyncio
+
             ctx: AppContext = request.app.state.ctx
             from daari.enterprise.anthropic_org_webhooks import (
                 OrgWebhookDisabled,
@@ -2954,6 +2956,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 DEFAULT_BASE_URL,
                 store_from_settings,
             )
+            from daari.enterprise.postgres_audit import audit_log_from_settings
 
             anthropic = ctx.settings.anthropic
             secret = (anthropic.org_webhook_signing_secret or "").strip()
@@ -2975,8 +2978,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "claude",
                 }:
                     base_url = ctx.settings.frontier.base_url or DEFAULT_BASE_URL
+            store = store_from_settings(ctx.settings)
+            redis_client = getattr(store, "redis", None)
             try:
-                return ingest_org_webhook(
+                return await asyncio.to_thread(
+                    ingest_org_webhook,
                     body=body,
                     headers=headers,
                     signing_secret=secret,
@@ -2984,9 +2990,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         anthropic.org_webhook_signing_secret_previous or ""
                     ),
                     user_profiles=dict(anthropic.user_profiles or {}),
-                    store=store_from_settings(ctx.settings),
+                    store=store,
                     api_key=ctx.settings.resolve_frontier_api_key() or "",
                     base_url=base_url,
+                    redis=redis_client,
+                    audit=audit_log_from_settings(ctx.settings),
+                    metrics=getattr(ctx, "metrics", None),
                 )
             except OrgWebhookDisabled:
                 raise HTTPException(status_code=404, detail="Not Found") from None

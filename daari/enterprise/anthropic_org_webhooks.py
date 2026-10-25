@@ -32,6 +32,7 @@ DEFAULT_REPLAY_TOLERANCE_SECONDS = 300
 WEBHOOK_ID_HEADER = "webhook-id"
 WEBHOOK_TIMESTAMP_HEADER = "webhook-timestamp"
 WEBHOOK_SIGNATURE_HEADER = "webhook-signature"
+REDIS_WEBHOOK_DEDUP_PREFIX = "daari:anthropic-org-webhook:"
 
 
 class OrgWebhookDisabled(Exception):
@@ -194,6 +195,39 @@ def _remove_from_store(store: EnforcementStore, profile_id: str) -> dict[str, An
     return previous
 
 
+def _claim_webhook_id(
+    webhook_id: str,
+    *,
+    redis: Any | None,
+    ttl_seconds: int = DEFAULT_REPLAY_TOLERANCE_SECONDS,
+) -> bool:
+    """True when this delivery should be applied. No redis → always claim."""
+    from daari.gateway.request_log import log_gateway_event
+
+    wid = (webhook_id or "").strip()
+    if not wid or redis is None:
+        return True
+    key = f"{REDIS_WEBHOOK_DEDUP_PREFIX}{wid}"
+    try:
+        claimed = redis.set(key, "1", nx=True, ex=int(ttl_seconds))
+    except Exception as exc:  # noqa: BLE001 — fail open
+        log_gateway_event(
+            "anthropic.enforcement_webhook_dedupe_degraded",
+            {"error": f"{type(exc).__name__}: {exc}", "webhook_id": wid},
+        )
+        return True
+    return bool(claimed)
+
+
+def _record_org_webhook_metric(metrics: Any, result: str) -> None:
+    if metrics is None or not hasattr(metrics, "record_org_enforcement_webhook"):
+        return
+    try:
+        metrics.record_org_enforcement_webhook(result)
+    except Exception:  # noqa: BLE001
+        return
+
+
 def ingest_org_webhook(
     *,
     body: bytes,
@@ -205,6 +239,9 @@ def ingest_org_webhook(
     api_key: str = "",
     base_url: str = DEFAULT_BASE_URL,
     transport: Any | None = None,
+    redis: Any | None = None,
+    audit: Any | None = None,
+    metrics: Any | None = None,
 ) -> dict[str, Any]:
     """Verify + apply one Anthropic org webhook delivery."""
     from daari.gateway.request_log import log_gateway_event
@@ -218,13 +255,21 @@ def ingest_org_webhook(
         secret,
         previous_secret=signing_secret_previous,
     ):
+        _record_org_webhook_metric(metrics, "unauthorized")
         raise OrgWebhookUnauthorized("invalid webhook signature")
+
+    webhook_id = _header(headers, WEBHOOK_ID_HEADER).strip()
+    if not _claim_webhook_id(webhook_id, redis=redis):
+        _record_org_webhook_metric(metrics, "duplicate")
+        return {"ok": True, "duplicate": True}
 
     try:
         payload = json.loads(body.decode("utf-8") if isinstance(body, bytes) else body)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        _record_org_webhook_metric(metrics, "unauthorized")
         raise OrgWebhookUnauthorized("invalid webhook payload") from exc
     if not isinstance(payload, dict):
+        _record_org_webhook_metric(metrics, "unauthorized")
         raise OrgWebhookUnauthorized("invalid webhook payload")
 
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
@@ -234,11 +279,13 @@ def ingest_org_webhook(
             "anthropic.enforcement_webhook_ignored",
             {"type": event_type or None, "event_id": payload.get("id")},
         )
+        _record_org_webhook_metric(metrics, "ignored")
         return {"ok": True, "ignored": True, "type": event_type or None}
 
     profile_id = str(data.get("id") or "").strip()
     action_id = str(data.get("enforcement_action_id") or "").strip()
     if not profile_id:
+        _record_org_webhook_metric(metrics, "ignored")
         return {"ok": True, "ignored": True, "type": event_type, "reason": "missing_profile_id"}
 
     profile = None
@@ -345,6 +392,25 @@ def ingest_org_webhook(
             "end_users": end_users,
         },
     )
+    if audit is not None and hasattr(audit, "record"):
+        try:
+            audit.record(
+                actor="anthropic-org-webhook",
+                role="system",
+                action="anthropic.enforcement_webhook",
+                detail={
+                    "event_type": event_type,
+                    "event_id": payload.get("id"),
+                    "webhook_id": webhook_id or None,
+                    "profile_id": profile_id,
+                    "enforcement_action_id": action_id or None,
+                    "enforcement_status": row.get("enforcement_status"),
+                    "end_users": end_users,
+                },
+            )
+        except Exception:  # noqa: BLE001 — audit must not break ingest
+            pass
+    _record_org_webhook_metric(metrics, "ingested")
     return {
         "ok": True,
         "ignored": False,

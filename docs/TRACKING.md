@@ -7981,6 +7981,16 @@ one retry on 5xx/transport, Redis SET NX fleet claim, Prometheus
 (+ doctor stale-previous). Covered by
 `tests/unit/test_responses_completion_webhook.py`.
 
+### Harden Anthropic org enforcement webhook ingest ([#1914](https://github.com/naveenreddyalka/daari/issues/1914))
+
+<!-- tracking:#1914 -->
+**Status:** Done (2026-10-25). Org webhook ingest dedupes `webhook-id` via
+Redis SET NX, runs profile fetch off the event loop (`asyncio.to_thread`),
+records `anthropic.enforcement_webhook` audit rows, exposes
+`daari_org_enforcement_webhooks_total{result=...}`, and shares enforcement
+state via Redis when `cache.backend=redis`. Covered by
+`tests/unit/test_anthropic_org_webhooks.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

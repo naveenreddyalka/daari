@@ -319,3 +319,160 @@ def test_docs_cover_org_webhook_enable_and_rotate() -> None:
     assert "whsec_" in guide
     config = (root / "docs/developer/reference/config.md").read_text(encoding="utf-8")
     assert "anthropic.org_webhook_signing_secret" in config
+
+
+class FakeRedis:
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+        self._lock = __import__("threading").Lock()
+
+    def set(self, name: str, value: str, nx: bool = False, ex: int | None = None):
+        with self._lock:
+            if nx and name in self.store:
+                return None
+            self.store[name] = value
+            return True
+
+    def get(self, name: str):
+        with self._lock:
+            return self.store.get(name)
+
+
+def test_duplicate_webhook_id_does_not_mutate(tmp_path):
+    from daari.enterprise.anthropic_org_webhooks import ingest_org_webhook
+
+    store = EnforcementStore(tmp_path / "e.json")
+    redis = FakeRedis()
+    body = json.dumps(_event(ENFORCEMENT_OPENED, profile_id="uprof_dup")).encode()
+    headers = _signed_headers(body)
+    first = ingest_org_webhook(
+        body=body,
+        headers=headers,
+        signing_secret=SECRET,
+        user_profiles={},
+        store=store,
+        redis=redis,
+    )
+    assert first.get("ok") is True
+    assert first.get("duplicate") is not True
+    assert len(store.load()) == 1
+    second = ingest_org_webhook(
+        body=body,
+        headers=headers,
+        signing_secret=SECRET,
+        user_profiles={},
+        store=store,
+        redis=redis,
+    )
+    assert second == {"ok": True, "duplicate": True}
+    assert len(store.load()) == 1
+
+
+@pytest.mark.asyncio
+async def test_slow_profile_fetch_does_not_block_event_loop(settings, tmp_path, monkeypatch):
+    import asyncio
+    import time
+
+    settings.server.api_key = ""
+    settings.server.virtual_keys.enabled = False
+    settings.anthropic = AnthropicSettings(
+        org_webhook_signing_secret=SECRET,
+        enforcement_state_path=str(tmp_path / "e.json"),
+    )
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    started = __import__("threading").Event()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        started.set()
+        time.sleep(1.2)
+        return httpx.Response(
+            200,
+            json={
+                "type": "user_profile",
+                "id": "uprof_slow",
+                "enforcement_status": "restricted",
+                "enforcement_actions": [],
+            },
+        )
+
+    monkeypatch.setattr(
+        "daari.enterprise.anthropic_org_webhooks._default_transport",
+        lambda: httpx.MockTransport(handler),
+    )
+    monkeypatch.setattr(
+        type(settings),
+        "resolve_frontier_api_key",
+        lambda self: "sk-ant-test",
+        raising=False,
+    )
+    body = json.dumps(_event(ENFORCEMENT_OPENED, profile_id="uprof_slow")).encode()
+
+    async def post_webhook() -> None:
+        async with AsyncClient(
+            transport=ASGITransport(app=application), base_url="http://test"
+        ) as client:
+            await client.post(
+                "/v1/daari/webhooks/anthropic/org",
+                content=body,
+                headers=_signed_headers(body, ts=str(int(time.time()))),
+            )
+
+    task = asyncio.create_task(post_webhook())
+    for _ in range(40):
+        if started.is_set():
+            break
+        await asyncio.sleep(0.05)
+    assert started.is_set()
+    t0 = time.monotonic()
+    await asyncio.sleep(0.05)
+    assert time.monotonic() - t0 < 0.5
+    await task
+
+
+def test_applied_event_writes_audit_and_metrics(tmp_path, monkeypatch):
+    from daari.enterprise.anthropic_org_webhooks import ingest_org_webhook
+    from daari.enterprise.audit import AuditLog
+    from daari.observability.metrics import Metrics
+    from daari.observability.prometheus import render_prometheus
+
+    audit = AuditLog(str(tmp_path / "audit.sqlite3"))
+    metrics = Metrics()
+    store = EnforcementStore(tmp_path / "e.json")
+    body = json.dumps(_event(ENFORCEMENT_OPENED, profile_id="uprof_audit")).encode()
+    ingest_org_webhook(
+        body=body,
+        headers=_signed_headers(body),
+        signing_secret=SECRET,
+        user_profiles={},
+        store=store,
+        audit=audit,
+        metrics=metrics,
+    )
+    rows = audit.list(limit=10, action="anthropic.enforcement_webhook")
+    assert rows
+    assert rows[0]["action"] == "anthropic.enforcement_webhook"
+    assert metrics.org_enforcement_webhooks.get("ingested") == 1
+    text = render_prometheus(metrics)
+    assert 'daari_org_enforcement_webhooks_total{result="ingested"}' in text
+
+
+def test_redis_enforcement_store_shared_across_instances(tmp_path):
+    redis = FakeRedis()
+    a = EnforcementStore(tmp_path / "a.json", redis=redis)
+    b = EnforcementStore(tmp_path / "b.json", redis=redis)
+    a.save(
+        [
+            {
+                "profile_id": "uprof_fleet",
+                "enforcement_status": "banned",
+                "enforcement_actions": [],
+                "end_users": [],
+                "updated_at": "2026-10-25T00:00:00+00:00",
+            }
+        ]
+    )
+    rows = b.load()
+    assert len(rows) == 1
+    assert rows[0]["profile_id"] == "uprof_fleet"
+    assert rows[0]["enforcement_status"] == "banned"

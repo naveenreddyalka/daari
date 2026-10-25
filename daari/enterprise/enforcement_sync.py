@@ -58,11 +58,16 @@ def _normalize_status(raw: str | None) -> str:
     return status
 
 
+REDIS_ENFORCEMENT_KEY = "daari:anthropic-enforcement"
+
+
 @dataclass
 class EnforcementStore:
     path: Path
+    redis: Any | None = None
+    redis_key: str = REDIS_ENFORCEMENT_KEY
 
-    def load(self) -> list[dict[str, Any]]:
+    def _load_file(self) -> list[dict[str, Any]]:
         path = Path(self.path)
         if not path.is_file():
             return []
@@ -75,15 +80,44 @@ class EnforcementStore:
             return []
         return [row for row in rows if isinstance(row, dict) and row.get("profile_id")]
 
+    def load(self) -> list[dict[str, Any]]:
+        if self.redis is not None:
+            try:
+                raw = self.redis.get(self.redis_key)
+            except Exception:
+                raw = None
+            if raw:
+                try:
+                    text = raw.decode("utf-8") if isinstance(raw, (bytes, bytearray)) else str(raw)
+                    data = json.loads(text)
+                    rows = data.get("profiles") if isinstance(data, dict) else data
+                    if isinstance(rows, list):
+                        return [
+                            row
+                            for row in rows
+                            if isinstance(row, dict) and row.get("profile_id")
+                        ]
+                except (TypeError, json.JSONDecodeError, UnicodeDecodeError):
+                    pass
+            return []
+        return self._load_file()
+
     def save(self, rows: list[dict[str, Any]]) -> None:
-        path = Path(self.path)
-        path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "profiles": list(rows),
         }
+        blob = json.dumps(payload, indent=2) + "\n"
+        if self.redis is not None:
+            try:
+                self.redis.set(self.redis_key, blob)
+                return
+            except Exception:
+                pass
+        path = Path(self.path)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with _STATE_LOCK:
-            path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            path.write_text(blob, encoding="utf-8")
 
     def enforced_count(self) -> int:
         return sum(
@@ -319,4 +353,18 @@ def sync_enforcement(
 def store_from_settings(settings: Any) -> EnforcementStore:
     anthropic = getattr(settings, "anthropic", None)
     path = getattr(anthropic, "enforcement_state_path", None) if anthropic else None
-    return EnforcementStore(enforcement_state_path(path))
+    redis_client: Any | None = None
+    cache = getattr(settings, "cache", None)
+    if cache is not None and str(getattr(cache, "backend", "") or "") == "redis":
+        url = str(getattr(cache, "redis_url", "") or "").strip()
+        if url:
+            try:
+                from daari.cache.redis_client import connect_redis
+
+                redis_client = connect_redis(
+                    url,
+                    timeout_seconds=float(getattr(cache, "redis_timeout_seconds", 2.0) or 2.0),
+                )
+            except Exception:
+                redis_client = None
+    return EnforcementStore(enforcement_state_path(path), redis=redis_client)
