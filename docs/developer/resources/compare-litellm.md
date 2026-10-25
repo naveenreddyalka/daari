@@ -52,21 +52,25 @@ this GA cut. daari does **not** ship those.
 ## LiteLLM 1.106.0 GA
 
 LiteLLM [v1.106.0](https://github.com/BerriAI/litellm/releases/tag/v1.106.0)
-(18 Oct 2026) is **GA**. After trust backports, the stable comparison
-floor is **[1.106.3 GA](https://github.com/BerriAI/litellm/releases/tag/v1.106.3)**
-(24 Oct 2026; also backported as 1.103.8 / 1.104.6 / 1.105.4). The 1.106 cut
+(18 Oct 2026) is **GA**. After trust and image-scan hygiene backports, the
+stable comparison floor is
+**[1.106.4 GA](https://github.com/BerriAI/litellm/releases/tag/v1.106.4)**
+(25 Oct 2026; also backported as 1.103.9 / 1.104.7 / 1.105.5). The 1.106 cut
 includes a native
 [decision-model guardrail](https://docs.litellm.ai/docs/proxy/guardrails/decision_model)
 (`guardrail: decision_model`): yes/no questions against any `/v1/decisions`
 model, blocking or logging at a probability threshold.
 
-**1.106.3 trust actions:** LiteLLM rotated the image **cosign** signing key
-(commit [`e82a3c6`](https://github.com/BerriAI/litellm/commit/e82a3c6)) — buyers
-still verifying with the old `cosign.pub` will fail — and **removed the
-eMudhra root CA** from every trusted bundle. daari's local-first stance is
-independent of LiteLLM images; egress TLS defaults
-`upstream.distrust_emudhra_ca: true` (see [doctor-health](../guides/operations/doctor-health.md)
-`egress_tls_trust`) so outbound pools match that floor without pulling LiteLLM.
+**1.106.3–1.106.4 trust / image hygiene:** LiteLLM rotated the image **cosign**
+signing key (commit [`e82a3c6`](https://github.com/BerriAI/litellm/commit/e82a3c6))
+— buyers still verifying with the old `cosign.pub` will fail — **removed the
+eMudhra / emSign root CAs** from trusted bundles, and in **1.106.4** scrubbed
+image-scan noise (brotli 1.2.0, emSign ECC Root CA - G3, unused lockfile
+packages). daari's local-first stance is independent of LiteLLM images; egress
+TLS defaults `upstream.distrust_emudhra_ca: true` (see
+[doctor-health](../guides/operations/doctor-health.md) `egress_tls_trust`) and
+the Docker image build strips the same roots from certifi + the system CA
+store so scanners match runtime distrust without pulling LiteLLM.
 
 daari does **not** ship a decision-model guardrail yet. Heuristic / regex
 guardrails plus the on-box `/v1/decisions` path remain the local route for
@@ -83,7 +87,7 @@ PyPI quarantined the version; the Docker image was removed from Docker Hub /
 GHCR. Indicators include `/tmp/.pc_once_*` and `/tmp/remote_code_loader.lock`.
 
 **Do not** `pip install litellm==1.107.0` or pull `litellm/litellm:1.107.0`.
-Stay on LiteLLM **1.106.3** (or skip LiteLLM entirely). Treat 1.107.0 as
+Stay on LiteLLM **1.106.4** (or skip LiteLLM entirely). Treat 1.107.0 as
 unsafe / do-not-install — not a feature comparison bar. Do **not** advertise
 compromised 1.107 watchables as safe.
 
