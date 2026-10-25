@@ -368,6 +368,7 @@ _PROMETHEUS_RULE_METRICS = (
     "daari_cache_invalidate_total",
     "daari_schema_ok",
     "daari_systemone_breaker_total",
+    "daari_breaker_state",
     "daari_soft_warnings_total",
     "daari_anthropic_enforced_profiles",
 )

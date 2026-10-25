@@ -549,6 +549,22 @@ def test_grafana_dashboard_includes_systemone_breaker_panel():
     assert any("event" in expr for expr in exprs)
 
 
+def test_grafana_dashboard_includes_fleet_breaker_state_panel():
+    """Fleet breaker state gauge should chart all families (#1932)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "breaker state" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a breaker-state panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_breaker_state" in expr for expr in exprs)
+
+
 
 def test_grafana_dashboard_includes_gzip_panels():
     """Gzip outcome rate and byte counters should chart on the overview (#1872)."""

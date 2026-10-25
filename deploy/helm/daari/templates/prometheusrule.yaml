@@ -116,6 +116,17 @@ spec:
             description: "sum(rate(daari_systemone_breaker_total{event=~\"open|reject\"})) exceeds {{ ($pr.systemoneBreaker).rateThreshold | default 0.05 }}."
             runbook_url: {{ ($pr.systemoneBreaker).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
         {{- end }}
+        {{- if ($pr.fleetBreakerOpen).enabled | default true }}
+        - alert: DaariFleetBreakerOpen
+          expr: max(daari_breaker_state) > 0
+          for: {{ ($pr.fleetBreakerOpen).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.fleetBreakerOpen).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari circuit breaker open for more than 5m"
+            description: "daari_breaker_state reports at least one open circuit (frontier, local_pool, mcp_egress, or systemone)."
+            runbook_url: {{ ($pr.fleetBreakerOpen).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
         {{- if ($pr.serviceTierDegraded).enabled | default true }}
         - alert: DaariServiceTierDegraded
           expr: sum(rate(daari_soft_warnings_total{kind="service_tier_degraded"}[{{ ($pr.serviceTierDegraded).window | default "5m" }}])) > {{ ($pr.serviceTierDegraded).rateThreshold | default 0.01 }}

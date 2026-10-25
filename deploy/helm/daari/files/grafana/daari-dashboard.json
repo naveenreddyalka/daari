@@ -1080,6 +1080,25 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 53,
+      "title": "Breaker state by family",
+      "description": "Open circuit breakers across families (`daari_breaker_state`, 1=open) for frontier, local_pool, mcp_egress, and systemone (#1932).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 18,
+        "x": 0,
+        "y": 208
+      },
+      "targets": [
+        {
+          "expr": "sum by (family, target) (daari_breaker_state)",
+          "legendFormat": "{{family}}:{{target}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

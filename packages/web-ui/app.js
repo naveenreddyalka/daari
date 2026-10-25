@@ -23,6 +23,8 @@ const backendSummaryOpenCircuitNode = document.getElementById("backend-summary-o
 const systemoneBreakerStatusNode = document.getElementById("systemone-breaker-status");
 const systemoneBreakerResetButton = document.getElementById("systemone-breaker-reset");
 const systemoneBreakerResetStatusNode = document.getElementById("systemone-breaker-reset-status");
+const fleetBreakersListNode = document.getElementById("fleet-breakers-list");
+const fleetBreakersStatusNode = document.getElementById("fleet-breakers-status");
 const orgNode = document.getElementById("org-learning");
 const orgSummaryNode = document.getElementById("org-summary");
 const statusNode = document.getElementById("status");
@@ -293,6 +295,74 @@ function renderSystemoneBreaker(rows) {
   systemoneBreakerStatusNode.textContent = `Systemone breaker: ${parts.join("; ")}`;
   const anyOpen = list.some((row) => String(row?.state || "") === "open");
   systemoneBreakerStatusNode.classList.toggle("metric-warn", anyOpen);
+}
+
+function renderFleetBreakers(rows) {
+  if (!fleetBreakersListNode) {
+    return;
+  }
+  clearNode(fleetBreakersListNode);
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length === 0) {
+    const empty = document.createElement("li");
+    empty.textContent = "No breaker trips yet.";
+    fleetBreakersListNode.appendChild(empty);
+    return;
+  }
+  for (const row of list) {
+    const family = row && row.family ? String(row.family) : "unknown";
+    const target = row && row.target ? String(row.target) : "-";
+    const state = row && row.state ? String(row.state) : "closed";
+    const li = document.createElement("li");
+    li.style.marginBottom = "0.25rem";
+    const label = document.createElement("span");
+    label.textContent = `${family}:${target} = ${state}`;
+    if (state === "open") {
+      label.classList.add("metric-warn");
+    }
+    li.appendChild(label);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Reset";
+    btn.style.marginLeft = "0.5rem";
+    btn.dataset.family = family;
+    btn.dataset.target = target;
+    btn.addEventListener("click", () => resetFleetBreaker(family, target));
+    li.appendChild(btn);
+    fleetBreakersListNode.appendChild(li);
+  }
+}
+
+async function resetFleetBreaker(family, target) {
+  if (!fleetBreakersStatusNode) {
+    return;
+  }
+  fleetBreakersStatusNode.textContent = `Resetting ${family}:${target}…`;
+  try {
+    const response = await fetch(`${apiBaseUrl}/v1/daari/breakers/reset`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ family, target }),
+    });
+    if (response.status === 403) {
+      fleetBreakersStatusNode.textContent =
+        "403 Forbidden — breaker reset requires an admin API key.";
+      return;
+    }
+    if (!response.ok) {
+      fleetBreakersStatusNode.textContent = `Breaker reset failed: ${response.status}`;
+      return;
+    }
+    const payload = await response.json();
+    if (Array.isArray(payload.breakers)) {
+      renderFleetBreakers(payload.breakers);
+    } else {
+      await loadStats();
+    }
+    fleetBreakersStatusNode.textContent = `Reset ${family}:${target}.`;
+  } catch (error) {
+    fleetBreakersStatusNode.textContent = `Breaker reset failed: ${error.message}`;
+  }
 }
 
 function renderBackends(backends) {
@@ -1019,6 +1089,7 @@ async function loadStats() {
     renderKeyRateLimits(stats.key_rate_limits);
     renderBackendSummary(stats.backend_summary);
     renderSystemoneBreaker(stats.systemone_breaker);
+    renderFleetBreakers(stats.breakers);
     renderBackends(stats.backends);
 
     try {
