@@ -11,41 +11,38 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-24 pm)
+## Where daari stands (verified in-tree, 2026-10-25)
 
-**Loop velocity.** Ten feature PRs merged in 24h: served-tier billing,
-Decisions GA parity, d3+Flint, streamed Phonon TTS, wave Grafana alerts,
-fleet Responses cancel, enforcement webhook ingest, signed Responses
-completion webhooks, Anthropic 2026-10-21 document/citation strips, and the
-Nemotron 3.5 Bolt E4B VLM recipe. The backlog was refilled twice today
-(morning rows 198–202, pm rows 203–206) on top of the console enforcement
-panel, Postgres `schema_ok`/`migrate --downgrade`, and the 10-10 tenancy set.
+**Loop velocity.** Overnight/morning merges closed the 10-24 push-channel and
+trust set: completion-webhook off-loop delivery, org enforcement ingest,
+TTS body/input bounds, per-user RPD, Phonon voices, fleet-shared breakers,
+Postgres `schema_ok`/`migrate --downgrade`, web-ui enforcement panel,
+runtime eMudhra egress distrust, and compare-litellm 1.106.3. A morning
+refill already stocked image-trust, gateway-flow coverage, FinOps
+group-by, per-family breaker observability, and Anthropic `metadata.user_id`
+attribution. This run hardens day-2 packaging around those channels and
+opens local voice + skills honesty.
 
-**Outward.** LiteLLM **1.106.3** (2026-10-24) is the new GA floor: cosign
-signing key rotated to commit `e82a3c6`, and the **eMudhra root CA is
-removed** from every LiteLLM trust bundle (backported to 1.103.8 / 1.104.6 /
-1.105.4). Treat **1.107.0** as still compromised / do-not-install. Anthropic
-SDK **2.2.0/2.3.0** (10-23): **message threads**, **usage/cost reports
-grouped by dimension** (`model`/`speed`/`service_tier`/`inference_geo`;
-legacy reports deprecated), Claude Tags (Slack-scoped). **Claude Models on
-Google Cloud (Anthropic managed)** launched 10-22 — IAM auth, Marketplace
-billing, fast mode included. New 2.x SDKs send `Authorization: Bearer`
-instead of `X-Api-Key`; daari ingress accepts both and shape-detects on
-`anthropic-version`, so no break. Ollama **0.40.10** GA; **0.40.11-rc0**
-adds a Phonon voice catalog + mlxrunner spelling for symbols/numbers/links.
-AAIF (10-22) took Agent Skills, Open Responses (adds WebSocket + compaction),
-OpenEnv, OpenSandbox. Anthropic OTel export for Messages is in beta. vLLM
-0.32.0, Kong 3.16.0.1 (A2A v1.0), semantic-router 1.0/1.1, OpenRouter
-Private Endpoints — flat. certifi 2026.10.23 still ships eMudhra roots.
+**Outward.** LiteLLM **1.106.4** (2026-10-25) is the new GA floor: cosign
+key still `e82a3c6`; image-scan scrub for brotli 1.2.0 + **emSign ECC Root
+CA - G3** (+ unused lockfile packages); proxy no longer ImportErrors when
+the remote model-cost map is unreachable. **1.107.0** remains compromised /
+do-not-install. Ollama **0.40.11** GA: Phonon speech on macOS, language
+tags (`phonon:40m-fr|de|es|pt|multilingual`; 40M = CC BY-NC), d3 decision
+models. Anthropic Managed Agents session threads + SSE (not Messages API
+threads); AAIF Agent Skills package layout (`SKILL.md` in a directory).
+vLLM 0.32.0, Kong AI Gateway 2.2 / 3.16.x, OpenRouter Private Endpoints,
+semantic-router 0.4 / 1.x — flat. GPTCache / RouteLLM / OptiLLM — no
+enterprise-relevant delta. certifi 2026.10.23 still ships eMudhra roots
+(runtime filter shipped; image scrub still open).
 
-**Inward theme (pm): harden the push channels the wave opened; protect the
-box.** Completion webhooks post from a sync client inside the event loop,
-once, with no fleet dedupe and no secret-rotation family. Org webhook ingest
-can be replayed within the timestamp window to clear enforcement, blocks the
-loop on a 15s Admin API fetch, and lands in a per-pod JSON file. Breakers
-beyond systemone are still per-pod (morning row 199). `/v1/audio/speech`
-inherits the 100 MB upload floor with no input cap. The strips are invisible
-to clients, and Decisions discards provider-reported cost.
+**Inward theme: day-2 the push channels; speak every Phonon; load real
+skills.** Completion-webhook doctor parity lags budget/key-expiry secret
+checks. Webhook Prom counters exist with no Grafana/PromRule. Phonon
+multilingual tags and CC BY-NC cliff are invisible. Skills loader is still
+flat `*.md` only. Hermetic benchmarks never touch the TTS path. Image
+trust store scrub and gateway-flow coverage for the wave remain the
+morning P1/P2 spine.
 
 ---
 
@@ -53,20 +50,19 @@ to clients, and Decisions discards provider-reported cost.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 203 | Completion webhook delivery: off-loop + retry, Prom counter, fleet dedupe, rotation family | 4 | 2 | OpenAI webhooks (72h retries) / Svix | Signed-deliver, Redis claim, soft-warning counters all in-tree — assembly, not infra | Filed [#1913](https://github.com/naveenreddyalka/daari/issues/1913) |
-| 204 | Org enforcement webhook ingest: `webhook-id` replay dedupe, non-blocking profile fetch, audit + Prom, fleet-shared state | 4 | 3 | Anthropic / Svix (Standard Webhooks) / Kong cluster state | Redis `SET NX` idiom + enforcement store exist; truth stays fleet-wide | Filed [#1914](https://github.com/naveenreddyalka/daari/issues/1914) |
-| 205 | Bound `/v1/audio/speech`: carve out of 100 MB upload floor + `input` length cap | 3 | 1 | OpenAI (4096-char cap) | Protects the box that also hosts the models; OpenAI-shaped 400 pre-guardrail | Filed [#1916](https://github.com/naveenreddyalka/daari/issues/1916) |
-| 206 | Client-visible content-strip warnings + Decisions reported-cost billing + live model-list 400 | 3 | 2 | OpenRouter transform warnings / OpenAI usage-true billing | `daari_meta.warning` + labeled counters exist; honesty end to end | Filed [#1917](https://github.com/naveenreddyalka/daari/issues/1917) |
-| 198 | Distrust eMudhra/emSign on egress TLS + doctor tip | 4 | 1 | LiteLLM 1.106.3 / Kong / Portkey | One-process TLS policy; no cloud image wait | Filed [#1907](https://github.com/naveenreddyalka/daari/issues/1907) |
-| 199 | Fleet-share frontier / local-pool / MCP egress breakers via Redis | 4 | 3 | Kong / cloud gateways | Same Redis as cache; blast-radius on-box | Filed [#1908](https://github.com/naveenreddyalka/daari/issues/1908) (dup [#1915](https://github.com/naveenreddyalka/daari/issues/1915) needs human close) |
-| 200 | Phonon voice catalog list + OpenAI voice-name map | 3 | 2 | OpenAI TTS / Ollama 0.40.11-rc0 | Local voices behind daari auth/budgets | Filed [#1909](https://github.com/naveenreddyalka/daari/issues/1909) |
-| 201 | compare-litellm: pin GA floor at 1.106.3 (cosign + eMudhra) | 3 | 1 | LiteLLM release notes | Honest GTM without a LiteLLM runtime dep | Filed [#1910](https://github.com/naveenreddyalka/daari/issues/1910) |
-| 202 | Per-end-user RPD alongside `user_daily_usd_cap` | 4 | 2 | LiteLLM / OpenRouter | Ledger already attributes `user` | Shipped [#1911](https://github.com/naveenreddyalka/daari/issues/1911) |
-| 193–197 | Served-tier spend; Decisions GA; d3+Flint; streamed TTS; wave panels/alerts | 3–4 | 1–2 | OpenAI / Ollama / Grafana | Invoice, GA shape, $0 judge, local voice, day-2 | Shipped |
-| 191–192 | Fleet Responses cancel; Anthropic enforcement webhook ingest | 4 | 3 | OpenAI / Anthropic Admin | Redis cancel; push→tenant map | Shipped |
-| 188–190 | Console export/reset; Grafana gzip+TTL; vLLM 0.32.0 floor doc | 3 | 1–2 | LiteLLM UI / Grafana / vLLM | Day-2 packaging | Shipped |
-| — | Web-ui enforcement inventory + cache-invalidate form | 3 | 2 | LiteLLM admin UI | Same-box console | Open (filed prior run) |
-| — | Postgres `schema_ok` skew gate + `migrate --downgrade` | 3 | 2 | LiteLLM migrate story | Ready truth for PG fleets | Open (filed prior run) |
+| 212 | Doctor: `responses_completion_webhook_url` without signing secret | 3 | 1 | LiteLLM / Svix webhook hygiene | Same doctor pass as budget/key-expiry | Filed [#1934](https://github.com/naveenreddyalka/daari/issues/1934) |
+| 213 | Grafana + PrometheusRule for completion / org webhook counters | 3 | 1 | Kong / cloud webhook dashboards | Counters already exported; packaging | Filed [#1935](https://github.com/naveenreddyalka/daari/issues/1935) |
+| 214 | Phonon multilingual tags + doctor CC BY-NC tip for 40m | 3 | 2 | OpenAI TTS / Ollama 0.40.11 | Local voice behind daari auth/budgets | Filed [#1936](https://github.com/naveenreddyalka/daari/issues/1936) |
+| 215 | AAIF Agent Skills packages (`SKILL.md` in subdirs) | 3 | 2 | Claude / AAIF skill loaders | One on-disk tree for IDE + daemon | Filed [#1937](https://github.com/naveenreddyalka/daari/issues/1937) |
+| 216 | Hermetic TTS speech micro-benchmark (stream finalize + voices) | 2 | 1 | — (testability) | Opt-in benchmark suite already hermetic | Filed [#1938](https://github.com/naveenreddyalka/daari/issues/1938) |
+| 207 | Docker/image scrub of eMudhra/emSign + compare floor 1.106.4 | 4 | 1 | LiteLLM 1.106.4 images | Same filter policy at build time | Filed (morning refill) |
+| 208 | Gateway-flow coverage for 10-24/25 wave | 3 | 2 | LiteLLM proxy integration suites | One hermetic file, no live Ollama | Filed (morning refill) |
+| 209 | Dimension-grouped spend reports; persist `service_tier` | 3 | 2 | Anthropic Admin / LiteLLM leaderboards | Ledger already meters the dimensions | Filed (morning refill) |
+| 210 | Per-family breaker state, alerts, reset (beyond systemone) | 3 | 2 | Kong upstream health | Redis-shared state already exists | Filed (morning refill) |
+| 211 | Anthropic `metadata.user_id` → per-user fences; surface `user_rpd` | 3 | 2 | Anthropic Admin / OpenRouter | One ledger across both SDK doors | Filed (morning refill) |
+| 206 | Client-visible content-strip warnings + Decisions reported-cost | 3 | 2 | OpenRouter / OpenAI usage-true | `daari_meta.warning` + counters exist | Open |
+| 203–205 | Completion webhook delivery; org ingest; TTS bounds | 3–4 | 1–3 | OpenAI / Anthropic / Svix | Shipped | Shipped |
+| 198–202 | eMudhra egress; fleet breakers; Phonon voices; compare 1.106.3; user_rpd | 3–4 | 1–3 | LiteLLM / Kong / OpenAI | Shipped (image scrub still 207) | Shipped |
 | 62 | End-user inventory + per-user block/cap overrides | 5 | 3 | OpenRouter / LiteLLM | Ledger already knows every user | Open |
 | 63 | Named guardrail profiles bindable per key/team | 5 | 3 | OpenRouter / Portkey | Per-tenant policy, zero hops | Open |
 | 65 | Web-ui: honor keys/teams `has_more` + render `report.users` | 4 | 2 | LiteLLM admin UI | Same-box console finishes the job | Open |
@@ -74,103 +70,69 @@ to clients, and Decisions discards provider-reported cost.
 | 67 | multi_agent nested usage: per-subagent `model` | 4 | 2 | OpenAI / LiteLLM FinOps | Ledger already meters nested tokens | Open |
 | 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — needs long session | Open |
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (≥60m session) | Parked |
-| 8 | Full DCR; A2A; Realtime/WS; stdio MCP; M365; Skills; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM | Demand-triggered | Watch |
-| 24 | Grafana panel for `compact_to_fit_applied` | 2 | 1 | LiteLLM spend dashboards | Shipped | Shipped |
-| 25 | Dedicated stats/Prom counter for MCP grant fail-closed | 3 | 1 | LiteLLM MCP 403 metrics | Shipped | Shipped |
-| 26 | Refuse MCP `initialize` when key has no grant | 4 | 1 | LiteLLM initialize 403 | Shipped | Shipped |
-| 27 | Stats for estimated tokens dropped by compact-to-fit | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
-| 28 | Refresh compare-litellm for LiteLLM 1.104 GA | 2 | 1 | LiteLLM release notes | Shipped | Shipped |
-| 19 | Config ownership for `routing.compact_to_fit.*` | 3 | 2 | LiteLLM config ownership | Shipped | Shipped |
-| 20 | Doctor tip when compact_to_fit is enabled | 2 | 1 | — (ops honesty) | Shipped | Shipped |
-| 21 | Hermetic pin: compact_to_fit in config + routing-tiers | 2 | 1 | — (docs regression) | Shipped | Shipped |
-| 22 | `daari_meta` + stats when compact_to_fit actually trims | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
-| 23 | Opt-in fail-closed MCP when key has no MCP grant | 4 | 2 | LiteLLM `require_key_mcp_access_defined` | Shipped | Shipped |
-| 136–182 | 10-18 → 10-21 protocol/FinOps/HA waves | 2–5 | 1–3 | LiteLLM / Portkey / Kong / vLLM | Shipped | Shipped |
+| 8 | Full DCR; A2A; Realtime/WS; stdio MCP; M365; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM | Demand-triggered | Watch |
 
-Watch rows (do not file yet): hermetic **gateway-flow coverage for the wave**
-— zero `test_gateway_flow.py` cases for streamed TTS, completion webhooks,
-org webhook ingest, decisions `input_json`/images, or Anthropic stream
-`cache_creation_input_tokens` → spend (next test audit; strip-warning assert
-folded into row 206); **dimension-grouped usage/cost report export** over the
-spend ledger (time buckets + `group_by` model/speed/tier/team — Anthropic
-Admin API parity; file on FinOps ask); Anthropic **message threads** (SDK
-2.2.0; API shape undocumented — file when docs land); **Claude Models on
-Google Cloud** as a frontier flavor (IAM-auth egress — buyer ask); AAIF
-Agent Skills package loader beyond flat `~/.daari/skills/*.md`; Open
-Responses WebSocket transport; Anthropic OTel export beta parity; Prometheus
-exemplars + `gen_ai.agent.*`; Nemotron DFlash tip once 0.40.10 recipes
-settle; LiteLLM post-compromise 1.107-rebuild watchables (ID-JAG /
-OAuth-delegate / `agent_access_default_deny`); Portkey WIF upstream creds;
-per-user RPD now filed (row 202); SCIM + multi-issuer SSO; Kong Skills/A2A
-passthrough demand; OpenRouter Private Endpoints as an L6 slot recipe.
+Watch rows (do not file yet): Anthropic **Managed Agents** session-thread
+proxy (SSE at `/v1/sessions/...` — buyer ask; not Messages API threads);
+**Claude Models on Google Cloud** as a frontier flavor (IAM egress);
+Open Responses WebSocket transport; Anthropic OTel export beta parity;
+Prometheus exemplars + `gen_ai.agent.*`; Nemotron DFlash tip; LiteLLM
+post-compromise 1.107-rebuild watchables (ID-JAG / OAuth-delegate /
+`agent_access_default_deny`); Portkey WIF upstream creds; SCIM +
+multi-issuer SSO; Kong Skills/A2A passthrough; OpenRouter Private
+Endpoints as an L6 slot recipe.
 
-Verified fine this run — don't re-audit: served-tier billing correct on both
-paths incl. the Anthropic `speed` analog (`router.py` ~L1330/3128); fleet
-cancel fires no duplicate completion webhook (terminal short-circuit +
-cancel-check before notify, Redis flag TTL 1h); Decisions GA fences complete
-(400-question cap, stream reject, `input_json` validation, L0 fingerprint
-incl. image parts, cached-input billing, d3 in catalog + pricing card);
-streamed TTS finalizes spend/ledger with real byte count in the generator
-`finally`, guardrails pre-relay, $0 local-tier billing; org webhook signature
-constant-time with previous-secret grace, 404 when unconfigured; #1903
-panels/alerts in both dashboard copies + PrometheusRule; #1904 strip covers
-stream + non-stream + Responses-via-router, keeps nested tool-result
-documents and `citations: {enabled}`; Anthropic SDK 2.x `Authorization:
-Bearer` switch handled at ingress (`auth.py`, `wants_anthropic_models` keys
-on `anthropic-version`); cache-write TTL billing on stream shapes.
+Verified fine this run — don't re-audit: completion webhook off-loop +
+Redis claim + previous-secret grace; org webhook `webhook-id` replay
+dedupe + non-blocking profile fetch; TTS body/input caps carved out of
+the 100 MB upload floor; runtime eMudhra filter on egress httpx;
+fleet-shared breakers via Redis; Phonon English voice map + `/v1/audio/voices`;
+`user_rpd` on top-level JSON `user`; served-tier billing incl. Anthropic
+`speed` analog; Decisions GA fences; Anthropic SDK 2.x Bearer auth at
+ingress.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Harden the push channels** — completion-webhook delivery semantics
-   (row 203) and replay-safe, fleet-true org webhook ingest (row 204).
-2. **Match the trust floors** — eMudhra distrust on egress + doctor tip
-   (row 198); refresh compare-litellm to 1.106.3 (row 201).
-3. **Finish HA share, protect the box** — fleet-shared breakers (row 199);
-   bound the TTS door (row 205).
-4. **Honesty + local voice** — client-visible strips and reported-cost
-   Decisions billing (row 206); Phonon voice catalog (row 200).
-5. **End-user fences, console, PG parity** — per-user RPD (row 202), the
-   prior-run console/PG pair, then the 10-10 tenancy set (62–67) and
-   dimension-grouped spend reports when a FinOps buyer asks.
+1. **Close the trust/image floor** — scrub eMudhra/emSign from shipped
+   image trust stores and pin compare-litellm at 1.106.4 (row 207).
+2. **Day-2 the push channels** — doctor secret parity (212), Grafana/alerts
+   for webhook counters (213); finish strip/billing honesty (206).
+3. **Prove the wave** — gateway-flow coverage (208) + hermetic TTS
+   benchmark (216).
+4. **Speak and skill locally** — Phonon multilingual + license tip (214);
+   AAIF `SKILL.md` packages (215).
+5. **FinOps + HA observability + tenancy** — dimension-grouped spend (209),
+   per-family breaker inventory (210), Anthropic user attribution (211),
+   then the 10-10 tenancy set (62–67).
 
 Compliance non-goals (SCIM, WIF depth, A2A, SOC 2 program, Realtime/WS,
-FIPS builds, HIPAA BAA, full AAIF Skills/Open Responses WS) stay deferred
-until buyer demand.
+FIPS builds, HIPAA BAA, Managed Agents proxy, full Open Responses WS) stay
+deferred until buyer demand.
 
 ---
 
 ## Changelog
 
-- **2026-10-24 pm (harden the push channels, protect the box)** — Delta scan
-  after the morning run: filed rows 203–206 (completion-webhook delivery
-  semantics, replay-safe webhook ingest, TTS input bound, strip/billing
-  honesty); the pm breaker filing was a duplicate of morning row 199 and
-  needs a human close. Outward adds: Anthropic SDK 2.2.0/2.3.0 (message
-  threads, dimension-grouped usage/cost reports, Claude Tags), Claude on
-  Google Cloud, Bearer-auth SDK switch verified handled at ingress. Drained
-  the stale 10-23 pm PRD PR by taking main.
+- **2026-10-25 (day-2 the push channels; speak every Phonon; load real
+  skills)** — Marked rows 198–205 Shipped (image scrub remains as 207).
+  Outward: LiteLLM 1.106.4 GA floor (emSign image scrub + cost-map
+  ImportError fix; 1.107 still do-not-install); Ollama 0.40.11 Phonon
+  languages + CC BY-NC on 40m; AAIF Agent Skills package layout. Recorded
+  morning refill rows 207–211. Filed rows 212–216: completion-webhook
+  doctor secret check, webhook Grafana/alerts, Phonon multilingual +
+  license tip, AAIF skills packages, hermetic TTS benchmark.
+
+- **2026-10-24 pm (harden the push channels, protect the box)** — Filed
+  rows 203–206. Outward: Anthropic SDK 2.2/2.3, Claude on Google Cloud,
+  Bearer-auth switch verified at ingress.
 
 - **2026-10-24 (match trust floors, finish HA share, speak local voice)** —
-  Marked rows 191–197 Shipped (served-tier billing through Nemotron recipe
-  and the HA/webhook/strip set all on main). Outward: LiteLLM 1.106.3 GA
-  floor (cosign `e82a3c6`, eMudhra CA removed; 1.107 still do-not-install);
-  Ollama 0.40.10 / 0.40.11-rc0 Phonon voice catalog; AAIF Skills + Open
-  Responses WS; Anthropic OTel beta. Filed rows 198–202: eMudhra distrust,
-  fleet-shared breakers, Phonon voices, compare-litellm 1.106.3, per-user
-  RPD.
+  Filed rows 198–202. Outward: LiteLLM 1.106.3; Ollama 0.40.10 / 0.40.11-rc0;
+  AAIF Skills + Open Responses WS; Anthropic OTel beta.
 
-- **2026-10-23 (bill what was served, speak what went GA)** — Marked rows
-  183–190 Shipped. Outward: Ollama 0.40.9; OpenAI Decisions GA; eMudhra
-  distrust watch; semantic-router 1.0/1.1. Filed rows 193–197.
-
-- **2026-10-22 + pm (finish the truths; console and day-2 packaging)** —
-  Marked 171–182 Shipped. Filed 183–192. Outward: LiteLLM compromise
-  post-mortem (floor 1.106.2); Anthropic enforcement_status; OpenAI
-  service-tier restrictions; Ollama 0.40.8; vLLM 0.32.0.
-
-- **2026-10-21 → 08-28** — Condensed: breaker truth, invoice-true cache
-  billing, user profiles; LiteLLM compromise + Anthropic API-version
-  footgun; finish-the-knobs; decisions depth; `resultType`/egress waves;
-  Apache 2.0; this PRD's creation.
+- **2026-10-23 → 08-28** — Condensed: bill what was served; finish the
+  truths / console / PG gate; breaker truth; invoice-true cache billing;
+  LiteLLM compromise + Anthropic API-version footgun; Apache 2.0; this
+  PRD's creation.
