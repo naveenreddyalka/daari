@@ -49,6 +49,27 @@ def test_body_limit_upload_routes_raise_floor() -> None:
     )
 
 
+def test_speech_json_uses_server_max_body_not_upload_floor() -> None:
+    """POST /v1/audio/speech is small JSON; do not inherit the 100 MB upload floor (#1916)."""
+    assert (
+        body_limit_for_path("/v1/audio/speech", max_body_bytes=1024, files_max_total=0)
+        == 1024
+    )
+    assert (
+        body_limit_for_path(
+            "/v1/audio/speech", max_body_bytes=10 * 1024 * 1024, files_max_total=0
+        )
+        == 10 * 1024 * 1024
+    )
+    # Multipart audio uploads keep the floor.
+    assert (
+        body_limit_for_path(
+            "/v1/audio/translations", max_body_bytes=1024, files_max_total=0
+        )
+        == UPLOAD_ROUTE_FLOOR_BYTES
+    )
+
+
 def test_openai_and_anthropic_error_shapes() -> None:
     openai = body_too_large_response(path="/v1/chat/completions", limit=10, content_length=99)
     assert openai.status_code == 413

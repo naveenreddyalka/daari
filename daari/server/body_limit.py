@@ -31,12 +31,27 @@ class BodyTooLarge(Exception):
         super().__init__(f"body exceeds {limit} bytes")
 
 
+def _is_upload_body_path(path: str) -> bool:
+    """True for multipart/file upload routes that may exceed the JSON body cap.
+
+    ``/v1/audio/speech`` is small JSON TTS and stays on ``server.max_body_bytes``
+    (#1916); transcriptions/translations keep the upload floor.
+    """
+    if path.startswith("/v1/files"):
+        return True
+    if path.startswith("/v1/images/edits") or path.startswith("/v1/images/variations"):
+        return True
+    if path.startswith("/v1/audio/"):
+        if path == "/v1/audio/speech" or path.startswith("/v1/audio/speech/"):
+            return False
+        return True
+    return False
+
+
 def body_limit_for_path(path: str, *, max_body_bytes: int, files_max_total: int) -> int:
     """Per-route override: uploads may exceed the general chat/JSON cap."""
     base = max(0, int(max_body_bytes))
-    if path.startswith("/v1/files") or path.startswith("/v1/audio/") or path.startswith(
-        "/v1/images/edits"
-    ) or path.startswith("/v1/images/variations"):
+    if _is_upload_body_path(path):
         floor = max(UPLOAD_ROUTE_FLOOR_BYTES, int(files_max_total or 0))
         return max(base, floor)
     return base

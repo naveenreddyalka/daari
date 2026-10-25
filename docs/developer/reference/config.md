@@ -15,7 +15,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.virtual_keys.enabled` | bool | `True` |  |
 | `server.virtual_keys.path` | str | `'~/.daari/auth/virtual-keys.sqlite3'` |  |
 | `server.virtual_keys.backend` | Literal | `'sqlite'` | sqlite (default) or postgres (observability.postgres_url) so keys and teams resolve across replicas (#544). Env: DAARI_SERVER__VIRTUAL_KEYS__BACKEND. |
-| `server.max_body_bytes` | int | `10485760` | Hard cap on inbound request body size (#933). Oversized requests return 413 before the body is buffered. 0 disables the cap. File/audio upload routes may use a higher floor so files.max_total_bytes still applies. Env: DAARI_SERVER__MAX_BODY_BYTES. |
+| `server.max_body_bytes` | int | `10485760` | Hard cap on inbound request body size (#933). Oversized requests return 413 before the body is buffered. 0 disables the cap. File and multipart audio upload routes may use a higher floor so files.max_total_bytes still applies; JSON /v1/audio/speech stays on this cap (#1916). Env: DAARI_SERVER__MAX_BODY_BYTES. |
 | `server.header_policy.enabled` | bool | `False` | When true, evaluate required/deny/allow before require_api_key. Env: DAARI_SERVER__HEADER_POLICY__ENABLED. |
 | `server.header_policy.required` | list | `[]` | Header names that must be present and non-empty. |
 | `server.header_policy.deny` | list | `[]` | Denylist rules (exact and/or regex) evaluated against headers. |
@@ -73,6 +73,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `tts.base_url` | str | `''` | OpenAI-compatible TTS base URL, including /v1 (Ollama ≥0.40.9 Phonon at ollama.base_url/v1, openedai-speech, Kokoro-FastAPI, or similar). Empty leaves POST /v1/audio/speech unconfigured. |
 | `tts.model` | str | `''` | Optional model name sent to the TTS server. When set, it replaces the client model so a local server always sees its own id. |
 | `tts.voice` | str | `''` | Optional default voice when the request omits voice (OpenAI alloy/echo/… or the local server's voice id). |
+| `tts.max_input_chars` | int | `4096` | Maximum length of POST /v1/audio/speech ``input`` (#1916). Oversized text returns 400 invalid_request_error before guardrails or upstream TTS. Matches OpenAI's 4096-char speech cap by default. Env: DAARI_TTS__MAX_INPUT_CHARS. |
 | `cache.l0.enabled` | bool | `True` |  |
 | `cache.l0.path` | str | `'~/.daari/cache/l0'` |  |
 | `cache.l0.ttl_seconds` | float | `0.0` |  |

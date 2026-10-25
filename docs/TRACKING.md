@@ -7991,6 +7991,14 @@ records `anthropic.enforcement_webhook` audit rows, exposes
 state via Redis when `cache.backend=redis`. Covered by
 `tests/unit/test_anthropic_org_webhooks.py`.
 
+### Bound /v1/audio/speech body + input length ([#1916](https://github.com/naveenreddyalka/daari/issues/1916))
+
+<!-- tracking:#1916 -->
+**Status:** Done (2026-10-25). `/v1/audio/speech` uses `server.max_body_bytes`
+(not the 100 MB upload floor); `tts.max_input_chars` (default 4096) returns
+400 `invalid_request_error` before guardrails/TTS. TTS guide documents both.
+Covered by `tests/unit/test_body_limit.py`, `tests/unit/test_speech.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -434,6 +434,15 @@ async def handle_speech(
         abandon_slot(idem_slot)
         return _error(400, "invalid_request_error", "input is required")
 
+    max_chars = int(getattr(ctx.settings.tts, "max_input_chars", 4096) or 4096)
+    if max_chars > 0 and len(text) > max_chars:
+        abandon_slot(idem_slot)
+        return _error(
+            400,
+            "invalid_request_error",
+            f"input exceeds tts.max_input_chars ({max_chars})",
+        )
+
     model_name = (target.model or (model or "")).strip()
     if not model_name:
         abandon_slot(idem_slot)
