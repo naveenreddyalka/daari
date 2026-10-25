@@ -61,7 +61,7 @@ to clients, and Decisions discards provider-reported cost.
 | 199 | Fleet-share frontier / local-pool / MCP egress breakers via Redis | 4 | 3 | Kong / cloud gateways | Same Redis as cache; blast-radius on-box | Filed [#1908](https://github.com/naveenreddyalka/daari/issues/1908) (dup [#1915](https://github.com/naveenreddyalka/daari/issues/1915) needs human close) |
 | 200 | Phonon voice catalog list + OpenAI voice-name map | 3 | 2 | OpenAI TTS / Ollama 0.40.11-rc0 | Local voices behind daari auth/budgets | Filed [#1909](https://github.com/naveenreddyalka/daari/issues/1909) |
 | 201 | compare-litellm: pin GA floor at 1.106.3 (cosign + eMudhra) | 3 | 1 | LiteLLM release notes | Honest GTM without a LiteLLM runtime dep | Filed [#1910](https://github.com/naveenreddyalka/daari/issues/1910) |
-| 202 | Per-end-user RPD alongside `user_daily_usd_cap` | 4 | 2 | LiteLLM / OpenRouter | Ledger already attributes `user` | Filed [#1911](https://github.com/naveenreddyalka/daari/issues/1911) |
+| 202 | Per-end-user RPD alongside `user_daily_usd_cap` | 4 | 2 | LiteLLM / OpenRouter | Ledger already attributes `user` | Shipped [#1911](https://github.com/naveenreddyalka/daari/issues/1911) |
 | 193–197 | Served-tier spend; Decisions GA; d3+Flint; streamed TTS; wave panels/alerts | 3–4 | 1–2 | OpenAI / Ollama / Grafana | Invoice, GA shape, $0 judge, local voice, day-2 | Shipped |
 | 191–192 | Fleet Responses cancel; Anthropic enforcement webhook ingest | 4 | 3 | OpenAI / Anthropic Admin | Redis cancel; push→tenant map | Shipped |
 | 188–190 | Console export/reset; Grafana gzip+TTL; vLLM 0.32.0 floor doc | 3 | 1–2 | LiteLLM UI / Grafana / vLLM | Day-2 packaging | Shipped |

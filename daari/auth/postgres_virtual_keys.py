@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     budget_windows_json TEXT NOT NULL DEFAULT '[]',
     metadata_json TEXT NOT NULL DEFAULT '{}',
     user_daily_usd_cap DOUBLE PRECISION NOT NULL DEFAULT 0,
+    user_rpd INTEGER NOT NULL DEFAULT 0,
     previous_key_hash TEXT,
     previous_prefix TEXT,
     previous_expires_at TEXT,
@@ -104,6 +105,7 @@ _PG_KEY_MIGRATIONS = (
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS cache_scope TEXT NOT NULL DEFAULT 'global'",
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'",
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS last_used_at TEXT",
+    "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS user_rpd INTEGER NOT NULL DEFAULT 0",
 )
 
 _MEMORY_PATHS: dict[str, Path] = {}
@@ -627,6 +629,7 @@ class PostgresVirtualKeyStore:
         metadata: dict[str, Any] | None = None,
         expires_at: str | None = None,
         user_daily_usd_cap: float = 0.0,
+        user_rpd: int = 0,
         region_pin: str | None = None,
         allowed_models: list[str] | tuple[str, ...] | None = None,
         model_groups: list[str] | tuple[str, ...] | None = None,
@@ -650,6 +653,7 @@ class PostgresVirtualKeyStore:
                 metadata=metadata,
                 expires_at=expires_at,
                 user_daily_usd_cap=user_daily_usd_cap,
+                user_rpd=user_rpd,
                 region_pin=region_pin,
                 allowed_models=allowed_models,
                 model_groups=model_groups,
@@ -698,8 +702,8 @@ class PostgresVirtualKeyStore:
                     " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                     " team_id, budget_windows_json, metadata_json, expires_at, user_daily_usd_cap,"
                     " region_pin, allowed_models_json, model_groups_json, rpd, cache_scope,"
-                    " priority)"
-                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    " priority, user_rpd)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (
                         self._hash(plaintext),
                         key_id,
@@ -723,6 +727,7 @@ class PostgresVirtualKeyStore:
                         max(0, int(rpd)),
                         scope,
                         prio,
+                        max(0, int(user_rpd)),
                     ),
                 )
             conn.commit()
@@ -744,6 +749,7 @@ class PostgresVirtualKeyStore:
                 metadata=meta,
                 expires_at=expires_at,
                 user_daily_usd_cap=float(user_daily_usd_cap),
+                user_rpd=max(0, int(user_rpd)),
                 region_pin=pin,
                 allowed_models=models,
                 model_groups=groups,
@@ -841,6 +847,21 @@ class PostgresVirtualKeyStore:
                 cur.execute(
                     "UPDATE virtual_keys SET rpd = %s WHERE key_id = %s AND revoked_at IS NULL",
                     (max(0, int(rpd)), key_id),
+                )
+                updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+
+    def update_user_rpd(self, key_id: str, user_rpd: int) -> bool:
+        if self._inner is not None:
+            return self._inner.update_user_rpd(key_id, user_rpd)
+        if not self.enabled:
+            return False
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE virtual_keys SET user_rpd = %s WHERE key_id = %s AND revoked_at IS NULL",
+                    (max(0, int(user_rpd)), key_id),
                 )
                 updated = cur.rowcount > 0
             conn.commit()
@@ -1112,6 +1133,7 @@ class PostgresVirtualKeyStore:
         expires_at: str | None = None,
         previous_expires_at: str | None = None,
         user_daily_usd_cap: float = 0.0,
+        user_rpd: int = 0,
         allowed_models: tuple[str, ...] | None = None,
         model_groups: tuple[str, ...] | None = None,
         rpd: int = 0,
@@ -1127,6 +1149,7 @@ class PostgresVirtualKeyStore:
             expires_at=expires_at,
             previous_expires_at=previous_expires_at,
             user_daily_usd_cap=user_daily_usd_cap,
+            user_rpd=user_rpd,
             allowed_models=allowed_models,
             model_groups=model_groups,
             rpd=rpd,
@@ -1148,7 +1171,7 @@ class PostgresVirtualKeyStore:
                     " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                     " v.previous_expires_at, v.user_daily_usd_cap,"
                     " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope,"
-                    " v.priority, v.last_used_at"
+                    " v.priority, v.last_used_at, v.user_rpd"
                     " FROM virtual_keys v"
                     " LEFT JOIN teams t ON t.team_id = v.team_id"
                     " ORDER BY v.created_at DESC"
@@ -1168,6 +1191,7 @@ class PostgresVirtualKeyStore:
                 cache_scope=coerce_cache_scope(r[20]) if len(r) > 20 else "global",
                 priority=coerce_priority(r[21]) if len(r) > 21 else None,
                 last_used_at=r[22] if len(r) > 22 else None,
+                user_rpd=int(r[23] or 0) if len(r) > 23 else 0,
             )
             for r in rows
         ]
@@ -1186,7 +1210,7 @@ class PostgresVirtualKeyStore:
                     " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                     " v.previous_expires_at, v.user_daily_usd_cap, v.key_hash, v.previous_key_hash,"
                     " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope,"
-                    " v.priority, v.last_used_at"
+                    " v.priority, v.last_used_at, v.user_rpd"
                     " FROM virtual_keys v"
                     " LEFT JOIN teams t ON t.team_id = v.team_id"
                     " WHERE v.key_hash = %s OR v.previous_key_hash = %s",
@@ -1213,6 +1237,7 @@ class PostgresVirtualKeyStore:
             cache_scope=coerce_cache_scope(row[22]) if len(row) > 22 else "global",
             priority=coerce_priority(row[23]) if len(row) > 23 else None,
             last_used_at=row[24] if len(row) > 24 else None,
+            user_rpd=int(row[25] or 0) if len(row) > 25 else 0,
         )
 
     def touch_last_used(

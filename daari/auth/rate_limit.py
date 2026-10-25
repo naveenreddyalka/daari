@@ -531,6 +531,8 @@ class RateLimiter:
         family: str | None = None,
         family_rpm: int | None = None,
         family_tpm: int | None = None,
+        user_id: str | None = None,
+        user_rpd: int | None = None,
     ) -> RateLimitDecision:
         key_rpm = self.default_rpm if rpm is None else rpm
         key_tpm = self.default_tpm if tpm is None else tpm
@@ -612,6 +614,20 @@ class RateLimiter:
             checks.append((f"rpd:{key_id}", "rpd", "key", 1, key_rpd, DAY_SECONDS))
         if team_id and agg_team_rpd > 0:
             checks.append((f"rpd:team:{team_id}", "rpd", "team", 1, agg_team_rpd, DAY_SECONDS))
+        # Per-end-user day cap on shared keys (#1911). Named user required; 0 = unlimited.
+        named_user = (user_id or "").strip()
+        per_user_rpd = 0 if user_rpd is None else max(0, int(user_rpd))
+        if named_user and per_user_rpd > 0:
+            checks.append(
+                (
+                    f"rpd:{key_id}:user:{named_user}",
+                    "rpd",
+                    "user",
+                    1,
+                    per_user_rpd,
+                    DAY_SECONDS,
+                )
+            )
 
         for counter_key, scope, bucket, amount, limit, window_seconds in checks:
             count = self._increment(counter_key, amount, window_seconds=window_seconds)

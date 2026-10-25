@@ -83,11 +83,13 @@ request) limit on every matching window for that scope.
 
 When many humans share one virtual key (a team agent), pass the OpenAI `user`
 field so spend is attributed per person. Optional `--user-daily-cap` denies only
-the user who crossed it (`scope: "user"`); others on the same key keep working.
-Requests without `user` are attributed to `unknown` and are never user-capped.
+the user who crossed the frontier USD day cap (`scope: "user"`, 402);
+`--user-rpd` is the matching request-count fence (429, `X-RateLimit-Scope: user`).
+Others on the same key keep working. Requests without `user` are attributed to
+`unknown` and are never user-capped.
 
 ```bash
-daari keys create shared-agent --user-daily-cap 2
+daari keys create shared-agent --user-daily-cap 2 --user-rpd 200
 daari usage --by-user
 # or: daari report --by-user
 ```
