@@ -52,6 +52,11 @@ image we ship still carries the emSign roots daari distrusts at runtime.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 212 | Doctor: `responses_completion_webhook_url` without signing secret | 3 | 1 | LiteLLM / Svix webhook hygiene | Same doctor pass as budget/key-expiry | Filed [#1934](https://github.com/naveenreddyalka/daari/issues/1934) (pm run) |
+| 213 | Grafana + PrometheusRule for completion / org webhook counters | 3 | 1 | Kong / cloud webhook dashboards | Counters already exported; packaging | Filed [#1935](https://github.com/naveenreddyalka/daari/issues/1935) (pm run) |
+| 214 | Phonon multilingual tags + doctor CC BY-NC tip for 40m | 3 | 2 | OpenAI TTS / Ollama 0.40.11 | Local voice behind daari auth/budgets | Filed [#1936](https://github.com/naveenreddyalka/daari/issues/1936) (pm run) |
+| 215 | AAIF Agent Skills packages (`SKILL.md` in subdirs) | 3 | 2 | Claude / AAIF skill loaders | One on-disk tree for IDE + daemon | Filed [#1937](https://github.com/naveenreddyalka/daari/issues/1937) (pm run) |
+| 216 | Hermetic TTS speech micro-benchmark (stream finalize + voices) | 2 | 1 | — (testability) | Opt-in benchmark suite already hermetic | Filed [#1938](https://github.com/naveenreddyalka/daari/issues/1938) (pm run) |
 | 207 | Strip eMudhra/emSign from image trust stores (certifi + Debian) + compare floor 1.106.4 | 4 | 1 | LiteLLM 1.106.4 images | Build-time scrub reuses the in-tree runtime filter; no base-image wait | Filed [#1929](https://github.com/naveenreddyalka/daari/issues/1929) |
 | 208 | Gateway-flow integration coverage for the merged wave (TTS spend, webhooks, ingest, decisions GA, stream cache-write, user_rpd, fleet breakers, schema_ok) | 4 | 2 | — (regression fence) | All mockable in-process; the fence that lets the loop merge daily | Filed [#1930](https://github.com/naveenreddyalka/daari/issues/1930) |
 | 209 | Dimension-grouped spend reports + time buckets; persist `service_tier` in the ledger | 4 | 2 | Anthropic Admin API / LiteLLM daily usage | GROUP BY over the on-box ledger; no raw-row export to a SaaS | Filed [#1931](https://github.com/naveenreddyalka/daari/issues/1931) |
@@ -91,10 +96,10 @@ encrypt-at-rest with customer KMS; regulated-buyer ask); OpenAI
 audit; adjacent to the parked per-key tool allowlist row); web-ui voices list
 (`/v1/audio/voices` exists, console never fetches it — minor); `daari_schema_ok`
 gauge HELP text still says "SQLite" though it covers PG skew; UK residency
-doc note (`gb` works via free-form labels); Anthropic **message threads**
-(SDK 2.2.0; API shape undocumented); **Claude Models on Google Cloud** as a
-frontier flavor (IAM-auth egress — buyer ask); AAIF Agent Skills loader +
-Open Responses WebSocket; Anthropic OTel export beta parity; Prometheus
+doc note (`gb` works via free-form labels); Anthropic threads are **Managed
+Agents session threads + SSE**, not Messages API threads (pm-run correction);
+**Claude Models on Google Cloud** as a frontier flavor (IAM-auth egress —
+buyer ask); Open Responses WebSocket; Anthropic OTel export beta parity; Prometheus
 exemplars + `gen_ai.agent.*`; LiteLLM 1.107-rebuild watchables (ID-JAG /
 OAuth-delegate / `agent_access_default_deny`); Portkey WIF upstream creds;
 SCIM + multi-issuer SSO; Kong Skills/A2A passthrough demand; OpenRouter
@@ -120,9 +125,9 @@ Phonon discovery + unknown-voice 400 + doctor tip; per-user request counts in
 
 1. **Scanner-clean supply chain** — strip the distrusted roots from the
    shipped image and bump the compare floor to 1.106.4 (row 207).
-2. **Prove the wave** — gateway-flow integration coverage for all ten
-   just-merged features, incl. the never-asserted streamed-TTS spend row
-   (row 208).
+2. **Prove the wave, package its day-2** — gateway-flow integration coverage
+   for all ten just-merged features, incl. the never-asserted streamed-TTS
+   spend row (row 208); webhook doctor parity + panels (rows 212–213).
 3. **Report like an Admin API** — dimension-grouped, time-bucketed spend
    reports over the on-box ledger with `service_tier` persisted (row 209).
 4. **Operate the breakers** — state, alerts, doctor, inventory and reset
@@ -149,6 +154,10 @@ until buyer demand.
   integration coverage, grouped spend reports, breaker observability,
   Anthropic per-user attribution. New watch rows: background-job lease
   reclaim, EKM-analog at-rest encryption, agents/automations passthrough.
+  A same-day pm sibling filed rows 212–216 (webhook doctor secret parity,
+  webhook Grafana/alerts, Phonon multilingual + CC BY-NC tip, AAIF Agent
+  Skills packages, hermetic TTS benchmark) — adopted here because the pm
+  PRD branch pruned the pinned compact/MCP rows and fails the pin test.
 
 - **2026-10-24 + pm (trust floors, HA share, local voice; push channels)** —
   Marked rows 191–197 Shipped. Outward: LiteLLM 1.106.3 GA floor (cosign
