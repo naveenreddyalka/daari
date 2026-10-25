@@ -7999,6 +7999,16 @@ state via Redis when `cache.backend=redis`. Covered by
 400 `invalid_request_error` before guardrails/TTS. TTS guide documents both.
 Covered by `tests/unit/test_body_limit.py`, `tests/unit/test_speech.py`.
 
+### Docker image scrub of eMudhra/emSign roots + compare floor 1.106.4 ([#1929](https://github.com/naveenreddyalka/daari/issues/1929))
+
+<!-- tracking:#1929 -->
+**Status:** Done (2026-10-25). Final-stage Dockerfile rewrites certifi
+`cacert.pem` via `filter_ca_bundle` and deselects `mozilla/emSign*` in the
+system CA store (`update-ca-certificates --fresh`). Compare page pins LiteLLM
+**1.106.4** GA floor (image-scan hygiene); keeps 1.107.0 do-not-install.
+Covered by `tests/unit/test_docker_supply_chain.py`,
+`tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

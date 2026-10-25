@@ -84,3 +84,22 @@ def test_verify_instructions_documented():
     assert "cosign verify" in doc
     assert "--certificate-identity-regexp" in doc
     assert "--certificate-oidc-issuer https://token.actions.githubusercontent.com" in doc
+
+
+DOCKERFILE = REPO_ROOT / "Dockerfile"
+
+
+def test_dockerfile_scrubs_certifi_emudhra_roots():
+    """Image scanners flag certifi's cacert.pem; scrub at build (#1929)."""
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    assert "filter_ca_bundle" in text
+    assert "certifi" in text
+    assert "cacert" in text.lower() or "certifi.where()" in text
+
+
+def test_dockerfile_scrubs_system_emsign_roots():
+    """Deselect mozilla/emSign* and refresh system CA store (#1929)."""
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    assert "emSign" in text or "emsign" in text.lower()
+    assert "ca-certificates" in text.lower() or "update-ca-certificates" in text
+    assert "update-ca-certificates" in text

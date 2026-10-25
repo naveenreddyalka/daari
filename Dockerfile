@@ -12,14 +12,17 @@ RUN pip install --no-cache-dir build && python -m build --wheel --outdir /dist
 
 FROM python:3.12-slim
 
-# curl is used by the container healthcheck.
+# curl is used by the container healthcheck; ca-certificates for system trust scrub.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 1000 daari
 
 COPY --from=build /dist/*.whl /tmp/
-RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
+RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl \
+    && python -c "import pathlib, certifi; from daari.security.egress_tls import filter_ca_bundle; p = pathlib.Path(certifi.where()); p.write_text(filter_ca_bundle(p.read_text(encoding='utf-8')), encoding='utf-8')" \
+    && sed -i 's|^mozilla/emSign|!mozilla/emSign|' /etc/ca-certificates.conf \
+    && update-ca-certificates --fresh
 
 # All state (config, caches, ledger, traces) lives under ~/.daari — mount it
 # to persist across container restarts. Pre-create it owned by the app user
