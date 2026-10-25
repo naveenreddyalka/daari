@@ -46,6 +46,15 @@ def test_chargeback_guide_documents_model_speed_and_http_export() -> None:
     assert "usage_speed" in text
 
 
+def test_chargeback_guide_documents_grouped_reports() -> None:
+    """Chargeback guide names --group-by / --bucket and HTTP report (#1931)."""
+    text = DOC.read_text(encoding="utf-8")
+    assert "--group-by model,service_tier" in text
+    assert "--bucket day" in text
+    assert "/v1/daari/spend/report" in text
+    assert "service_tier" in text
+
+
 def test_chargeback_guide_names_tts_tier() -> None:
     text = DOC.read_text(encoding="utf-8")
     sentence = next(

@@ -8029,6 +8029,15 @@ spend, Responses completion webhooks, org enforcement ingest, Decisions
 by `tests/integration/test_wave_gateway_coverage.py`,
 `tests/integration/test_ready_probe.py`, `tests/unit/test_speech.py`.
 
+### Dimension-grouped spend reports + service_tier ledger ([#1931](https://github.com/naveenreddyalka/daari/issues/1931))
+
+<!-- tracking:#1931 -->
+**Status:** Done (2026-10-25). Spend ledger persists `service_tier`;
+`daari spend report --group-by` + `--bucket day|month` and
+`GET /v1/daari/spend/report` expose multi-dim rollups; chargeback guide has
+Anthropic-parity example. Covered by `tests/unit/test_spend_grouped_report.py`,
+`tests/unit/test_chargeback_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

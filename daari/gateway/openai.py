@@ -2313,6 +2313,97 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 result["team_id"] = team_filter
             return result
 
+        @router.get("/v1/daari/spend/report")
+        async def daari_spend_report(
+            request: Request,
+            since: str,
+            group_by: str,
+            until: str | None = None,
+            bucket: str | None = None,
+            key: str | None = None,
+            team: str | None = None,
+            user: str | None = None,
+            tier: str | None = None,
+            model: str | None = None,
+            usage_speed: str | None = None,
+        ) -> dict[str, Any]:
+            """Dimension-grouped spend rollup (analyst-gated, #1931)."""
+            from daari.enterprise.audit import parse_since
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.observability.spend import parse_group_by
+
+            ctx: AppContext = request.app.state.ctx
+            role = _require_role(request, ctx, "analyst")
+            team_filter = (team or "").strip() or None
+            scope = _admin_team_scope(request, role, team_filter)
+            if scope:
+                team_filter = scope
+
+            try:
+                dims = parse_group_by(group_by)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if not dims:
+                raise HTTPException(status_code=400, detail="group_by is required")
+            bucket_raw = (bucket or "").strip().lower() or None
+            if bucket_raw is not None and bucket_raw not in {"day", "month"}:
+                raise HTTPException(status_code=400, detail="bucket must be day or month")
+            speed_raw = (usage_speed or "").strip().lower() or None
+            if speed_raw is not None and speed_raw not in {"fast", "standard"}:
+                raise HTTPException(
+                    status_code=400, detail="usage_speed must be fast or standard"
+                )
+            try:
+                cutoff = parse_since(since)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            until_cut: str | None = None
+            if until is not None and str(until).strip():
+                try:
+                    until_cut = parse_since(str(until).strip())
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+            ledger = getattr(ctx.router, "spend_ledger", None)
+            if ledger is None or not getattr(ledger, "enabled", False):
+                raise HTTPException(status_code=404, detail="spend log is not enabled")
+
+            try:
+                rows = ledger.grouped_report(
+                    since=cutoff,
+                    until=until_cut,
+                    group_by=dims,
+                    bucket=bucket_raw,
+                    key_id=(key or "").strip() or None,
+                    team_id=team_filter,
+                    user_id=(user or "").strip() or None,
+                    tier=(tier or "").strip() or None,
+                    model=(model or "").strip() or None,
+                    usage_speed=speed_raw,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="admin.spend.report",
+                detail={
+                    "team_id": team_filter,
+                    "group_by": dims,
+                    "bucket": bucket_raw,
+                    "returned": len(rows),
+                },
+            )
+            result: dict[str, Any] = {
+                "rows": rows,
+                "group_by": dims,
+                "bucket": bucket_raw,
+            }
+            if team_filter:
+                result["team_id"] = team_filter
+            return result
+
         @router.get("/v1/daari/cache/diversity")
         async def daari_cache_diversity(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
