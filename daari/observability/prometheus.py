@@ -523,6 +523,20 @@ def render_prometheus(
         for kind, count in soft_warnings.items():
             lines.append(f"daari_soft_warnings_total{_labels(kind=kind)} {int(count)}")
 
+    phonon_coerced = snap.get("tts_phonon_format_coerced") or {}
+    if phonon_coerced:
+        lines.append(
+            "# HELP daari_tts_phonon_format_coerced_total "
+            "Phonon TTS response_format rewrites (unsupported OpenAI formats → wav/pcm)."
+        )
+        lines.append("# TYPE daari_tts_phonon_format_coerced_total counter")
+        for key, count in sorted(phonon_coerced.items()):
+            requested, _, served = str(key).partition(":")
+            lines.append(
+                f"daari_tts_phonon_format_coerced_total"
+                f"{_labels(requested=requested, served=served)} {int(count)}"
+            )
+
     rejects = snap.get("rejects") or {}
     if rejects:
         lines.append(

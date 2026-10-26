@@ -8121,6 +8121,15 @@ reclaims as `failed` (`orphan_reclaimed`) and logs
 Covered by `tests/unit/test_responses_job_lease.py`,
 `tests/integration/test_responses_job_lease.py`.
 
+### Phonon response_format coerce warning + counter ([#1961](https://github.com/naveenreddyalka/daari/issues/1961))
+
+<!-- tracking:#1961 -->
+**Status:** Done (2026-10-26). When Phonon coerces an unsupported OpenAI
+`response_format` to `wav`/`pcm`, speech responses set `X-Daari-Warning`,
+increment `daari_tts_phonon_format_coerced_total{requested,served}`, and log
+`tts_phonon_format_coerced`. No warning/counter for explicit wav/pcm or
+non-Phonon TTS. Covered by `tests/unit/test_speech.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
