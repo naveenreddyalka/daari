@@ -485,6 +485,7 @@ async def handle_speech(
     text = policy.text
 
     voice_name = ((voice or "").strip() or target.voice or "alloy").strip()
+    format_warning: str | None = None
     if is_phonon_tts(target, model_name):
         names = await fetch_phonon_voice_names(target, model_name=model_name)
         catalog = {n: n for n in names}
@@ -493,7 +494,28 @@ async def handle_speech(
             abandon_slot(idem_slot)
             return _error(400, "invalid_request_error", voice_err or "Unknown voice")
         voice_name = mapped
+        requested_fmt = fmt
         fmt = coerce_phonon_response_format(fmt)
+        if fmt != requested_fmt:
+            format_warning = (
+                f"response_format {requested_fmt} not supported by phonon; "
+                f"served {fmt}"
+            )
+            log_gateway_event(
+                "tts_phonon_format_coerced",
+                {
+                    "requested": requested_fmt,
+                    "served": fmt,
+                    "model": model_name,
+                },
+            )
+            metrics = getattr(ctx, "metrics", None)
+            if metrics is not None and hasattr(
+                metrics, "record_tts_phonon_format_coerced"
+            ):
+                metrics.record_tts_phonon_format_coerced(
+                    requested=requested_fmt, served=fmt
+                )
     payload: dict[str, Any] = {
         "model": model_name,
         "input": text,
@@ -523,6 +545,7 @@ async def handle_speech(
                 text=text,
                 user=user,
                 idem_slot=idem_slot,
+                format_warning=format_warning,
             ),
             metrics=ctx.metrics,
             phase="tts",
@@ -554,6 +577,7 @@ def _speech_response_headers(
     model_name: str,
     text: str,
     audio_bytes: int,
+    format_warning: str | None = None,
 ) -> dict[str, str]:
     request_id = str(getattr(request.state, "request_id", None) or "")
     from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
@@ -571,6 +595,8 @@ def _speech_response_headers(
     )
     if request_id:
         headers = {**headers, "X-Request-ID": request_id}
+    if format_warning:
+        headers = {**headers, "X-Daari-Warning": format_warning}
     return headers
 
 
@@ -632,6 +658,7 @@ async def _relay_speech(
     text: str,
     user: str | None,
     idem_slot: Any | None,
+    format_warning: str | None = None,
 ) -> Response | JSONResponse | StreamingResponse:
     from daari.gateway.idempotency import abandon_slot
 
@@ -700,6 +727,7 @@ async def _relay_speech(
                     model_name=model_name,
                     text=text,
                     audio_bytes=len(audio),
+                    format_warning=format_warning,
                 ),
             )
 
@@ -767,6 +795,7 @@ async def _relay_speech(
                 model_name=model_name,
                 text=text,
                 audio_bytes=max(0, len(text) // 4),
+                format_warning=format_warning,
             ),
         )
     finally:
