@@ -2556,7 +2556,16 @@ class Settings(BaseSettings):
     integrations: IntegrationsSettings = Field(default_factory=IntegrationsSettings)
     enterprise: OrgSettings = Field(default_factory=OrgSettings)
     alerts: AlertSettings = Field(default_factory=AlertSettings)
-    skills_system_prefix: str = ""
+    skills_system_prefix: str = Field(
+        default="",
+        description=(
+            "Runtime-only: markdown loaded from ~/.daari/skills/ and prepended "
+            "as a system prefix. Supports flat *.md files and AAIF Agent Skills "
+            "packages (~/.daari/skills/<name>/SKILL.md, directory name = skill "
+            "title). Nested depth beyond one level is ignored; empty/unreadable "
+            "SKILL.md is skipped."
+        ),
+    )
     # Named model access groups referenced by virtual keys and teams (#708).
     model_groups: dict[str, list[str]] = Field(
         default_factory=dict,
@@ -2742,6 +2751,11 @@ def _resolve_profile_path(profile_env: str) -> Path | None:
 
 
 def _load_skills_system_prefix() -> str:
+    """Load flat ``*.md`` skills and AAIF package dirs (``*/SKILL.md``) (#1937).
+
+    Only immediate children of ``~/.daari/skills/`` are considered — nested
+    packages deeper than one level are ignored.
+    """
     skills_dir = Path.home() / ".daari" / "skills"
     if not skills_dir.is_dir():
         return ""
@@ -2754,6 +2768,19 @@ def _load_skills_system_prefix() -> str:
         if not content:
             continue
         sections.append(f"## Skill: {path.stem}\n{content}")
+    for child in sorted(skills_dir.iterdir()):
+        if not child.is_dir():
+            continue
+        skill_md = child / "SKILL.md"
+        if not skill_md.is_file():
+            continue
+        try:
+            content = skill_md.read_text(encoding="utf-8").strip()
+        except Exception:
+            continue
+        if not content:
+            continue
+        sections.append(f"## Skill: {child.name}\n{content}")
     if not sections:
         return ""
     return "# Local daari skills\n\n" + "\n\n".join(sections)

@@ -128,6 +128,30 @@ class TestSettings:
         assert "Local daari skills" in settings.skills_system_prefix
         assert "Always prefer local execution." in settings.skills_system_prefix
 
+    def test_load_skills_aaif_package_dirs(self, tmp_path, monkeypatch):
+        """Flat *.md and immediate subdir/SKILL.md packages both load (#1937)."""
+        skills = tmp_path / ".daari" / "skills"
+        skills.mkdir(parents=True)
+        (skills / "flat.md").write_text("Flat skill body.", encoding="utf-8")
+        pack = skills / "aaif-pack"
+        pack.mkdir()
+        (pack / "SKILL.md").write_text("AAIF package body.", encoding="utf-8")
+        nested = pack / "nested"
+        nested.mkdir()
+        (nested / "SKILL.md").write_text("Deep skill ignored.", encoding="utf-8")
+        (skills / "empty-pack").mkdir()
+        (skills / "empty-pack" / "SKILL.md").write_text("  \n", encoding="utf-8")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        settings = Settings.load(config_path=tmp_path / "missing.yaml")
+        prefix = settings.skills_system_prefix
+        assert "Local daari skills" in prefix
+        assert "Flat skill body." in prefix
+        assert "## Skill: flat" in prefix
+        assert "AAIF package body." in prefix
+        assert "## Skill: aaif-pack" in prefix
+        assert "Deep skill ignored." not in prefix
+        assert "empty-pack" not in prefix
+
     def test_integrations_defaults_include_gitlab(self):
         settings = Settings.model_validate({})
         assert settings.integrations.gitlab.url == "https://gitlab.com/api/v4"

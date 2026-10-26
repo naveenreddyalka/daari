@@ -8085,6 +8085,14 @@ warns that `phonon:40m-*` / multilingual is CC BY-NC 4.0 while default
 `phonon` 31M stays Apache-2.0. TTS guide lists pull tags + license split.
 Covered by `tests/unit/test_doctor_tts.py`, `tests/unit/test_tts_docs.py`.
 
+### AAIF Agent Skills packages (subdir SKILL.md) ([#1937](https://github.com/naveenreddyalka/daari/issues/1937))
+
+<!-- tracking:#1937 -->
+**Status:** Done (2026-10-26). Skills loader reads flat `~/.daari/skills/*.md`
+and immediate `*/SKILL.md` AAIF packages (directory name = title); deeper
+nests and empty/unreadable files are skipped. Config reference documents the
+layout. Covered by `tests/unit/test_settings.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
