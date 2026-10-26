@@ -182,4 +182,26 @@ spec:
             description: "daari_anthropic_enforced_profiles is above {{ ($pr.anthropicEnforcedProfiles).threshold | default 0 }} — a mapped end user is restricted or banned."
             runbook_url: {{ ($pr.anthropicEnforcedProfiles).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
         {{- end }}
+        {{- if ($pr.responsesWebhooksErrors).enabled | default true }}
+        - alert: DaariResponsesWebhooksErrors
+          expr: sum(rate(daari_responses_webhooks_total{result="error"}[{{ ($pr.responsesWebhooksErrors).window | default "5m" }}])) > {{ ($pr.responsesWebhooksErrors).rateThreshold | default 0.01 }}
+          for: {{ ($pr.responsesWebhooksErrors).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.responsesWebhooksErrors).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari Responses completion webhook delivery errors elevated"
+            description: "sum(rate(daari_responses_webhooks_total{result=\"error\"})) exceeds {{ ($pr.responsesWebhooksErrors).rateThreshold | default 0.01 }} — completion webhook POSTs failing."
+            runbook_url: {{ ($pr.responsesWebhooksErrors).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
+        {{- if ($pr.orgEnforcementWebhooksErrors).enabled | default true }}
+        - alert: DaariOrgEnforcementWebhooksErrors
+          expr: sum(rate(daari_org_enforcement_webhooks_total{result="error"}[{{ ($pr.orgEnforcementWebhooksErrors).window | default "5m" }}])) > {{ ($pr.orgEnforcementWebhooksErrors).rateThreshold | default 0.01 }}
+          for: {{ ($pr.orgEnforcementWebhooksErrors).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.orgEnforcementWebhooksErrors).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari org enforcement webhook ingest errors elevated"
+            description: "sum(rate(daari_org_enforcement_webhooks_total{result=\"error\"})) exceeds {{ ($pr.orgEnforcementWebhooksErrors).rateThreshold | default 0.01 }} — Anthropic org webhook ingest failing."
+            runbook_url: {{ ($pr.orgEnforcementWebhooksErrors).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
 {{- end }}

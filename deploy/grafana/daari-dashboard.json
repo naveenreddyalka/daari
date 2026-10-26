@@ -1099,6 +1099,44 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 54,
+      "title": "Responses completion webhooks by result",
+      "description": "Background Responses completion webhook deliveries (`daari_responses_webhooks_total`) by result (ok|error|skipped|deduped) (#1935).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 216
+      },
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(daari_responses_webhooks_total[5m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 55,
+      "title": "Org enforcement webhooks by result",
+      "description": "Anthropic org enforcement webhook ingest (`daari_org_enforcement_webhooks_total`) by result (ingested|ignored|unauthorized|duplicate|error) (#1935).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 216
+      },
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(daari_org_enforcement_webhooks_total[5m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

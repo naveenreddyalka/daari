@@ -245,6 +245,20 @@ prometheusRules:
     threshold: 0
     for: 5m
     severity: critical
+  # Responses completion webhook delivery errors (#1935).
+  responsesWebhooksErrors:
+    enabled: true
+    window: 5m
+    rateThreshold: 0.01
+    for: 5m
+    severity: warning
+  # Anthropic org enforcement webhook ingest errors (#1935).
+  orgEnforcementWebhooksErrors:
+    enabled: true
+    window: 5m
+    rateThreshold: 0.01
+    for: 5m
+    severity: warning
 
 # Optional private Prometheus scrape listener (app observability.metrics_port).
 # 0 / unset = off (scrape API port /metrics). Non-zero binds 127.0.0.1-style

@@ -8067,6 +8067,15 @@ Covered by `tests/unit/test_user_rpd.py`, `tests/unit/test_admin_read_plane.py`.
 (`secret://` ok); config reference notes the tip. Covered by
 `tests/test_doctor.py`.
 
+### Grafana panels + alerts for webhook counters ([#1935](https://github.com/naveenreddyalka/daari/issues/1935))
+
+<!-- tracking:#1935 -->
+**Status:** Done (2026-10-26). Overview Grafana charts
+`daari_responses_webhooks_total` and `daari_org_enforcement_webhooks_total`
+rate by `result`; Helm PrometheusRule alerts on `result="error"` for ~5m
+(Anthropic enforced-profiles alert kept). Covered by
+`tests/unit/test_grafana_dashboard.py`, `tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
