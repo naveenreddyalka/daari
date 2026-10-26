@@ -32,13 +32,15 @@ Then set `tts.model` to the pulled tag (for example `phonon:40m-fr`). The defaul
 
 **List voices:** `GET /v1/audio/voices` returns an OpenAI-shaped `{object, data:[{id,…}]}` catalog when `tts.base_url` is set. For Phonon, daari merges the upstream catalog with common OpenAI voice aliases (`alloy`, `echo`, …). On `POST /v1/audio/speech`, those OpenAI names map onto Phonon entries (for example `alloy` → `Zoey`); unknown voices return **400** with the available list. Streaming relay for chunked Phonon audio is unchanged.
 
+**Phonon `response_format`:** Ollama Phonon accepts **`wav`** (default) and **`pcm`** only. Stock OpenAI clients often send `mp3`. When the TTS target is Phonon, daari coerces unsupported formats (including the gateway default `mp3`) to `wav`, and keeps `pcm` when the client asks for it. Non-Phonon OpenAI-compatible TTS backends keep the requested format unchanged.
+
 Leave `base_url` empty and the route returns **501**. `daari doctor` stays quiet when Ollama is unreachable or older than 0.40.9. It warns when `tts.base_url` is set but `GET {base}/models` is unreachable.
 
 Helm fleets can set `tts.baseUrl`. Optional chart values `tts.model` / `tts.voice` mount `DAARI_TTS__MODEL` / `DAARI_TTS__VOICE` so the pod always presents the on-box id (see [Capacity and Helm](../operations/capacity-helm.md)).
 
 ## Request
 
-OpenAI JSON body: `model` (required unless `tts.model` is set), `input` (non-empty text, at most `tts.max_input_chars`, default **4096**), optional `voice` (falls back to `tts.voice`, then `alloy`), and `response_format` (for example `mp3`). Longer `input` returns **400** `invalid_request_error` naming the limit before guardrails or upstream. The JSON body itself is bounded by `server.max_body_bytes` (speech is carved out of the 100 MB `/v1/audio/` upload floor used by transcriptions). The response is raw audio bytes with a matching `Content-Type`. When the upstream uses chunked transfer (Ollama Phonon), daari **streams** those bytes to the client as they arrive; backends that send a fixed `Content-Length` stay fully buffered.
+OpenAI JSON body: `model` (required unless `tts.model` is set), `input` (non-empty text, at most `tts.max_input_chars`, default **4096**), optional `voice` (falls back to `tts.voice`, then `alloy`), and `response_format` (for example `mp3`; Phonon targets are coerced to `wav` / `pcm` as above). Longer `input` returns **400** `invalid_request_error` naming the limit before guardrails or upstream. The JSON body itself is bounded by `server.max_body_bytes` (speech is carved out of the 100 MB `/v1/audio/` upload floor used by transcriptions). The response is raw audio bytes with a matching `Content-Type`. When the upstream uses chunked transfer (Ollama Phonon), daari **streams** those bytes to the client as they arrive; backends that send a fixed `Content-Length` stay fully buffered.
 
 Auth, virtual-key request budgets, rate limits, model allowlists, and `X-Daari-Deadline-Ms` apply the same way as other gated routes. A key or team model allowlist is checked against the resolved model before any upstream call. Leave `base_url` empty and the route returns **501** without calling a cloud TTS API.
 
