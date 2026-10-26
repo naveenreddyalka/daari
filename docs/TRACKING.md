@@ -8058,6 +8058,15 @@ fleet inventory with per-target reset. Covered by
 `user_daily_usd_cap`; virtual-keys guide documents Anthropic attribution.
 Covered by `tests/unit/test_user_rpd.py`, `tests/unit/test_admin_read_plane.py`.
 
+### Doctor: responses completion webhook needs signing secret ([#1934](https://github.com/naveenreddyalka/daari/issues/1934))
+
+<!-- tracking:#1934 -->
+**Status:** Done (2026-10-26). Optional doctor
+`responses_completion_webhook_secret` warns when
+`alerts.responses_completion_webhook_url` is set without a signing secret
+(`secret://` ok); config reference notes the tip. Covered by
+`tests/test_doctor.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

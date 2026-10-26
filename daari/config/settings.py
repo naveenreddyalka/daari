@@ -2399,7 +2399,9 @@ class AlertSettings(BaseModel):
         default="",
         description=(
             "Opt-in webhook when a background Responses job reaches a terminal "
-            "status (#1892). Empty disables (no network call)."
+            "status (#1892). Empty disables (no network call). Doctor tips "
+            "`responses_completion_webhook_secret` when this URL is set without "
+            "a signing secret (#1934)."
         ),
     )
     responses_completion_webhook_secret: str = Field(
