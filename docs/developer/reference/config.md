@@ -384,7 +384,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `alerts.responses_completion_webhook_secret` | str | `''` | HMAC secret for Responses completion webhooks (X-Daari-Signature). Supports secret:// refs (#1892). |
 | `alerts.responses_completion_webhook_secret_previous` | str | `''` | Previous Responses completion webhook HMAC secret during rotation grace (#1913). Signing uses responses_completion_webhook_secret; receivers verify against either. Set via `daari alerts rotate-secret responses`. |
 | `alerts.responses_completion_webhook_secret_rotated_at` | str | `''` | ISO-8601 timestamp when responses_completion_webhook_secret_previous was last set by rotation (#1913). |
-| `skills_system_prefix` | str | `''` |  |
+| `skills_system_prefix` | str | `''` | Runtime-only: markdown loaded from ~/.daari/skills/ and prepended as a system prefix. Supports flat *.md files and AAIF Agent Skills packages (~/.daari/skills/<name>/SKILL.md, directory name = skill title). Nested depth beyond one level is ignored; empty/unreadable SKILL.md is skipped. |
 | `model_groups` | dict | `{}` | Named model groups (exact names or globs such as claude-*). Keys and teams reference them by name; enforcement is the union of allowed_models and the referenced groups, intersected across team and key. |
 
 Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rate_limit.*` setting. Set it on the key or team (`daari keys create/update --rpd`, `daari keys team-create/update --rpd`). See [auth and keys](../guides/configuration/auth-and-keys.md).
