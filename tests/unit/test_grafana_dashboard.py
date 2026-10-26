@@ -710,3 +710,42 @@ def test_grafana_dashboard_includes_cache_write_ttl_panel():
     assert any("daari_cache_write_tokens_total" in expr for expr in exprs)
     assert any("ttl" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_responses_webhooks_panel():
+    """Completion webhook delivery counter should chart by result (#1935)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "responses" in p.get("title", "").lower()
+            and "webhook" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a responses webhooks panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_responses_webhooks_total" in expr for expr in exprs)
+    assert any("by (result)" in expr or "by(result)" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_org_enforcement_webhooks_panel():
+    """Org-enforcement webhook ingest counter should chart by result (#1935)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "org" in p.get("title", "").lower()
+            and "enforcement" in p.get("title", "").lower()
+            and "webhook" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected an org enforcement webhooks panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_org_enforcement_webhooks_total" in expr for expr in exprs)
+    assert any("by (result)" in expr or "by(result)" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)

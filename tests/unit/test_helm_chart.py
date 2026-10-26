@@ -371,6 +371,8 @@ _PROMETHEUS_RULE_METRICS = (
     "daari_breaker_state",
     "daari_soft_warnings_total",
     "daari_anthropic_enforced_profiles",
+    "daari_responses_webhooks_total",
+    "daari_org_enforcement_webhooks_total",
 )
 
 
@@ -451,10 +453,13 @@ class TestHelmPrometheusRules:
         assert "DaariAnthropicDocumentStripped" in alert_names
         assert "DaariAnthropicCitationsStripped" in alert_names
         assert "DaariAnthropicEnforcedProfiles" in alert_names
+        assert "DaariResponsesWebhooksErrors" in alert_names
+        assert "DaariOrgEnforcementWebhooksErrors" in alert_names
         assert "service_tier_degraded" in all_expr
         assert "anthropic_sampling_stripped" in all_expr
         assert "anthropic_document_stripped" in all_expr
         assert "anthropic_citations_stripped" in all_expr
+        assert 'result="error"' in all_expr
         for group in groups:
             for alert in group.get("rules") or []:
                 if "alert" not in alert:
