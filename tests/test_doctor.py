@@ -691,6 +691,32 @@ class TestDoctorSecretRefs:
         by_name = {r.name: r for r in results}
         assert by_name["key_expiry_webhook_secret"].ok is True
 
+    def test_responses_completion_webhook_without_secret_warns(self, settings):
+        settings.alerts.responses_completion_webhook_url = "https://hooks.example/responses"
+        settings.alerts.responses_completion_webhook_secret = ""
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["responses_completion_webhook_secret"].ok is False
+        assert by_name["responses_completion_webhook_secret"].optional is True
+        detail = by_name["responses_completion_webhook_secret"].detail
+        assert "responses_completion_webhook_url" in detail
+        assert "responses_completion_webhook_secret" in detail
+        assert "secret://" in detail
+
+    def test_responses_completion_webhook_with_secret_ok(self, settings):
+        settings.alerts.responses_completion_webhook_url = "https://hooks.example/responses"
+        settings.alerts.responses_completion_webhook_secret = "whsec_test"
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["responses_completion_webhook_secret"].ok is True
+
+    def test_responses_completion_webhook_empty_url_ok(self, settings):
+        settings.alerts.responses_completion_webhook_url = ""
+        settings.alerts.responses_completion_webhook_secret = ""
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["responses_completion_webhook_secret"].ok is True
+
     def test_helm_image_tag_matches_package(self, settings):
         results = run_doctor(settings, httpx_client=self._down_client())
         by_name = {r.name: r for r in results}

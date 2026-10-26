@@ -142,6 +142,7 @@ def run_doctor(
     results.append(_check_vk_empty_allowlist(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_key_expiry_webhook_secret(cfg))
+    results.append(_check_responses_completion_webhook_secret(cfg))
     stale_tip = _check_webhook_secret_previous_stale(cfg)
     if stale_tip is not None:
         results.append(stale_tip)
@@ -2459,6 +2460,33 @@ def _check_key_expiry_webhook_secret(settings: Settings) -> CheckResult:
         detail = "key_expiry webhook disabled (empty URL)"
     return CheckResult(
         name="key_expiry_webhook_secret", ok=True, detail=detail, optional=True
+    )
+
+
+def _check_responses_completion_webhook_secret(settings: Settings) -> CheckResult:
+    """Warn when Responses completion webhook URL lacks a signing secret (#1934)."""
+    url = (settings.alerts.responses_completion_webhook_url or "").strip()
+    secret = (settings.alerts.responses_completion_webhook_secret or "").strip()
+    if url and not secret:
+        return CheckResult(
+            name="responses_completion_webhook_secret",
+            ok=False,
+            detail=(
+                "alerts.responses_completion_webhook_url is set but "
+                "alerts.responses_completion_webhook_secret is empty — receivers "
+                "cannot verify origin; set a secret (secret:// ok) or clear the URL"
+            ),
+            optional=True,
+        )
+    if url:
+        detail = "responses completion webhook URL + secret configured"
+    else:
+        detail = "responses completion webhook disabled (empty URL)"
+    return CheckResult(
+        name="responses_completion_webhook_secret",
+        ok=True,
+        detail=detail,
+        optional=True,
     )
 
 
