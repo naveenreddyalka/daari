@@ -8102,6 +8102,14 @@ Phonon fallback catalog build — mocked TTS HTTP, no Ollama. Docs:
 [benchmark-load.md](developer/resources/benchmark-load.md). Covered by
 `tests/benchmark/test_speech_path.py`.
 
+### Phonon response_format coerce to wav/pcm ([#1952](https://github.com/naveenreddyalka/daari/issues/1952))
+
+<!-- tracking:#1952 -->
+**Status:** Done (2026-10-26). When TTS target is Phonon, unsupported OpenAI
+formats (including default `mp3`) become `wav`; explicit `pcm` is kept.
+Non-Phonon backends unchanged. Docs: [tts.md](developer/guides/backends/tts.md).
+Covered by `tests/unit/test_speech.py`, `tests/unit/test_tts_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -57,6 +57,15 @@ def test_tts_guide_documents_voice_catalog_and_list() -> None:
     assert "alloy" in text
 
 
+def test_tts_guide_documents_phonon_response_format_coerce() -> None:
+    """Phonon accepts wav/pcm; daari coerces OpenAI mp3 defaults (#1952)."""
+    text = TTS_GUIDE.read_text(encoding="utf-8")
+    assert "response_format" in text
+    assert "wav" in text
+    assert "pcm" in text
+    assert "coerce" in text.lower() or "coerces" in text.lower()
+
+
 def test_tts_guide_documents_phonon_language_tags_and_license() -> None:
     """Phonon 40M language tags + CC BY-NC vs Apache-2.0 31M (#1936)."""
     text = TTS_GUIDE.read_text(encoding="utf-8")

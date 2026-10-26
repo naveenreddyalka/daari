@@ -501,6 +501,16 @@ async def test_list_voices_phonon_fallback_catalog(settings, monkeypatch):
     assert "alloy" in ids
 
 
+def test_coerce_phonon_response_format():
+    from daari.gateway.speech import coerce_phonon_response_format
+
+    assert coerce_phonon_response_format("mp3") == "wav"
+    assert coerce_phonon_response_format("opus") == "wav"
+    assert coerce_phonon_response_format("wav") == "wav"
+    assert coerce_phonon_response_format("pcm") == "pcm"
+    assert coerce_phonon_response_format("PCM") == "pcm"
+
+
 @pytest.mark.asyncio
 async def test_phonon_maps_openai_voice_on_speech(settings, monkeypatch):
     seen: list[httpx.Request] = []
@@ -509,7 +519,7 @@ async def test_phonon_maps_openai_voice_on_speech(settings, monkeypatch):
         if request.url.path.endswith("/api/show"):
             return httpx.Response(200, json={"voices": ["default", "Zoey", "Easton", "Freya"]})
         seen.append(request)
-        return httpx.Response(200, content=AUDIO, headers={"content-type": "audio/mpeg"})
+        return httpx.Response(200, content=AUDIO, headers={"content-type": "audio/wav"})
 
     _patch_upstream(monkeypatch, handler)
     settings.tts.base_url = "http://127.0.0.1:11434/v1"
@@ -526,6 +536,58 @@ async def test_phonon_maps_openai_voice_on_speech(settings, monkeypatch):
     payload = json.loads(seen[0].read())
     assert payload["voice"] == "Zoey"
     assert payload["model"] == "phonon"
+    # Omitted/default OpenAI mp3 must become Phonon-supported wav (#1952).
+    assert payload["response_format"] == "wav"
+
+
+@pytest.mark.asyncio
+async def test_phonon_keeps_explicit_pcm(settings, monkeypatch):
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/show"):
+            return httpx.Response(200, json={"voices": ["default", "Zoey"]})
+        seen.append(request)
+        return httpx.Response(200, content=AUDIO, headers={"content-type": "audio/pcm"})
+
+    _patch_upstream(monkeypatch, handler)
+    settings.tts.base_url = "http://127.0.0.1:11434/v1"
+    settings.tts.model = "phonon"
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/speech",
+            json={
+                "model": "phonon",
+                "input": "hi",
+                "voice": "Zoey",
+                "response_format": "pcm",
+            },
+        )
+    assert response.status_code == 200, response.text
+    import json
+
+    payload = json.loads(seen[0].read())
+    assert payload["response_format"] == "pcm"
+
+
+@pytest.mark.asyncio
+async def test_non_phonon_keeps_mp3_default(settings, monkeypatch):
+    seen: list[httpx.Request] = []
+    _patch_upstream(monkeypatch, _ok_handler(seen))
+    settings.tts.base_url = "http://tts.local/v1"
+    settings.tts.model = "kokoro"
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/speech",
+            json={"model": "tts-1", "input": "hi", "voice": "alloy"},
+        )
+    assert response.status_code == 200, response.text
+    import json
+
+    payload = json.loads(seen[0].read())
+    assert payload["response_format"] == "mp3"
 
 
 @pytest.mark.asyncio

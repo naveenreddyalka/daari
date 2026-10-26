@@ -57,6 +57,17 @@ _CONTENT_TYPES = {
     "pcm": "audio/pcm",
 }
 
+# Ollama Phonon accepts wav (default) and pcm only; other OpenAI formats → 400.
+_PHONON_RESPONSE_FORMATS = frozenset({"wav", "pcm"})
+
+
+def coerce_phonon_response_format(response_format: str) -> str:
+    """Map OpenAI TTS formats onto Phonon-supported ``wav`` / ``pcm`` (#1952)."""
+    fmt = (response_format or "").strip().lower() or "wav"
+    if fmt in _PHONON_RESPONSE_FORMATS:
+        return fmt
+    return "wav"
+
 _http: httpx.AsyncClient | None = None
 
 
@@ -482,6 +493,7 @@ async def handle_speech(
             abandon_slot(idem_slot)
             return _error(400, "invalid_request_error", voice_err or "Unknown voice")
         voice_name = mapped
+        fmt = coerce_phonon_response_format(fmt)
     payload: dict[str, Any] = {
         "model": model_name,
         "input": text,
