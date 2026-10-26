@@ -46,6 +46,8 @@ def _app_with_keys(settings, tmp_path, *, master: str = "master-sekret"):
         rpm=10,
         tpm=1000,
         rpd=50,
+        user_rpd=25,
+        user_daily_usd_cap=1.5,
         max_in_flight=2,
         expires_at="2099-01-01T00:00:00+00:00",
     )
@@ -93,6 +95,8 @@ async def test_keys_requires_master_when_sso_off(settings, tmp_path):
         assert row["tier_cap"] == "L3"
         assert row["expires_at"] == "2099-01-01T00:00:00+00:00"
         assert row["max_in_flight"] == 2
+        assert row["user_rpd"] == 25
+        assert row["user_daily_usd_cap"] == 1.5
         assert "budgets" in row or "budget_windows" in row or "daily_budget_usd" in row
         assert "spend" in row
         _assert_no_secrets(body)

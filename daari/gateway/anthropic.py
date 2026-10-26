@@ -391,6 +391,9 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             from daari.gateway.request_id import request_id_from_request
 
             request_id = request_id_from_request(request)
+            from daari.auth.end_user import end_user_from_metadata
+
+            body_user = end_user_from_metadata(body.metadata) or None
             meta = RequestMeta(
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
@@ -401,6 +404,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 rerun_command=x_daari_rerun_command == "true",
                 client_id=client_id,
                 user_agent=user_agent[:200] or None,
+                user=body_user,
                 session_id=(x_daari_session or "").strip() or None,
                 anthropic_beta=(request.headers.get("anthropic-beta") or "").strip() or None,
                 anthropic_version=(request.headers.get("anthropic-version") or "").strip()
@@ -448,6 +452,35 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 return retired
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
+            # Per-end-user daily cap on shared virtual keys (#1933). metadata.user_id
+            # is the Anthropic convention (OpenAI uses top-level user).
+            claims = getattr(request.state, "auth_claims", None)
+            vk = getattr(claims, "virtual_key", None) if claims is not None else None
+            if (
+                vk is not None
+                and float(getattr(vk, "user_daily_usd_cap", 0) or 0) > 0
+                and meta.user
+            ):
+                from daari.auth.budgets import user_daily_cap_exceeded
+
+                ledger = ctx.router.usage_ledger
+                client = meta.client_id or getattr(claims, "key_id", None) or ""
+                pricing = getattr(ctx.settings, "pricing", None)
+                fallback = float(ctx.settings.usage.frontier_price_per_1k_tokens or 0.002)
+                exceeded = (
+                    user_daily_cap_exceeded(
+                        vk,
+                        ledger,
+                        client_id=client,
+                        user_id=meta.user,
+                        pricing=pricing,
+                        fallback_per_1k=fallback,
+                    )
+                    if ledger is not None
+                    else None
+                )
+                if exceeded is not None:
+                    return JSONResponse(status_code=402, content={"error": exceeded})
             if (
                 mcp_ss_enabled
                 and tools_mode != "strip"

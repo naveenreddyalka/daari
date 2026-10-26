@@ -474,8 +474,16 @@ def _json_body_field(raw: bytes, field: str) -> str:
 
 
 def user_id_from_body(raw: bytes) -> str:
-    """OpenAI ``user`` field from a JSON body; empty when absent or unreadable."""
-    return _json_body_field(raw, "user")
+    """End-user id: OpenAI ``user``, else Anthropic ``metadata.user_id`` (#1933)."""
+    if not raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
+        return ""
+    from daari.auth.end_user import end_user_from_payload
+
+    return end_user_from_payload(parsed)
 
 
 def model_from_body(raw: bytes) -> str:
