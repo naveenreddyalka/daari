@@ -8076,6 +8076,15 @@ rate by `result`; Helm PrometheusRule alerts on `result="error"` for ~5m
 (Anthropic enforced-profiles alert kept). Covered by
 `tests/unit/test_grafana_dashboard.py`, `tests/unit/test_helm_chart.py`.
 
+### Phonon multilingual tags + CC BY-NC doctor tip ([#1936](https://github.com/naveenreddyalka/daari/issues/1936))
+
+<!-- tracking:#1936 -->
+**Status:** Done (2026-10-26). Doctor tips Ollama ≥0.40.11 for Phonon voice
+catalog / language tags when TTS points at Phonon on an older daemon, and
+warns that `phonon:40m-*` / multilingual is CC BY-NC 4.0 while default
+`phonon` 31M stays Apache-2.0. TTS guide lists pull tags + license split.
+Covered by `tests/unit/test_doctor_tts.py`, `tests/unit/test_tts_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

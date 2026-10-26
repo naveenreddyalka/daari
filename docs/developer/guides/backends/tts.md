@@ -14,7 +14,21 @@ tts:
   max_input_chars: 4096   # OpenAI-shaped cap; oversize input → 400 before guardrails/TTS
 ```
 
-**Ollama Phonon (local-first):** as of Ollama **0.40.9**, the same daemon that serves chat tiers exposes streaming `POST /v1/audio/speech`. Ollama **0.40.11+** adds Phonon's Gradium **voice catalog** (`ollama show phonon` / `/api/show` `voices`). Set `tts.base_url` to `{ollama.base_url}/v1` (for example `http://127.0.0.1:11434/v1`) and preferably `tts.model: phonon`. daari does not auto-wire this — `daari doctor` tips when TTS is empty and Ollama reports a speech-capable version.
+**Ollama Phonon (local-first):** as of Ollama **0.40.9**, the same daemon that serves chat tiers exposes streaming `POST /v1/audio/speech`. Ollama **0.40.11+** adds Phonon's Gradium **voice catalog** (`ollama show phonon` / `/api/show` `voices`) and **language tags**. Set `tts.base_url` to `{ollama.base_url}/v1` (for example `http://127.0.0.1:11434/v1`) and preferably `tts.model: phonon`. daari does not auto-wire this — `daari doctor` tips when TTS is empty and Ollama reports a speech-capable version; when Phonon is already configured it also tips if Ollama is older than **0.40.11** (catalog / language tags) or if `tts.model` is a 40M tag (license).
+
+**Pull recipe:**
+
+```bash
+ollama pull phonon                 # 31M English default — Apache-2.0
+# Language / multilingual 40M checkpoints (Ollama 0.40.11+) — CC BY-NC 4.0:
+ollama pull phonon:40m-fr
+ollama pull phonon:40m-de
+ollama pull phonon:40m-es
+ollama pull phonon:40m-pt
+ollama pull phonon:40m-multilingual
+```
+
+Then set `tts.model` to the pulled tag (for example `phonon:40m-fr`). The default `phonon` 31M weights stay **Apache-2.0**; the `phonon:40m-*` / `phonon:40m-multilingual` family is **CC BY-NC 4.0** (noncommercial) — procurement and doctor will surface that cliff.
 
 **List voices:** `GET /v1/audio/voices` returns an OpenAI-shaped `{object, data:[{id,…}]}` catalog when `tts.base_url` is set. For Phonon, daari merges the upstream catalog with common OpenAI voice aliases (`alloy`, `echo`, …). On `POST /v1/audio/speech`, those OpenAI names map onto Phonon entries (for example `alloy` → `Zoey`); unknown voices return **400** with the available list. Streaming relay for chunked Phonon audio is unchanged.
 

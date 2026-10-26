@@ -130,3 +130,63 @@ def test_unconfigured_tts_tips_voice_catalog_on_0_40_11(settings):
     assert result.ok
     assert "0.40.11" in result.detail or "voice catalog" in result.detail
     assert "/v1/audio/voices" in result.detail
+
+
+def test_configured_phonon_tips_upgrade_below_0_40_11(settings):
+    """Configured Phonon + Ollama <0.40.11 → tip voice catalog / language tags (#1936)."""
+    settings.ollama.base_url = "http://127.0.0.1:11434"
+    settings.tts.base_url = "http://127.0.0.1:11434/v1"
+    settings.tts.model = "phonon"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/version"):
+            return httpx.Response(200, json={"version": "0.40.9"})
+        if str(request.url).endswith("/models"):
+            return httpx.Response(200, json={"data": []})
+        return httpx.Response(404)
+
+    result = _check_tts(settings, _client(handler))
+    assert result.ok
+    assert "reachable" in result.detail
+    assert "0.40.11" in result.detail
+    assert "language" in result.detail.lower() or "voice catalog" in result.detail.lower()
+
+
+def test_configured_phonon_40m_warns_cc_by_nc(settings):
+    """phonon:40m-* / multilingual checkpoints are CC BY-NC 4.0 (#1936)."""
+    settings.ollama.base_url = "http://127.0.0.1:11434"
+    settings.tts.base_url = "http://127.0.0.1:11434/v1"
+    settings.tts.model = "phonon:40m-fr"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/version"):
+            return httpx.Response(200, json={"version": "0.40.11"})
+        if str(request.url).endswith("/models"):
+            return httpx.Response(200, json={"data": []})
+        return httpx.Response(404)
+
+    result = _check_tts(settings, _client(handler))
+    assert result.ok
+    assert "CC BY-NC" in result.detail or "BY-NC" in result.detail
+    assert "Apache" in result.detail
+    assert "40m" in result.detail.lower() or "noncommercial" in result.detail.lower()
+
+
+def test_configured_phonon_31m_skips_cc_by_nc_warning(settings):
+    """Default phonon 31M stays Apache-2.0 — no CC BY-NC tip (#1936)."""
+    settings.ollama.base_url = "http://127.0.0.1:11434"
+    settings.tts.base_url = "http://127.0.0.1:11434/v1"
+    settings.tts.model = "phonon"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/version"):
+            return httpx.Response(200, json={"version": "0.40.11"})
+        if str(request.url).endswith("/models"):
+            return httpx.Response(200, json={"data": []})
+        return httpx.Response(404)
+
+    result = _check_tts(settings, _client(handler))
+    assert result.ok
+    assert "reachable" in result.detail
+    assert "CC BY-NC" not in result.detail
+    assert "BY-NC" not in result.detail

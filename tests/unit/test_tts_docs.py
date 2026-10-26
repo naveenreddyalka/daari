@@ -55,3 +55,19 @@ def test_tts_guide_documents_voice_catalog_and_list() -> None:
     assert "0.40.11" in text
     assert "/v1/audio/voices" in text
     assert "alloy" in text
+
+
+def test_tts_guide_documents_phonon_language_tags_and_license() -> None:
+    """Phonon 40M language tags + CC BY-NC vs Apache-2.0 31M (#1936)."""
+    text = TTS_GUIDE.read_text(encoding="utf-8")
+    for tag in (
+        "phonon:40m-fr",
+        "phonon:40m-de",
+        "phonon:40m-es",
+        "phonon:40m-pt",
+        "phonon:40m-multilingual",
+    ):
+        assert tag in text
+    assert "CC BY-NC" in text or "BY-NC" in text
+    assert "Apache" in text
+    assert "ollama pull phonon" in text

@@ -3372,6 +3372,63 @@ def _check_cors_origins(settings: Settings) -> CheckResult:
 
 
 _OLLAMA_PHONON_FLOOR = (0, 40, 9)
+_OLLAMA_PHONON_CATALOG_FLOOR = (0, 40, 11)
+
+
+def _tts_looks_like_phonon(settings: Settings, base: str) -> bool:
+    """True when TTS is aimed at Ollama Phonon (model tag or :11434/v1)."""
+    model = str(getattr(settings.tts, "model", "") or "").casefold()
+    if "phonon" in model:
+        return True
+    lowered = base.casefold().rstrip("/")
+    return lowered.endswith(":11434/v1") or lowered.endswith("/11434/v1")
+
+
+def _tts_phonon_40m_noncommercial(model: str) -> bool:
+    """40M / multilingual Phonon tags are CC BY-NC 4.0 (#1936)."""
+    blob = (model or "").casefold()
+    if "phonon" not in blob:
+        return False
+    return "40m" in blob or "multilingual" in blob
+
+
+def _tts_ollama_root(settings: Settings, tts_base: str) -> str | None:
+    raw = tts_base.strip().rstrip("/")
+    if raw.casefold().endswith("/v1"):
+        root = raw[: -len("/v1")].rstrip("/")
+        if root:
+            return root
+    ollama_base = str(getattr(settings.ollama, "base_url", "") or "").strip().rstrip("/")
+    return ollama_base or None
+
+
+def _tts_phonon_configured_notes(
+    settings: Settings, http: httpx.Client, tts_base: str
+) -> str:
+    """Extra doctor notes when TTS is configured toward Phonon (#1936)."""
+    if not _tts_looks_like_phonon(settings, tts_base):
+        return ""
+    notes: list[str] = []
+    root = _tts_ollama_root(settings, tts_base)
+    if root:
+        version = _ollama_version_payload(http, root)
+        if version is not None:
+            raw, parsed = version
+            if parsed < _OLLAMA_PHONON_CATALOG_FLOOR:
+                notes.append(
+                    f"Ollama {raw} — tip: upgrade to ≥0.40.11 for Phonon "
+                    "voice catalog / language tags "
+                    "(phonon:40m-fr|de|es|pt|multilingual)"
+                )
+    model = str(getattr(settings.tts, "model", "") or "").strip()
+    if _tts_phonon_40m_noncommercial(model):
+        notes.append(
+            f"{model} is CC BY-NC 4.0 (noncommercial); "
+            "default phonon 31M stays Apache-2.0"
+        )
+    if not notes:
+        return ""
+    return "; " + "; ".join(notes)
 
 
 def _tts_ollama_phonon_detail(
@@ -3391,7 +3448,7 @@ def _tts_ollama_phonon_detail(
         return None
     tip_url = f"{ollama_base}/v1"
     catalog_note = ""
-    if parsed >= (0, 40, 11):
+    if parsed >= _OLLAMA_PHONON_CATALOG_FLOOR:
         catalog_note = (
             "; 0.40.11+ ships a Phonon voice catalog — "
             "GET /v1/audio/voices after configuring tts.base_url"
@@ -3430,10 +3487,11 @@ def _check_tts(settings: Settings, client: httpx.Client | None) -> CheckResult:
                 optional=True,
             )
         if response.status_code == 200:
+            notes = _tts_phonon_configured_notes(settings, http, base)
             return CheckResult(
                 name="tts",
                 ok=True,
-                detail=f"reachable at {base}",
+                detail=f"reachable at {base}{notes}",
                 optional=True,
             )
         return CheckResult(
