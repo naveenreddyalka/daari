@@ -8049,6 +8049,15 @@ Anthropic-parity example. Covered by `tests/unit/test_spend_grouped_report.py`,
 fleet inventory with per-target reset. Covered by
 `tests/unit/test_fleet_breaker_inventory.py`.
 
+### Anthropic metadata.user_id fences + keys user_rpd ([#1933](https://github.com/naveenreddyalka/daari/issues/1933))
+
+<!-- tracking:#1933 -->
+**Status:** Done (2026-10-26). `/v1/messages` attributes end users from
+`metadata.user_id` for `user_rpd` and `user_daily_usd_cap` (OpenAI top-level
+`user` still wins); `GET /v1/daari/keys` + web-ui expose `user_rpd` /
+`user_daily_usd_cap`; virtual-keys guide documents Anthropic attribution.
+Covered by `tests/unit/test_user_rpd.py`, `tests/unit/test_admin_read_plane.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

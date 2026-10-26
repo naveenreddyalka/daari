@@ -990,8 +990,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tpm = int(getattr(virtual, "tpm", 0) or 0) or None
         rpd = int(getattr(virtual, "rpd", 0) or 0) or None
         user_rpd = int(getattr(virtual, "user_rpd", 0) or 0) or None
-        body_user = payload.get("user") if isinstance(payload, dict) else None
-        named_user = str(body_user).strip() if body_user is not None else ""
+        from daari.auth.end_user import end_user_from_payload
+
+        named_user = end_user_from_payload(payload)
         from daari.auth.rate_families import family_limits_from_key, rate_limit_family
 
         family = rate_limit_family(request.url.path)

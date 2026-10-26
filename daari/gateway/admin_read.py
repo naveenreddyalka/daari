@@ -151,6 +151,8 @@ def redact_key(key: Any, *, spend: list[dict[str, Any]] | None = None) -> dict[s
         "rpm": int(key.rpm or 0),
         "tpm": int(key.tpm or 0),
         "rpd": int(key.rpd or 0),
+        "user_rpd": int(getattr(key, "user_rpd", 0) or 0),
+        "user_daily_usd_cap": float(getattr(key, "user_daily_usd_cap", 0) or 0),
         "max_in_flight": int(getattr(key, "max_in_flight", 0) or 0),
         "expires_at": key.expires_at,
         "last_used_at": getattr(key, "last_used_at", None),

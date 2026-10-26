@@ -82,10 +82,11 @@ request) limit on every matching window for that scope.
 ### Per-end-user caps on a shared key
 
 When many humans share one virtual key (a team agent), pass the OpenAI `user`
-field so spend is attributed per person. Optional `--user-daily-cap` denies only
-the user who crossed the frontier USD day cap (`scope: "user"`, 402);
-`--user-rpd` is the matching request-count fence (429, `X-RateLimit-Scope: user`).
-Others on the same key keep working. Requests without `user` are attributed to
+field — or Anthropic `metadata.user_id` on `/v1/messages` — so spend is
+attributed per person. Optional `--user-daily-cap` denies only the user who
+crossed the frontier USD day cap (`scope: "user"`, 402); `--user-rpd` is the
+matching request-count fence (429, `X-RateLimit-Scope: user`). Others on the
+same key keep working. Requests without a named end user are attributed to
 `unknown` and are never user-capped.
 
 ```bash

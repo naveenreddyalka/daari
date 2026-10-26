@@ -513,7 +513,7 @@ function renderAdminKeys(keys) {
   }
   const list = Array.isArray(keys) ? keys : [];
   if (list.length === 0) {
-    setEmptyRow(adminKeysTableNode, 11, "No virtual keys.");
+    setEmptyRow(adminKeysTableNode, 13, "No virtual keys.");
     return;
   }
   clearNode(adminKeysTableNode);
@@ -529,6 +529,8 @@ function renderAdminKeys(keys) {
       key.priority || "normal",
       key.cache_scope || "global",
       formatNumber(key.max_in_flight),
+      formatNumber(key.user_rpd),
+      formatNumber(key.user_daily_usd_cap),
       key.status || "-",
       formatSpendSummary(key.spend),
     ]);

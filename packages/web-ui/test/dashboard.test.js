@@ -89,6 +89,8 @@ const ADMIN_KEYS = {
       priority: "high",
       cache_scope: "team",
       max_in_flight: 3,
+      user_rpd: 200,
+      user_daily_usd_cap: 2.5,
       spend: [{ window: "day", quota: "usd", spend: 0.25, limit: 1.0 }],
     },
   ],
@@ -660,6 +662,8 @@ test("admin keys and teams tables render from inventory endpoints", async (t) =>
   assert.match(keyRows[0].textContent, /team/);
   const keyCells = [...keyRows[0].querySelectorAll("td")].map((td) => td.textContent);
   assert.ok(keyCells.includes("3"), `expected max_in_flight 3 in ${keyCells.join("|")}`);
+  assert.ok(keyCells.includes("200"), `expected user_rpd 200 in ${keyCells.join("|")}`);
+  assert.ok(keyCells.includes("2.5"), `expected user_daily_usd_cap 2.5 in ${keyCells.join("|")}`);
   assert.match(doc.getElementById("admin-keys-status").textContent, /1 key/);
 
   const teamRows = [...doc.querySelectorAll("#admin-teams-table tr")];

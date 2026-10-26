@@ -233,3 +233,131 @@ async def test_decisions_user_rpd_429(settings, tmp_path, monkeypatch):
     assert second.status_code == 429
     assert second.json()["error"]["type"] == "rate_limit_error"
     assert second.headers.get("x-ratelimit-scope") == "user"
+
+
+ANTHROPIC_MSG = {
+    "model": "claude-3-haiku",
+    "max_tokens": 16,
+    "messages": [{"role": "user", "content": "hi"}],
+}
+
+
+@pytest.mark.asyncio
+async def test_anthropic_metadata_user_id_rpd_isolates_users(settings, tmp_path, monkeypatch):
+    """Anthropic metadata.user_id feeds the same user_rpd fence as OpenAI user (#1933)."""
+    _freeze(monkeypatch, {"now": FROZEN})
+    app, store = _app_with_keys(settings, tmp_path, limiter=RateLimiter(MemoryCounterBackend()))
+    created = store.create("shared", user_rpd=1)
+    headers = {
+        "Authorization": f"Bearer {created.plaintext}",
+        "X-Daari-No-Cache": "true",
+        "anthropic-version": "2023-06-01",
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        alice_ok = await client.post(
+            "/v1/messages",
+            json={**ANTHROPIC_MSG, "metadata": {"user_id": "alice"}},
+            headers=headers,
+        )
+        alice_denied = await client.post(
+            "/v1/messages",
+            json={**ANTHROPIC_MSG, "metadata": {"user_id": "alice"}},
+            headers=headers,
+        )
+        bob_ok = await client.post(
+            "/v1/messages",
+            json={**ANTHROPIC_MSG, "metadata": {"user_id": "bob"}},
+            headers=headers,
+        )
+        no_user = await client.post("/v1/messages", json=ANTHROPIC_MSG, headers=headers)
+    assert alice_ok.status_code == 200, alice_ok.text
+    assert alice_denied.status_code == 429
+    err = alice_denied.json()["error"]
+    assert err["type"] == "rate_limit_error"
+    assert "rpd" in err["message"]
+    assert alice_denied.headers.get("x-ratelimit-scope") == "user"
+    assert bob_ok.status_code == 200
+    assert no_user.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_openai_user_wins_over_metadata_user_id(settings, tmp_path, monkeypatch):
+    """Top-level OpenAI user wins when both user and metadata.user_id are set (#1933)."""
+    _freeze(monkeypatch, {"now": FROZEN})
+    app, store = _app_with_keys(settings, tmp_path, limiter=RateLimiter(MemoryCounterBackend()))
+    created = store.create("shared", user_rpd=1)
+    headers = {
+        "Authorization": f"Bearer {created.plaintext}",
+        "X-Daari-No-Cache": "true",
+    }
+    both = {**CHAT, "user": "alice", "metadata": {"user_id": "bob"}}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        alice_ok = await client.post("/v1/chat/completions", json=both, headers=headers)
+        alice_denied = await client.post("/v1/chat/completions", json=both, headers=headers)
+        bob_alone = await client.post(
+            "/v1/chat/completions",
+            json={**CHAT, "metadata": {"user_id": "bob"}},
+            headers=headers,
+        )
+    assert alice_ok.status_code == 200
+    assert alice_denied.status_code == 429
+    assert alice_denied.headers.get("x-ratelimit-scope") == "user"
+    # bob's metadata bucket is still fresh — top-level alice did not consume it
+    assert bob_alone.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_anthropic_user_daily_usd_cap_402(settings, tmp_path, monkeypatch):
+    """Anthropic door enforces user_daily_usd_cap via metadata.user_id (#1933)."""
+    from daari.observability.usage import UsageLedger
+
+    _freeze(monkeypatch, {"now": FROZEN})
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    created = store.create("shared", client_id="key-a", user_daily_usd_cap=0.002)
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    app.state.ctx.router.usage_ledger = ledger
+    ledger.record(
+        tier="L6",
+        client_id="key-a",
+        user_id="alice",
+        model="gpt-4-custom",
+        input_tokens=int(0.003 / 0.002 * 1000),
+        output_tokens=0,
+    )
+
+    async def fake(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=1),
+        )
+
+    app.state.ctx.router.ollama.execute = fake
+    headers = {
+        "Authorization": f"Bearer {created.plaintext}",
+        "X-Daari-No-Cache": "true",
+        "anthropic-version": "2023-06-01",
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        blocked = await client.post(
+            "/v1/messages",
+            json={**ANTHROPIC_MSG, "metadata": {"user_id": "alice"}},
+            headers=headers,
+        )
+        bob_ok = await client.post(
+            "/v1/messages",
+            json={**ANTHROPIC_MSG, "metadata": {"user_id": "bob"}},
+            headers=headers,
+        )
+    assert blocked.status_code == 402
+    err = blocked.json()["error"]
+    assert err["type"] == "budget_exceeded"
+    assert err["scope"] == "user"
+    assert bob_ok.status_code == 200
