@@ -19,12 +19,22 @@ CREATE TABLE IF NOT EXISTS daari_responses (
     conversation TEXT NOT NULL,
     stored INTEGER NOT NULL,
     owner_key_id TEXT,
-    created_at BIGINT NOT NULL DEFAULT 0
+    created_at BIGINT NOT NULL DEFAULT 0,
+    job_owner TEXT,
+    lease_expires_at BIGINT
 );
 """
 
 _MIGRATE_CREATED_AT = """
 ALTER TABLE daari_responses ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0;
+"""
+
+_MIGRATE_JOB_OWNER = """
+ALTER TABLE daari_responses ADD COLUMN IF NOT EXISTS job_owner TEXT;
+"""
+
+_MIGRATE_LEASE = """
+ALTER TABLE daari_responses ADD COLUMN IF NOT EXISTS lease_expires_at BIGINT;
 """
 
 # dsn -> {response_id: row_dict} shared across PostgresResponseStore instances.
@@ -58,10 +68,15 @@ class PostgresResponseStore:
                 with self._connect() as conn:
                     with conn.cursor() as cur:
                         cur.execute(_SCHEMA)
-                        try:
-                            cur.execute(_MIGRATE_CREATED_AT)
-                        except Exception:
-                            pass
+                        for stmt in (
+                            _MIGRATE_CREATED_AT,
+                            _MIGRATE_JOB_OWNER,
+                            _MIGRATE_LEASE,
+                        ):
+                            try:
+                                cur.execute(stmt)
+                            except Exception:
+                                pass
                     conn.commit()
             except Exception:
                 self.enabled = False
@@ -79,6 +94,8 @@ class PostgresResponseStore:
         conversation: list[dict[str, Any]] | None = None,
         stored: bool = True,
         owner_key_id: str | None = None,
+        job_owner: str | None = None,
+        lease_expires_at: int | None = None,
     ) -> None:
         if not stored or not self.enabled:
             return
@@ -95,20 +112,26 @@ class PostgresResponseStore:
                         owner_key_id = existing.get("owner_key_id")
                     if existing.get("created_at"):
                         created_at = int(existing["created_at"])
+                    if job_owner is None:
+                        job_owner = existing.get("job_owner")
+                    if lease_expires_at is None:
+                        lease_expires_at = existing.get("lease_expires_at")
                 bucket[response_id] = {
                     "body": body_json,
                     "conversation": conversation_json,
                     "stored": 1,
                     "owner_key_id": owner_key_id,
                     "created_at": created_at,
+                    "job_owner": job_owner,
+                    "lease_expires_at": lease_expires_at,
                 }
             return
         with self._lock:
             with self._connect() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT owner_key_id, created_at FROM daari_responses"
-                        " WHERE response_id = %s",
+                        "SELECT owner_key_id, created_at, job_owner, lease_expires_at"
+                        " FROM daari_responses WHERE response_id = %s",
                         (response_id,),
                     )
                     row = cur.fetchone()
@@ -118,22 +141,31 @@ class PostgresResponseStore:
                             owner_key_id = row[0]
                         if row[1]:
                             created_at = int(row[1])
+                        if job_owner is None:
+                            job_owner = row[2]
+                        if lease_expires_at is None:
+                            lease_expires_at = row[3]
                     cur.execute(
                         "INSERT INTO daari_responses"
-                        " (response_id, body, conversation, stored, owner_key_id, created_at)"
-                        " VALUES (%s, %s, %s, 1, %s, %s)"
+                        " (response_id, body, conversation, stored, owner_key_id,"
+                        "  created_at, job_owner, lease_expires_at)"
+                        " VALUES (%s, %s, %s, 1, %s, %s, %s, %s)"
                         " ON CONFLICT (response_id) DO UPDATE SET"
                         " body = EXCLUDED.body,"
                         " conversation = EXCLUDED.conversation,"
                         " stored = 1,"
                         " owner_key_id = EXCLUDED.owner_key_id,"
-                        " created_at = daari_responses.created_at",
+                        " created_at = daari_responses.created_at,"
+                        " job_owner = EXCLUDED.job_owner,"
+                        " lease_expires_at = EXCLUDED.lease_expires_at",
                         (
                             response_id,
                             body_json,
                             conversation_json,
                             owner_key_id,
                             created_at,
+                            job_owner,
+                            lease_expires_at,
                         ),
                     )
                 conn.commit()
@@ -150,12 +182,15 @@ class PostgresResponseStore:
                 body = json.loads(row["body"])
                 body["_conversation"] = json.loads(row["conversation"])
                 body["_owner_key_id"] = row.get("owner_key_id")
+                body["_job_owner"] = row.get("job_owner")
+                body["_lease_expires_at"] = row.get("lease_expires_at")
                 return body
         with self._lock:
             with self._connect() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT body, conversation, owner_key_id FROM daari_responses"
+                        "SELECT body, conversation, owner_key_id, job_owner,"
+                        " lease_expires_at FROM daari_responses"
                         " WHERE response_id = %s",
                         (response_id,),
                     )
@@ -165,6 +200,8 @@ class PostgresResponseStore:
         body = json.loads(row[0])
         body["_conversation"] = json.loads(row[1])
         body["_owner_key_id"] = row[2]
+        body["_job_owner"] = row[3]
+        body["_lease_expires_at"] = row[4]
         return body
 
     def delete(self, response_id: str) -> bool:

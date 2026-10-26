@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -406,6 +407,78 @@ def _public_body(stored: dict[str, Any]) -> dict[str, Any]:
 
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+_LEASE_ACTIVE_STATUSES = frozenset({"queued", "in_progress"})
+
+# Background job lease TTL / heartbeat (#1957). Monkeypatchable in tests.
+LEASE_TTL_SECONDS = 30
+LEASE_HEARTBEAT_SECONDS = 10
+
+
+def _job_owner_id() -> str:
+    """Stable-enough pod identity for lease ownership (hostname + pid + nonce)."""
+    return f"{os.uname().nodename}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+
+
+def _lease_deadline(now: int | None = None) -> int:
+    return int(now if now is not None else time.time()) + int(LEASE_TTL_SECONDS)
+
+
+def _reclaim_expired_job(
+    store: Any,
+    response_id: str,
+    stored: dict[str, Any] | None,
+    *,
+    notify_ctx: Any | None = None,
+) -> dict[str, Any] | None:
+    """Persist ``failed`` when a queued/in_progress row's lease has expired (#1957).
+
+    Returns the reclaimed public body, or None when no reclaim was needed.
+    """
+    if stored is None:
+        return None
+    status = str(stored.get("status") or "")
+    if status not in _LEASE_ACTIVE_STATUSES:
+        return None
+    lease = stored.get("_lease_expires_at")
+    if lease is None:
+        return None
+    try:
+        lease_at = int(lease)
+    except (TypeError, ValueError):
+        return None
+    if lease_at >= int(time.time()):
+        return None
+    failed = {
+        **_public_body(stored),
+        "status": "failed",
+        "error": {
+            "code": "orphan_reclaimed",
+            "message": (
+                "background job orphaned: owner lease expired "
+                f"(last owner={stored.get('_job_owner') or 'unknown'})"
+            ),
+        },
+        "output": stored.get("output") or [],
+    }
+    store.put(
+        response_id,
+        failed,
+        conversation=list(stored.get("_conversation") or []),
+        stored=True,
+        job_owner=stored.get("_job_owner"),
+        lease_expires_at=lease_at,
+    )
+    log_gateway_event(
+        "responses.job_lease_reclaimed",
+        {
+            "response_id": response_id,
+            "job_owner": stored.get("_job_owner"),
+            "lease_expires_at": lease_at,
+        },
+    )
+    if notify_ctx is not None:
+        _notify_responses_completion(notify_ctx, failed)
+    return failed
 
 
 def _notify_responses_completion(ctx: Any, body: dict[str, Any]) -> None:
@@ -782,7 +855,12 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             ),
         ) -> Any:
             ctx: AppContext = request.app.state.ctx
-            _store, stored = _visible_stored_response(ctx, response_id, request)
+            store, stored = _visible_stored_response(ctx, response_id, request)
+            reclaimed = _reclaim_expired_job(
+                store, response_id, stored, notify_ctx=ctx
+            )
+            if reclaimed is not None:
+                stored = {**stored, **reclaimed}
             if not stream:
                 return _public_body(stored)
             status = str(stored.get("status") or "")
@@ -807,6 +885,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         async def cancel_response(response_id: str, request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
             store, stored = _visible_stored_response(ctx, response_id, request)
+            # Orphan reclaim would mark failed; cancel of an active (incl. expired
+            # lease) job still wins as cancelled without a second webhook (#1926).
             if stored.get("status") in _TERMINAL_STATUSES:
                 return _public_body(stored)
             cancelled = {
@@ -1174,6 +1254,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 )
 
             if body.background:
+                job_owner = _job_owner_id()
                 queued = {
                     "id": response_id,
                     "object": "response",
@@ -1190,6 +1271,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     conversation=[],
                     stored=True,
                     owner_key_id=owner_key_id,
+                    job_owner=job_owner,
+                    lease_expires_at=_lease_deadline(),
                 )
                 task = asyncio.create_task(
                     self._run_background(
@@ -1203,6 +1286,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                         store,
                         owner_key_id,
                         include_encrypted=include_encrypted,
+                        job_owner=job_owner,
                     )
                 )
                 register_local_job(response_id, task)
@@ -1362,7 +1446,38 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         owner_key_id: str | None = None,
         *,
         include_encrypted: bool = False,
+        job_owner: str | None = None,
     ) -> None:
+        owner = job_owner or _job_owner_id()
+        heartbeat: asyncio.Task[None] | None = None
+
+        def _touch_lease(status: str, *, base: dict[str, Any] | None = None) -> None:
+            current = base if base is not None else store.get(response_id)
+            if current is None:
+                return
+            body = {**_public_body(current), "status": status}
+            store.put(
+                response_id,
+                body,
+                conversation=list(current.get("_conversation") or []),
+                stored=True,
+                owner_key_id=owner_key_id,
+                job_owner=owner,
+                lease_expires_at=_lease_deadline(),
+            )
+
+        async def _heartbeat_loop() -> None:
+            while True:
+                await asyncio.sleep(float(LEASE_HEARTBEAT_SECONDS))
+                current = store.get(response_id)
+                if (
+                    current is None
+                    or current.get("status") in _TERMINAL_STATUSES
+                    or is_cancel_requested(response_id)
+                ):
+                    return
+                _touch_lease("in_progress", base=current)
+
         try:
             current = store.get(response_id)
             if (
@@ -1371,6 +1486,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 or is_cancel_requested(response_id)
             ):
                 return
+            # Claim ownership: queued → in_progress + fresh lease (#1957).
+            _touch_lease("in_progress", base=current)
+            heartbeat = asyncio.create_task(_heartbeat_loop())
             result = await ctx.router.route(internal)
             current = store.get(response_id)
             if (
@@ -1393,6 +1511,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 conversation=_conversation_after(history, payload["output"]),
                 stored=True,
                 owner_key_id=owner_key_id,
+                job_owner=owner,
+                lease_expires_at=_lease_deadline(),
             )
             _notify_responses_completion(ctx, payload)
         except asyncio.CancelledError:
@@ -1419,8 +1539,17 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 conversation=[],
                 stored=True,
                 owner_key_id=owner_key_id,
+                job_owner=owner,
+                lease_expires_at=_lease_deadline(),
             )
             _notify_responses_completion(ctx, failed)
+        finally:
+            if heartbeat is not None and not heartbeat.done():
+                heartbeat.cancel()
+                try:
+                    await heartbeat
+                except asyncio.CancelledError:
+                    pass
 
     @staticmethod
     async def _event_stream(

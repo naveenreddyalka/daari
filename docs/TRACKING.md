@@ -8110,6 +8110,17 @@ formats (including default `mp3`) become `wav`; explicit `pcm` is kept.
 Non-Phonon backends unchanged. Docs: [tts.md](developer/guides/backends/tts.md).
 Covered by `tests/unit/test_speech.py`, `tests/unit/test_tts_docs.py`.
 
+### Responses background job lease + in_progress ([#1957](https://github.com/naveenreddyalka/daari/issues/1957))
+
+<!-- tracking:#1957 -->
+**Status:** Done (2026-10-26). Background Responses rows gain `queued` →
+`in_progress` → terminal with `job_owner` / `lease_expires_at` on SQLite and
+Postgres stores. Owning pod heartbeats the lease; GET poll of an expired lease
+reclaims as `failed` (`orphan_reclaimed`) and logs
+`responses.job_lease_reclaimed`. Cancel of an orphan stays single-webhook.
+Covered by `tests/unit/test_responses_job_lease.py`,
+`tests/integration/test_responses_job_lease.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
