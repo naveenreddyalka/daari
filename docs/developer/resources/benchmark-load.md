@@ -9,10 +9,11 @@ tool-bearing agent replay (agent, G1 / #223). Reproduce:
 ## Hermetic micro-benchmarks (no Ollama)
 
 In-process regression guards for TTFT-adjacent paths live under
-`tests/benchmark/` (`test_hermetic_paths.py`, plus the existing L0-vs-mocked-L3
-case). They are marked `@pytest.mark.benchmark`, so the default CI suite
-(`pytest -m "not integration and not benchmark"`) skips them. Run locally when
-changing cache, budgets, rate limiting, or batches:
+`tests/benchmark/` (`test_hermetic_paths.py`, `test_speech_path.py`, plus the
+existing L0-vs-mocked-L3 case). They are marked `@pytest.mark.benchmark`, so
+the default CI suite (`pytest -m "not integration and not benchmark"`) skips
+them. Run locally when changing cache, budgets, rate limiting, batches, or
+TTS speech / voices paths:
 
 ```bash
 pytest -m benchmark -q
@@ -46,7 +47,10 @@ with no hard 402 (#620). Soft USD budget soft-band bursts are also guarded: N
 concurrent allowed requests (VK frontier spend prefilled to
 `frontier.soft_budget_ratio`) must all return 200 with
 `x-daari-budget-warning: soft` and `daari_soft_warnings_total{kind="budget"}`
-≥ N under a wall ceiling, with no hard 402 (#626).
+≥ N under a wall ceiling, with no hard 402 (#626). Streamed TTS finalize and
+Phonon voices-catalog fallback are also guarded: mocked upstream stream drain
+plus spend/ledger finalize, and `GET /v1/audio/voices` Phonon fallback catalog
+build, each under a wall-clock median ceiling with no live Ollama (#1938).
 
 - **Date:** 2026-08-26
 - **Commit:** `c56999c`

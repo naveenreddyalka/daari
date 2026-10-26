@@ -8093,6 +8093,15 @@ and immediate `*/SKILL.md` AAIF packages (directory name = title); deeper
 nests and empty/unreadable files are skipped. Config reference documents the
 layout. Covered by `tests/unit/test_settings.py`.
 
+### Hermetic TTS speech path micro-benchmark ([#1938](https://github.com/naveenreddyalka/daari/issues/1938))
+
+<!-- tracking:#1938 -->
+**Status:** Done (2026-10-26). `@pytest.mark.benchmark` hermetic ceilings for
+streamed `/v1/audio/speech` finalize (spend/ledger) and `GET /v1/audio/voices`
+Phonon fallback catalog build — mocked TTS HTTP, no Ollama. Docs:
+[benchmark-load.md](developer/resources/benchmark-load.md). Covered by
+`tests/benchmark/test_speech_path.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
