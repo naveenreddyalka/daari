@@ -456,6 +456,98 @@ def _empty_catalog_list(
     return payload
 
 
+def _skill_list_entries() -> list[dict[str, Any]]:
+    from daari.skills.catalog import iter_local_skills
+
+    return [
+        {
+            "id": skill.id,
+            "name": skill.name,
+            "description": skill.description,
+            "uri": skill.uri,
+        }
+        for skill in iter_local_skills()
+    ]
+
+
+def _skills_list_payload(
+    ctx: AppContext,
+    policy: McpToolPolicy | None,
+    server_policy: McpServerPolicy | None,
+    protocol: str | None,
+) -> dict[str, Any]:
+    """SEP-2640 skills/list over on-box flat + AAIF skills (#1965)."""
+    payload: dict[str, Any] = {"skills": _skill_list_entries()}
+    if _protocol_requires_list_result_type(protocol):
+        payload["resultType"] = "complete"
+        payload["_meta"] = _list_cache_meta(ctx, policy, server_policy)
+    return payload
+
+
+def _resources_list_payload(
+    ctx: AppContext,
+    policy: McpToolPolicy | None,
+    server_policy: McpServerPolicy | None,
+    protocol: str | None,
+) -> dict[str, Any]:
+    """resources/list including skill:// URIs for local skills (#1965)."""
+    from daari.skills.catalog import iter_local_skills
+
+    resources = [
+        {
+            "uri": skill.uri,
+            "name": skill.name,
+            "description": skill.description,
+            "mimeType": "text/markdown",
+        }
+        for skill in iter_local_skills()
+    ]
+    payload: dict[str, Any] = {"resources": resources}
+    if _protocol_requires_list_result_type(protocol):
+        payload["resultType"] = "complete"
+        payload["_meta"] = _list_cache_meta(ctx, policy, server_policy)
+    return payload
+
+
+def _skills_get_result(params: dict[str, Any]) -> dict[str, Any] | None:
+    from daari.skills.catalog import get_local_skill
+
+    raw = params.get("uri") or params.get("name") or params.get("id") or ""
+    skill = get_local_skill(str(raw))
+    if skill is None:
+        return None
+    return {
+        "skill": {
+            "id": skill.id,
+            "name": skill.name,
+            "description": skill.description,
+            "uri": skill.uri,
+            "mimeType": "text/markdown",
+            "text": skill.body,
+        }
+    }
+
+
+def _resources_read_result(params: dict[str, Any]) -> dict[str, Any] | None:
+    from daari.skills.catalog import get_local_skill
+
+    uri = str(params.get("uri") or "").strip()
+    if not uri.startswith("skill://"):
+        return None
+    skill = get_local_skill(uri)
+    if skill is None:
+        return None
+    return {
+        "contents": [
+            {
+                "uri": skill.uri,
+                "mimeType": "text/markdown",
+                "text": skill.body,
+            }
+        ]
+    }
+
+
 async def _tools_list_payload(
     ctx: AppContext,
     policy: McpToolPolicy | None = None,
@@ -1558,18 +1650,66 @@ class MCPGatewayAdapter(GatewayAdapter):
                         ),
                     )
                 if method == "resources/list":
+                    if virtual_key_lacks_mcp_grant(governance.claims, ctx.settings):
+                        _record_mcp_grant_denied(ctx)
                     return _rpc_response(
                         request,
                         _jsonrpc_result(
                             rpc_id,
-                            _empty_catalog_list(
-                                "resources",
+                            _resources_list_payload(
                                 ctx,
                                 governance.policy,
                                 governance.server_policy,
                                 requested_meta or DEFAULT_PROTOCOL_VERSION,
                             ),
                         ),
+                    )
+                if method == "resources/read":
+                    if virtual_key_lacks_mcp_grant(governance.claims, ctx.settings):
+                        _record_mcp_grant_denied(ctx)
+                    read_result = _resources_read_result(params)
+                    if read_result is None:
+                        return _rpc_response(
+                            request,
+                            _jsonrpc_error(
+                                rpc_id,
+                                INVALID_PARAMS,
+                                "Unknown or unsupported resource uri",
+                            ),
+                        )
+                    return _rpc_response(
+                        request, _jsonrpc_result(rpc_id, read_result)
+                    )
+                if method == "skills/list":
+                    if virtual_key_lacks_mcp_grant(governance.claims, ctx.settings):
+                        _record_mcp_grant_denied(ctx)
+                    return _rpc_response(
+                        request,
+                        _jsonrpc_result(
+                            rpc_id,
+                            _skills_list_payload(
+                                ctx,
+                                governance.policy,
+                                governance.server_policy,
+                                requested_meta or DEFAULT_PROTOCOL_VERSION,
+                            ),
+                        ),
+                    )
+                if method == "skills/get":
+                    if virtual_key_lacks_mcp_grant(governance.claims, ctx.settings):
+                        _record_mcp_grant_denied(ctx)
+                    get_result = _skills_get_result(params)
+                    if get_result is None:
+                        return _rpc_response(
+                            request,
+                            _jsonrpc_error(
+                                rpc_id,
+                                INVALID_PARAMS,
+                                "Unknown skill",
+                            ),
+                        )
+                    return _rpc_response(
+                        request, _jsonrpc_result(rpc_id, get_result)
                     )
                 if method == "prompts/list":
                     return _rpc_response(

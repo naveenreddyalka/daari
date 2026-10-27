@@ -2790,36 +2790,11 @@ def _load_skills_system_prefix() -> str:
     """Load flat ``*.md`` skills and AAIF package dirs (``*/SKILL.md``) (#1937).
 
     Only immediate children of ``~/.daari/skills/`` are considered — nested
-    packages deeper than one level are ignored.
+    packages deeper than one level are ignored. Shared with MCP SEP-2640 (#1965).
     """
-    skills_dir = Path.home() / ".daari" / "skills"
-    if not skills_dir.is_dir():
-        return ""
-    sections: list[str] = []
-    for path in sorted(skills_dir.glob("*.md")):
-        try:
-            content = path.read_text(encoding="utf-8").strip()
-        except Exception:
-            continue
-        if not content:
-            continue
-        sections.append(f"## Skill: {path.stem}\n{content}")
-    for child in sorted(skills_dir.iterdir()):
-        if not child.is_dir():
-            continue
-        skill_md = child / "SKILL.md"
-        if not skill_md.is_file():
-            continue
-        try:
-            content = skill_md.read_text(encoding="utf-8").strip()
-        except Exception:
-            continue
-        if not content:
-            continue
-        sections.append(f"## Skill: {child.name}\n{content}")
-    if not sections:
-        return ""
-    return "# Local daari skills\n\n" + "\n\n".join(sections)
+    from daari.skills.catalog import skills_system_prefix
+
+    return skills_system_prefix()
 
 
 def _coerce_env_value(raw: str) -> Any:

@@ -8175,6 +8175,15 @@ Covered by `tests/unit/test_gpt_6_1_terra_pricing.py`.
 detail surfaces in status. Docs: [chargeback.md](developer/guides/observability/chargeback.md).
 Covered by `packages/web-ui/test/dashboard.test.js`.
 
+### MCP SEP-2640 skills/list and skill:// resources ([#1965](https://github.com/naveenreddyalka/daari/issues/1965))
+
+<!-- tracking:#1965 -->
+**Status:** Done (2026-10-27). `POST /mcp` serves `skills/list` / `skills/get`
+and `resources/list`+`resources/read` for flat + AAIF on-box skills
+(`skill://`); grant deny counters match other MCP list methods. Docs:
+[mcp.md](developer/guides/clients/mcp.md). Covered by
+`tests/unit/test_mcp_skills_sep2640.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
