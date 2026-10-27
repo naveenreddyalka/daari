@@ -28,6 +28,16 @@ def test_builtin_includes_drex_microsoft_and_d3_family():
         assert is_local_decisions_model(model_id)
 
 
+def test_builtin_includes_d1_family():
+    """Ollama 0.40.12 Liquid AI d1 decision models (#1983)."""
+    for model_id in ("d1", "d1:2b", "d1-omni"):
+        assert model_id in BUILTIN_LOCAL_MODELS
+        assert is_local_decisions_model(model_id)
+        assert is_local_decisions_model(model_id.upper())
+    assert not is_local_decisions_model("d1typo")
+    assert not is_local_decisions_model("d2:2b")
+
+
 def test_normalize_accepts_new_ids_and_variants():
     assert normalize_decisions_model("drex-1.5") == "drex-1.5"
     assert normalize_decisions_model("nace/drex-1.5") == "drex-1.5"
@@ -40,6 +50,9 @@ def test_normalize_accepts_new_ids_and_variants():
     assert normalize_decisions_model("d3:4b") == "d3:4b"
     assert normalize_decisions_model("d3:9b") == "d3:9b"
     assert normalize_decisions_model("d3:27b") == "d3:27b"
+    assert normalize_decisions_model("d1") == "d1"
+    assert normalize_decisions_model("d1:2b") == "d1:2b"
+    assert normalize_decisions_model("d1-omni") == "d1-omni"
     # Vendor slash keeps a local catalog id (tag may collapse to base `d3`).
     assert normalize_decisions_model("ollama/d3:4b") in {"d3", "d3:4b"}
     assert is_local_decisions_model("ollama/d3:4b")
@@ -161,7 +174,11 @@ def test_ollama_guide_documents_catalog_and_extension():
     assert "microsoft-decision-1" in text
     assert "d3" in text
     assert "d3:2b" in text
+    assert "d1" in text
+    assert "d1:2b" in text
+    assert "d1-omni" in text
     assert "0.40.9" in text
+    assert "0.40.12" in text
     assert "Linux" in text and "Windows" in text
     assert "Mac-first" not in text
     assert "decisions.local_models" in text
@@ -186,3 +203,7 @@ def test_doctor_tip_lists_d3_when_catalog_missing():
     assert result is not None
     assert result.ok is False
     assert "d3" in result.detail
+    assert "d1" in result.detail
+    assert "d1-omni" in result.detail
+    assert "d1" in result.detail
+    assert "d1-omni" in result.detail

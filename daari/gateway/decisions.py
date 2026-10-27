@@ -37,6 +37,10 @@ BUILTIN_LOCAL_MODELS = frozenset(
         "d3:4b",
         "d3:9b",
         "d3:27b",
+        # Ollama 0.40.12 Liquid AI d1 decision models on LFM3 (#1983).
+        "d1",
+        "d1:2b",
+        "d1-omni",
     }
 )
 # Back-compat alias for importers/tests that still reference the old name.

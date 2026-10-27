@@ -8184,6 +8184,14 @@ and `resources/list`+`resources/read` for flat + AAIF on-box skills
 [mcp.md](developer/guides/clients/mcp.md). Covered by
 `tests/unit/test_mcp_skills_sep2640.py`.
 
+### Built-in d1 decisions catalog ([#1983](https://github.com/naveenreddyalka/daari/issues/1983))
+
+<!-- tracking:#1983 -->
+**Status:** Done (2026-10-27). Built-in local decisions catalog adds Ollama
+0.40.12 Liquid AI `d1` / `d1:2b` / `d1-omni` alongside d3. Docs:
+[ollama.md](developer/guides/backends/ollama.md). Covered by
+`tests/unit/test_decisions_local_catalog.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

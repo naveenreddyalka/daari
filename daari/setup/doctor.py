@@ -1095,8 +1095,11 @@ def _check_decisions_local_models(
         ]
         if present:
             return None
-        shown = ", ".join(local_ids[:8])
-        extra = f" (+{len(local_ids) - 8} more)" if len(local_ids) > 8 else ""
+        # Catalog grew with d3 + d1 families; keep enough ids that operators see
+        # both Liquid AI lines and older judges without opening ollama.md (#1983).
+        tip_n = 16
+        shown = ", ".join(local_ids[:tip_n])
+        extra = f" (+{len(local_ids) - tip_n} more)" if len(local_ids) > tip_n else ""
         example = local_ids[0]
         if openai_catalog:
             detail = (
