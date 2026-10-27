@@ -55,6 +55,7 @@ def run_doctor(
     if ungoverned_tip is not None:
         results.append(ungoverned_tip)
     results.append(_check_secret_refs(cfg))
+    results.append(_check_at_rest_encryption(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
     results.append(_check_embedding_endpoint(cfg, httpx_client))
     results.append(_check_mlx(cfg, httpx_client))
@@ -298,6 +299,28 @@ def _check_config_editor_ungoverned(settings: Settings) -> CheckResult | None:
             "PATCH /v1/daari/config (and other admin surfaces) are ungoverned; "
             "set server.api_key or enable enterprise.sso"
         ),
+        optional=True,
+    )
+
+
+def _check_at_rest_encryption(settings: Settings) -> CheckResult:
+    """Report whether payload stores encrypt at rest (#1958)."""
+    security = getattr(settings, "security", None)
+    key = (getattr(security, "at_rest_key", None) or "").strip()
+    previous = (getattr(security, "at_rest_key_previous", None) or "").strip()
+    stores = "response store, request log, L0/L1 disk cache"
+    if not key:
+        return CheckResult(
+            name="at_rest_encryption",
+            ok=True,
+            detail=f"off — {stores} store plaintext (set security.at_rest_key to enable)",
+            optional=True,
+        )
+    rotation = "; rotation previous key set" if previous else ""
+    return CheckResult(
+        name="at_rest_encryption",
+        ok=True,
+        detail=f"on — AES-GCM for {stores}{rotation}",
         optional=True,
     )
 

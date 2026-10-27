@@ -430,10 +430,36 @@ class SemanticCache:
 
     def _load_entries(self) -> list[dict[str, Any]]:
         raw = self._store().get(self._entries_key, default=[])
-        return raw if isinstance(raw, list) else []
+        if not isinstance(raw, list):
+            return []
+        from daari.security.at_rest import is_sealed, open_text
+
+        opened: list[dict[str, Any]] = []
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            item = dict(entry)
+            for field in ("response_json", "prompt_text"):
+                value = item.get(field)
+                if isinstance(value, str) and is_sealed(value):
+                    item[field] = open_text(value)
+            opened.append(item)
+        return opened
 
     def _save_entries(self, entries: list[dict[str, Any]]) -> None:
-        self._store().set(self._entries_key, entries)
+        from daari.security.at_rest import seal_text
+
+        sealed: list[dict[str, Any]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            item = dict(entry)
+            for field in ("response_json", "prompt_text"):
+                value = item.get(field)
+                if isinstance(value, str):
+                    item[field] = seal_text(value)
+            sealed.append(item)
+        self._store().set(self._entries_key, sealed)
 
     def _entry_expired(self, entry: dict[str, Any], max_age: float | None = None) -> bool:
         ttl = max_age if max_age is not None else self.ttl_seconds

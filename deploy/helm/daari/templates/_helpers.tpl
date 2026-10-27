@@ -28,3 +28,16 @@
 {{- define "daari.fleetSqliteWarning" -}}
 {{- and (gt (int (include "daari.fleetReplicas" .)) 1) (not .Values.postgres.enabled) -}}
 {{- end -}}
+
+{{- /* Emit valueFrom.secretKeyRef env when secret.name is set. Args: name, secret */ -}}
+{{- define "daari.webhookSecretEnv" -}}
+{{- $env := index . 0 -}}
+{{- $secret := index . 1 -}}
+{{- if and $secret $secret.name }}
+            - name: {{ $env }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret.name | quote }}
+                  key: {{ $secret.key | default "webhook-secret" | quote }}
+{{- end }}
+{{- end -}}

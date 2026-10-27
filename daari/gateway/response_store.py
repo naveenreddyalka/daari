@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from daari.security.at_rest import loads_json_maybe_sealed, seal_text
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS responses (
     response_id TEXT PRIMARY KEY,
@@ -16,7 +18,9 @@ CREATE TABLE IF NOT EXISTS responses (
     conversation TEXT NOT NULL,
     stored INTEGER NOT NULL,
     owner_key_id TEXT,
-    created_at INTEGER NOT NULL DEFAULT 0
+    created_at INTEGER NOT NULL DEFAULT 0,
+    job_owner TEXT,
+    lease_expires_at INTEGER
 )
 """
 
@@ -72,6 +76,12 @@ class ResponseStore:
                     "UPDATE responses SET created_at = ? WHERE response_id = ?",
                     (stamp, response_id),
                 )
+        # Refresh cols after prior ALTERs.
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(responses)")}
+        if "job_owner" not in cols:
+            conn.execute("ALTER TABLE responses ADD COLUMN job_owner TEXT")
+        if "lease_expires_at" not in cols:
+            conn.execute("ALTER TABLE responses ADD COLUMN lease_expires_at INTEGER")
 
     def put(
         self,
@@ -81,13 +91,16 @@ class ResponseStore:
         conversation: list[dict[str, Any]] | None = None,
         stored: bool = True,
         owner_key_id: str | None = None,
+        job_owner: str | None = None,
+        lease_expires_at: int | None = None,
     ) -> None:
         if not stored:
             return
         now = int(time.time())
         with self._lock, self._connect() as conn:
             existing = conn.execute(
-                "SELECT owner_key_id, created_at FROM responses WHERE response_id = ?",
+                "SELECT owner_key_id, created_at, job_owner, lease_expires_at"
+                " FROM responses WHERE response_id = ?",
                 (response_id,),
             ).fetchone()
             created_at = now
@@ -97,31 +110,43 @@ class ResponseStore:
                     owner_key_id = existing[0]
                 if existing[1]:
                     created_at = int(existing[1])
+                if job_owner is None:
+                    job_owner = existing[2]
+                if lease_expires_at is None:
+                    lease_expires_at = existing[3]
             conn.execute(
                 "INSERT OR REPLACE INTO responses"
-                " (response_id, body, conversation, stored, owner_key_id, created_at)"
-                " VALUES (?, ?, ?, 1, ?, ?)",
+                " (response_id, body, conversation, stored, owner_key_id, created_at,"
+                "  job_owner, lease_expires_at)"
+                " VALUES (?, ?, ?, 1, ?, ?, ?, ?)",
                 (
                     response_id,
-                    json.dumps(body),
-                    json.dumps(conversation or []),
+                    seal_text(json.dumps(body)),
+                    seal_text(json.dumps(conversation or [])),
                     owner_key_id,
                     created_at,
+                    job_owner,
+                    lease_expires_at,
                 ),
             )
 
     def get(self, response_id: str) -> dict[str, Any] | None:
         with self._lock, self._connect() as conn:
             row = conn.execute(
-                "SELECT body, conversation, owner_key_id FROM responses"
-                " WHERE response_id = ?",
+                "SELECT body, conversation, owner_key_id, job_owner, lease_expires_at"
+                " FROM responses WHERE response_id = ?",
                 (response_id,),
             ).fetchone()
         if row is None:
             return None
-        body = json.loads(row[0])
-        body["_conversation"] = json.loads(row[1])
+        body = loads_json_maybe_sealed(row[0])
+        if not isinstance(body, dict):
+            body = {}
+        conversation = loads_json_maybe_sealed(row[1])
+        body["_conversation"] = conversation if isinstance(conversation, list) else []
         body["_owner_key_id"] = row[2]
+        body["_job_owner"] = row[3]
+        body["_lease_expires_at"] = row[4]
         return body
 
     def delete(self, response_id: str) -> bool:

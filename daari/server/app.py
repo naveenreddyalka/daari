@@ -82,6 +82,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from daari.security.secret_refs import resolve_settings_secrets
 
     resolve_settings_secrets(resolved)
+    from daari.security.at_rest import configure_at_rest
+
+    configure_at_rest(
+        key=resolved.security.at_rest_key,
+        previous_key=resolved.security.at_rest_key_previous,
+    )
     configure_request_log(
         max_bytes=resolved.observability.request_log_max_bytes,
         backups=resolved.observability.request_log_backups,

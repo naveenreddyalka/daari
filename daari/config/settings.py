@@ -2519,12 +2519,35 @@ class SecretsSettings(BaseModel):
     )
 
 
+class SecuritySettings(BaseModel):
+    """Optional at-rest encryption for persisted payload stores (#1958)."""
+
+    at_rest_key: str = Field(
+        default="",
+        description=(
+            "Customer-held key for AES-GCM encryption of response-store bodies, "
+            "request-log payloads, and L0/L1 disk-cache values. Accepts plaintext "
+            "or secret:// refs. Empty (default) leaves stores plaintext — no "
+            "migration required. Env: DAARI_SECURITY__AT_REST_KEY."
+        ),
+    )
+    at_rest_key_previous: str = Field(
+        default="",
+        description=(
+            "Previous at-rest key kept during rotation so tagged rows still "
+            "decrypt. New writes always use at_rest_key. Accepts secret://. "
+            "Env: DAARI_SECURITY__AT_REST_KEY_PREVIOUS."
+        ),
+    )
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DAARI_", env_nested_delimiter="__")
 
     server: ServerSettings = Field(default_factory=ServerSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     secrets: SecretsSettings = Field(default_factory=SecretsSettings)
+    security: SecuritySettings = Field(default_factory=SecuritySettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)

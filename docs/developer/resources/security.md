@@ -17,6 +17,11 @@ TTL / env-file mtime by default (#1204), so API keys
 and tokens need not live as plaintext in `config.yaml` or env vars. Failed
 refs are fatal, and resolved values are redacted from gateway logs.
 
+Persisted prompt/response payloads (response store, request log, L0/L1 disk
+cache) can also be AES-GCM encrypted with a customer-held
+`security.at_rest_key` — see [at-rest encryption](at-rest-encryption.md)
+(#1958).
+
 ## Report vulnerabilities
 
 Use [GitHub Security Advisories](https://github.com/naveenreddyalka/daari/security/advisories/new) — do not open public issues.

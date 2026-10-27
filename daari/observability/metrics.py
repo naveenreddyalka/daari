@@ -221,6 +221,8 @@ class Metrics:
     responses_webhooks: dict[str, int] = field(default_factory=dict)
     org_enforcement_webhooks: dict[str, int] = field(default_factory=dict)
     soft_warnings: dict[str, int] = field(default_factory=dict)
+    # requested:served → count when Phonon coerces response_format (#1961).
+    tts_phonon_format_coerced: dict[str, int] = field(default_factory=dict)
     rejects: dict[str, int] = field(default_factory=dict)
     ttft_preferences: dict[str, int] = field(default_factory=dict)
     mcp_tool_calls: dict[str, int] = field(default_factory=dict)
@@ -357,6 +359,14 @@ class Metrics:
         """Soft band before hard 402/429 (request_quota or rate_limit, #526)."""
         with self._lock:
             self.soft_warnings[kind] = self.soft_warnings.get(kind, 0) + 1
+
+    def record_tts_phonon_format_coerced(self, *, requested: str, served: str) -> None:
+        """Phonon rewrote an unsupported OpenAI TTS response_format (#1961)."""
+        key = f"{requested}:{served}"
+        with self._lock:
+            self.tts_phonon_format_coerced[key] = (
+                self.tts_phonon_format_coerced.get(key, 0) + 1
+            )
 
     def record_reject(self, kind: str) -> None:
         """Hard 402/429/410 deny (budget, request_quota, rate_limit, body_too_large, retired)."""
@@ -556,6 +566,7 @@ class Metrics:
                 "responses_webhooks": dict(self.responses_webhooks),
                 "org_enforcement_webhooks": dict(self.org_enforcement_webhooks),
                 "soft_warnings": dict(self.soft_warnings),
+                "tts_phonon_format_coerced": dict(self.tts_phonon_format_coerced),
                 "rejects": dict(self.rejects),
                 "ttft_preferences": dict(self.ttft_preferences),
                 "mcp_tool_calls": dict(self.mcp_tool_calls),

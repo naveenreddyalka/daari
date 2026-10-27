@@ -126,6 +126,32 @@ initContainers: []
 # Raw env entries (supports valueFrom / secretKeyRef). Appended after env map.
 extraEnv: []
 
+# Signed webhook URL + signing-secret mounts (#1959). Empty {} / "" omits envs.
+# secret / secretPrevious: { name, key } → secretKeyRef (same pattern as
+# frontier.apiKeySecret). key-prefix lockout alerts reuse budget or keyExpiry
+# destinations; keyLockout here maps Anthropic enforcement transition webhooks.
+webhooks:
+  budget:
+    url: ""
+    secret: {}
+    secretPrevious: {}
+  keyExpiry:
+    url: ""
+    secret: {}
+    secretPrevious: {}
+  keyLockout:
+    url: ""
+    secret: {}
+    secretPrevious: {}
+  responsesCompletion:
+    url: ""
+    secret: {}
+    secretPrevious: {}
+  # Inbound Anthropic org enforcement ingest (signing secret only; no URL).
+  orgIngest:
+    secret: {}
+    secretPrevious: {}
+
 # Prometheus Operator ServiceMonitor for GET /metrics.
 # Default endpoint is the API `http` Service port (may need bearerTokenSecret
 # when server.api_key protects /metrics). When observability.metricsPort > 0,

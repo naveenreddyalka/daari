@@ -8110,6 +8110,44 @@ formats (including default `mp3`) become `wav`; explicit `pcm` is kept.
 Non-Phonon backends unchanged. Docs: [tts.md](developer/guides/backends/tts.md).
 Covered by `tests/unit/test_speech.py`, `tests/unit/test_tts_docs.py`.
 
+### Responses background job lease + in_progress ([#1957](https://github.com/naveenreddyalka/daari/issues/1957))
+
+<!-- tracking:#1957 -->
+**Status:** Done (2026-10-26). Background Responses rows gain `queued` →
+`in_progress` → terminal with `job_owner` / `lease_expires_at` on SQLite and
+Postgres stores. Owning pod heartbeats the lease; GET poll of an expired lease
+reclaims as `failed` (`orphan_reclaimed`) and logs
+`responses.job_lease_reclaimed`. Cancel of an orphan stays single-webhook.
+Covered by `tests/unit/test_responses_job_lease.py`,
+`tests/integration/test_responses_job_lease.py`.
+
+### Phonon response_format coerce warning + counter ([#1961](https://github.com/naveenreddyalka/daari/issues/1961))
+
+<!-- tracking:#1961 -->
+**Status:** Done (2026-10-26). When Phonon coerces an unsupported OpenAI
+`response_format` to `wav`/`pcm`, speech responses set `X-Daari-Warning`,
+increment `daari_tts_phonon_format_coerced_total{requested,served}`, and log
+`tts_phonon_format_coerced`. No warning/counter for explicit wav/pcm or
+non-Phonon TTS. Covered by `tests/unit/test_speech.py`.
+
+### Optional at-rest encryption for payload stores ([#1958](https://github.com/naveenreddyalka/daari/issues/1958))
+
+<!-- tracking:#1958 -->
+**Status:** Done (2026-10-27). Opt-in `security.at_rest_key` /
+`at_rest_key_previous` (AES-GCM, `secret://` ok) seals response-store bodies,
+request-log payloads, and L0/L1 disk-cache values; plaintext rows still read.
+Doctor reports on/off; docs: [at-rest-encryption.md](developer/resources/at-rest-encryption.md).
+Covered by `tests/unit/test_at_rest_encryption.py`.
+
+### Helm webhook URL and signing-secret knobs ([#1959](https://github.com/naveenreddyalka/daari/issues/1959))
+
+<!-- tracking:#1959 -->
+**Status:** Done (2026-10-27). Chart `webhooks.*` mounts per-family URL +
+`secretKeyRef` envs (budget, keyExpiry, keyLockout/enforcement,
+responsesCompletion, orgIngest) including rotation previous secrets. Docs:
+[capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
+`tests/unit/test_helm_webhooks.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -538,6 +538,57 @@ async def test_phonon_maps_openai_voice_on_speech(settings, monkeypatch):
     assert payload["model"] == "phonon"
     # Omitted/default OpenAI mp3 must become Phonon-supported wav (#1952).
     assert payload["response_format"] == "wav"
+    warning = response.headers.get("x-daari-warning") or response.headers.get(
+        "X-Daari-Warning"
+    )
+    assert warning is not None
+    assert "mp3" in warning
+    assert "wav" in warning
+    assert "phonon" in warning.lower()
+    assert app.state.ctx.metrics.tts_phonon_format_coerced.get("mp3:wav") == 1
+    from daari.observability.prometheus import render_prometheus
+
+    prom = render_prometheus(app.state.ctx.metrics)
+    assert "daari_tts_phonon_format_coerced_total" in prom
+    assert 'requested="mp3"' in prom
+    assert 'served="wav"' in prom
+
+
+@pytest.mark.asyncio
+async def test_phonon_stream_warns_on_format_coerce(settings, monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/show"):
+            return httpx.Response(200, json={"voices": ["Zoey"]})
+        return httpx.Response(
+            200,
+            content=AUDIO,
+            headers={
+                "content-type": "audio/wav",
+                "transfer-encoding": "chunked",
+            },
+        )
+
+    _patch_upstream(monkeypatch, handler)
+    settings.tts.base_url = "http://127.0.0.1:11434/v1"
+    settings.tts.model = "phonon"
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/speech",
+            json={
+                "model": "phonon",
+                "input": "hi",
+                "voice": "Zoey",
+                "response_format": "opus",
+            },
+        )
+    assert response.status_code == 200, response.text
+    warning = response.headers.get("x-daari-warning") or response.headers.get(
+        "X-Daari-Warning"
+    )
+    assert warning is not None
+    assert "opus" in warning
+    assert app.state.ctx.metrics.tts_phonon_format_coerced.get("opus:wav") == 1
 
 
 @pytest.mark.asyncio
@@ -569,6 +620,11 @@ async def test_phonon_keeps_explicit_pcm(settings, monkeypatch):
 
     payload = json.loads(seen[0].read())
     assert payload["response_format"] == "pcm"
+    assert not (
+        response.headers.get("x-daari-warning")
+        or response.headers.get("X-Daari-Warning")
+    )
+    assert not app.state.ctx.metrics.tts_phonon_format_coerced
 
 
 @pytest.mark.asyncio
@@ -588,6 +644,11 @@ async def test_non_phonon_keeps_mp3_default(settings, monkeypatch):
 
     payload = json.loads(seen[0].read())
     assert payload["response_format"] == "mp3"
+    assert not (
+        response.headers.get("x-daari-warning")
+        or response.headers.get("X-Daari-Warning")
+    )
+    assert not app.state.ctx.metrics.tts_phonon_format_coerced
 
 
 @pytest.mark.asyncio

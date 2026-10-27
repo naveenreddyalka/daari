@@ -295,6 +295,44 @@ spec:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.observability.otlpEndpoint | quote }}
             {{- end }}
+            {{- with .Values.webhooks }}
+            {{- with .budget }}
+            {{- if .url }}
+            - name: DAARI_ALERTS__BUDGET_WEBHOOK_URL
+              value: {{ .url | quote }}
+            {{- end }}
+            {{- include "daari.webhookSecretEnv" (list "DAARI_ALERTS__BUDGET_WEBHOOK_SECRET" .secret) }}
+            {{- include "daari.webhookSecretEnv" (list "DAARI_ALERTS__BUDGET_WEBHOOK_SECRET_PREVIOUS" .secretPrevious) }}
+            {{- end }}
+            {{- with .keyExpiry }}
+            {{- if .url }}
+            - name: DAARI_ALERTS__KEY_EXPIRY_WEBHOOK_URL
+              value: {{ .url | quote }}
+            {{- end }}
+            {{- include "daari.webhookSecretEnv" (list "DAARI_ALERTS__KEY_EXPIRY_WEBHOOK_SECRET" .secret) }}
+            {{- include "daari.webhookSecretEnv" (list "DAARI_ALERTS__KEY_EXPIRY_WEBHOOK_SECRET_PREVIOUS" .secretPrevious) }}
+            {{- end }}
+            {{- with .keyLockout }}
+            {{- if .url }}
+            - name: DAARI_ANTHROPIC__ENFORCEMENT_WEBHOOK_URL
+              value: {{ .url | quote }}
+            {{- end }}
+            {{- include "daari.webhookSecretEnv" (list "DAARI_ANTHROPIC__ENFORCEMENT_WEBHOOK_SECRET" .secret) }}
+            {{- include "daari.webhookSecretEnv" (list "DAARI_ANTHROPIC__ENFORCEMENT_WEBHOOK_SECRET_PREVIOUS" .secretPrevious) }}
+            {{- end }}
+            {{- with .responsesCompletion }}
+            {{- if .url }}
+            - name: DAARI_ALERTS__RESPONSES_COMPLETION_WEBHOOK_URL
+              value: {{ .url | quote }}
+            {{- end }}
+            {{- include "daari.webhookSecretEnv" (list "DAARI_ALERTS__RESPONSES_COMPLETION_WEBHOOK_SECRET" .secret) }}
+            {{- include "daari.webhookSecretEnv" (list "DAARI_ALERTS__RESPONSES_COMPLETION_WEBHOOK_SECRET_PREVIOUS" .secretPrevious) }}
+            {{- end }}
+            {{- with .orgIngest }}
+            {{- include "daari.webhookSecretEnv" (list "DAARI_ANTHROPIC__ORG_WEBHOOK_SIGNING_SECRET" .secret) }}
+            {{- include "daari.webhookSecretEnv" (list "DAARI_ANTHROPIC__ORG_WEBHOOK_SIGNING_SECRET_PREVIOUS" .secretPrevious) }}
+            {{- end }}
+            {{- end }}
           {{- $preStop := 5 }}
           {{- if and .Values.lifecycle (hasKey .Values.lifecycle "preStopSleepSeconds") }}
           {{- $preStop = int .Values.lifecycle.preStopSleepSeconds }}
