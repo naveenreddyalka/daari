@@ -1,9 +1,11 @@
-"""Hermetic gateway coverage for the 2026-10-24/25 wave (#1930).
+"""Hermetic gateway coverage for the 2026-10-24/26 waves (#1930, #1960).
 
 Covers streamed TTS spend, Responses completion webhooks, org enforcement
 ingest, Decisions input_json+image L0, Anthropic stream cache writes,
-user_rpd isolation, and fleet-shared breakers. Same convention as other
-non-@integration modules under tests/integration/.
+user_rpd isolation, fleet-shared breakers, grouped spend reports, per-family
+breaker reset, Anthropic metadata.user_id RPD, AAIF skills prefix, and Phonon
+format/language tags. Same convention as other non-@integration modules under
+tests/integration/.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ import json
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -21,7 +24,7 @@ from httpx import ASGITransport, AsyncClient
 
 from daari.auth.rate_limit import MemoryCounterBackend, RateLimiter
 from daari.auth.virtual_keys import VirtualKeyStore
-from daari.config.settings import AnthropicSettings
+from daari.config.settings import AnthropicSettings, _load_skills_system_prefix
 from daari.enterprise.anthropic_org_webhooks import (
     ENFORCEMENT_OPENED,
     sign_standard_webhook,
@@ -36,6 +39,7 @@ from daari.observability.budget_alerts import (
     verify_webhook_signature,
 )
 from daari.observability.responses_webhooks import wait_responses_webhooks
+from daari.observability.spend import SpendLedger
 from daari.router import breaker_redis
 from daari.router.circuit_breaker import CircuitBreaker
 from daari.router.frontier import FrontierExecutor
@@ -611,3 +615,304 @@ async def test_fleet_breaker_open_visible_on_second_app_instance(settings):
     assert rows and rows[0]["state"] == "open"
     with pytest.raises(systemone.SystemOneCircuitOpen):
         systemone._reject_if_open(base)
+
+
+# --- (h) grouped spend report + bad bucket (#1960 / #1944) ---
+
+SINCE = "2026-01-01T00:00:00+00:00"
+DAY_A = "2026-06-15T10:00:00+00:00"
+
+
+def _spend_seed(ledger: SpendLedger, **overrides) -> None:
+    payload = {
+        "ts": DAY_A,
+        "request_id": "req-a",
+        "key_id": "key-1",
+        "team_id": "team-x",
+        "client_id": "client-a",
+        "user_id": "alice",
+        "model": "claude-haiku-4-5",
+        "provider": "",
+        "tier": "L6",
+        "input_tokens": 100,
+        "output_tokens": 20,
+        "cost_usd": 0.10,
+        "cost_avoided_usd": 0.0,
+        "cache_hit": False,
+        "usage_speed": "standard",
+        "service_tier": "default",
+    }
+    payload.update(overrides)
+    ledger.record(**payload)
+
+
+@pytest.mark.asyncio
+async def test_spend_report_group_by_service_tier_and_bad_bucket(settings, tmp_path):
+    """GET /v1/daari/spend/report honors group_by+bucket; bad bucket → 400 (#1960)."""
+    _enable_spend(settings, tmp_path)
+    settings.server.api_key = "master-sekret"
+    settings.enterprise.sso.enabled = False
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+
+    ledger = SpendLedger(Path(settings.usage.spend.path), enabled=True)
+    _spend_seed(ledger, service_tier="default", cost_usd=0.10)
+    _spend_seed(
+        ledger,
+        request_id="req-b",
+        service_tier="priority",
+        cost_usd=0.20,
+        model="claude-haiku-4-5",
+    )
+
+    app = _app(settings)
+    app.state.ctx.router.spend_ledger = ledger
+    headers = {"Authorization": "Bearer master-sekret"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        bad = await client.get(
+            "/v1/daari/spend/report",
+            params={
+                "since": SINCE,
+                "group_by": "model,service_tier",
+                "bucket": "week",
+            },
+            headers=headers,
+        )
+        assert bad.status_code == 400
+        assert "bucket" in bad.json()["detail"].lower()
+
+        ok = await client.get(
+            "/v1/daari/spend/report",
+            params={
+                "since": SINCE,
+                "group_by": "model,service_tier",
+                "bucket": "day",
+            },
+            headers=headers,
+        )
+    assert ok.status_code == 200, ok.text
+    body = ok.json()
+    assert body["group_by"] == ["model", "service_tier"]
+    assert body["bucket"] == "day"
+    by_tier = {row["service_tier"]: row for row in body["rows"]}
+    assert set(by_tier) == {"default", "priority"}
+    assert by_tier["default"]["bucket"] == "2026-06-15"
+    assert by_tier["default"]["model"] == "claude-haiku-4-5"
+    assert abs(by_tier["default"]["cost_usd"] - 0.10) < 1e-9
+    assert abs(by_tier["priority"]["cost_usd"] - 0.20) < 1e-9
+
+
+# --- (i) per-family breaker inventory + reset (#1960 / #1945) ---
+
+
+@pytest.mark.asyncio
+async def test_fleet_breaker_inventory_and_reset_non_systemone(settings, tmp_path):
+    """Frontier open in stats; admin reset closes; non-admin VK → 403 (#1960)."""
+    settings.server.api_key = "master-sekret"
+    settings.server.virtual_keys.enabled = True
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.enterprise.sso.enabled = False
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    viewer = store.create("viewer", client_id="viewer")
+
+    frontier_br = CircuitBreaker(failure_threshold=1, cooldown_seconds=60.0)
+    frontier_br.record_failure()
+    assert frontier_br.state == "open"
+
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    app.state.ctx.frontier = SimpleNamespace(
+        slots=[SimpleNamespace(id="openai", breaker=frontier_br)]
+    )
+
+    admin = {"Authorization": "Bearer master-sekret"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        stats = await client.get("/v1/daari/stats", headers=admin)
+        assert stats.status_code == 200, stats.text
+        breakers = stats.json()["breakers"]
+        assert any(
+            row.get("family") == "frontier"
+            and row.get("target") == "openai"
+            and row.get("state") == "open"
+            for row in breakers
+        )
+
+        denied = await client.post(
+            "/v1/daari/breakers/reset",
+            headers={"Authorization": f"Bearer {viewer.plaintext}"},
+            json={"family": "frontier", "target": "openai"},
+        )
+        assert denied.status_code == 403
+
+        reset = await client.post(
+            "/v1/daari/breakers/reset",
+            headers=admin,
+            json={"family": "frontier", "target": "openai"},
+        )
+    assert reset.status_code == 200, reset.text
+    body = reset.json()
+    assert body["status"] == "ok"
+    assert frontier_br.state == "closed"
+    assert all(
+        row["state"] == "closed"
+        for row in body["breakers"]
+        if row.get("family") == "frontier" and row.get("target") == "openai"
+    )
+
+
+# --- (j) Anthropic metadata.user_id shares OpenAI user_rpd fence (#1960 / #1946) ---
+
+ANTHROPIC_MSG = {
+    "model": "claude-3-haiku",
+    "max_tokens": 16,
+    "messages": [{"role": "user", "content": "hi"}],
+}
+
+
+@pytest.mark.asyncio
+async def test_anthropic_metadata_user_id_shares_openai_user_rpd(
+    settings, tmp_path, monkeypatch
+):
+    """OpenAI user and Anthropic metadata.user_id share one user_rpd bucket (#1960)."""
+    _freeze(monkeypatch, {"now": FROZEN})
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    app.state.rate_limiter = RateLimiter(MemoryCounterBackend())
+
+    async def fake(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=1),
+        )
+
+    app.state.ctx.router.ollama.execute = fake
+    created = store.create("shared", user_rpd=1)
+    headers = {
+        "Authorization": f"Bearer {created.plaintext}",
+        "X-Daari-No-Cache": "true",
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        openai_ok = await client.post(
+            "/v1/chat/completions",
+            json={**CHAT, "user": "alice"},
+            headers=headers,
+        )
+        anthropic_denied = await client.post(
+            "/v1/messages",
+            json={**ANTHROPIC_MSG, "metadata": {"user_id": "alice"}},
+            headers={**headers, "anthropic-version": "2023-06-01"},
+        )
+    assert openai_ok.status_code == 200, openai_ok.text
+    assert anthropic_denied.status_code == 429
+    assert anthropic_denied.json()["error"]["type"] == "rate_limit_error"
+    assert anthropic_denied.headers.get("x-ratelimit-scope") == "user"
+
+
+# --- (k) AAIF SKILL.md package → system prefix on chat (#1960 / #1950) ---
+
+
+@pytest.mark.asyncio
+async def test_skill_package_loaded_into_chat_system_prefix(
+    settings, tmp_path, monkeypatch
+):
+    """Immediate SKILL.md packages prepend; nested packages are ignored (#1960)."""
+    skills = tmp_path / ".daari" / "skills"
+    pack = skills / "aaif-pack"
+    pack.mkdir(parents=True)
+    (pack / "SKILL.md").write_text("AAIF package body.", encoding="utf-8")
+    nested = pack / "nested"
+    nested.mkdir()
+    (nested / "SKILL.md").write_text("Deep skill ignored.", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    settings.skills_system_prefix = _load_skills_system_prefix()
+    assert "aaif-pack" in settings.skills_system_prefix
+    assert "Deep skill ignored." not in settings.skills_system_prefix
+
+    app = _app(settings)
+    seen: list[InternalRequest] = []
+
+    async def fake(request: InternalRequest) -> InternalResponse:
+        seen.append(request)
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=1),
+        )
+
+    app.state.ctx.router.ollama.execute = fake
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={**CHAT},
+            headers={"X-Daari-No-Cache": "true"},
+        )
+    assert response.status_code == 200, response.text
+    assert seen
+    first = seen[0].messages[0]
+    assert first.role == "system"
+    assert "AAIF package body." in first.content
+    assert "## Skill: aaif-pack" in first.content
+    assert "Deep skill ignored." not in first.content
+
+
+# --- (l) Phonon mp3→wav coerce + language-tagged model (#1960 / #1949 / #1956) ---
+
+
+@pytest.mark.asyncio
+async def test_phonon_mp3_coerced_to_wav_and_language_tag_forwarded(
+    settings, monkeypatch
+):
+    """Phonon coerces response_format=mp3→wav and forwards phonon:40m-fr (#1960)."""
+    seen: list[httpx.Request] = []
+    wav_body = b"RIFFxxxxWAVEfmt "
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/show"):
+            return httpx.Response(
+                200, json={"voices": ["default", "Zoey", "Easton", "Freya"]}
+            )
+        seen.append(request)
+        return httpx.Response(
+            200, content=wav_body, headers={"content-type": "audio/wav"}
+        )
+
+    speech._http = None
+    real = httpx.AsyncClient
+
+    class Patched(real):
+        def __init__(self, *args, **kwargs):
+            if kwargs.get("transport") is None:
+                kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    monkeypatch.setattr("daari.gateway.speech.httpx.AsyncClient", Patched)
+
+    settings.tts.base_url = "http://127.0.0.1:11434/v1"
+    settings.tts.model = "phonon:40m-fr"
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/speech",
+            json={
+                "model": "ignored",
+                "input": "bonjour",
+                "voice": "alloy",
+                "response_format": "mp3",
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert response.content == wav_body
+    assert "audio/wav" in (response.headers.get("content-type") or "")
+    assert seen
+    payload = json.loads(seen[0].read())
+    assert payload["response_format"] == "wav"
+    assert payload["model"] == "phonon:40m-fr"
+    await speech.aclose_http()
