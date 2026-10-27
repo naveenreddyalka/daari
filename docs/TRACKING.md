@@ -8148,6 +8148,16 @@ responsesCompletion, orgIngest) including rotation previous secrets. Docs:
 [capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
 `tests/unit/test_helm_webhooks.py`.
 
+### Integration fence for 10-25/26 gateway wave ([#1960](https://github.com/naveenreddyalka/daari/issues/1960))
+
+<!-- tracking:#1960 -->
+**Status:** Done (2026-10-27). Hermetic ASGI cases for grouped spend
+`group_by`/`bucket` (+ bad bucket 400), frontier breaker inventory + admin
+reset (403 without), Anthropic `metadata.user_id` sharing OpenAI `user_rpd`,
+AAIF `SKILL.md` package prefix (nested ignored), and Phonon `mp3`→`wav` coerce
+with `phonon:40m-fr` forward. Covered by
+`tests/integration/test_wave_gateway_coverage.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
