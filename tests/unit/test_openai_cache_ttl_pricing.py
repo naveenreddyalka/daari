@@ -16,7 +16,7 @@ from daari.router.anthropic_messages import request_cache_ttl
 
 def test_default_gpt56_models_have_30m_and_12h_write_rates():
     pricing = PricingSettings()
-    for model in ("gpt-5.6", "gpt-5.6-sol", "gpt-6-astra", "gpt-6.1-sol"):
+    for model in ("gpt-5.6", "gpt-5.6-sol", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra"):
         price = resolve_price(model, pricing, fallback_per_1k=0.002)
         assert price.cache_write_30m_per_1m == pytest.approx(price.input_per_1m * 1.25)
         assert price.cache_write_12h_per_1m == pytest.approx(price.input_per_1m * 2.5)
