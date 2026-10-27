@@ -115,8 +115,8 @@ upstream for ultrafast).
 - **2026-10-27 pm (ride Ollama 0.40.12 LFM3 + d1)** — Corrected the morning
   "0.40.12-rc1 is MLX-only" watch: the cut ships Liquid AI LFM3 (text/vl/
   audio/omni, 256K) and d1 decision models. LiteLLM 1.106.4 / Terra /
-  Claude Tag / Kong 2.2.0 / vLLM 0.32.0 unchanged; Portkey enterprise
-  changelog newest entry v2.20.0 (WIF — stay on watch). Filed rows
+  Claude Tag / Kong 2.2.0 / vLLM 0.32.0 unchanged; Portkey/Prisma AIRS enterprise
+  changelog newest entry v2.20.0 (WIF for OpenAI/Anthropic — stay on watch). Filed rows
   232–236: d1 catalog, LFM3 L3 recipe, doctor tip, lfm3-audio speech,
   decisions L0 Prom. Condensed shipped bands 19–28 and 206–216 to keep
   the table under the line budget; encryption + SEP-2640 finish set
