@@ -1357,6 +1357,19 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cache_write_30m_per_1m": 2.50,
         "cache_write_12h_per_1m": 5.00,
     },
+    # OpenAI gpt-6.1-terra (2026-10-26): $1 / $0.05 cached / $5 Standard.
+    # ≥272K input → 2× input/cache and 1.5× output for the full request.
+    # https://developers.openai.com/api/docs/models/gpt-6.1-terra
+    "gpt-6.1-terra": {
+        "input_per_1m": 1.00,
+        "output_per_1m": 5.00,
+        "cached_input_per_1m": 0.05,
+        "cache_write_30m_per_1m": 1.25,
+        "cache_write_12h_per_1m": 2.50,
+        "input_threshold_tokens": 272_000,
+        "above_input_per_1m": 2.00,
+        "above_output_per_1m": 7.50,
+    },
     # OpenAI chat-latest — rolling alias for ChatGPT Instant (updated 2026-10-07).
     # Published rates $5 / $0.50 cached / $30; underlying snapshot moves — do not
     # treat as a production pin (prefer gpt-6-astra). See OpenAI model page.

@@ -8148,6 +8148,25 @@ responsesCompletion, orgIngest) including rotation previous secrets. Docs:
 [capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
 `tests/unit/test_helm_webhooks.py`.
 
+### Integration fence for 10-25/26 gateway wave ([#1960](https://github.com/naveenreddyalka/daari/issues/1960))
+
+<!-- tracking:#1960 -->
+**Status:** Done (2026-10-27). Hermetic ASGI cases for grouped spend
+`group_by`/`bucket` (+ bad bucket 400), frontier breaker inventory + admin
+reset (403 without), Anthropic `metadata.user_id` sharing OpenAI `user_rpd`,
+AAIF `SKILL.md` package prefix (nested ignored), and Phonon `mp3`→`wav` coerce
+with `phonon:40m-fr` forward. Covered by
+`tests/integration/test_wave_gateway_coverage.py`.
+
+### Day-one gpt-6.1-terra rates and param compat ([#1963](https://github.com/naveenreddyalka/daari/issues/1963))
+
+<!-- tracking:#1963 -->
+**Status:** Done (2026-10-27). Catalogs `gpt-6.1-terra` at $1 / $0.05 cached /
+$5 with 30m/12h cache writes and ≥272K surcharge ($2 / $7.50); capabilities +
+param_compat (Responses tools; `reasoning.effort=none` allowed). Keeps
+`gpt-5.6-terra`. Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
+Covered by `tests/unit/test_gpt_6_1_terra_pricing.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
