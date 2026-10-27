@@ -8139,6 +8139,15 @@ request-log payloads, and L0/L1 disk-cache values; plaintext rows still read.
 Doctor reports on/off; docs: [at-rest-encryption.md](developer/resources/at-rest-encryption.md).
 Covered by `tests/unit/test_at_rest_encryption.py`.
 
+### Helm webhook URL and signing-secret knobs ([#1959](https://github.com/naveenreddyalka/daari/issues/1959))
+
+<!-- tracking:#1959 -->
+**Status:** Done (2026-10-27). Chart `webhooks.*` mounts per-family URL +
+`secretKeyRef` envs (budget, keyExpiry, keyLockout/enforcement,
+responsesCompletion, orgIngest) including rotation previous secrets. Docs:
+[capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
+`tests/unit/test_helm_webhooks.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -297,6 +297,42 @@ frontier:
 `DAARI_FRONTIER__ENABLED`; `frontier.apiKeySecret` mounts `DAARI_FRONTIER_API_KEY`.
 NOTES remind operators when Redis is missing for multi-replica rate limits.
 
+Signed webhook families mount URL + `secretKeyRef` secrets via `webhooks.*`
+(#1959). Unset blocks omit every `*WEBHOOK*` env (no inline secrets in values):
+
+```yaml
+webhooks:
+  budget:
+    url: https://hooks.example/budget
+    secret:
+      name: daari-webhooks
+      key: budget
+    secretPrevious:
+      name: daari-webhooks
+      key: budget-prev
+  keyExpiry:
+    url: https://hooks.example/key-expiry
+    secret:
+      name: daari-webhooks
+      key: key-expiry
+  responsesCompletion:
+    url: https://hooks.example/responses
+    secret:
+      name: daari-webhooks
+      key: responses
+  # Anthropic enforcement transition webhook (profile lockouts).
+  keyLockout:
+    url: https://hooks.example/enforcement
+    secret:
+      name: daari-webhooks
+      key: enforcement
+  # Inbound org ingest signing secret only (no URL).
+  orgIngest:
+    secret:
+      name: daari-webhooks
+      key: org-ingest
+```
+
 `localPool.frontierFallback` (default `false`) mounts
 `DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK=true` when set — chat escalates to
 L6 when every local-pool host is down. Pair it with `frontier.enabled` and a
