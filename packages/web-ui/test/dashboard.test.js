@@ -1087,6 +1087,93 @@ test("spend export sends team and until query params", async (t) => {
   );
 });
 
+test("spend report loads rows via /v1/daari/spend/report with group_by and bucket", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/spend/report": {
+        rows: [
+          {
+            bucket: "2026-06-01",
+            model: "claude-haiku-4-5",
+            service_tier: "default",
+            requests: 2,
+            cost_usd: 0.15,
+            input_tokens: 150,
+            output_tokens: 15,
+            cost_avoided_usd: 0.01,
+          },
+        ],
+        group_by: ["model", "service_tier"],
+        bucket: "day",
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const apiKey = doc.getElementById("api-key");
+  if (apiKey) {
+    apiKey.value = "analyst-key";
+    apiKey.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  }
+
+  for (const dim of ["model", "service_tier"]) {
+    const box = doc.querySelector(`input[name="spend-report-group-by"][value="${dim}"]`);
+    assert.ok(box, `expected group_by checkbox for ${dim}`);
+    box.checked = true;
+  }
+  doc.getElementById("spend-report-since").value = "7d";
+  doc.getElementById("spend-report-bucket").value = "day";
+  doc.getElementById("spend-report-load").click();
+  await settle(20);
+
+  const call = fetch.calls.find((c) => c.url.includes("/v1/daari/spend/report"));
+  assert.ok(call, "expected spend/report fetch");
+  assert.match(call.url, /since=7d/);
+  assert.match(call.url, /group_by=model%2Cservice_tier|group_by=model,service_tier/);
+  assert.match(call.url, /bucket=day/);
+  assert.equal(call.init?.headers?.Authorization, "Bearer analyst-key");
+
+  const rows = [...doc.querySelectorAll("#spend-report-table tr")];
+  assert.equal(rows.length, 1);
+  const text = rows[0].textContent;
+  assert.match(text, /claude-haiku-4-5/);
+  assert.match(text, /default/);
+  assert.match(text, /0\.15|0\.1500/);
+  assert.match(doc.getElementById("spend-report-status").textContent, /1 row/i);
+});
+
+test("spend report surfaces API 400 detail in status", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/spend/report": {
+        __http: 400,
+        detail: "bucket must be day or month",
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const modelBox = doc.querySelector('input[name="spend-report-group-by"][value="model"]');
+  assert.ok(modelBox);
+  modelBox.checked = true;
+  doc.getElementById("spend-report-bucket").value = "day";
+  doc.getElementById("spend-report-load").click();
+  await settle(20);
+
+  const status = doc.getElementById("spend-report-status").textContent;
+  assert.match(status, /400/);
+  assert.match(status, /bucket must be day or month/);
+  assert.ok(fetch.calls.some((c) => c.url.includes("/v1/daari/spend/report")));
+  // Do not leave a silent empty success table — status carries the error.
+  assert.match(status, /failed|error|400/i);
+});
+
 test("systemone breaker reset posts and refreshes status", async (t) => {
   let statsPayload = {
     ...STATS,

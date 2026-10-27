@@ -300,6 +300,49 @@
           </thead>
           <tbody id="report-model-group-spend-table"></tbody>
         </table>
+        <h3>Grouped spend report</h3>
+        <p class="subtle">
+          Dimension rollups from <code>GET /v1/daari/spend/report</code>
+          (analyst API key). Same <code>group_by</code> / <code>bucket</code> as the HTTP/CLI report.
+        </p>
+        <div class="controls" style="flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem">
+          <label>
+            Since
+            <select id="spend-report-since" aria-label="Spend report since">
+              <option value="7d">7d</option>
+              <option value="14d">14d</option>
+              <option value="30d">30d</option>
+            </select>
+          </label>
+          <fieldset style="border: none; margin: 0; padding: 0">
+            <legend class="subtle">group_by</legend>
+            <label><input type="checkbox" name="spend-report-group-by" value="model" /> model</label>
+            <label><input type="checkbox" name="spend-report-group-by" value="team" /> team</label>
+            <label><input type="checkbox" name="spend-report-group-by" value="key" /> key</label>
+            <label><input type="checkbox" name="spend-report-group-by" value="user" /> user</label>
+            <label><input type="checkbox" name="spend-report-group-by" value="tier" /> tier</label>
+            <label><input type="checkbox" name="spend-report-group-by" value="usage_speed" /> usage_speed</label>
+            <label><input type="checkbox" name="spend-report-group-by" value="service_tier" /> service_tier</label>
+          </fieldset>
+          <label>
+            Bucket
+            <select id="spend-report-bucket" aria-label="Spend report bucket">
+              <option value="">(none)</option>
+              <option value="day">day</option>
+              <option value="month">month</option>
+            </select>
+          </label>
+          <button id="spend-report-load" type="button">Load spend report</button>
+        </div>
+        <table>
+          <thead id="spend-report-head">
+            <tr>
+              <th>Dimensions / metrics</th>
+            </tr>
+          </thead>
+          <tbody id="spend-report-table"></tbody>
+        </table>
+        <p id="spend-report-status" class="subtle"></p>
         <h3>Spend export</h3>
         <p class="subtle">
           Download chargeback rows from <code>GET /v1/daari/spend/export</code>

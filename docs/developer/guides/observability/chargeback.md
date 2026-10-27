@@ -65,6 +65,9 @@ curl -H "Authorization: Bearer $TOKEN" \
   "$BASE/v1/daari/spend/report?since=7d&group_by=model,service_tier&bucket=day"
 ```
 
+Same-box console (`daari web-ui serve`) exposes the same `group_by` / `bucket`
+controls under **Grouped spend report** and renders the returned `rows`.
+
 Each group row includes `requests`, `input_tokens`, `output_tokens`, `cost_usd`, and
 `cost_avoided_usd`. The ledger persists `service_tier` per request so served-tier
 chargeback survives export.
