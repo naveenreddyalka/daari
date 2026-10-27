@@ -128,6 +128,7 @@ nav:
       - Benchmark vs LiteLLM: developer/resources/benchmark-vs-litellm.md
       - Benchmark load: developer/resources/benchmark-load.md
       - Security: developer/resources/security.md
+      - At-rest encryption: developer/resources/at-rest-encryption.md
       - Changelog: developer/resources/changelog.md
       - FAQ: developer/resources/faq.md
       - Compare: developer/resources/compare.md

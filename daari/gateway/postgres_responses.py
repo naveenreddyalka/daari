@@ -12,6 +12,8 @@ import threading
 import time
 from typing import Any
 
+from daari.security.at_rest import loads_json_maybe_sealed, seal_text
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS daari_responses (
     response_id TEXT PRIMARY KEY,
@@ -99,8 +101,8 @@ class PostgresResponseStore:
     ) -> None:
         if not stored or not self.enabled:
             return
-        body_json = json.dumps(body)
-        conversation_json = json.dumps(conversation or [])
+        body_json = seal_text(json.dumps(body))
+        conversation_json = seal_text(json.dumps(conversation or []))
         now = int(time.time())
         if self._memory:
             bucket, lock = _memory_bucket(self.dsn)
@@ -179,8 +181,13 @@ class PostgresResponseStore:
                 row = bucket.get(response_id)
                 if row is None:
                     return None
-                body = json.loads(row["body"])
-                body["_conversation"] = json.loads(row["conversation"])
+                body = loads_json_maybe_sealed(row["body"])
+                if not isinstance(body, dict):
+                    body = {}
+                conversation = loads_json_maybe_sealed(row["conversation"])
+                body["_conversation"] = (
+                    conversation if isinstance(conversation, list) else []
+                )
                 body["_owner_key_id"] = row.get("owner_key_id")
                 body["_job_owner"] = row.get("job_owner")
                 body["_lease_expires_at"] = row.get("lease_expires_at")
@@ -197,8 +204,11 @@ class PostgresResponseStore:
                     row = cur.fetchone()
         if row is None:
             return None
-        body = json.loads(row[0])
-        body["_conversation"] = json.loads(row[1])
+        body = loads_json_maybe_sealed(row[0])
+        if not isinstance(body, dict):
+            body = {}
+        conversation = loads_json_maybe_sealed(row[1])
+        body["_conversation"] = conversation if isinstance(conversation, list) else []
         body["_owner_key_id"] = row[2]
         body["_job_owner"] = row[3]
         body["_lease_expires_at"] = row[4]

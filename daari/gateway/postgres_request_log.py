@@ -11,6 +11,9 @@ import threading
 from datetime import UTC, datetime
 from typing import Any
 
+from daari.security.at_rest import enabled as at_rest_enabled
+from daari.security.at_rest import is_sealed, open_text, seal_text
+
 # Shipped schema marker for ``daari migrate`` / doctor (#1655).
 SCHEMA_VERSION = 1
 
@@ -80,6 +83,8 @@ class PostgresRequestLogStore:
         body.pop("ts", None)
         try:
             payload_s = json.dumps(body, default=str)
+            if at_rest_enabled():
+                payload_s = seal_text(payload_s)
             if self._memory:
                 rows, lock = _memory_bucket(self.dsn)
                 with lock:
@@ -89,7 +94,7 @@ class PostgresRequestLogStore:
                             "id": next_id,
                             "ts": stamp,
                             "event": event,
-                            "payload": body,
+                            "payload": payload_s if at_rest_enabled() else body,
                         }
                     )
                 return
@@ -133,9 +138,10 @@ class PostgresRequestLogStore:
         if self._memory:
             rows, lock = _memory_bucket(self.dsn)
             with lock:
+                decoded = [_public_row(r) for r in rows]
                 matched = [
-                    dict(r)
-                    for r in rows
+                    r
+                    for r in decoded
                     if _row_in_query(
                         r,
                         before_id=before_id,
@@ -191,7 +197,7 @@ class PostgresRequestLogStore:
         if self._memory:
             rows, lock = _memory_bucket(self.dsn)
             with lock:
-                return [dict(r) for r in rows[-limit:]]
+                return [_public_row(r) for r in rows[-limit:]]
         if not self.enabled:
             return []
         with self._lock, self._connect() as conn:
@@ -305,18 +311,39 @@ class PostgresRequestLogStore:
             return 0
 
 
-def _decode_row(row: Any) -> dict[str, Any]:
-    payload = row[3]
+def _decode_payload(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        return payload
     if isinstance(payload, str):
+        raw = payload
+        if is_sealed(raw):
+            try:
+                raw = open_text(raw)
+            except Exception:
+                return {"raw": "[at-rest decrypt failed]"}
         try:
-            payload = json.loads(payload)
+            decoded = json.loads(raw)
         except json.JSONDecodeError:
-            payload = {"raw": payload}
+            return {"raw": payload if not is_sealed(payload) else "[at-rest ciphertext]"}
+        return decoded if isinstance(decoded, dict) else {"raw": decoded}
+    return {"raw": payload}
+
+
+def _public_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "ts": row["ts"],
+        "event": row["event"],
+        "payload": _decode_payload(row.get("payload")),
+    }
+
+
+def _decode_row(row: Any) -> dict[str, Any]:
     return {
         "id": int(row[0]),
         "ts": row[1],
         "event": row[2],
-        "payload": payload if isinstance(payload, dict) else {"raw": payload},
+        "payload": _decode_payload(row[3]),
     }
 
 
