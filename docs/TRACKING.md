@@ -8130,6 +8130,15 @@ increment `daari_tts_phonon_format_coerced_total{requested,served}`, and log
 `tts_phonon_format_coerced`. No warning/counter for explicit wav/pcm or
 non-Phonon TTS. Covered by `tests/unit/test_speech.py`.
 
+### Optional at-rest encryption for payload stores ([#1958](https://github.com/naveenreddyalka/daari/issues/1958))
+
+<!-- tracking:#1958 -->
+**Status:** Done (2026-10-27). Opt-in `security.at_rest_key` /
+`at_rest_key_previous` (AES-GCM, `secret://` ok) seals response-store bodies,
+request-log payloads, and L0/L1 disk-cache values; plaintext rows still read.
+Doctor reports on/off; docs: [at-rest-encryption.md](developer/resources/at-rest-encryption.md).
+Covered by `tests/unit/test_at_rest_encryption.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

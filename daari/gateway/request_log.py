@@ -80,10 +80,12 @@ def log_gateway_event(event: str, payload: dict[str, Any]) -> None:
             **payload,
         }
         from daari.security.secret_refs import redact_secrets
+        from daari.security.at_rest import enabled as at_rest_enabled
+        from daari.security.at_rest import seal_text
 
-        line = redact_secrets(json.dumps(record, default=str)) + "\n"
         if _stdout_json:
-            print(line, end="", flush=True)
+            # Stdout stays plaintext JSON for scrapers; disk/pg honor at-rest.
+            print(redact_secrets(json.dumps(record, default=str)) + "\n", end="", flush=True)
         if _backend == "postgres" and _pg_store is not None:
             try:
                 body = {k: v for k, v in record.items() if k not in {"ts", "event"}}
@@ -91,6 +93,16 @@ def log_gateway_event(event: str, payload: dict[str, Any]) -> None:
             except Exception:
                 pass
         else:
+            body = {k: v for k, v in record.items() if k not in {"ts", "event"}}
+            if at_rest_enabled():
+                disk_record = {
+                    "ts": record["ts"],
+                    "event": event,
+                    "_enc": seal_text(redact_secrets(json.dumps(body, default=str))),
+                }
+            else:
+                disk_record = record
+            line = redact_secrets(json.dumps(disk_record, default=str)) + "\n"
             LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
             with _lock:
                 _rotate_if_needed()
@@ -234,6 +246,25 @@ def erase_subject_from_logs(
     return removed
 
 
+def _expand_log_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Merge decrypted ``_enc`` payload fields for subject matching (#1958)."""
+    enc = record.get("_enc")
+    if not isinstance(enc, str):
+        return record
+    try:
+        from daari.security.at_rest import open_text
+
+        inner = json.loads(open_text(enc))
+    except Exception:
+        return record
+    if not isinstance(inner, dict):
+        return record
+    merged = dict(record)
+    for key, val in inner.items():
+        merged.setdefault(key, val)
+    return merged
+
+
 def _line_matches_subject(line: str, kind: str, value: str) -> bool:
     text = line.strip()
     if not text:
@@ -244,6 +275,7 @@ def _line_matches_subject(line: str, kind: str, value: str) -> bool:
         return False
     if not isinstance(record, dict):
         return False
+    record = _expand_log_record(record)
     if kind == "key":
         for field in ("key_id", "owner_key_id"):
             if str(record.get(field) or "") == value:

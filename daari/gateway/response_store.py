@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from daari.security.at_rest import loads_json_maybe_sealed, seal_text
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS responses (
     response_id TEXT PRIMARY KEY,
@@ -119,8 +121,8 @@ class ResponseStore:
                 " VALUES (?, ?, ?, 1, ?, ?, ?, ?)",
                 (
                     response_id,
-                    json.dumps(body),
-                    json.dumps(conversation or []),
+                    seal_text(json.dumps(body)),
+                    seal_text(json.dumps(conversation or [])),
                     owner_key_id,
                     created_at,
                     job_owner,
@@ -137,8 +139,11 @@ class ResponseStore:
             ).fetchone()
         if row is None:
             return None
-        body = json.loads(row[0])
-        body["_conversation"] = json.loads(row[1])
+        body = loads_json_maybe_sealed(row[0])
+        if not isinstance(body, dict):
+            body = {}
+        conversation = loads_json_maybe_sealed(row[1])
+        body["_conversation"] = conversation if isinstance(conversation, list) else []
         body["_owner_key_id"] = row[2]
         body["_job_owner"] = row[3]
         body["_lease_expires_at"] = row[4]

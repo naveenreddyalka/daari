@@ -151,12 +151,19 @@ class ExactCache:
         raw = self._entry_value(entry)
         if raw is None:
             return None
-        return InternalResponse.model_validate_json(raw)
+        from daari.security.at_rest import open_text
+
+        return InternalResponse.model_validate_json(open_text(raw))
 
     def put(self, request: InternalRequest, response: InternalResponse) -> None:
         if not self.enabled:
             return
-        entry: dict[str, Any] = {"v": response.model_dump_json(), "t": self._clock()}
+        from daari.security.at_rest import seal_text
+
+        entry: dict[str, Any] = {
+            "v": seal_text(response.model_dump_json()),
+            "t": self._clock(),
+        }
         segment = cache_scope_segment(request)
         if segment:
             entry["scope"] = segment
@@ -256,8 +263,10 @@ class ExactCache:
         if not raw:
             return None
         try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
+            from daari.security.at_rest import open_text
+
+            data = json.loads(open_text(raw))
+        except Exception:
             return None
         model = data.get("model") if isinstance(data, dict) else None
         return model if isinstance(model, str) else None
