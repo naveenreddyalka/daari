@@ -42,6 +42,12 @@ const reportSavingsNode = document.getElementById("report-savings");
 const reportTableNode = document.getElementById("report-table");
 const reportTeamsTableNode = document.getElementById("report-teams-table");
 const reportModelGroupSpendTableNode = document.getElementById("report-model-group-spend-table");
+const spendReportSinceNode = document.getElementById("spend-report-since");
+const spendReportBucketNode = document.getElementById("spend-report-bucket");
+const spendReportLoadButton = document.getElementById("spend-report-load");
+const spendReportHeadNode = document.getElementById("spend-report-head");
+const spendReportTableNode = document.getElementById("spend-report-table");
+const spendReportStatusNode = document.getElementById("spend-report-status");
 const spendExportSinceNode = document.getElementById("spend-export-since");
 const spendExportFormatNode = document.getElementById("spend-export-format");
 const spendExportModelNode = document.getElementById("spend-export-model");
@@ -1236,6 +1242,123 @@ async function resetSystemoneBreaker() {
   }
 }
 
+const SPEND_REPORT_METRIC_KEYS = [
+  "requests",
+  "input_tokens",
+  "output_tokens",
+  "cost_usd",
+  "cost_avoided_usd",
+];
+
+function selectedSpendReportGroupBy() {
+  return [...document.querySelectorAll('input[name="spend-report-group-by"]:checked')].map(
+    (el) => el.value
+  );
+}
+
+function renderSpendReport(payload) {
+  if (!spendReportTableNode || !spendReportHeadNode) {
+    return;
+  }
+  const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+  const groupBy = Array.isArray(payload?.group_by) ? payload.group_by : [];
+  const hasBucket = Boolean(payload?.bucket);
+  const dimKeys = [...(hasBucket ? ["bucket"] : []), ...groupBy];
+  const columns = [...dimKeys, ...SPEND_REPORT_METRIC_KEYS];
+
+  clearNode(spendReportHeadNode);
+  const headRow = document.createElement("tr");
+  for (const col of columns) {
+    const th = document.createElement("th");
+    th.textContent = col;
+    headRow.appendChild(th);
+  }
+  spendReportHeadNode.appendChild(headRow);
+
+  if (rows.length === 0) {
+    setEmptyRow(spendReportTableNode, columns.length, "No spend rows for this grouping.");
+    return;
+  }
+  clearNode(spendReportTableNode);
+  for (const entry of rows) {
+    const tr = document.createElement("tr");
+    const cells = columns.map((col) => {
+      const value = entry[col];
+      if (typeof value === "number") {
+        if (col === "cost_usd" || col === "cost_avoided_usd") {
+          return `$${value.toFixed(4)}`;
+        }
+        return formatNumber(value);
+      }
+      return value == null || value === "" ? "-" : String(value);
+    });
+    appendTextCells(tr, cells);
+    spendReportTableNode.appendChild(tr);
+  }
+}
+
+async function loadSpendReport() {
+  if (!spendReportStatusNode || !spendReportLoadButton) {
+    return;
+  }
+  const groupBy = selectedSpendReportGroupBy();
+  if (groupBy.length === 0) {
+    spendReportStatusNode.textContent = "Select at least one group_by dimension.";
+    if (spendReportTableNode) {
+      setEmptyRow(spendReportTableNode, 1, "Select group_by dimensions, then load.");
+    }
+    return;
+  }
+  const since = (spendReportSinceNode && spendReportSinceNode.value) || "7d";
+  const bucket = (spendReportBucketNode && spendReportBucketNode.value.trim()) || "";
+  const params = new URLSearchParams({ since, group_by: groupBy.join(",") });
+  if (bucket) {
+    params.set("bucket", bucket);
+  }
+  const url = `${apiBaseUrl}/v1/daari/spend/report?${params.toString()}`;
+  spendReportStatusNode.textContent = "Loading spend report…";
+  try {
+    const response = await fetch(url, { headers: authHeaders() });
+    if (response.status === 403) {
+      spendReportStatusNode.textContent =
+        "403 Forbidden — spend report requires an analyst (or admin) API key.";
+      if (spendReportTableNode) {
+        setEmptyRow(spendReportTableNode, 1, "Spend report unavailable.");
+      }
+      return;
+    }
+    if (!response.ok) {
+      let detail = "";
+      try {
+        const errBody = await response.json();
+        if (errBody && typeof errBody.detail === "string") {
+          detail = errBody.detail;
+        } else if (errBody && Array.isArray(errBody.detail)) {
+          detail = errBody.detail.map((d) => d.msg || JSON.stringify(d)).join("; ");
+        }
+      } catch {
+        detail = "";
+      }
+      spendReportStatusNode.textContent = detail
+        ? `Spend report failed: ${response.status} — ${detail}`
+        : `Spend report failed: ${response.status}`;
+      if (spendReportTableNode) {
+        setEmptyRow(spendReportTableNode, 1, "Spend report error — see status.");
+      }
+      return;
+    }
+    const payload = await response.json();
+    renderSpendReport(payload);
+    const count = Array.isArray(payload.rows) ? payload.rows.length : 0;
+    spendReportStatusNode.textContent = `${count} row${count === 1 ? "" : "s"}`;
+  } catch (error) {
+    spendReportStatusNode.textContent = `Spend report failed: ${error.message}`;
+    if (spendReportTableNode) {
+      setEmptyRow(spendReportTableNode, 1, "Spend report error — see status.");
+    }
+  }
+}
+
 async function downloadSpendExport() {
   if (!spendExportStatusNode || !spendExportDownloadButton) {
     return;
@@ -1378,6 +1501,11 @@ tracesTableNode.addEventListener("click", (event) => {
   }
 });
 exportButton.addEventListener("click", exportStats);
+if (spendReportLoadButton) {
+  spendReportLoadButton.addEventListener("click", () => {
+    void loadSpendReport();
+  });
+}
 if (spendExportDownloadButton) {
   spendExportDownloadButton.addEventListener("click", () => {
     void downloadSpendExport();
