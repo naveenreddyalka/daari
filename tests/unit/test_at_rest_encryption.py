@@ -11,14 +11,6 @@ import pytest
 from daari.cache.exact import ExactCache
 from daari.config.settings import Settings
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
-
-
-def _resp(content: str, model: str = "m") -> InternalResponse:
-    return InternalResponse(
-        content=content,
-        model=model,
-        daari_meta=DaariMeta(tier="L0", executor="cache"),
-    )
 from daari.gateway.postgres_request_log import PostgresRequestLogStore
 from daari.gateway.postgres_responses import PostgresResponseStore
 from daari.gateway.request_log import configure_request_log, log_gateway_event
@@ -33,6 +25,14 @@ from daari.security.at_rest import (
     seal_text,
 )
 from daari.setup.doctor import _check_at_rest_encryption, run_doctor
+
+
+def _resp(content: str, model: str = "m") -> InternalResponse:
+    return InternalResponse(
+        content=content,
+        model=model,
+        daari_meta=DaariMeta(tier="L0", executor="cache"),
+    )
 
 
 @pytest.fixture(autouse=True)
