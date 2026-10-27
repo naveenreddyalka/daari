@@ -65,7 +65,16 @@ judgment win is visible next to chat L0.
 | 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — needs long session | Open |
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (≥60m session) | Parked |
 | 8 | Full DCR; A2A; Realtime/WS; stdio MCP; M365; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM | Demand-triggered | Watch |
-| 19–28 | compact_to_fit + MCP grant fail-closed + compare 1.104 | 2–4 | 1–2 | LiteLLM | Shipped | Shipped |
+| 24 | Grafana panel for `compact_to_fit_applied` | 2 | 1 | LiteLLM spend dashboards | Shipped | Shipped |
+| 25 | Dedicated stats/Prom counter for MCP grant fail-closed | 3 | 1 | LiteLLM MCP 403 metrics | Shipped | Shipped |
+| 26 | Refuse MCP `initialize` when key has no grant | 4 | 1 | LiteLLM initialize 403 | Shipped | Shipped |
+| 27 | Stats for estimated tokens dropped by compact-to-fit | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
+| 28 | Refresh compare-litellm for LiteLLM 1.104 GA | 2 | 1 | LiteLLM release notes | Shipped | Shipped |
+| 19 | Config ownership for `routing.compact_to_fit.*` | 3 | 2 | LiteLLM config ownership | Shipped | Shipped |
+| 20 | Doctor tip when compact_to_fit is enabled | 2 | 1 | — (ops honesty) | Shipped | Shipped |
+| 21 | Hermetic pin: compact_to_fit in config + routing-tiers | 2 | 1 | — (docs regression) | Shipped | Shipped |
+| 22 | `daari_meta` + stats when compact_to_fit actually trims | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
+| 23 | Opt-in fail-closed MCP when key has no MCP grant | 4 | 2 | LiteLLM `require_key_mcp_access_defined` | Shipped | Shipped |
 | 136–197 | 10-18 → 10-24 protocol/FinOps/HA/voice waves | 2–5 | 1–3 | LiteLLM / Portkey / Kong / vLLM / OpenAI | Shipped | Shipped |
 
 Watch rows (do not file yet): OpenAI `/agents/automations` passthrough
@@ -118,8 +127,8 @@ upstream for ultrafast).
   Claude Tag / Kong 2.2.0 / vLLM 0.32.0 unchanged; Portkey/Prisma AIRS enterprise
   changelog newest entry v2.20.0 (WIF for OpenAI/Anthropic — stay on watch). Filed rows
   232–236: d1 catalog, LFM3 L3 recipe, doctor tip, lfm3-audio speech,
-  decisions L0 Prom. Condensed shipped bands 19–28 and 206–216 to keep
-  the table under the line budget; encryption + SEP-2640 finish set
+  decisions L0 Prom. Kept pinned compact/MCP grant rows 19–28 Shipped
+  (pin test); condensed 206–216; encryption + SEP-2640 finish set
   (227–231) remains open.
 
 - **2026-10-27 (finish what shipped yesterday)** — Marked rows 217–224
