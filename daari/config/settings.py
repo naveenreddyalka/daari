@@ -355,7 +355,8 @@ class DecisionsSettings(BaseModel):
         default_factory=list,
         description=(
             "Extra local decisions model ids that extend the built-in catalog "
-            "(clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1, d3 family). "
+            "(clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1, "
+            "d3 family, d1 family). "
             "Operators can add future Ollama judge models without a daari release. "
             "Advertised on OpenAI + Anthropic-shaped /v1/models and /api/tags "
             "when systemone.enabled."
