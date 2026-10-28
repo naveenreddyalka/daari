@@ -8221,6 +8221,14 @@ remain readable. Doctor + settings copy name the new stores. Docs:
 [mcp.md](developer/guides/clients/mcp.md). Covered by
 `tests/unit/test_mcp_skills_sep2640.py`.
 
+### Gateway-flow fence for the 10-26/27 wave ([#1980](https://github.com/naveenreddyalka/daari/issues/1980))
+
+<!-- tracking:#1980 -->
+**Status:** Done (2026-10-28). `tests/integration/test_wave_gateway_coverage.py`
+adds hermetic cases for at-rest Responses sealing + wrong-key refusal,
+`gpt-6.1-terra` base and ≥272K spend/cost headers, and SEP-2640 skills doors
+under MCP grant governance. Covered by the same module (default suite).
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

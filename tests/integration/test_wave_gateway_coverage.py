@@ -1,11 +1,12 @@
-"""Hermetic gateway coverage for the 2026-10-24/26 waves (#1930, #1960).
+"""Hermetic gateway coverage for the 2026-10-24/27 waves (#1930, #1960, #1980).
 
 Covers streamed TTS spend, Responses completion webhooks, org enforcement
 ingest, Decisions input_json+image L0, Anthropic stream cache writes,
 user_rpd isolation, fleet-shared breakers, grouped spend reports, per-family
-breaker reset, Anthropic metadata.user_id RPD, AAIF skills prefix, and Phonon
-format/language tags. Same convention as other non-@integration modules under
-tests/integration/.
+breaker reset, Anthropic metadata.user_id RPD, AAIF skills prefix, Phonon
+format/language tags, at-rest response sealing, gpt-6.1-terra billing, and
+SEP-2640 skills doors under MCP grant governance. Same convention as other
+non-@integration modules under tests/integration/.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import sqlite3
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -33,6 +35,7 @@ from daari.enterprise.enforcement_sync import EnforcementStore
 from daari.gateway import speech, systemone
 from daari.gateway.cost_headers import COST_HEADER
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+from daari.gateway.mcp_policy import TOOL_DENIED
 from daari.observability.budget_alerts import (
     SIGNATURE_HEADER,
     TIMESTAMP_HEADER,
@@ -40,12 +43,14 @@ from daari.observability.budget_alerts import (
 )
 from daari.observability.responses_webhooks import wait_responses_webhooks
 from daari.observability.spend import SpendLedger
+from daari.pricing import cost_usd
 from daari.router import breaker_redis
 from daari.router.circuit_breaker import CircuitBreaker
 from daari.router.frontier import FrontierExecutor
 from daari.router.router import AppContext
+from daari.security.at_rest import AtRestDecryptError, is_sealed, reset_at_rest
 from daari.server.app import create_app
-from tests.conftest import mock_all_ollama_executors
+from tests.conftest import META_HEADERS, mock_all_ollama_executors
 
 SECRET_RAW = b"test-org-webhook-secret-key!!"
 ORG_SECRET = "whsec_" + base64.b64encode(SECRET_RAW).decode()
@@ -916,3 +921,224 @@ async def test_phonon_mp3_coerced_to_wav_and_language_tag_forwarded(
     assert payload["response_format"] == "wav"
     assert payload["model"] == "phonon:40m-fr"
     await speech.aclose_http()
+
+
+# --- (m) at-rest sealing through Responses gateway (#1980 / #1971) ---
+
+
+@pytest.mark.asyncio
+async def test_responses_at_rest_sealed_and_wrong_key_refused(
+    settings, tmp_path, monkeypatch
+):
+    """POST /v1/responses seals the row; wrong-key GET fails closed (#1980)."""
+    reset_at_rest()
+    settings.security.at_rest_key = "wave-fence-right-key"
+    secret = "at-rest-secret-payload-never-plaintext"
+    app = _app(settings)
+
+    async def fake_route(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content=secret,
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=1),
+        )
+
+    app.state.ctx.router.route = fake_route
+    store_path = Path(settings.trace.path).expanduser().parent / "responses.sqlite3"
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": "seal me"},
+        )
+        assert created.status_code == 200, created.text
+        response_id = created.json()["id"]
+        ok = await client.get(f"/v1/responses/{response_id}")
+    assert ok.status_code == 200
+    assert secret in ok.text
+
+    with sqlite3.connect(store_path) as conn:
+        body = conn.execute(
+            "SELECT body FROM responses WHERE response_id = ?", (response_id,)
+        ).fetchone()[0]
+    assert is_sealed(body)
+    assert secret not in body
+    assert "daari-atr1:" in body
+
+    reset_at_rest()
+    settings.security.at_rest_key = "wave-fence-wrong-key"
+    wrong_app = _app(settings)
+    async with AsyncClient(
+        transport=ASGITransport(app=wrong_app), base_url="http://test"
+    ) as client:
+        with pytest.raises(AtRestDecryptError):
+            await client.get(f"/v1/responses/{response_id}")
+    reset_at_rest()
+
+
+# --- (n) gpt-6.1-terra billing base + ≥272K surcharge (#1980 / #1974) ---
+
+
+@pytest.mark.asyncio
+async def test_gpt_61_terra_spend_base_and_threshold(settings, tmp_path, monkeypatch):
+    """Terra $1/$5 (+ $0.05 cached) and ≥272K 2×/1.5× via chat + spend (#1980)."""
+    _enable_spend(settings, tmp_path)
+    app = _app(settings)
+    pricing = settings.pricing
+    tokens: dict[str, tuple[int, int, int]] = {"use": (1000, 1000, 500)}
+
+    async def fake_local(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="no",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=1),
+        )
+
+    async def fake_frontier(
+        _request: InternalRequest, **_kwargs: object
+    ) -> InternalResponse:
+        inp, out, cached = tokens["use"]
+        return InternalResponse(
+            content="terra frontier answer with enough detail",
+            model="gpt-6.1-terra",
+            daari_meta=DaariMeta(
+                tier="L6",
+                executor="frontier",
+                model="gpt-6.1-terra",
+                input_tokens=inp,
+                output_tokens=out,
+                cached_tokens=cached,
+                latency_ms=1,
+            ),
+        )
+
+    frontier = FrontierExecutor(
+        base_url="https://api.openai.com/v1",
+        default_model="gpt-6.1-terra",
+        api_key="sk-test",
+    )
+    frontier.execute = fake_frontier  # type: ignore[method-assign]
+    app.state.ctx.router.frontier = frontier
+    app.state.ctx.router.frontier_enabled = True
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, fake_local)
+
+    expected_base = cost_usd(
+        "gpt-6.1-terra",
+        1000,
+        1000,
+        pricing,
+        fallback_per_1k=0.002,
+        cached_input_tokens=500,
+    )
+    expected_thresh = cost_usd(
+        "gpt-6.1-terra",
+        272_000,
+        1000,
+        pricing,
+        fallback_per_1k=0.002,
+    )
+    assert expected_base == pytest.approx(0.005525)
+    assert expected_thresh == pytest.approx(0.5515)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        base = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+            headers={"X-Daari-No-Cache": "true"},
+        )
+    assert base.status_code == 200, base.text
+    assert float(base.headers[COST_HEADER]) == pytest.approx(expected_base)
+    rows = _spend_rows(app)
+    assert rows
+    assert rows[-1]["model"] == "gpt-6.1-terra"
+    assert float(rows[-1]["cost_usd"]) == pytest.approx(expected_base)
+
+    tokens["use"] = (272_000, 1000, 0)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        thresh = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "long"}],
+            },
+            headers={"X-Daari-No-Cache": "true"},
+        )
+    assert thresh.status_code == 200, thresh.text
+    assert float(thresh.headers[COST_HEADER]) == pytest.approx(expected_thresh)
+    rows = _spend_rows(app)
+    assert float(rows[-1]["cost_usd"]) == pytest.approx(expected_thresh)
+
+
+# --- (o) SEP-2640 skills doors under MCP grant governance (#1980 / #1976) ---
+
+
+@pytest.mark.asyncio
+async def test_mcp_skills_doors_honor_grant_governance(
+    settings, tmp_path, monkeypatch
+):
+    """No-grant VK is refused on initialize; granted VK lists/reads skills (#1980)."""
+    skills = tmp_path / ".daari" / "skills"
+    skills.mkdir(parents=True)
+    (skills / "fence-skill.md").write_text(
+        "---\ndescription: Fence skill\n---\n# Fence\nBody.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk-skills.sqlite3")
+
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    denied_key = store.create("no-grant", client_id="no-grant")
+    granted_key = store.create(
+        "with-grant",
+        client_id="with-grant",
+        metadata={"mcp": {"allow": ["route"]}},
+    )
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+
+    init_params = {
+        "protocolVersion": "2026-07-28",
+        "capabilities": {},
+        "clientInfo": {"name": "wave-fence", "version": "0"},
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": init_params},
+            headers={"Authorization": f"Bearer {denied_key.plaintext}"},
+        )
+        granted_headers = {"Authorization": f"Bearer {granted_key.plaintext}"}
+        ok_init = await client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": init_params},
+            headers=granted_headers,
+        )
+        listed = await client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 3, "method": "skills/list"},
+            headers={**granted_headers, **META_HEADERS},
+        )
+        read = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "resources/read",
+                "params": {"uri": "skill://fence-skill/SKILL.md"},
+            },
+            headers={**granted_headers, **META_HEADERS},
+        )
+
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == TOOL_DENIED
+    assert ok_init.status_code == 200
+    skills_payload = listed.json()["result"]["skills"]
+    assert any(s["frontmatter"]["name"] == "fence-skill" for s in skills_payload)
+    assert "Body." in read.json()["result"]["contents"][0]["text"]
