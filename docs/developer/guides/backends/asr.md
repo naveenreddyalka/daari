@@ -1,6 +1,6 @@
 # Local speech-to-text
 
-**Outcome:** `POST /v1/audio/transcriptions` and `POST /v1/audio/translations` stay on the machine. A cloud upload happens only when you opt in.
+**Outcome:** `POST /v1/audio/transcriptions` and `POST /v1/audio/translations` stay on the machine. A cloud upload happens only when you opt in. Local backends include whisper.cpp / vLLM pools and Ollama **0.40.12+ `lfm3-audio`** (18-language ASR beside Phonon TTS).
 
 ## Config
 
@@ -13,7 +13,7 @@ asr:
   frontier_fallback: false   # default — never upload audio implicitly
 ```
 
-Leave `base_url` empty and the route returns **501**. `daari doctor` stays quiet in that case. It warns when `asr.base_url` is set but `GET {base}/models` is unreachable, and when `frontier_fallback` is true while frontier is disabled or no API key resolves. `frontier_fallback` stays off so existing installs do not start sending meetings to a hosted API. Set it to `true` only when `frontier.enabled` is true and a frontier key is configured; daari then forwards the transcription to eligible frontier slots in pool order (failover on transient failure). Virtual-key `no_frontier` blocks the upload (403); `region_pin` keeps audio on matching-region slots only (400 when none match).
+Leave `base_url` empty and the route returns **501**. `daari doctor` stays quiet unless Ollama `/api/tags` lists `lfm3-audio` — then it tips `asr.base_url: {ollama.base_url}/v1` (and preferably `asr.model: lfm3-audio`). It warns when `asr.base_url` is set but `GET {base}/models` is unreachable, and when `frontier_fallback` is true while frontier is disabled or no API key resolves. `frontier_fallback` stays off so existing installs do not start sending meetings to a hosted API. Set it to `true` only when `frontier.enabled` is true and a frontier key is configured; daari then forwards the transcription to eligible frontier slots in pool order (failover on transient failure). Virtual-key `no_frontier` blocks the upload (403); `region_pin` keeps audio on matching-region slots only (400 when none match).
 
 Helm fleets can set `asr.baseUrl`, which mounts `DAARI_ASR__BASE_URL`. Optional chart value `asr.model` mounts `DAARI_ASR__MODEL` so the pod always presents the on-box whisper id. `asr.frontierFallback` defaults off and omits env; set it to true to mount `DAARI_ASR__FRONTIER_FALLBACK` so an empty base URL may forward one transcription to frontier (see [Capacity and Helm](../operations/capacity-helm.md)).
 

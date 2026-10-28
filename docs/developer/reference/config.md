@@ -72,7 +72,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `ocr.base_url` | str | `''` | OpenAI-/Mistral-compatible OCR API root, including /v1. When set, POST /v1/ocr forwards to {base_url}/ocr. Empty falls through to ocr.vision_model or frontier L6. |
 | `ocr.model` | str | `''` | Optional default OCR model id when the client omits model. Used for local base_url and frontier passthrough. |
 | `ocr.vision_model` | str | `''` | When base_url is empty, run OCR via local Ollama multimodal chat at ollama.base_url using this vision model (image_url / image data URIs). Empty skips the local vision path. |
-| `tts.base_url` | str | `''` | OpenAI-compatible TTS base URL, including /v1 (Ollama ≥0.40.9 Phonon at ollama.base_url/v1, openedai-speech, Kokoro-FastAPI, or similar). Empty leaves POST /v1/audio/speech unconfigured. |
+| `tts.base_url` | str | `''` | OpenAI-compatible TTS base URL, including /v1 (Ollama ≥0.40.9 Phonon or ≥0.40.12 lfm3-audio at ollama.base_url/v1, openedai-speech, Kokoro-FastAPI, or similar). Empty leaves POST /v1/audio/speech unconfigured. |
 | `tts.model` | str | `''` | Optional model name sent to the TTS server. When set, it replaces the client model so a local server always sees its own id. |
 | `tts.voice` | str | `''` | Optional default voice when the request omits voice (OpenAI alloy/echo/… or the local server's voice id). |
 | `tts.max_input_chars` | int | `4096` | Maximum length of POST /v1/audio/speech ``input`` (#1916). Oversized text returns 400 invalid_request_error before guardrails or upstream TTS. Matches OpenAI's 4096-char speech cap by default. Env: DAARI_TTS__MAX_INPUT_CHARS. |

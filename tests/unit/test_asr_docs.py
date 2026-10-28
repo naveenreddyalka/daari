@@ -30,3 +30,9 @@ def test_asr_guide_links_capacity_helm() -> None:
     text = ASR_GUIDE.read_text(encoding="utf-8")
     assert "capacity-helm.md" in text
     assert "../operations/capacity-helm.md" in text
+
+
+def test_asr_guide_mentions_lfm3_audio() -> None:
+    """Ollama lfm3-audio as a local ASR backend beside Phonon (#1986)."""
+    text = ASR_GUIDE.read_text(encoding="utf-8")
+    assert "lfm3-audio" in text

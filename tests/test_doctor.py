@@ -59,7 +59,9 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            tags_response,  # asr lfm3-audio tip when base_url empty (#1986)
             version_response,  # tts Phonon tip probe when base_url empty (#1888)
+            tags_response,  # tts lfm3-audio tip / Phonon tip tag probe (#1986)
             tags_response,  # decisions_unused_host_models (#1985)
             tags_response,  # ollama_lfm3_unused (#1985)
             stats_response,
@@ -158,7 +160,9 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            tags_response,  # asr lfm3-audio tip when base_url empty (#1986)
             version_response,  # tts Phonon tip probe when base_url empty (#1888)
+            tags_response,  # tts lfm3-audio tip / Phonon tip tag probe (#1986)
             stats_response,
             stats_response,
             ready_response,
@@ -201,7 +205,9 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            tags_response,  # asr lfm3-audio tip when base_url empty (#1986)
             version_response,  # tts Phonon tip probe when base_url empty (#1888)
+            tags_response,  # tts lfm3-audio tip / Phonon tip tag probe (#1986)
             stats_response,
             stats_response,
             ready_response,
@@ -240,7 +246,9 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            tags_response,  # asr lfm3-audio tip when base_url empty (#1986)
             version_response,  # tts Phonon tip probe when base_url empty (#1888)
+            tags_response,  # tts lfm3-audio tip / Phonon tip tag probe (#1986)
             stats_response,
             stats_response,
             ready_response,
@@ -276,7 +284,9 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            tags_response,  # asr lfm3-audio tip when base_url empty (#1986)
             version_response,  # tts Phonon tip probe when base_url empty (#1888)
+            tags_response,  # tts lfm3-audio tip / Phonon tip tag probe (#1986)
             stats_response,
             stats_response,
             ready_response,
@@ -332,7 +342,9 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            tags_response,  # asr lfm3-audio tip when base_url empty (#1986)
             version_response,  # tts Phonon tip probe when base_url empty (#1888)
+            tags_response,  # tts lfm3-audio tip / Phonon tip tag probe (#1986)
             stats_response,
             stats_response,
             ready_response,
@@ -373,7 +385,9 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            tags_response,  # asr lfm3-audio tip when base_url empty (#1986)
             version_response,  # tts Phonon tip probe when base_url empty (#1888)
+            tags_response,  # tts lfm3-audio tip / Phonon tip tag probe (#1986)
             stats_response,
             stats_response,
             ready_response,
@@ -406,7 +420,9 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            tags_response,  # asr lfm3-audio tip when base_url empty (#1986)
             version_response,  # tts Phonon tip probe when base_url empty (#1888)
+            tags_response,  # tts lfm3-audio tip / Phonon tip tag probe (#1986)
             stats_response,
             stats_response,
             ready_response,
@@ -440,7 +456,9 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            tags_response,  # asr lfm3-audio tip when base_url empty (#1986)
             version_response,  # tts Phonon tip probe when base_url empty (#1888)
+            tags_response,  # tts lfm3-audio tip / Phonon tip tag probe (#1986)
             stats_response,
             stats_response,
             ready_response,
@@ -482,7 +500,9 @@ class TestDoctor:
             tags_response,
             version_response,
             tags_response,
+            tags_response,  # asr lfm3-audio tip when base_url empty (#1986)
             version_response,  # tts Phonon tip probe when base_url empty (#1888)
+            tags_response,  # tts lfm3-audio tip / Phonon tip tag probe (#1986)
             stats_response,
             org_cache_response,
             stats_response,
