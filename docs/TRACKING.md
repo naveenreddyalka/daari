@@ -8211,6 +8211,16 @@ remain readable. Doctor + settings copy name the new stores. Docs:
 [at-rest-encryption.md](developer/resources/at-rest-encryption.md). Covered by
 `tests/unit/test_at_rest_encryption.py`.
 
+### MCP SEP-2640 skills extension conformance ([#1979](https://github.com/naveenreddyalka/daari/issues/1979))
+
+<!-- tracking:#1979 -->
+**Status:** Done (2026-10-28). `initialize` / `server/discover` advertise
+`extensions["io.modelcontextprotocol/skills"]` (`directoryRead: false`);
+`skills/list`+`skills/get` return frontmatter + sha256/size manifests;
+`resources/read` serves package supporting files under `skill://<id>/…`. Docs:
+[mcp.md](developer/guides/clients/mcp.md). Covered by
+`tests/unit/test_mcp_skills_sep2640.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
