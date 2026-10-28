@@ -152,6 +152,24 @@ spec:
                   key: {{ .key | default "api-key" | quote }}
             {{- end }}
             {{- end }}
+            {{- with ((.Values.security).atRestKeySecret | default dict) }}
+            {{- if .name }}
+            - name: DAARI_SECURITY__AT_REST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name | quote }}
+                  key: {{ .key | default "at-rest-key" | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with ((.Values.security).atRestKeyPreviousSecret | default dict) }}
+            {{- if .name }}
+            - name: DAARI_SECURITY__AT_REST_KEY_PREVIOUS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name | quote }}
+                  key: {{ .key | default "at-rest-key" | quote }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.server.corsOrigins }}
             - name: DAARI_SERVER__CORS_ORIGINS
               value: {{ . | toJson | quote }}

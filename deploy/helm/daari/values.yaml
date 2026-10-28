@@ -152,6 +152,15 @@ webhooks:
     secret: {}
     secretPrevious: {}
 
+# At-rest AES-GCM key pair (#1958 / #1977). Empty {} omits envs — same
+# secretKeyRef pattern as frontier.apiKeySecret / webhooks.*.secret.
+# Rotation: set atRestKeyPreviousSecret to the retiring key, roll
+# atRestKeySecret to the new one, restart; after ciphertext is re-sealed
+# (or aged out), drop atRestKeyPreviousSecret.
+security:
+  atRestKeySecret: {}
+  atRestKeyPreviousSecret: {}
+
 # Prometheus Operator ServiceMonitor for GET /metrics.
 # Default endpoint is the API `http` Service port (may need bearerTokenSecret
 # when server.api_key protects /metrics). When observability.metricsPort > 0,

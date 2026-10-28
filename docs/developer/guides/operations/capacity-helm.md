@@ -297,6 +297,22 @@ frontier:
 `DAARI_FRONTIER__ENABLED`; `frontier.apiKeySecret` mounts `DAARI_FRONTIER_API_KEY`.
 NOTES remind operators when Redis is missing for multi-replica rate limits.
 
+At-rest encryption keys mount via `security.atRestKeySecret` /
+`security.atRestKeyPreviousSecret` (#1977) as `DAARI_SECURITY__AT_REST_KEY`
+(+ `_PREVIOUS`) `secretKeyRef`s. Empty `{}` omits both envs. Rotation: set
+`previous`, roll `key`, drop `previous` after re-seal (see
+[at-rest encryption](../../resources/at-rest-encryption.md)):
+
+```yaml
+security:
+  atRestKeySecret:
+    name: daari-at-rest
+    key: current
+  atRestKeyPreviousSecret:
+    name: daari-at-rest
+    key: previous
+```
+
 Signed webhook families mount URL + `secretKeyRef` secrets via `webhooks.*`
 (#1959). Unset blocks omit every `*WEBHOOK*` env (no inline secrets in values):
 

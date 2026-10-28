@@ -29,6 +29,11 @@ security:
 Or env: `DAARI_SECURITY__AT_REST_KEY=…`. Empty (default) leaves behavior
 unchanged — no migration, existing plaintext rows keep working.
 
+On Kubernetes, mount the key from a Secret via the Helm chart
+(`security.atRestKeySecret` / `security.atRestKeyPreviousSecret` →
+`DAARI_SECURITY__AT_REST_KEY` / `_PREVIOUS`); see
+[Capacity and Helm](../guides/operations/capacity-helm.md).
+
 `daari doctor` reports `at_rest_encryption` on/off for those stores.
 
 ## Rotation
