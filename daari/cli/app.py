@@ -3368,6 +3368,14 @@ def setup_models(
             "(models.l3=nemotron-3.5-bolt:e4b; Ollama ≥ 0.40.10)."
         ),
     ),
+    lfm3: bool = typer.Option(
+        False,
+        "--lfm3",
+        help=(
+            "Apply optional LFM3 L3 local-agent recipe "
+            "(models.l3=lfm3; Ollama ≥ 0.40.12; Apple-first)."
+        ),
+    ),
 ) -> None:
     """Pick an Ollama model for a daari tier."""
     setup_models_interactive(
@@ -3377,6 +3385,7 @@ def setup_models(
         list_only=list_models,
         flint=flint,
         nemotron_bolt=nemotron_bolt,
+        lfm3=lfm3,
     )
 
 

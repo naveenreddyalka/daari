@@ -8229,6 +8229,15 @@ adds hermetic cases for at-rest Responses sealing + wrong-key refusal,
 `gpt-6.1-terra` base and ≥272K spend/cost headers, and SEP-2640 skills doors
 under MCP grant governance. Covered by the same module (default suite).
 
+### Optional LFM3 L3 local-agent recipe ([#1984](https://github.com/naveenreddyalka/daari/issues/1984))
+
+<!-- tracking:#1984 -->
+**Status:** Done (2026-10-28). `daari setup models --lfm3` / wizard offers an
+opt-in LFM3 L3 recipe (`models.l3=lfm3`, Ollama ≥ 0.40.12; Apple-first,
+Linux/Windows coming soon); dry-run leaves config untouched. Docs:
+[ollama.md](developer/guides/backends/ollama.md). Covered by
+`tests/test_setup.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
