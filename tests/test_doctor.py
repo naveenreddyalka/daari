@@ -60,6 +60,8 @@ class TestDoctor:
             version_response,
             tags_response,
             version_response,  # tts Phonon tip probe when base_url empty (#1888)
+            tags_response,  # decisions_unused_host_models (#1985)
+            tags_response,  # ollama_lfm3_unused (#1985)
             stats_response,
             stats_response,
             ready_response,

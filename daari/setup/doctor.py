@@ -67,6 +67,12 @@ def run_doctor(
     decisions_models_tip = _check_decisions_local_models(cfg, httpx_client)
     if decisions_models_tip is not None:
         results.append(decisions_models_tip)
+    unused_host_tip = _check_decisions_unused_host_models(cfg, httpx_client)
+    if unused_host_tip is not None:
+        results.append(unused_host_tip)
+    lfm3_unused_tip = _check_lfm3_unused(cfg, httpx_client)
+    if lfm3_unused_tip is not None:
+        results.append(lfm3_unused_tip)
     daemon_stats = _daemon_stats_payload(cfg, httpx_client)
     breaker_tip = _check_systemone_breaker(
         cfg, httpx_client=httpx_client, daemon_stats=daemon_stats
@@ -1118,6 +1124,120 @@ def _check_decisions_local_models(
             name="decisions_local_models",
             ok=False,
             detail=detail,
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+
+
+# Liquid AI d1 decision tags operators may pull after Ollama 0.40.12 (#1985).
+_D1_HOST_HINTS = ("d1", "d1:2b", "d1-omni")
+
+
+def _host_lists_model(names: list[str], model: str) -> bool:
+    return any(name == model or name.startswith(f"{model}:") for name in names if name)
+
+
+def _check_decisions_unused_host_models(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult | None:
+    """Tip when Ollama serves d1* but the local decisions catalog omits them (#1985)."""
+    if not bool(getattr(getattr(settings, "systemone", None), "enabled", True)):
+        return None
+    from daari.gateway.decisions import local_decisions_models
+    from daari.gateway.systemone import explicit_systemone_base, systemone_auth_headers
+
+    catalog = local_decisions_models(settings)
+    explicit = explicit_systemone_base(settings)
+    openai_catalog = bool(explicit)
+    base = explicit or settings.ollama.base_url.rstrip("/")
+    catalog_url = f"{base}/v1/models" if openai_catalog else f"{base}/api/tags"
+    headers = systemone_auth_headers(settings)
+    own_client = client is None
+    http = client or httpx.Client(timeout=5.0)
+    try:
+        try:
+            response = http.get(catalog_url, headers=headers or None)
+        except Exception:
+            return None
+        if response.status_code != 200:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        rows = data.get("data") if openai_catalog else data.get("models")
+        id_key = "id" if openai_catalog else "name"
+        names = [
+            str(m.get(id_key) or "") for m in (rows or []) if isinstance(m, dict)
+        ]
+        unused = [
+            hint
+            for hint in _D1_HOST_HINTS
+            if _host_lists_model(names, hint) and hint not in catalog
+        ]
+        if not unused:
+            return None
+        shown = ", ".join(unused)
+        return CheckResult(
+            name="decisions_unused_host_models",
+            ok=False,
+            detail=(
+                f"Ollama/systemone at {base} serves {shown} but they are not in the "
+                "local decisions catalog — add them via decisions.local_models "
+                "(see ollama.md) so POST /v1/decisions can use the free local path"
+            ),
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+
+
+def _check_lfm3_unused(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult | None:
+    """Tip when Ollama lists lfm3 but models.l3 is not wired to it (#1985)."""
+    from daari.setup.models import LFM3_MODEL
+
+    l3 = str(getattr(settings.models, "l3", None) or "").strip()
+    if l3 == LFM3_MODEL or l3.startswith(f"{LFM3_MODEL}:"):
+        return None
+    base = settings.ollama.base_url.rstrip("/")
+    own_client = client is None
+    http = client or httpx.Client(timeout=5.0)
+    try:
+        try:
+            response = http.get(f"{base}/api/tags")
+        except Exception:
+            return None
+        if response.status_code != 200:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        names = [
+            str(m.get("name") or "")
+            for m in (data.get("models") or [])
+            if isinstance(m, dict)
+        ]
+        if not _host_lists_model(names, LFM3_MODEL):
+            return None
+        return CheckResult(
+            name="ollama_lfm3_unused",
+            ok=False,
+            detail=(
+                f"{LFM3_MODEL} is present on Ollama at {base} but models.l3={l3!r} — "
+                f"run `daari setup models --lfm3` for the 256K local-agent L3 recipe"
+            ),
             optional=True,
         )
     finally:
