@@ -8192,6 +8192,16 @@ and `resources/list`+`resources/read` for flat + AAIF on-box skills
 [ollama.md](developer/guides/backends/ollama.md). Covered by
 `tests/unit/test_decisions_local_catalog.py`.
 
+### Helm at-rest encryption key secretKeyRef ([#1977](https://github.com/naveenreddyalka/daari/issues/1977))
+
+<!-- tracking:#1977 -->
+**Status:** Done (2026-10-28). Chart `security.atRestKeySecret` /
+`atRestKeyPreviousSecret` mount `DAARI_SECURITY__AT_REST_KEY` (+ `_PREVIOUS`)
+via `secretKeyRef`; empty defaults omit envs. Docs:
+[capacity-helm.md](developer/guides/operations/capacity-helm.md),
+[at-rest-encryption.md](developer/resources/at-rest-encryption.md). Covered by
+`tests/unit/test_helm_at_rest.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
