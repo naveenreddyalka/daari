@@ -27,6 +27,16 @@ NEMOTRON_BOLT_RECIPE_NOTE = (
     f"Pull with: ollama pull {NEMOTRON_BOLT_MODEL}"
 )
 
+# Liquid AI LFM3 — optional 256K local agent L3 (Ollama ≥ 0.40.12; Apple-first) (#1984).
+LFM3_MODEL = "lfm3"
+LFM3_OLLAMA_FLOOR = (0, 40, 12)
+LFM3_RECIPE_NOTE = (
+    "Optional LFM3 L3 local-agent recipe "
+    f"(models.l3={LFM3_MODEL}, 256K context). Requires Ollama ≥ 0.40.12. "
+    "Apple hardware first in 0.40.12; Linux/Windows support coming soon. "
+    f"Pull with: ollama pull {LFM3_MODEL}"
+)
+
 
 @dataclass
 class ModelSetupResult:
@@ -210,6 +220,33 @@ def apply_nemotron_bolt_l3_recipe(
     return write_models_config(NEMOTRON_BOLT_MODEL, tier="l3", config_path=path)
 
 
+def apply_lfm3_l3_recipe(
+    *,
+    config_path: Path | None = None,
+    dry_run: bool = False,
+) -> ModelSetupResult:
+    """Set ``models.l3`` to LFM3 without pulling weights (#1984)."""
+    path = config_path or Path.home() / ".daari" / "config.yaml"
+    if dry_run:
+        current_l3: str | None = None
+        if path.is_file():
+            with path.open(encoding="utf-8") as handle:
+                loaded = yaml.safe_load(handle) or {}
+            if isinstance(loaded, dict):
+                models = loaded.get("models") or {}
+                if isinstance(models, dict):
+                    raw = models.get("l3")
+                    current_l3 = str(raw) if raw is not None else None
+        changed = current_l3 != LFM3_MODEL
+        return ModelSetupResult(
+            tier="l3",
+            model=LFM3_MODEL,
+            config_path=path,
+            changed=changed,
+        )
+    return write_models_config(LFM3_MODEL, tier="l3", config_path=path)
+
+
 def write_models_config(
     model: str | None = None,
     *,
@@ -269,6 +306,7 @@ def setup_models_interactive(
     list_only: bool = False,
     flint: bool = False,
     nemotron_bolt: bool = False,
+    lfm3: bool = False,
     config_path: Path | None = None,
     httpx_client: httpx.Client | None = None,
 ) -> ModelSetupResult | None:
@@ -293,6 +331,12 @@ def setup_models_interactive(
         typer.echo(NEMOTRON_BOLT_RECIPE_NOTE)
         result = apply_nemotron_bolt_l3_recipe(config_path=path, dry_run=False)
         typer.echo(f"Set models.l3 = {NEMOTRON_BOLT_MODEL} in {path}")
+        return result
+
+    if lfm3:
+        typer.echo(LFM3_RECIPE_NOTE)
+        result = apply_lfm3_l3_recipe(config_path=path, dry_run=False)
+        typer.echo(f"Set models.l3 = {LFM3_MODEL} in {path}")
         return result
 
     if model is not None:
@@ -351,7 +395,7 @@ def setup_models_interactive(
     typer.echo(f"Wrote models.{tier} = {picked} to {path}")
     typer.echo(f"Wrote routing.prefer = {prefer} to {path}")
 
-    if tier == "l3" and picked != NEMOTRON_BOLT_MODEL:
+    if tier == "l3" and picked not in {NEMOTRON_BOLT_MODEL, LFM3_MODEL}:
         typer.echo(NEMOTRON_BOLT_RECIPE_NOTE)
         if typer.confirm(
             f"Apply optional Nemotron Bolt E4B L3 VLM recipe "
@@ -360,6 +404,15 @@ def setup_models_interactive(
         ):
             result = apply_nemotron_bolt_l3_recipe(config_path=path, dry_run=False)
             typer.echo(f"Set models.l3 = {NEMOTRON_BOLT_MODEL} in {path}")
+        else:
+            typer.echo(LFM3_RECIPE_NOTE)
+            if typer.confirm(
+                f"Apply optional LFM3 L3 local-agent recipe "
+                f"(set models.l3={LFM3_MODEL})?",
+                default=False,
+            ):
+                result = apply_lfm3_l3_recipe(config_path=path, dry_run=False)
+                typer.echo(f"Set models.l3 = {LFM3_MODEL} in {path}")
     if tier == "l4" and picked != FLINT_MODEL:
         typer.echo(FLINT_RECIPE_NOTE)
         if typer.confirm(

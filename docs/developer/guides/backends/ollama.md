@@ -20,6 +20,11 @@ Optional **Nemotron 3.5 Bolt E4B** L3 VLM recipe (Ollama ≥ 0.40.10):
 `daari setup models --nemotron-bolt` sets `models.l3=nemotron-3.5-bolt:e4b`
 without pulling weights. Pull later with `ollama pull nemotron-3.5-bolt:e4b`.
 
+Optional **LFM3** L3 local-agent recipe (Ollama ≥ 0.40.12, 256K context):
+`daari setup models --lfm3` sets `models.l3=lfm3` without pulling weights.
+Apple hardware first in 0.40.12; Linux/Windows support coming soon. Pull later
+with `ollama pull lfm3`.
+
 Compose stack pulls models for you (`docker compose up`).
 
 ## Config

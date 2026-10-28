@@ -99,9 +99,12 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
         from daari.setup.models import (
             FLINT_MODEL,
             FLINT_RECIPE_NOTE,
+            LFM3_MODEL,
+            LFM3_RECIPE_NOTE,
             NEMOTRON_BOLT_MODEL,
             NEMOTRON_BOLT_RECIPE_NOTE,
             apply_flint_l4_recipe,
+            apply_lfm3_l3_recipe,
             apply_nemotron_bolt_l3_recipe,
         )
 
@@ -114,7 +117,16 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
             apply_nemotron_bolt_l3_recipe(dry_run=False)
             typer.echo(f"Set models.l3 = {NEMOTRON_BOLT_MODEL}")
         else:
-            setup_models_interactive(cfg, tier="l3")
+            typer.echo(LFM3_RECIPE_NOTE)
+            if typer.confirm(
+                f"Apply optional LFM3 L3 local-agent recipe "
+                f"(set models.l3={LFM3_MODEL})?",
+                default=False,
+            ):
+                apply_lfm3_l3_recipe(dry_run=False)
+                typer.echo(f"Set models.l3 = {LFM3_MODEL}")
+            else:
+                setup_models_interactive(cfg, tier="l3")
         if typer.confirm("Configure L4 model as well?", default=True):
             # Interactive L4 path also offers the optional Flint coding recipe (#1852).
             setup_models_interactive(cfg, tier="l4")
