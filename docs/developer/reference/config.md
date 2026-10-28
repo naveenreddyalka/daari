@@ -37,7 +37,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `auth.window_seconds` | float | `60.0` | Sliding window for auth.max_failures. Env: DAARI_AUTH__WINDOW_SECONDS. |
 | `auth.exempt_loopback` | bool | `True` | Skip throttling for 127.0.0.1 / ::1 / localhost. |
 | `secrets.refresh_ttl_seconds` | float | `300.0` | TTL for re-resolving env-file/exec/keychain secret:// refs at use time. 0 = resolve once at boot (legacy). Default 300s. Env-file refs also re-resolve when the source file mtime changes. Env: DAARI_SECRETS__REFRESH_TTL_SECONDS. |
-| `security.at_rest_key` | str | `''` | Customer-held key for AES-GCM encryption of response-store bodies, request-log payloads, and L0/L1 disk-cache values. Accepts plaintext or secret:// refs. Empty (default) leaves stores plaintext — no migration required. Env: DAARI_SECURITY__AT_REST_KEY. |
+| `security.at_rest_key` | str | `''` | Customer-held key for AES-GCM encryption of response-store bodies, request-log payloads, L0/L1 disk-cache values, files content, and batch job payloads. Accepts plaintext or secret:// refs. Empty (default) leaves stores plaintext — no migration required. Env: DAARI_SECURITY__AT_REST_KEY. |
 | `security.at_rest_key_previous` | str | `''` | Previous at-rest key kept during rotation so tagged rows still decrypt. New writes always use at_rest_key. Accepts secret://. Env: DAARI_SECURITY__AT_REST_KEY_PREVIOUS. |
 | `rate_limit.rpm` | int | `0` | Default requests per minute per key (0=unlimited). |
 | `rate_limit.tpm` | int | `0` | Default tokens per minute per key (0=unlimited). |

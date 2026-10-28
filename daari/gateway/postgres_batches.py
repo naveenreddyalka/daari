@@ -30,6 +30,7 @@ from daari.gateway.batches import (
     _job_to_payload,
 )
 from daari.gateway.request_log import log_gateway_event
+from daari.security.at_rest import AtRestDecryptError, loads_json_maybe_sealed, seal_text
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS daari_batch_jobs (
@@ -117,7 +118,11 @@ class PostgresBatchStore(BatchStore):
                     if not row:
                         continue
                     try:
-                        job = _job_from_payload(json.loads(row["payload"]))
+                        job = _job_from_payload(
+                            loads_json_maybe_sealed(row["payload"])  # type: ignore[arg-type]
+                        )
+                    except AtRestDecryptError:
+                        raise
                     except (TypeError, ValueError, json.JSONDecodeError, KeyError):
                         continue
                     self._batches[job.id] = job
@@ -134,16 +139,20 @@ class PostgresBatchStore(BatchStore):
                     rows = cur.fetchall()
             for batch_id, raw in rows:
                 try:
-                    job = _job_from_payload(json.loads(raw))
+                    job = _job_from_payload(loads_json_maybe_sealed(raw))  # type: ignore[arg-type]
+                except AtRestDecryptError:
+                    raise
                 except (TypeError, ValueError, json.JSONDecodeError, KeyError):
                     continue
                 self._batches[job.id] = job
                 self._order.append(job.id)
+        except AtRestDecryptError:
+            raise
         except Exception:
             return
 
     def _persist(self, job: Any) -> None:
-        payload = json.dumps(_job_to_payload(job), ensure_ascii=False)
+        payload = seal_text(json.dumps(_job_to_payload(job), ensure_ascii=False))
         if self._memory:
             bucket, order, lock = _memory_bucket(self.dsn)
             with lock:
@@ -251,7 +260,11 @@ class PostgresBatchStore(BatchStore):
             if row is None:
                 return None
             try:
-                job = _job_from_payload(json.loads(row["payload"]))
+                job = _job_from_payload(
+                    loads_json_maybe_sealed(row["payload"])  # type: ignore[arg-type]
+                )
+            except AtRestDecryptError:
+                raise
             except (TypeError, ValueError, json.JSONDecodeError, KeyError):
                 return None
             self._batches[job.id] = job
@@ -268,9 +281,11 @@ class PostgresBatchStore(BatchStore):
                     found = cur.fetchone()
             if found is None:
                 return None
-            job = _job_from_payload(json.loads(found[0]))
+            job = _job_from_payload(loads_json_maybe_sealed(found[0]))  # type: ignore[arg-type]
             self._batches[job.id] = job
             return job
+        except AtRestDecryptError:
+            raise
         except Exception:
             return self._batches.get(batch_id)
 

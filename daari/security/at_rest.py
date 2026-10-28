@@ -54,16 +54,31 @@ class AtRestCipher:
     def encrypt(self, plaintext: str) -> str:
         if not self.key:
             return plaintext
+        return self.encrypt_bytes(plaintext.encode("utf-8")).decode("ascii")
+
+    def encrypt_bytes(self, plaintext: bytes) -> bytes:
+        if not self.key:
+            return plaintext
         kid, material = self._keys()[0]
         nonce = os.urandom(_NONCE_BYTES)
-        ct = AESGCM(material).encrypt(nonce, plaintext.encode("utf-8"), None)
+        ct = AESGCM(material).encrypt(nonce, plaintext, None)
         blob = base64.urlsafe_b64encode(nonce + ct).decode("ascii").rstrip("=")
-        return f"{TAG_PREFIX}{kid}:{blob}"
+        return f"{TAG_PREFIX}{kid}:{blob}".encode("ascii")
 
     def decrypt(self, value: str) -> str:
         if not is_sealed(value):
             return value
-        rest = value[len(TAG_PREFIX) :]
+        return self.decrypt_bytes(value.encode("ascii")).decode("utf-8")
+
+    def decrypt_bytes(self, value: bytes) -> bytes:
+        prefix = TAG_PREFIX.encode("ascii")
+        if not value.startswith(prefix):
+            return value
+        try:
+            text = value.decode("ascii")
+        except UnicodeDecodeError as exc:
+            raise AtRestDecryptError("malformed at-rest ciphertext") from exc
+        rest = text[len(TAG_PREFIX) :]
         try:
             kid, blob = rest.split(":", 1)
         except ValueError as exc:
@@ -87,11 +102,10 @@ class AtRestCipher:
         ]
         for _, material in ordered:
             try:
-                return AESGCM(material).decrypt(nonce, ct, None).decode("utf-8")
+                return AESGCM(material).decrypt(nonce, ct, None)
             except Exception:
                 continue
         raise AtRestDecryptError("failed to decrypt at-rest ciphertext")
-
 
 _cipher: AtRestCipher | None = None
 
@@ -137,6 +151,25 @@ def open_text(value: str) -> str:
             "at-rest ciphertext present but security.at_rest_key is unset"
         )
     return _cipher.decrypt(value)
+
+
+def seal_bytes(plaintext: bytes) -> bytes:
+    """Encrypt binary payloads when a key is configured; else pass through."""
+    if _cipher is None or not _cipher.key:
+        return plaintext
+    return _cipher.encrypt_bytes(plaintext)
+
+
+def open_bytes(value: bytes) -> bytes:
+    """Decrypt tagged binary blobs; pass plaintext through; never return ciphertext."""
+    prefix = TAG_PREFIX.encode("ascii")
+    if not value.startswith(prefix):
+        return value
+    if _cipher is None:
+        raise AtRestDecryptError(
+            "at-rest ciphertext present but security.at_rest_key is unset"
+        )
+    return _cipher.decrypt_bytes(value)
 
 
 def loads_json_maybe_sealed(value: str) -> object:

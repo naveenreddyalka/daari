@@ -19,6 +19,7 @@ from daari.gateway.files import (
     StoredFile,
     parse_expires_after,
 )
+from daari.security.at_rest import AtRestDecryptError, open_bytes, seal_bytes
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS daari_files (
@@ -153,6 +154,7 @@ class PostgresFileStore:
             created_at=created_at,
             expires_after_seconds=expires_after_seconds,
         )
+        sealed = seal_bytes(bytes(content))
         row = {
             "id": file_id,
             "filename": filename or "upload",
@@ -161,7 +163,7 @@ class PostgresFileStore:
             "created_at": created_at,
             "owner_key_id": owner_key_id,
             "expires_at": expires_at,
-            "content": bytes(content),
+            "content": sealed,
         }
         if self._memory:
             bucket, lock = _memory_bucket(self.dsn)
@@ -184,7 +186,7 @@ class PostgresFileStore:
                         created_at,
                         owner_key_id,
                         expires_at,
-                        content,
+                        sealed,
                     ),
                 )
             conn.commit()
@@ -305,7 +307,7 @@ class PostgresFileStore:
             bucket, lock = _memory_bucket(self.dsn)
             with lock:
                 row = bucket.get(file_id)
-            return None if row is None else bytes(row["content"])
+            return None if row is None else open_bytes(bytes(row["content"]))
         if not self.enabled:
             return None
         try:
@@ -315,7 +317,9 @@ class PostgresFileStore:
                     found = cur.fetchone()
             if found is None:
                 return None
-            return bytes(found[0])
+            return open_bytes(bytes(found[0]))
+        except AtRestDecryptError:
+            raise
         except Exception:
             return None
 

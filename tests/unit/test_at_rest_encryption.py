@@ -210,12 +210,140 @@ def test_request_log_postgres_encrypts_payload():
     assert isinstance(raw, str) and is_sealed(raw)
 
 
+def test_files_store_disk_round_trip_and_plaintext_compat(tmp_path: Path):
+    from daari.gateway.files import FileStore
+
+    store = FileStore(tmp_path / "files")
+    plain = store.create(content=b"legacy-upload", filename="a.txt")
+    configure_at_rest(key="files-key")
+    enc = store.create(content=b"secret-bytes\x00\xff", filename="b.bin")
+
+    raw_plain = (tmp_path / "files" / f"{plain.id}.bin").read_bytes()
+    raw_enc = (tmp_path / "files" / f"{enc.id}.bin").read_bytes()
+    assert raw_plain == b"legacy-upload"
+    assert is_sealed(raw_enc.decode("ascii"))
+    assert b"secret-bytes" not in raw_enc
+
+    assert store.read_bytes(plain.id) == b"legacy-upload"
+    assert store.read_bytes(enc.id) == b"secret-bytes\x00\xff"
+
+
+def test_files_store_wrong_key_fails_closed(tmp_path: Path):
+    from daari.gateway.files import FileStore
+
+    configure_at_rest(key="right-files")
+    store = FileStore(tmp_path / "files")
+    stored = store.create(content=b"locked", filename="x.bin")
+    configure_at_rest(key="wrong-files")
+    with pytest.raises(AtRestDecryptError):
+        store.read_bytes(stored.id)
+
+
+def test_files_store_postgres_memory_round_trip():
+    from daari.gateway import postgres_files as pf
+    from daari.gateway.postgres_files import PostgresFileStore
+
+    dsn = f"memory:atr-files-{uuid.uuid4().hex}"
+    configure_at_rest(key="pg-files")
+    store = PostgresFileStore(dsn)
+    stored = store.create(content=b"hidden-file", filename="h.bin")
+    bucket, lock = pf._memory_bucket(dsn)
+    with lock:
+        raw = bucket[stored.id]["content"]
+    assert isinstance(raw, (bytes, bytearray))
+    assert is_sealed(bytes(raw).decode("ascii"))
+    assert b"hidden-file" not in bytes(raw)
+    assert store.read_bytes(stored.id) == b"hidden-file"
+
+
+def test_files_store_postgres_plaintext_compat():
+    from daari.gateway.postgres_files import PostgresFileStore
+
+    dsn = f"memory:atr-files-plain-{uuid.uuid4().hex}"
+    store = PostgresFileStore(dsn)
+    stored = store.create(content=b"old-file", filename="old.bin")
+    configure_at_rest(key="later-files")
+    assert store.read_bytes(stored.id) == b"old-file"
+
+
+def test_batches_store_sqlite_round_trip_and_plaintext_compat(tmp_path: Path):
+    from daari.gateway.batches import BatchStore
+
+    db = tmp_path / "batches.sqlite3"
+    store = BatchStore(path=db)
+    plain = store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "hi"}]}]
+    )
+    configure_at_rest(key="batch-key")
+    enc = store.create(
+        requests=[
+            {"model": "m", "messages": [{"role": "user", "content": "secret-batch"}]}
+        ]
+    )
+
+    import sqlite3
+
+    with sqlite3.connect(db) as conn:
+        rows = {
+            rid: body for rid, body in conn.execute("SELECT id, payload FROM batch_jobs")
+        }
+    assert not is_sealed(rows[plain.id])
+    assert "hi" in rows[plain.id]
+    assert is_sealed(rows[enc.id])
+    assert "secret-batch" not in rows[enc.id]
+
+    got_plain = store.get(plain.id)
+    assert got_plain is not None
+    assert got_plain.items[0].body["messages"][0]["content"] == "hi"
+    store2 = BatchStore(path=db)
+    got_enc = store2.get(enc.id)
+    assert got_enc is not None
+    assert got_enc.items[0].body["messages"][0]["content"] == "secret-batch"
+
+
+def test_batches_store_wrong_key_fails_closed(tmp_path: Path):
+    from daari.gateway.batches import BatchStore
+
+    configure_at_rest(key="right-batch")
+    store = BatchStore(path=tmp_path / "batches.sqlite3")
+    store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "x"}]}]
+    )
+    configure_at_rest(key="wrong-batch")
+    with pytest.raises(AtRestDecryptError):
+        BatchStore(path=tmp_path / "batches.sqlite3")
+
+
+def test_batches_store_postgres_memory_round_trip():
+    from daari.gateway import postgres_batches as pb
+    from daari.gateway.postgres_batches import PostgresBatchStore
+
+    dsn = f"memory:atr-batches-{uuid.uuid4().hex}"
+    configure_at_rest(key="pg-batch")
+    store = PostgresBatchStore(dsn)
+    job = store.create(
+        requests=[
+            {"model": "m", "messages": [{"role": "user", "content": "hidden-batch"}]}
+        ]
+    )
+    bucket, _order, lock = pb._memory_bucket(dsn)
+    with lock:
+        raw = bucket[job.id]["payload"]
+    assert is_sealed(raw)
+    assert "hidden-batch" not in raw
+    got = store.get(job.id)
+    assert got is not None
+    assert got.items[0].body["messages"][0]["content"] == "hidden-batch"
+
+
 def test_doctor_reports_at_rest_per_store():
     settings = Settings()
     off = _check_at_rest_encryption(settings)
     assert off.name == "at_rest_encryption"
     assert off.ok
     assert "off" in off.detail.lower()
+    assert "file" in off.detail.lower()
+    assert "batch" in off.detail.lower()
     settings.security.at_rest_key = "operator-key"
     on = _check_at_rest_encryption(settings)
     assert on.ok
@@ -223,6 +351,8 @@ def test_doctor_reports_at_rest_per_store():
     assert "response" in on.detail.lower()
     assert "request" in on.detail.lower()
     assert "cache" in on.detail.lower()
+    assert "file" in on.detail.lower()
+    assert "batch" in on.detail.lower()
     names = {r.name for r in run_doctor(settings, httpx_client=None)}
     assert "at_rest_encryption" in names
 
@@ -236,3 +366,5 @@ def test_docs_cover_setup_and_rotation():
     assert "at_rest_key_previous" in text
     assert "secret://" in text
     assert "rotation" in text.lower()
+    assert "file" in text.lower()
+    assert "batch" in text.lower()
