@@ -8238,6 +8238,15 @@ Linux/Windows coming soon); dry-run leaves config untouched. Docs:
 [ollama.md](developer/guides/backends/ollama.md). Covered by
 `tests/test_setup.py`.
 
+### Doctor tip for unused d1 / lfm3 on Ollama ([#1985](https://github.com/naveenreddyalka/daari/issues/1985))
+
+<!-- tracking:#1985 -->
+**Status:** Done (2026-10-28). Doctor tips when Ollama/systemone lists `d1` /
+`d1:2b` / `d1-omni` missing from the decisions catalog, or lists `lfm3` while
+`models.l3` is elsewhere; quiet when wired or unreachable. Docs:
+[doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
+`tests/unit/test_doctor_unused_d1_lfm3.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
