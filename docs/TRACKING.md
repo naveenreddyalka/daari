@@ -8247,6 +8247,17 @@ Linux/Windows coming soon); dry-run leaves config untouched. Docs:
 [doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
 `tests/unit/test_doctor_unused_d1_lfm3.py`.
 
+### Recognize lfm3-audio as local ASR/TTS beside Phonon ([#1986](https://github.com/naveenreddyalka/daari/issues/1986))
+
+<!-- tracking:#1986 -->
+**Status:** Done (2026-10-28). Doctor tips when Ollama `/api/tags` lists
+`lfm3-audio` while `asr.base_url` / `tts.base_url` are empty; configured
+`*.model: lfm3-audio` notes the backend honestly without Phonon CC BY-NC or
+Gradium voice-catalog tips. Docs: [tts.md](developer/guides/backends/tts.md),
+[asr.md](developer/guides/backends/asr.md),
+[doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
+`tests/unit/test_doctor_lfm3_audio.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -50,6 +50,13 @@ def test_tts_guide_mentions_ollama_phonon() -> None:
     assert "stream" in text.lower()
 
 
+def test_tts_guide_mentions_lfm3_audio_beside_phonon() -> None:
+    """Dual local speech backends: Phonon + lfm3-audio (#1986)."""
+    text = TTS_GUIDE.read_text(encoding="utf-8")
+    assert "lfm3-audio" in text
+    assert "18" in text or "language" in text.lower()
+
+
 def test_tts_guide_documents_voice_catalog_and_list() -> None:
     text = TTS_GUIDE.read_text(encoding="utf-8")
     assert "0.40.11" in text
