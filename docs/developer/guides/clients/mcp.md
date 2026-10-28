@@ -6,12 +6,16 @@ configured integrations).
 daari speaks JSON-RPC 2.0 at `POST /mcp` over streamable HTTP. When `server.api_key`
 is set, send the same Bearer / `x-api-key` the rest of the daemon expects.
 `initialize` advertises `tools`, `resources`, and `prompts` capabilities;
-`prompts/list` returns an empty array. `resources/list` includes `skill://`
-URIs for on-box skills under `~/.daari/skills/` (flat `*.md` and AAIF
-`*/SKILL.md` packages); `resources/read` returns the markdown body.
-SEP-2640 **Skills over MCP** methods `skills/list` and `skills/get` expose the
-same catalog so clients can discover instructions alongside tools without a
-side channel. Missing skills return a JSON-RPC invalid-params error.
+on protocol ≥ 2026-07-28 it also declares
+`extensions["io.modelcontextprotocol/skills"]` (with an explicit
+`directoryRead` flag) so SEP-2640 clients discover the skills surface.
+`prompts/list` returns an empty array. `resources/list` includes
+`skill://<id>/SKILL.md` (and package supporting files) for on-box skills under
+`~/.daari/skills/` (flat `*.md` and AAIF `*/SKILL.md` packages);
+`resources/read` serves those URIs. SEP-2640 **Skills over MCP** methods
+`skills/list` and `skills/get` return entries with `frontmatter` (parsed YAML)
+and a `resources` manifest (`sha256:` digest + byte size per file). Missing
+skills return a JSON-RPC invalid-params error.
 `GET /v1/daari/stats` (and `daari web-ui serve`) expose `mcp_tool_calls` outcome
 counts and an `mcp_tasks` status summary for local ops without Prometheus.
 Admin ops can list in-flight `tools/call` work via `GET /v1/daari/mcp/activity`

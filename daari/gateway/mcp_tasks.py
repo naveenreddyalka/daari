@@ -18,6 +18,7 @@ from typing import Any, Awaitable, Callable
 from daari.gateway.request_log import log_gateway_event
 
 TASKS_CAPABILITY = "io.modelcontextprotocol/tasks"
+SKILLS_EXTENSION = "io.modelcontextprotocol/skills"
 TASKS_META_KEY = "io.modelcontextprotocol/tasks"
 
 STATUS_WORKING = "working"
@@ -284,6 +285,9 @@ def initialize_capabilities(protocol_version: str) -> dict[str, Any]:
     }
     if protocol_version >= "2026-07-28":
         caps[TASKS_CAPABILITY] = {"listChanged": False}
+        # SEP-2640: clients call skills/list only after observing this (#1979).
+        # directoryRead: false — resources/directory/read not implemented yet.
+        caps.setdefault("extensions", {})[SKILLS_EXTENSION] = {"directoryRead": False}
     return caps
 
 
