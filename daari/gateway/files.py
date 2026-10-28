@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+from daari.security.at_rest import open_bytes, seal_bytes
+
 
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024  # 100 MiB
 
@@ -207,7 +209,7 @@ class FileStore:
             )
         file_id = f"file-{uuid.uuid4().hex}"
         path = self.root / f"{file_id}.bin"
-        path.write_bytes(content)
+        path.write_bytes(seal_bytes(content))
         created_at = int(time.time())
         stored = StoredFile(
             id=file_id,
@@ -264,7 +266,7 @@ class FileStore:
         stored = self.get(file_id, now=now)
         if stored is None or stored.path is None or not stored.path.is_file():
             return None
-        return stored.path.read_bytes()
+        return open_bytes(stored.path.read_bytes())
 
     def read_text(self, file_id: str, *, now: int | None = None) -> str | None:
         raw = self.read_bytes(file_id, now=now)

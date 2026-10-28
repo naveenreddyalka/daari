@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable
 
 from daari.gateway.request_log import log_gateway_event
+from daari.security.at_rest import AtRestDecryptError, loads_json_maybe_sealed, seal_text
 
 STATUS_VALIDATING = "validating"
 STATUS_FAILED = "failed"
@@ -259,6 +260,8 @@ class BatchStore:
                     row[0]: row[1]
                     for row in conn.execute("SELECT id, payload FROM batch_jobs").fetchall()
                 }
+        except AtRestDecryptError:
+            raise
         except Exception:
             return
         for (batch_id,) in order_rows:
@@ -266,7 +269,9 @@ class BatchStore:
             if not raw:
                 continue
             try:
-                job = _job_from_payload(json.loads(raw))
+                job = _job_from_payload(loads_json_maybe_sealed(raw))  # type: ignore[arg-type]
+            except AtRestDecryptError:
+                raise
             except (TypeError, ValueError, json.JSONDecodeError, KeyError):
                 continue
             # Mid-flight items stay pending; retry once on resume (#443).
@@ -276,7 +281,7 @@ class BatchStore:
     def _persist(self, job: BatchJob) -> None:
         if self.path is None:
             return
-        payload = json.dumps(_job_to_payload(job), ensure_ascii=False)
+        payload = seal_text(json.dumps(_job_to_payload(job), ensure_ascii=False))
         try:
             with self._db_lock, self._connect() as conn:
                 conn.execute(

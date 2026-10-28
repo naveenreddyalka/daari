@@ -308,7 +308,7 @@ def _check_at_rest_encryption(settings: Settings) -> CheckResult:
     security = getattr(settings, "security", None)
     key = (getattr(security, "at_rest_key", None) or "").strip()
     previous = (getattr(security, "at_rest_key_previous", None) or "").strip()
-    stores = "response store, request log, L0/L1 disk cache"
+    stores = "response store, request log, L0/L1 disk cache, files, batches"
     if not key:
         return CheckResult(
             name="at_rest_encryption",

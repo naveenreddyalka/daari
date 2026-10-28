@@ -16,6 +16,8 @@ When `security.at_rest_key` is set, **new writes** encrypt:
 | Gateway request log (JSONL / Postgres) | event payload (`_enc` on JSONL) |
 | L0 exact disk cache | cached response value (`v`) |
 | L1 semantic disk cache | `response_json`, `prompt_text` |
+| Files (disk / Postgres) | uploaded file `content` bytes |
+| Batches (SQLite / Postgres) | job `payload` (per-item request/response bodies) |
 
 Out of scope: virtual-key hashes, audit chain, usage ledger.
 

@@ -8202,6 +8202,15 @@ via `secretKeyRef`; empty defaults omit envs. Docs:
 [at-rest-encryption.md](developer/resources/at-rest-encryption.md). Covered by
 `tests/unit/test_helm_at_rest.py`.
 
+### Seal files and batches payload stores at rest ([#1978](https://github.com/naveenreddyalka/daari/issues/1978))
+
+<!-- tracking:#1978 -->
+**Status:** Done (2026-10-28). Files + batches stores seal content/payloads with
+the same AES-GCM `daari-atr1:` envelope as #1958 (both backends); plaintext rows
+remain readable. Doctor + settings copy name the new stores. Docs:
+[at-rest-encryption.md](developer/resources/at-rest-encryption.md). Covered by
+`tests/unit/test_at_rest_encryption.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

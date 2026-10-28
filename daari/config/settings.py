@@ -2540,9 +2540,10 @@ class SecuritySettings(BaseModel):
         default="",
         description=(
             "Customer-held key for AES-GCM encryption of response-store bodies, "
-            "request-log payloads, and L0/L1 disk-cache values. Accepts plaintext "
-            "or secret:// refs. Empty (default) leaves stores plaintext — no "
-            "migration required. Env: DAARI_SECURITY__AT_REST_KEY."
+            "request-log payloads, L0/L1 disk-cache values, files content, and "
+            "batch job payloads. Accepts plaintext or secret:// refs. Empty "
+            "(default) leaves stores plaintext — no migration required. Env: "
+            "DAARI_SECURITY__AT_REST_KEY."
         ),
     )
     at_rest_key_previous: str = Field(
