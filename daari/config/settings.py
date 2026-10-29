@@ -1937,6 +1937,15 @@ class McpServerSettings(BaseModel):
             "Independent of key-family ``mcp`` TPM; both counters apply (#1620)."
         ),
     )
+    timeout_seconds: float = Field(
+        default=0.0,
+        ge=0,
+        description=(
+            "Per-server HTTP timeout for tools/list and tools/call (#1995). "
+            "0 keeps the default 30s client timeout and the module list-pagination "
+            "deadline; a positive value sets both for this server."
+        ),
+    )
 
 
 class McpServerPolicySettings(BaseModel):
@@ -2267,11 +2276,15 @@ class IntegrationsSettings(BaseModel):
             "token/triggers; optional rpm/tpm (0=unlimited) per-server egress "
             "ceilings on tools/call and tools/list (429 + Retry-After + "
             "X-RateLimit-Scope mcp_server:<id>; independent of key-family mcp; "
-            "both apply) (#1620). Per-server rpm/tpm are editable via GET/PATCH "
-            "/v1/daari/config ownership (config editor; id + rpm/tpm only; secrets "
-            "omitted) (#1659). Opt-in OBO (#1319): auth_type=oauth2_token_exchange "
-            "with token_exchange_endpoint, client_id, client_secret; optional "
-            "audience, scopes, subject_token_type (default access_token)."
+            "both apply) (#1620). Optional timeout_seconds (0=default) sets the "
+            "per-server HTTP timeout for tools/list and tools/call and the "
+            "tools/list pagination deadline; 0 keeps the 30s client timeout and "
+            "the module list deadline (#1995). Per-server rpm/tpm are editable "
+            "via GET/PATCH /v1/daari/config ownership (config editor; id + rpm/tpm "
+            "only; secrets omitted) (#1659). Opt-in OBO (#1319): "
+            "auth_type=oauth2_token_exchange with token_exchange_endpoint, "
+            "client_id, client_secret; optional audience, scopes, "
+            "subject_token_type (default access_token)."
         ),
     )
     # MCP ingress tool governance: global default, then per-team (by team name);
