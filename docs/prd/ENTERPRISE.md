@@ -11,28 +11,33 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-28 pm)
+## Where daari stands (verified in-tree, 2026-10-29)
 
-**Loop velocity.** Morning Portkey/llama.cpp board still open (rows 237–241).
-LFM3 L3 recipe + unused d1/lfm3 doctor tip shipped same day (PRs #2000 /
-#2001 → rows 233–234). Open ride-along is now `lfm3-audio` (235),
-`lfm3-vl` (246), Linux llama.cpp guide (241), plus the P3 honesty tail.
+**Loop velocity.** The whole Portkey-parity board shipped overnight: per-rule
+denial messages (#2009), per-server MCP timeouts (#2010), request-fact
+signals + overrides (#2011), `lfm3-audio` speech recognition (#2008) — rows
+235/237–239 Shipped within a day of filing, self-fenced in gateway-flow.
+Open ride-along: LiteLLM-1.109 board (242–245), `lfm3-vl` (246), llama.cpp
+guide (241), team Prom label (240), plus the P3 honesty tail.
 
-**Outward.** **LiteLLM v1.109.0-dev.1** (10-28, prerelease; 700+ PRs) is the
-real delta since morning: mid-stream fallback continuation, `LITELLM_OFFLINE_MODE`,
-`agent_access_default_deny`, `model_info.pricing_provider`, Admin Chat UI.
-GA floor stays **1.106.5**. Unchanged: llama.cpp v0.8.0 (realtime + `/tts`,
-LFM3/d1 on Linux), Ollama 0.40.12 Apple-only LFM3/d1, Portkey/Prisma AIRS
-v2.31.0 Signals/custom denials/MCP timeouts/Prom workspace label. OpenAI
-Agents **scheduled automations** (`/v1/agents/automations`, 10-23) and
-Anthropic API version `2026-10-21` stay demand/watch. Flat: Kong, vLLM
-0.32.0, OpenRouter S3 IAM destinations (watch).
+**Outward.** **Ollama 0.40.13** (10-28) is the delta: LFM3 — including TTS in
+`lfm3-audio` and `lfm3-omni` — now runs on **Linux and Windows**, killing the
+Apple-only caveat daari's recipe copy still carries. **LiteLLM GA floor moves
+to 1.106.6** (gzip scoping + off-loop compression backport — parity daari
+shipped first in #1710); 1.108.0-rc.1 is a parity patch, watch. OpenAI 10-28
+adds only a ChatGPT-subscriber API-credit perk (no gateway surface).
+OpenRouter 10-29 adds private-provider CRUD (their SaaS BYO-GPU surface —
+watch). Flat: Portkey v2.31.0, Anthropic (10-23), Kong, vLLM 0.32.0,
+llama.cpp since v0.8.0, certifi still ships emSign.
 
-**Inward theme: ride LiteLLM 1.109 where daari already owns the levers.**
-Stream path keeps partials (#973) but does not continue mid-answer on the
-next tier; MCP fail-closed exists but multi_agent has no grant analog;
-`pricing.models` cannot alias another catalog row; compare-litellm stops at
-1.106/1.107. Vision LFM3 has no setup recipe beside text L3.
+**Inward theme: make yesterday's signals a real operator surface, and stop
+telling Linux buyers LFM3 is Apple-only.** `SignalOverrideRule.match` is an
+unvalidated free dict — typo keys and non-bucket values make rules silently
+dead; `signal_overrides` is absent from the config-editor ownership allowlist
+(config.yaml + restart only); the new `daari_signal_override_total{rule}`
+series has no Grafana panel. LFM3 notes in `setup/models.py`, `--lfm3` help,
+and `ollama.md` still say "Apple-first / coming soon"; the speech doctor
+ignores `lfm3-omni`.
 
 ---
 
@@ -40,19 +45,23 @@ next tier; MCP fail-closed exists but multi_agent has no grant analog;
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 242 | compare-litellm: 1.109.0-dev.1 watch; GA floor 1.106.5 | 2 | 1 | LiteLLM release notes | Honest prerelease bar; on-box stance clear | Filed [#2002](https://github.com/naveenreddyalka/daari/issues/2002) |
+| 247 | LFM3 notes ride Ollama 0.40.13 (Linux/Windows GA, omni TTS) | 3 | 1 | Ollama release notes | Linux fleets get the local tier the copy denies | Filed [#2012](https://github.com/naveenreddyalka/daari/issues/2012) |
+| 248 | Validate `signal_overrides` match keys + bucket values | 3 | 1 | Portkey Signals UI validation | Dead rules fail loud in on-box config | Filed [#2013](https://github.com/naveenreddyalka/daari/issues/2013) |
+| 249 | Config ownership + PATCH for `routing.signal_overrides` | 3 | 2 | LiteLLM / Portkey control planes | Tune routing live, no cloud control plane | Filed [#2014](https://github.com/naveenreddyalka/daari/issues/2014) |
+| 250 | Grafana panel for `daari_signal_override_total` by rule | 2 | 1 | Portkey analytics tab | Rule visibility scraped next to the router | Filed [#2015](https://github.com/naveenreddyalka/daari/issues/2015) |
+| 242 | compare-litellm: 1.109.0-dev.1 watch; GA floor 1.106.6 | 2 | 1 | LiteLLM release notes | Honest prerelease bar; on-box stance clear | Filed [#2002](https://github.com/naveenreddyalka/daari/issues/2002) |
 | 243 | Mid-stream fallback continuation after upstream death | 4 | 3 | LiteLLM 1.109 mid-stream fallback | Continue on next local/L6 hop; no SaaS proxy | Filed [#2003](https://github.com/naveenreddyalka/daari/issues/2003) |
 | 244 | Opt-in `agent_access_default_deny` for multi_agent keys | 4 | 2 | LiteLLM `agent_access_default_deny` | Same trust floor as MCP grants, on-box | Filed [#2004](https://github.com/naveenreddyalka/daari/issues/2004) |
 | 245 | Optional `pricing_provider` / alias_of per model rates | 3 | 2 | LiteLLM `model_info.pricing_provider` | FinOps truth for aliases without cloud cost-map | Filed [#2005](https://github.com/naveenreddyalka/daari/issues/2005) |
 | 246 | Optional `lfm3-vl` multimodal setup recipe + doctor tip | 3 | 2 | Ollama `ollama run lfm3-vl` | Vision agent turns stay local | Filed [#2006](https://github.com/naveenreddyalka/daari/issues/2006) |
-| 237 | Per-rule custom guardrail denial messages | 3 | 1 | Portkey v2.31.0 custom errors | Operator-owned denial copy, on-box | Filed [#1994](https://github.com/naveenreddyalka/daari/issues/1994) |
-| 238 | Per-server MCP egress request timeout | 3 | 1 | Portkey per-integration timeouts | Tune each local hop; honest breakers | Filed [#1995](https://github.com/naveenreddyalka/daari/issues/1995) |
-| 239 | Request-fact signals in `daari_meta` + opt-in overrides | 4 | 3 | Portkey Signals beta | Facts already free on-box | Filed [#1996](https://github.com/naveenreddyalka/daari/issues/1996) |
+| 237 | Per-rule custom guardrail denial messages | 3 | 1 | Portkey v2.31.0 custom errors | Operator-owned denial copy, on-box | Shipped (#2009) |
+| 238 | Per-server MCP egress request timeout | 3 | 1 | Portkey per-integration timeouts | Tune each local hop; honest breakers | Shipped (#2010) |
+| 239 | Request-fact signals in `daari_meta` + opt-in overrides | 4 | 3 | Portkey Signals beta | Facts already free on-box | Shipped (#2011) |
 | 240 | Opt-in `team` label on requests/errors Prom series | 3 | 2 | Portkey `PROMETHEUS_EXTRA_LABELS` | Per-team traffic scraped on-box | Filed [#1997](https://github.com/naveenreddyalka/daari/issues/1997) |
 | 241 | llama.cpp v0.8.0 local-tier guide + landscape refresh | 2 | 1 | llama.cpp release notes | Linux path to LFM3/d1 today | Filed [#1998](https://github.com/naveenreddyalka/daari/issues/1998) |
 | 233 | Optional LFM3 L3 setup recipe (256K local agent tier) | 3 | 2 | Ollama `ollama run lfm3` | One setup prompt, on-box | Shipped (#2000) |
 | 234 | Doctor tip when Ollama serves d1/lfm3 but unused | 3 | 1 | — (ops honesty) | Point at local win before L6 | Shipped (#2001) |
-| 235 | Recognize `lfm3-audio` as local ASR/TTS beside Phonon | 3 | 2 | Ollama speech / Phonon | 18-language local speech | Filed [#1986](https://github.com/naveenreddyalka/daari/issues/1986) |
+| 235 | Recognize `lfm3-audio` as local ASR/TTS beside Phonon | 3 | 2 | Ollama speech / Phonon | 18-language local speech | Shipped (#2008) |
 | 236 | Prometheus + stats for decisions L0 cache hits | 2 | 1 | LiteLLM spend / cache tabs | Local judgment reuse scrapeable | Filed [#1987](https://github.com/naveenreddyalka/daari/issues/1987) |
 | 225 | `daari_schema_ok` HELP + Grafana cover Postgres skew | 2 | 1 | — (ops honesty) | Gauge right; text lagged | Filed [#1966](https://github.com/naveenreddyalka/daari/issues/1966) |
 | 226 | Prometheus counter when Phonon coerces `response_format` | 2 | 1 | OpenRouter transform metrics | Local scrape next to TTS | Filed [#1967](https://github.com/naveenreddyalka/daari/issues/1967) |
@@ -80,21 +89,30 @@ next tier; MCP fail-closed exists but multi_agent has no grant analog;
 | 136–197 | 10-18 → 10-24 protocol/FinOps/HA/voice waves | 2–5 | 1–3 | LiteLLM / Portkey / Kong / vLLM / OpenAI | Shipped | Shipped |
 
 Watch rows (do not file yet): **`LITELLM_OFFLINE_MODE` analog** (one switch for
-outbound fetches — file after pricing alias lands); LiteLLM Admin Chat UI /
-Lens (non-goal); llama.cpp `/v1/realtime` + `POST /tts` (pairs with row-8
-Realtime/WS); llama.cpp deferred tools + `tool_reference`; Portkey Signals
-classifier mode (after row 239); Portkey claim-based JWT; OpenRouter S3/IAM
-destinations; OpenAI `/agents/automations` passthrough; Prisma AIRS Agent
-Identity; Claude-on-GCP IAM egress (new dep — human sign-off); Anthropic
-hosted `/v1/skills` proxy; Claude Tag beta (non-goal); Open Responses WS;
-Anthropic OTel export beta; Prometheus exemplars + `gen_ai.agent.*`; LiteLLM
-ID-JAG / OAuth-delegate; Portkey WIF; SCIM + multi-issuer SSO; Kong Skills/A2A;
-OpenRouter Private Endpoints L6 recipe; certifi emSign drop; llama.cpp `mtmd`;
-Ollama LFM3/d1 Linux/Windows GA; MCP SEP-3415 / SEP-3392 when merged.
+outbound fetches — file after pricing alias lands); per-key/team-scoped
+`signal_overrides` (after rows 248–249 prove out); `lfm3-omni` recipe / omni
+routing matrix (after `lfm3-vl` row 246 merges); LiteLLM 1.108.0-rc.1 (parity
+patch) + Admin Chat UI / Lens (non-goal); llama.cpp `/v1/realtime` + `POST
+/tts` (pairs with row-8 Realtime/WS); llama.cpp deferred tools +
+`tool_reference`; Portkey claim-based JWT; OpenRouter private-provider CRUD
+(10-29, SaaS BYO-GPU) + S3/IAM destinations; OpenAI `/agents/automations`
+passthrough; Prisma AIRS Agent Identity; Claude-on-GCP IAM egress (new dep —
+human sign-off); Anthropic hosted `/v1/skills` proxy; Claude Tag beta
+(non-goal); Open Responses WS; Anthropic OTel export beta; Prometheus
+exemplars + `gen_ai.agent.*`; LiteLLM ID-JAG / OAuth-delegate; Portkey WIF;
+SCIM + multi-issuer SSO; Kong Skills/A2A; OpenRouter Private Endpoints L6
+recipe; certifi emSign drop (still ships 2026.10.23); MCP SEP-3415 /
+SEP-3392 / Skills-spec-to-beta links when merged; Ollama d1 Linux/Windows GA
+(0.40.13 names LFM3 only).
 
-Verified fine this run — don't re-audit: LFM3 text recipe + unused tip in-tree
-(#2000/#2001); Portkey-parity gaps still accurately rows 237–241; d1 catalog +
-SEP-2640 + sealed stores + Helm key knobs merged; stream partials/#973 is
+Verified fine this run — don't re-audit: gzip already off-loop
+(`asyncio.to_thread`, 16 KiB floor, SSE/pre-encoded exempt — LiteLLM 1.106.6
+is parity daari shipped in #1710); Portkey Signals **classifier mode**
+substantially covered (local `routing.decision_classifier` refines
+`profile.category` *before* `_apply_signal_overrides` reads it — kill that
+watch row); Ollama facade serves `/api/version`; tts/asr docs platform-honest
+(gap is recipe/CLI/ollama.md copy only, row 247); the 10-28 wave self-fenced
+in `tests/integration/test_gateway_flow.py`; stream partials/#973 is
 incomplete-signal only (continuation is the gap, row 243); MCP
 `require_key_access_defined` is the template for row 244; `pricing.models`
 overrides work (alias is the gap, row 245).
@@ -105,19 +123,29 @@ overrides work (alias is the gap, row 245).
 
 1. **Ride LiteLLM 1.109 where daari owns the levers** — compare watch (row
    242), mid-stream continuation (243), agent grant deny (244), pricing
-   alias (245).
-2. **Finish the Ollama 0.40.12 multimodal ride-along** — `lfm3-audio` (235),
-   `lfm3-vl` (246); Linux operators via llama.cpp guide (241).
-3. **Match Portkey v2.31.0 where daari already owns the data** — rows
-   237–240.
-4. **Pay down the observability honesty tail** — rows 225–226, 236, #1981,
-   TTS/voices/skills P3s.
+   alias (245), then the `LITELLM_OFFLINE_MODE` analog watch.
+2. **Make signals an operator surface** — validation (248), config-editor
+   ownership (249), Grafana panel (250); then per-key/team binding (watch).
+3. **Finish the Ollama 0.40.13 multimodal ride-along** — platform notes +
+   omni TTS (247), `lfm3-vl` (246), llama.cpp guide (241); omni recipe after.
+4. **Pay down the observability honesty tail** — row 240, rows 225–226, 236,
+   #1981, TTS/voices/skills P3s.
 5. **Finish tenancy, then demand-gated protocols** — rows 62–67, hot-reload
-   (6); row 8 (Realtime closer via llama.cpp) + parked row 7.
+   (6); row 8 (Realtime closer via llama.cpp + Portkey GPT Live) + parked
+   row 7.
 
 ---
 
 ## Changelog
+
+- **2026-10-29 (signals become an operator surface; LFM3 goes Linux)** —
+  Marked rows 235/237–239 Shipped (#2008–#2011, merged within a day,
+  self-fenced). Ollama **0.40.13** ships LFM3 incl. `lfm3-audio`/`lfm3-omni`
+  TTS on Linux/Windows — filed row 247 (stale Apple-only copy + omni doctor).
+  Filed rows 248–250 hardening yesterday's signals ship (match validation,
+  config ownership, Grafana panel). LiteLLM GA floor → **1.106.6** (gzip
+  backport = daari #1710 parity, verified off-loop). Killed the Signals
+  classifier-mode watch row (local classifier already feeds overrides).
 
 - **2026-10-28 pm (ride LiteLLM 1.109-dev; finish LFM3 text path)** — Marked
   rows 233–234 Shipped (#2000/#2001). LiteLLM **v1.109.0-dev.1** (prerelease)
