@@ -1,7 +1,7 @@
 # Competitive Landscape — daari
 
 > **Status:** Draft  
-> **Last updated:** 2026-06-15  
+> **Last updated:** 2026-10-29  
 > **Related:** [PRD](../prd/PRD.md) · [Plan review](../prd/PLAN-REVIEW.md)
 
 ---
@@ -144,6 +144,14 @@ Closest stack today is **DIY**: LiteLLM + Ollama + shell scripts + manual Cursor
 
 ---
 
+## Dated landscape notes
+
+| Date | Note |
+|------|------|
+| **2026-10-28** | [llama.cpp v0.8.0](https://github.com/ggml-org/llama.cpp/releases/tag/v0.8.0) — first semver release line. LFM3 (text/VL/audio/omni) + LiquidAI d1-2B/d1-omni run on llama-server everywhere; new `/v1/realtime` + `POST /tts` (watch-only for daari). Operator guide: [llamacpp-local-tier.md](../developer/guides/configuration/llamacpp-local-tier.md). |
+| **2026-10-27** | [Ollama 0.40.12](https://github.com/ollama/ollama/releases/tag/v0.40.12) ships LFM3 + d1:2b **Apple-only** (Linux/Windows "coming soon"). |
+| **2026-10-28** | [Ollama 0.40.13](https://github.com/ollama/ollama/releases/tag/v0.40.13) extends LFM3 (incl. audio/omni) to Linux and Windows. |
+
 ## References
 
 - LiteLLM: https://github.com/BerriAI/litellm  
@@ -152,3 +160,5 @@ Closest stack today is **DIY**: LiteLLM + Ollama + shell scripts + manual Cursor
 - GPTCache: https://github.com/zilliztech/GPTCache  
 - Bifrost: https://github.com/maximhq/bifrost  
 - Continue: https://github.com/continuedev/continue  
+- llama.cpp: https://github.com/ggml-org/llama.cpp  
+

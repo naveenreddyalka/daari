@@ -36,10 +36,12 @@ models:
 ```
 
 Same shape works for llama.cpp server (`--port 8080`) and LM Studio
-(`http://127.0.0.1:1234`). Capability tags on `models.capabilities` apply to
-the slot model the same way they apply to Ollama models: a tools request can
-use L4 when the vLLM model declares `tools`, even if the default Ollama L4
-tag does not.
+(`http://127.0.0.1:1234`). For llama.cpp **v0.8.0+** release pinning, LFM3/d1
+Linux notes, and watch-only `/v1/realtime` + `/tts`, see
+[llama.cpp local tier](llamacpp-local-tier.md). Capability tags on
+`models.capabilities` apply to the slot model the same way they apply to
+Ollama models: a tools request can use L4 when the vLLM model declares
+`tools`, even if the default Ollama L4 tag does not.
 
 Health: `kind: openai` and `kind: mlx` probe `/v1/models`. `kind: ollama`
 (default) still probes `/api/version`.
