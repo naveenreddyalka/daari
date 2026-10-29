@@ -25,7 +25,7 @@
 | `models` / `ollama` / `mlx` | Local backends |
 | `asr` | Local speech-to-text; `frontier_fallback` defaults off ([guide](../backends/asr.md)) |
 | `tts` | Local text-to-speech (`POST /v1/audio/speech`); empty `base_url` → 501 ([guide](../backends/tts.md)) |
-| `routing.local_pool` | Multi-host pool; `kind: openai` for vLLM / llama.cpp / LM Studio ([guide](vllm-local-tier.md)) |
+| `routing.local_pool` | Multi-host pool; `kind: openai` for vLLM / llama.cpp / LM Studio ([vLLM](vllm-local-tier.md), [llama.cpp v0.8+](llamacpp-local-tier.md)) |
 | `cache` | L0/L1, disk\|redis |
 | `routing` | prefer, confidence, caps |
 | `frontier` | L6 providers, budgets, PII |
@@ -37,4 +37,4 @@ Full table: [Config reference](../../reference/config.md) (generated).
 
 ## Next
 
-→ [Project profiles](project-profiles.md) · [Auth and keys](auth-and-keys.md) · [vLLM / llama.cpp local tier](vllm-local-tier.md)
+→ [Project profiles](project-profiles.md) · [Auth and keys](auth-and-keys.md) · [vLLM local tier](vllm-local-tier.md) · [llama.cpp local tier](llamacpp-local-tier.md)

@@ -8305,6 +8305,17 @@ stay team-less. Docs: [metrics-prometheus.md](developer/guides/observability/met
 [config.md](developer/reference/config.md). Covered by
 `tests/unit/test_team_metrics.py`.
 
+### llama.cpp v0.8.0 local-tier guide + landscape refresh ([#1998](https://github.com/naveenreddyalka/daari/issues/1998))
+
+<!-- tracking:#1998 -->
+**Status:** Done (2026-10-29). New
+[llamacpp-local-tier.md](developer/guides/configuration/llamacpp-local-tier.md)
+pins llama.cpp v0.8.0, `llama-server` + daari `kind: openai` config, LFM3/d1
+vs Ollama 0.40.12 Apple-only / 0.40.13 Linux notes, and watch-only
+`/v1/realtime` + `/tts`. Landscape dated row in
+[04-competitive-landscape.md](discovery/04-competitive-landscape.md).
+Covered by `tests/unit/test_llamacpp_local_tier_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
