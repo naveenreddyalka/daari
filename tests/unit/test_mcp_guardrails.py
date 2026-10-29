@@ -203,3 +203,48 @@ async def test_egress_without_guardrails_is_unchanged(monkeypatch):
     (provider,) = build_mcp_providers([{"id": "demo", "url": "http://mcp.test/rpc"}])
     response = await provider.execute(_request("@mcp:demo get_key rm -rf /"))
     assert AWS_KEY in response.content
+
+
+class TestPerRuleDenialMessage:
+    def test_egress_block_uses_rule_message(self, tmp_path):
+        settings = _settings(
+            tmp_path,
+            output_rules=[
+                GuardrailRuleSettings(
+                    name="no_leak",
+                    pattern="leak",
+                    action="block",
+                    message="Tool result withheld: contact security@",
+                )
+            ],
+            block_message="withheld",
+        )
+        guard = McpGuardrails.from_settings(settings, transport="jsonrpc")
+        payload = {"content": [{"type": "text", "text": "leak!"}]}
+        rewritten, result = guard.check_tool_result("route", payload)
+        assert result.blocked
+        assert rewritten == {
+            "content": [
+                {"type": "text", "text": "Tool result withheld: contact security@"}
+            ],
+            "isError": True,
+        }
+
+    def test_ingress_block_exposes_rule_message(self, tmp_path):
+        settings = _settings(
+            tmp_path,
+            input_rules=[
+                GuardrailRuleSettings(
+                    name="no_rm_rf",
+                    pattern=r"rm\s+-rf",
+                    action="block",
+                    message="Destructive shell commands are not allowed.",
+                )
+            ],
+            block_message="withheld",
+        )
+        guard = McpGuardrails.from_settings(settings, transport="jsonrpc")
+        result = guard.check_arguments("shell", {"cmd": "rm -rf /"})
+        assert result.blocked
+        assert result.block_message == "Destructive shell commands are not allowed."
+        assert guard.denial_text(result) == "Destructive shell commands are not allowed."

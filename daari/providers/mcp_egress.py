@@ -159,9 +159,17 @@ class McpEgressProvider(HttpIntegrationProvider):
             await self._http.aclose()
         self._http = None
 
-    def _guardrail_blocked(self, request: InternalRequest, tool: str, rule: str) -> InternalResponse:
+    def _guardrail_blocked(
+        self,
+        request: InternalRequest,
+        tool: str,
+        rule: str,
+        *,
+        denial: str | None = None,
+    ) -> InternalResponse:
+        content = denial or f"{self.id} call to {tool} blocked by guardrail {rule}."
         return InternalResponse(
-            content=f"{self.id} call to {tool} blocked by guardrail {rule}.",
+            content=content,
             model=request.model,
             daari_meta=DaariMeta(
                 tier=self.tier,
@@ -489,7 +497,12 @@ class McpEgressProvider(HttpIntegrationProvider):
         headers = {**headers, "Mcp-Method": "tools/call", "Mcp-Name": tool}
         checked = self.guardrails.check_arguments(tool, arguments)
         if checked.blocked:
-            return self._guardrail_blocked(request, tool, first_rule(checked))
+            rule = first_rule(checked)
+            denial = self.guardrails.denial_text(
+                checked,
+                legacy=f"{self.id} call to {tool} blocked by guardrail {rule}.",
+            )
+            return self._guardrail_blocked(request, tool, rule, denial=denial)
         payload = {
             "jsonrpc": "2.0",
             "id": 1,

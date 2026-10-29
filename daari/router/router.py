@@ -1032,7 +1032,8 @@ class Router:
             if inbound.hits:
                 self._apply_guardrail_hits(inbound.hits, warning=inbound.warning)
             if inbound.blocked:
-                policy.refusal = blocked_response(request, self.guardrails.block_message)
+                denial = getattr(inbound, "block_message", None) or self.guardrails.block_message
+                policy.refusal = blocked_response(request, denial)
                 policy.refusal_tier = "guardrail"
                 return policy
             policy.warning = inbound.warning or policy.warning
@@ -1043,7 +1044,11 @@ class Router:
                 if tool_scan.hits:
                     self._apply_guardrail_hits(tool_scan.hits, warning=tool_scan.warning)
                 if tool_scan.blocked:
-                    policy.refusal = blocked_response(request, self.guardrails.block_message)
+                    denial = (
+                        getattr(tool_scan, "block_message", None)
+                        or self.guardrails.block_message
+                    )
+                    policy.refusal = blocked_response(request, denial)
                     policy.refusal_tier = "guardrail"
                     return policy
                 policy.warning = tool_scan.warning or policy.warning

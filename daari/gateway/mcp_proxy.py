@@ -369,6 +369,10 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
     input_result = guardrails.check_arguments(name, arguments)
     if input_result.blocked:
         rule = first_rule(input_result)
+        denial = guardrails.denial_text(
+            input_result,
+            legacy=f"Tool call blocked by guardrail {rule}: {name}",
+        )
         log_gateway_event(
             "mcp_openapi_proxy_guardrail",
             {"spec_id": spec_id, "tool": name, "rule": rule, "direction": "input"},
@@ -377,7 +381,7 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
         return _error(
             403,
             "guardrail_blocked",
-            f"Tool call blocked by guardrail {rule}: {name}",
+            denial,
         )
 
     match = next((tool for tool in tools if tool["name"] == name), None)

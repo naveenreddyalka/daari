@@ -63,6 +63,8 @@ class GuardrailResult:
     response: InternalResponse | None = None
     # Scrubbed plain text when input deny rules use action=redact (#1059).
     rewritten: str | None = None
+    # Effective denial text when blocked (per-rule message or engine default) (#1994).
+    block_message: str | None = None
 
     @property
     def tripped(self) -> bool:
@@ -83,6 +85,8 @@ class GuardrailRule:
     model: str | None = None
     on_error: OnError = "warn"
     timeout_seconds: float | None = None
+    # Optional custom denial text when action=block (#1994).
+    message: str | None = None
 
 
 @dataclass
@@ -101,6 +105,20 @@ class GuardrailEngine:
     # Settings + optional sync httpx client for kind=decision (#1589).
     settings: Any = None
     decision_client: Any = None
+
+    def denial_message(self, rule: GuardrailRule | None = None) -> str:
+        """Effective refusal text: non-empty rule.message, else engine block_message."""
+        if rule is not None:
+            custom = getattr(rule, "message", None)
+            if isinstance(custom, str) and custom.strip():
+                return custom.strip()
+        return self.block_message or "Request blocked by daari guardrail."
+
+    def _mark_blocked(self, result: GuardrailResult, rule: GuardrailRule | None = None) -> str:
+        message = self.denial_message(rule)
+        result.blocked = True
+        result.block_message = message
+        return message
 
     def _decision_timeout(self, rule: GuardrailRule) -> float:
         raw = getattr(rule, "timeout_seconds", None)
@@ -252,6 +270,7 @@ class GuardrailEngine:
                 result.warning = result.warning or inbound.warning
             if inbound.blocked:
                 result.blocked = True
+                result.block_message = inbound.block_message or self.denial_message()
                 return result
             rewritten, outbound = self.check_output_text(text)
             if outbound.hits:
@@ -259,6 +278,7 @@ class GuardrailEngine:
                 result.warning = result.warning or outbound.warning
             if outbound.blocked:
                 result.blocked = True
+                result.block_message = outbound.block_message or self.denial_message()
                 return result
             if rewritten != text:
                 request.messages[index] = message.model_copy(update={"content": rewritten})
@@ -297,7 +317,7 @@ class GuardrailEngine:
                 kind="max_length",
             )
             result.hits.append(hit)
-            result.blocked = True
+            self._mark_blocked(result)
             return result
 
         for rule in self.input_rules:
@@ -313,7 +333,7 @@ class GuardrailEngine:
                 )
                 result.hits.append(hit)
                 if rule.action == "block":
-                    result.blocked = True
+                    self._mark_blocked(result, rule)
                     return result
                 if rule.action == "warn":
                     result.warning = f"guardrail:{rule.name}"
@@ -329,7 +349,7 @@ class GuardrailEngine:
                     continue
                 result.hits.append(hit)
                 if hit.action == "block":
-                    result.blocked = True
+                    self._mark_blocked(result, rule)
                     return result
                 if hit.action == "warn":
                     suffix = ":backend" if hit.detail.startswith("backend:") else ""
@@ -346,7 +366,7 @@ class GuardrailEngine:
                 )
                 result.hits.append(hit)
                 if self.injection_action == "block":
-                    result.blocked = True
+                    self._mark_blocked(result)
                     return result
                 if self.injection_action == "warn":
                     result.warning = "guardrail:prompt_injection"
@@ -368,7 +388,7 @@ class GuardrailEngine:
                 continue
             result.hits.append(hit)
             if hit.action == "block":
-                result.blocked = True
+                self._mark_blocked(result, rule)
                 return result
             if hit.action == "warn":
                 suffix = ":backend" if hit.detail.startswith("backend:") else ""
@@ -413,8 +433,7 @@ class GuardrailEngine:
                         )
                         result.hits.append(hit)
                         if rule.action == "block":
-                            result.blocked = True
-                            return self.block_message, result
+                            return self._mark_blocked(result, rule), result
                         if rule.action == "warn":
                             result.warning = f"guardrail:secret:{kind}"
                         if rule.action == "redact":
@@ -431,8 +450,7 @@ class GuardrailEngine:
                     )
                     result.hits.append(hit)
                     if rule.action == "block":
-                        result.blocked = True
-                        return self.block_message, result
+                        return self._mark_blocked(result, rule), result
                     if rule.action == "warn":
                         result.warning = "guardrail:pii"
                     if rule.action == "redact":
@@ -447,8 +465,7 @@ class GuardrailEngine:
                 )
                 result.hits.append(hit)
                 if rule.action == "block":
-                    result.blocked = True
-                    return self.block_message, result
+                    return self._mark_blocked(result, rule), result
                 if rule.action == "warn":
                     result.warning = f"guardrail:{rule.name}"
                 if rule.action == "redact":
@@ -459,8 +476,7 @@ class GuardrailEngine:
                     continue
                 result.hits.append(hit)
                 if hit.action == "block":
-                    result.blocked = True
-                    return self.block_message, result
+                    return self._mark_blocked(result, rule), result
                 if hit.action == "warn":
                     suffix = ":backend" if hit.detail.startswith("backend:") else ""
                     result.warning = f"guardrail:{rule.name}{suffix}"
@@ -479,8 +495,7 @@ class GuardrailEngine:
                 continue
             result.hits.append(hit)
             if hit.action == "block":
-                result.blocked = True
-                return self.block_message, result
+                return self._mark_blocked(result, rule), result
             if hit.action == "warn":
                 suffix = ":backend" if hit.detail.startswith("backend:") else ""
                 result.warning = f"guardrail:{rule.name}{suffix}"
@@ -627,6 +642,13 @@ def _rule_from_settings(row: Any) -> GuardrailRule:
             timeout_seconds = max(0.1, float(timeout_raw))
         except (TypeError, ValueError):
             timeout_seconds = None
+    raw_message = getattr(row, "message", None)
+    message: str | None
+    if isinstance(raw_message, str):
+        stripped = raw_message.strip()
+        message = stripped[:512] if stripped else None
+    else:
+        message = None
     return GuardrailRule(
         name=row.name,
         pattern=row.pattern,
@@ -637,6 +659,7 @@ def _rule_from_settings(row: Any) -> GuardrailRule:
         model=getattr(row, "model", None),
         on_error=on_error,
         timeout_seconds=timeout_seconds,
+        message=message,
     )
 
 
@@ -736,7 +759,11 @@ def apply_endpoint_input_policy(
     if result.hits or result.warning:
         _record_endpoint_guardrail_hits(result.hits, warning=result.warning, metrics=metrics)
     if result.blocked:
-        message = engine.block_message or "Request blocked by daari guardrail."
+        message = (
+            result.block_message
+            or engine.denial_message()
+            or "Request blocked by daari guardrail."
+        )
         return EndpointTextPolicy(
             text=text,
             blocked=True,
@@ -765,7 +792,12 @@ def apply_endpoint_output_policy(
     if result.hits or result.warning:
         _record_endpoint_guardrail_hits(result.hits, warning=result.warning, metrics=metrics)
     if result.blocked:
-        message = engine.block_message or "Request blocked by daari guardrail."
+        message = (
+            result.block_message
+            or rewritten
+            or engine.denial_message()
+            or "Request blocked by daari guardrail."
+        )
         return EndpointTextPolicy(
             text=rewritten or message,
             blocked=True,

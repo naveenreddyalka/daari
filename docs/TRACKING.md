@@ -8258,6 +8258,18 @@ Gradium voice-catalog tips. Docs: [tts.md](developer/guides/backends/tts.md),
 [doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
 `tests/unit/test_doctor_lfm3_audio.py`.
 
+### Per-rule custom denial messages ([#1994](https://github.com/naveenreddyalka/daari/issues/1994))
+
+<!-- tracking:#1994 -->
+**Status:** Done (2026-10-29). Optional `message` (≤512 chars) on each
+guardrail rule; when a block hits, that text replaces engine
+`block_message` on chat, modality endpoints, and MCP ingress/egress.
+Empty/unset falls back as before; warn/redact unchanged. Docs:
+[guardrails.md](developer/guides/features/guardrails.md). Covered by
+`tests/unit/test_guardrails.py`, `tests/unit/test_guardrails_endpoints.py`,
+`tests/unit/test_mcp_guardrails.py`, and
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

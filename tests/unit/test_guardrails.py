@@ -327,3 +327,86 @@ class TestScanToolResults:
             metrics.guardrails.get("block:secret") == 1
             or metrics.guardrails.get("block:deny") == 1
         )
+
+
+class TestPerRuleDenialMessage:
+    """Per-rule custom denial text (#1994)."""
+
+    def test_output_block_uses_rule_message(self):
+        engine = GuardrailEngine(
+            enabled=True,
+            block_message="engine default",
+            output_rules=[
+                GuardrailRule(
+                    name="no_leak",
+                    pattern=r"secret",
+                    action="block",
+                    message="Remove secrets and retry.",
+                )
+            ],
+        )
+        rewritten, result = engine.check_output_text("has a secret here")
+        assert result.blocked
+        assert rewritten == "Remove secrets and retry."
+        assert result.block_message == "Remove secrets and retry."
+
+    def test_input_block_falls_back_to_engine_default(self):
+        engine = GuardrailEngine(
+            enabled=True,
+            block_message="engine default",
+            input_rules=[
+                GuardrailRule(name="nope", pattern=r"banned", action="block", message="")
+            ],
+        )
+        result = engine.check_input_text("this is banned")
+        assert result.blocked
+        assert result.block_message == "engine default"
+
+    def test_settings_message_cap_enforced(self):
+        with pytest.raises(Exception):
+            GuardrailRuleSettings(
+                name="x",
+                pattern="x",
+                action="block",
+                message="x" * 513,
+            )
+
+    def test_engine_from_settings_carries_message(self):
+        settings = Settings()
+        settings.guardrails = GuardrailSettings(
+            enabled=True,
+            block_message="engine default",
+            input_rules=[
+                GuardrailRuleSettings(
+                    name="pii_rule",
+                    pattern=r"\d{3}-\d{2}-\d{4}",
+                    action="block",
+                    message="Remove account numbers and retry.",
+                )
+            ],
+        )
+        engine = engine_from_settings(settings)
+        assert engine is not None
+        assert engine.input_rules[0].message == "Remove account numbers and retry."
+        result = engine.check_input_text("ssn 123-45-6789")
+        assert result.blocked
+        assert result.block_message == "Remove account numbers and retry."
+
+    @pytest.mark.asyncio
+    async def test_router_chat_block_returns_rule_message(self, tmp_path):
+        engine = GuardrailEngine(
+            enabled=True,
+            block_message="engine default",
+            input_rules=[
+                GuardrailRule(
+                    name="nope",
+                    pattern=r"banned",
+                    action="block",
+                    message="Custom chat denial.",
+                )
+            ],
+        )
+        router = _router(tmp_path, engine)
+        result = await router.route(_request("this is banned content"))
+        assert result.content == "Custom chat denial."
+        assert result.daari_meta.tier == "guardrail"

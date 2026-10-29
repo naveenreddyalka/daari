@@ -734,6 +734,19 @@ class _Governance:
         result = self.guardrails.check_arguments(name.strip().lower(), arguments)
         return first_rule(result) if result.blocked else None
 
+    def tripped_guardrail(self, name: str, arguments: Any) -> tuple[str, str] | None:
+        """Return (rule, denial_text) when input guardrails block (#1994)."""
+        tool = name.strip().lower()
+        result = self.guardrails.check_arguments(tool, arguments)
+        if not result.blocked:
+            return None
+        rule = first_rule(result)
+        denial = self.guardrails.denial_text(
+            result,
+            legacy=f"Tool call blocked by guardrail {rule}: {tool}",
+        )
+        return rule, denial
+
     def guard_tool_result(self, name: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self.guardrails.check_tool_result(name.strip().lower(), payload)[0]
 
@@ -746,7 +759,10 @@ class _Governance:
         return tool_response.model_copy(update={"result": result, "ok": not outcome.blocked})
 
 
-def _legacy_guardrail_blocked(name: str, rule: str) -> JSONResponse:
+def _legacy_guardrail_blocked(
+    name: str, rule: str, *, denial: str | None = None
+) -> JSONResponse:
+    message = denial or f"Tool call blocked by guardrail {rule}: {name}"
     payload = MCPQueryResponse(
         ok=False,
         tool="tools/call",
@@ -754,7 +770,7 @@ def _legacy_guardrail_blocked(name: str, rule: str) -> JSONResponse:
             "name": name,
             "error": _error(
                 LEGACY_ERROR_CODE,
-                f"Tool call blocked by guardrail {rule}: {name}",
+                message,
                 details={"tool": name, "rule": rule, "direction": "input"},
             ),
         },
@@ -1459,10 +1475,11 @@ class MCPGatewayAdapter(GatewayAdapter):
                                 },
                             ).model_dump()
                         )
-                rule = governance.tripped_rule(normalized_name, arguments)
-                if rule is not None:
+                tripped = governance.tripped_guardrail(normalized_name, arguments)
+                if tripped is not None:
+                    rule, denial = tripped
                     _record_mcp_tool(ctx, normalized_name, "guardrail")
-                    return _legacy_guardrail_blocked(normalized_name, rule)
+                    return _legacy_guardrail_blocked(normalized_name, rule, denial=denial)
                 try:
                     tool_response = governance.guard_legacy(
                         await _run_tool_with_deadline(
@@ -1503,10 +1520,11 @@ class MCPGatewayAdapter(GatewayAdapter):
                 denied_tool, denied_server = denied
                 _record_mcp_tool(ctx, denied_tool, "deny")
                 return _legacy_denied(denied_tool, denied_server)
-            rule = governance.tripped_rule(tool, {"input": body.input, **body.args})
-            if rule is not None:
+            tripped = governance.tripped_guardrail(tool, {"input": body.input, **body.args})
+            if tripped is not None:
+                rule, denial = tripped
                 _record_mcp_tool(ctx, tool, "guardrail")
-                return _legacy_guardrail_blocked(tool, rule)
+                return _legacy_guardrail_blocked(tool, rule, denial=denial)
             try:
                 response = governance.guard_legacy(
                     await _run_tool_with_deadline(
@@ -1749,15 +1767,16 @@ class MCPGatewayAdapter(GatewayAdapter):
                                 ),
                             )
                     normalized_name = name.strip().lower()
-                    rule = governance.tripped_rule(normalized_name, arguments)
-                    if rule is not None:
+                    tripped = governance.tripped_guardrail(normalized_name, arguments)
+                    if tripped is not None:
+                        rule, denial = tripped
                         _record_mcp_tool(ctx, normalized_name, "guardrail")
                         return _rpc_response(
                             request,
                             _jsonrpc_error(
                                 rpc_id,
                                 GUARDRAIL_BLOCKED,
-                                f"Tool call blocked by guardrail {rule}: {normalized_name}",
+                                denial,
                                 data={"tool": normalized_name, "rule": rule, "direction": "input"},
                             ),
                         )

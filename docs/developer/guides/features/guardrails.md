@@ -20,9 +20,18 @@ guardrails:
   # rewrites in place (cache keys use scrubbed text), block refuses the turn.
   # System/user/assistant are unchanged. MCP tools/call scanning is separate.
   scan_tool_results: true
-  input_rules: []
+  input_rules:
+    - name: no_account_numbers
+      pattern: '\d{3}-\d{2}-\d{4}'
+      action: block
+      # Optional per-rule denial (≤512 chars). Empty/unset → block_message.
+      message: "Remove account numbers and retry."
   output_rules: []   # empty + enabled → default secret+PII redact
 ```
+
+When a blocking rule sets `message`, that text is returned instead of
+`block_message` on chat refusals, modality endpoint 400s, and MCP
+ingress/egress tool-result blocks. Warn and redact actions are unchanged.
 
 ## Decision-model checks
 

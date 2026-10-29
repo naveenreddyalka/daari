@@ -86,6 +86,20 @@ class McpGuardrails:
     def block_message(self) -> str:
         return self.engine.block_message if self.engine else GuardrailEngine.block_message
 
+    def denial_text(self, result: GuardrailResult, *, legacy: str | None = None) -> str:
+        """Per-rule denial when set; otherwise ``legacy`` or the engine default (#1994).
+
+        ``legacy`` preserves pre-#1994 MCP error copy that names the rule when the
+        blocking rule did not supply its own ``message``.
+        """
+        custom = getattr(result, "block_message", None)
+        engine_default = (self.block_message or "").strip()
+        if isinstance(custom, str) and custom.strip() and custom.strip() != engine_default:
+            return custom.strip()
+        if legacy is not None:
+            return legacy
+        return self.block_message
+
     def _record(self, tool: str, result: GuardrailResult, direction: str) -> None:
         if self.audit is None or not result.hits:
             return
@@ -140,10 +154,12 @@ class McpGuardrails:
             combined.warning = combined.warning or result.warning
             if result.blocked:
                 combined.blocked = True
+                combined.block_message = result.block_message or rewritten
+                denial = rewritten or self.denial_text(combined)
                 return (
                     {
                         **payload,
-                        "content": [{"type": "text", "text": self.block_message}],
+                        "content": [{"type": "text", "text": denial}],
                         "isError": True,
                     },
                     combined,

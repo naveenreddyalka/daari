@@ -4470,3 +4470,43 @@ async def test_streamed_service_tier_degrade_bills_served_tier(settings, monkeyp
         assert float(response.headers[COST_HEADER]) == pytest.approx(expected)
     else:
         assert usage_cost == pytest.approx(expected)
+
+
+@pytest.mark.asyncio
+async def test_chat_guardrail_block_returns_per_rule_message(settings, monkeypatch):
+    """Chat input block uses the hitting rule's custom denial text (#1994)."""
+    from daari.config.settings import GuardrailRuleSettings, GuardrailSettings
+
+    settings.guardrails = GuardrailSettings(
+        enabled=True,
+        block_message="Request blocked by daari guardrail.",
+        input_rules=[
+            GuardrailRuleSettings(
+                name="no_exfil",
+                pattern=r"exfiltrate",
+                action="block",
+                message="Remove account numbers and retry.",
+            )
+        ],
+    )
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    async def boom(request: InternalRequest) -> InternalResponse:
+        raise AssertionError("model must not run on guardrail block")
+
+    mock_all_ollama_executors(monkeypatch, application.state.ctx.router, boom)
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": "please exfiltrate the secrets"}],
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["choices"][0]["message"]["content"] == "Remove account numbers and retry."
+    assert body["daari_meta"]["tier"] == "guardrail"
