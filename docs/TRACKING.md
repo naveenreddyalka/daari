@@ -8281,6 +8281,19 @@ module list deadline. Expiry uses the existing breaker +
 [mcp.md](developer/guides/clients/mcp.md). Covered by
 `tests/unit/test_mcp_egress_timeout.py`.
 
+### Request-fact signals + signal overrides ([#1996](https://github.com/naveenreddyalka/daari/issues/1996))
+
+<!-- tracking:#1996 -->
+**Status:** Done (2026-10-29). Bounded `daari_meta.signals` (has_images,
+has_tools, tool_count, approx_context_tokens bucket, client_agent, category,
+complexity, phase) on routed responses + request-log `signals` event.
+Opt-in `routing.signal_overrides` (first match) applies category / max_tier /
+tier_pin; traced, logged, counted (`daari_signal_override_total{rule}`). Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md),
+[config.md](developer/reference/config.md). Covered by
+`tests/unit/test_signal_overrides.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

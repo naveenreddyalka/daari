@@ -219,6 +219,9 @@ class DaariMeta(BaseModel):
     operation_name: str | None = None
     # Forwarded Anthropic user-profile id (audit; id only) (#1844).
     anthropic_user_profile_id: str | None = None
+    # Bounded request-fact signals (#1996): has_images, has_tools, tool_count,
+    # approx_context_tokens bucket, client_agent, category, complexity, phase.
+    signals: dict | None = None
 
 
 class InternalResponse(BaseModel):
