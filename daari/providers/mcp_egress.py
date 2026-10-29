@@ -24,6 +24,10 @@ from daari.router.circuit_breaker import CircuitBreaker
 from daari.router.retry import RetryPolicy, run_upstream
 
 
+# Default httpx timeout when McpServerConfig.timeout_seconds is 0 (#1995).
+DEFAULT_HTTP_TIMEOUT_SECONDS = 30.0
+
+
 @dataclass
 class McpServerConfig:
     id: str
@@ -39,6 +43,7 @@ class McpServerConfig:
     subject_token_type: str = "access_token"
     rpm: int = 0
     tpm: int = 0
+    timeout_seconds: float = 0.0
 
 
 WARNING_SERVER_RATE_LIMITED = "mcp_server_rate_limited"
@@ -116,7 +121,13 @@ class McpEgressProvider(HttpIntegrationProvider):
         # they leave the machine, results before they reach the model.
         self.guardrails = guardrails or McpGuardrails(transport="egress")
         self.list_page_cap = LIST_PAGE_CAP
-        self.list_timeout_seconds = LIST_TIMEOUT_SECONDS
+        per_server_timeout = float(getattr(server, "timeout_seconds", 0) or 0)
+        self.list_timeout_seconds = (
+            per_server_timeout if per_server_timeout > 0 else LIST_TIMEOUT_SECONDS
+        )
+        self._http_timeout_seconds = (
+            per_server_timeout if per_server_timeout > 0 else DEFAULT_HTTP_TIMEOUT_SECONDS
+        )
         from daari.gateway.mcp_tool_search import ToolEmbeddingCache, settings_from_block
 
         self.tool_search = settings_from_block(tool_search)
@@ -149,7 +160,7 @@ class McpEgressProvider(HttpIntegrationProvider):
             from daari.security.egress_tls import resolve_httpx_verify
 
             self._http = httpx.AsyncClient(
-                timeout=30.0,
+                timeout=self._http_timeout_seconds,
                 verify=resolve_httpx_verify(settings=self.settings),
             )
         return self._http
@@ -665,6 +676,9 @@ def build_mcp_providers(
                 ),
                 rpm=max(0, int(_entry_get(entry, "rpm") or 0)),
                 tpm=max(0, int(_entry_get(entry, "tpm") or 0)),
+                timeout_seconds=max(
+                    0.0, float(_entry_get(entry, "timeout_seconds") or 0)
+                ),
             )
         if not cfg.id or not cfg.url:
             continue

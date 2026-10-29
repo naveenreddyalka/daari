@@ -317,6 +317,14 @@ set `integrations.mcpServers` in the Helm chart (rendered as
 `DAARI_INTEGRATIONS__MCP_SERVERS`) without hand-editing `config.yaml` on every
 pod.
 
+Optional per-server `timeout_seconds` (default `0`) tunes the HTTP client
+timeout for that server's `tools/list` and `tools/call`, and the tools/list
+pagination wall-clock deadline. `0` keeps today's defaults (30s HTTP, module
+list deadline). A positive value fails that hop sooner (or grants a slow
+warehouse tool more time) and still trips the existing per-server circuit
+breaker / `integration_request_failed` path on expiry — set it in
+`config.yaml` (or Helm `integrations.mcpServers`) alongside `id` / `url`.
+
 daari's MCP egress client sends the MCP 2026-07-28 routing headers
 `Mcp-Method` and `Mcp-Name` on outbound requests, and the ingress honours the
 same headers for policy when a client supplies them. When those headers are

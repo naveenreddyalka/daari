@@ -8270,6 +8270,17 @@ Empty/unset falls back as before; warn/redact unchanged. Docs:
 `tests/unit/test_mcp_guardrails.py`, and
 `tests/integration/test_gateway_flow.py`.
 
+### Per-server MCP egress request timeout ([#1995](https://github.com/naveenreddyalka/daari/issues/1995))
+
+<!-- tracking:#1995 -->
+**Status:** Done (2026-10-29). `integrations.mcp_servers[].timeout_seconds`
+(default 0) sets the per-server HTTP timeout for tools/list and tools/call
+and the tools/list pagination deadline; 0 keeps the 30s client timeout and
+module list deadline. Expiry uses the existing breaker +
+`integration_request_failed` path. Docs: [config.md](developer/reference/config.md),
+[mcp.md](developer/guides/clients/mcp.md). Covered by
+`tests/unit/test_mcp_egress_timeout.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
