@@ -492,6 +492,7 @@ class Router:
         context_max_history: int = 20,
         context_squeeze_whitespace: bool = True,
         context_compact: bool = False,
+        stream_fallback_continue: bool = False,
         compact_to_fit_enabled: bool = False,
         compact_to_fit_max_messages: int = 32,
         compact_to_fit_max_tokens: int = 0,
@@ -618,6 +619,7 @@ class Router:
         self.context_max_history = context_max_history
         self.context_squeeze_whitespace = context_squeeze_whitespace
         self.context_compact = context_compact
+        self.stream_fallback_continue = bool(stream_fallback_continue)
         self.compact_to_fit_enabled = bool(compact_to_fit_enabled)
         self.compact_to_fit_max_messages = max(1, int(compact_to_fit_max_messages))
         self.compact_to_fit_max_tokens = max(0, int(compact_to_fit_max_tokens))
@@ -2701,6 +2703,7 @@ class Router:
                 stream_flight_fut, _ = self._l0_singleflight.begin(stream_flight_key)
 
         last_error: Exception | None = None
+        midstream_continued = False
         try:
             last_error = None
             for tier_index, tier in enumerate(tier_chain):
@@ -2915,6 +2918,14 @@ class Router:
                                     tier, warm_models=self._warm_models
                                 )
                             )
+                        can_midstream_continue = (
+                            content_sent
+                            and getattr(self, "stream_fallback_continue", False)
+                            and (
+                                tier_index < len(tier_chain) - 1
+                                or self._can_stream_continue_frontier(stream_request)
+                            )
+                        )
                         if more_hosts:
                             add_step(
                                 "backend_fail",
@@ -2930,6 +2941,41 @@ class Router:
                                 reason="pre_first_token",
                             )
                             pre_token_failover = True
+                        elif can_midstream_continue:
+                            for chunk in pending_chunks:
+                                yield chunk
+                            pending_chunks.clear()
+                            partial = "".join(tier_text_parts)
+                            stream_request = self._with_stream_continuation(
+                                stream_request, partial
+                            )
+                            to_tier = (
+                                tier_chain[tier_index + 1]
+                                if tier_index < len(tier_chain) - 1
+                                else "L6"
+                            )
+                            add_step(
+                                "stream_fallback_continue",
+                                from_tier=tier,
+                                to_tier=to_tier,
+                                partial_chars=len(partial),
+                            )
+                            log_gateway_event(
+                                "stream_fallback_continue",
+                                {
+                                    "from_tier": tier,
+                                    "to_tier": to_tier,
+                                    "partial_chars": len(partial),
+                                    "error": str(exc)[:300],
+                                },
+                            )
+                            if hasattr(self.metrics, "record_stream_fallback_continue"):
+                                self.metrics.record_stream_fallback_continue()
+                            midstream_continued = True
+                            if to_tier == "L6":
+                                # Fall through after this host attempt to L6
+                                # continuation (local chain exhausted).
+                                pass
                         elif tier_index < len(tier_chain) - 1:
                             from daari.router.failover import is_context_length_error
 
@@ -2980,6 +3026,26 @@ class Router:
                         if stream_slot is not None and self.local_pool is not None:
                             self.local_pool.release(stream_slot)
 
+                    if (
+                        attempt_failed
+                        and midstream_continued
+                        and tier_index >= len(tier_chain) - 1
+                        and self._can_stream_continue_frontier(stream_request)
+                    ):
+                        # Local chain exhausted after a mid-stream continue —
+                        # stream the frontier hop with the rewritten transcript.
+                        async for chunk in self._stream_openai_frontier_continue(
+                            stream_request,
+                            chunk_payload=chunk_payload,
+                            usage_chunk=usage_chunk,
+                            outcome=outcome,
+                            started=started,
+                            draft_used=draft_used,
+                            finish_trace=finish_trace,
+                            from_tier=tier,
+                        ):
+                            yield chunk
+                        return
                     if pre_token_failover:
                         continue
                     if attempt_failed:
@@ -3027,8 +3093,12 @@ class Router:
                 # the client sees tokens as they arrive (#155).
                 confidence = score_l3_confidence(streamed_text)
                 threshold = self._confidence_threshold_for(stream_request, profile)
-                if not tool_calls_sent and self._can_relay_frontier_stream(
-                    stream_request, streamed_text, confidence, threshold
+                if (
+                    not midstream_continued
+                    and not tool_calls_sent
+                    and self._can_relay_frontier_stream(
+                        stream_request, streamed_text, confidence, threshold
+                    )
                 ):
                     budget_state = self._frontier_budget_state()
                     add_step("escalate", to="L6", local_confidence=confidence, relay=True)
@@ -3499,6 +3569,104 @@ class Router:
             if tier not in deduped:
                 deduped.append(tier)
         return self._filter_capable_tiers(deduped, request)
+
+    def _can_stream_continue_frontier(self, request: InternalRequest) -> bool:
+        """True when mid-stream continue may hop to L6 (#2003)."""
+        if not getattr(self, "stream_fallback_continue", False):
+            return False
+        if not self.frontier_enabled or self.frontier is None:
+            return False
+        if getattr(request.meta, "no_frontier", False):
+            return False
+        return True
+
+    def _with_stream_continuation(
+        self, request: InternalRequest, partial: str
+    ) -> InternalRequest:
+        """Replay the partial assistant text and ask the next hop to continue."""
+        from daari.gateway.internal import Message
+
+        text = (partial or "").strip()
+        if not text:
+            return request
+        messages = list(request.messages) + [
+            Message(role="assistant", content=text),
+            Message(
+                role="user",
+                content=(
+                    "Continue the incomplete answer from where it left off. "
+                    "Do not repeat prior text."
+                ),
+            ),
+        ]
+        return request.model_copy(update={"messages": messages})
+
+    async def _stream_openai_frontier_continue(
+        self,
+        request: InternalRequest,
+        *,
+        chunk_payload,
+        usage_chunk,
+        outcome: StreamOutcome,
+        started: float,
+        draft_used: bool,
+        finish_trace,
+        from_tier: str,
+    ) -> AsyncIterator[str]:
+        """Stream L6 as a mid-stream continuation hop (same SSE id) (#2003)."""
+        from daari.gateway.request_log import log_gateway_event
+        from daari.observability.trace import add_step
+        from daari.router.deadline import guard_upstream
+
+        relayed: list[str] = []
+        try:
+            guard_upstream("L6")
+            l6_request = await self._frontier_request(request)
+            async for event in self.frontier.stream(
+                l6_request,
+                escalated_from=from_tier,
+                local_confidence=None,
+            ):
+                delta = event if isinstance(event, str) else ""
+                if not delta:
+                    continue
+                relayed.append(delta)
+                yield f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
+        except Exception as exc:
+            log_gateway_event(
+                "stream_incomplete",
+                {
+                    "tier": "L6",
+                    "error": str(exc)[:300],
+                    "partial_chars": sum(len(part) for part in relayed),
+                    "midstream_continue": True,
+                },
+            )
+            self._record_frontier_stream_failure()
+            yield _openai_stream_error_frame(
+                error_type="stream_incomplete",
+                message=str(exc)[:300],
+            )
+            yield "data: [DONE]\n\n"
+            add_step("served", tier="L6", error="stream_incomplete")
+            finish_trace("L6")
+            return
+
+        relayed_text = "".join(relayed)
+        yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+        bill = self._anthropic_stream_bill(relayed_text, fallback_model=None)
+        yield usage_chunk(
+            len(relayed_text),
+            stream_tier="L6",
+            tokens=bill[1],
+            served=bill[0],
+        )
+        yield "data: [DONE]\n\n"
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        self.metrics.record("L6", cache_hit=False, latency_ms=latency_ms)
+        outcome.note("L6", draft=draft_used)
+        add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
+        finish_trace("L6")
 
     async def stream_anthropic_events(
         self, request: InternalRequest, *, outcome: StreamOutcome | None = None
@@ -6678,6 +6846,9 @@ class AppContext:
             context_max_history=settings.context_optimizer.max_history_messages,
             context_squeeze_whitespace=settings.context_optimizer.squeeze_whitespace,
             context_compact=settings.context_optimizer.compact,
+            stream_fallback_continue=bool(
+                getattr(settings.routing, "stream_fallback_continue", False)
+            ),
             compact_to_fit_enabled=settings.routing.compact_to_fit.enabled,
             compact_to_fit_max_messages=settings.routing.compact_to_fit.max_messages,
             compact_to_fit_max_tokens=settings.routing.compact_to_fit.max_tokens,

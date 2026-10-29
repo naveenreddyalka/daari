@@ -8325,6 +8325,16 @@ Covered by `tests/unit/test_llamacpp_local_tier_docs.py`.
 Admin Chat UI) with on-box stance; stable floor stays **1.106.5 GA**.
 Covered by `tests/unit/test_compare_litellm_1104.py`.
 
+### Mid-stream fallback continuation ([#2003](https://github.com/naveenreddyalka/daari/issues/2003))
+
+<!-- tracking:#2003 -->
+**Status:** Done (2026-10-29). Opt-in `routing.stream_fallback_continue`
+(default off) continues a streaming hop after mid-stream upstream death on
+the next local/L6 slot with partial replay; honors no-frontier; metrics
+`daari_stream_fallback_continue_total`. Docs: routing-tiers + config
+ownership. Covered by `tests/unit/test_stream_fallback_continue.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
