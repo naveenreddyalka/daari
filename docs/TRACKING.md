@@ -8294,6 +8294,17 @@ tier_pin; traced, logged, counted (`daari_signal_override_total{rule}`). Docs:
 `tests/unit/test_signal_overrides.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Opt-in team label on request/error Prometheus series ([#1997](https://github.com/naveenreddyalka/daari/issues/1997))
+
+<!-- tracking:#1997 -->
+**Status:** Done (2026-10-29). `observability.team_metrics` (default false)
+adds a bounded `team` label to `daari_requests_total` /
+`daari_errors_total` when on; off keeps exposition byte-identical. Teams
+come from the virtual-key store (unknown/empty → `"-"`); latency histograms
+stay team-less. Docs: [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md),
+[config.md](developer/reference/config.md). Covered by
+`tests/unit/test_team_metrics.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

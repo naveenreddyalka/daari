@@ -1738,6 +1738,16 @@ class ObservabilitySettings(RuntimeSettings):
     # prometheus=true, binds 127.0.0.1:<port> with GET /metrics and no API key.
     # Keep off public ingress; main-port /metrics auth is unchanged.
     metrics_port: int = Field(default=0, ge=0)
+    # Opt-in ``team`` label on daari_requests_total / daari_errors_total (#1997).
+    team_metrics: bool = Field(
+        default=False,
+        description=(
+            "Opt-in team label on daari_requests_total / daari_errors_total (#1997). "
+            "Off keeps exposition byte-identical. When on, team values are bounded "
+            "to the virtual-key teams store (unknown/empty → '-'). Latency "
+            "histograms stay team-less as a deliberate cardinality guard."
+        ),
+    )
     # Optional OTel export of RequestTrace steps (issue #115). Requires
     # opentelemetry-api; no-op when the package is missing.
     otel: bool = False

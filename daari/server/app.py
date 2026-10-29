@@ -104,6 +104,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         app.state.ctx = AppContext.from_settings(resolved)
         app.state.ctx.virtual_key_store = vk_store
+        if bool(getattr(resolved.observability, "team_metrics", False)):
+            from daari.observability.metrics import sync_team_metrics_allowlist
+
+            sync_team_metrics_allowlist(app.state.ctx.metrics, vk_store)
         app.state.ctx.rate_limiter = getattr(app.state, "rate_limiter", None)
         from daari.providers.mcp_egress import wire_mcp_egress_rate_limiters
 

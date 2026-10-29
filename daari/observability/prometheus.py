@@ -42,14 +42,46 @@ def render_prometheus(
     virtual_keys: dict[str, Any] | None = None,
     schema_ok: bool | None = None,
     anthropic_enforced_profiles: int | None = None,
+    team_metrics: bool | None = None,
 ) -> str:
     """Render the current Metrics snapshot (plus optional gauges) as exposition text."""
     snap = metrics.snapshot(include_histograms=True)
     lines: list[str] = []
+    # Opt-in team label on request/error series (#1997). Latency stays team-less.
+    team_on = (
+        bool(team_metrics)
+        if team_metrics is not None
+        else bool(getattr(metrics, "team_metrics", False))
+    )
 
     lines.append("# HELP daari_requests_total Total requests handled, by tier.")
     lines.append("# TYPE daari_requests_total counter")
-    if not snap["tiers"]:
+    if team_on:
+        team_requests = snap.get("team_requests") or {}
+        if not team_requests and not snap["tiers"]:
+            lines.append(f'daari_requests_total{_labels(team="-")} 0')
+        elif not team_requests:
+            # Flag on but no team dims yet — attribute legacy tier totals to "-".
+            for tier, stats in snap["tiers"].items():
+                lines.append(
+                    f"daari_requests_total{_labels(tier=tier, team='-')} {stats['count']}"
+                )
+        else:
+            for key, count in sorted(team_requests.items()):
+                tier, _, team = str(key).partition(":")
+                if not tier:
+                    continue
+                lines.append(
+                    f"daari_requests_total{_labels(tier=tier, team=team or '-')} {int(count)}"
+                )
+        # Additive modality label stays team-less (cardinality guard companion to latency).
+        for key, count in (snap.get("modality_requests") or {}).items():
+            modality, _, tier = str(key).partition(":")
+            if modality and tier:
+                lines.append(
+                    f"daari_requests_total{_labels(tier=tier, modality=modality)} {int(count)}"
+                )
+    elif not snap["tiers"]:
         lines.append("daari_requests_total 0")
     else:
         for tier, stats in snap["tiers"].items():
@@ -86,7 +118,23 @@ def render_prometheus(
     lines.append("# HELP daari_errors_total Gateway/router errors by HTTP status.")
     lines.append("# TYPE daari_errors_total counter")
     errors_by_status = snap.get("errors_by_status") or {}
-    if not errors_by_status:
+    if team_on:
+        team_errors = snap.get("team_errors") or {}
+        if not team_errors and not errors_by_status:
+            lines.append(f'daari_errors_total{_labels(status="0", team="-")} 0')
+        elif not team_errors:
+            for status, count in sorted(errors_by_status.items(), key=lambda item: str(item[0])):
+                lines.append(
+                    f"daari_errors_total{_labels(status=str(status), team='-')} {int(count)}"
+                )
+        else:
+            for key, count in sorted(team_errors.items()):
+                status, _, team = str(key).partition(":")
+                lines.append(
+                    f"daari_errors_total{_labels(status=str(status), team=team or '-')} "
+                    f"{int(count)}"
+                )
+    elif not errors_by_status:
         # Zero sample keeps the status label in the series set for scrapers (#1661).
         lines.append(f'daari_errors_total{_labels(status="0")} 0')
     else:

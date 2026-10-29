@@ -130,6 +130,50 @@ def error_status_label(status: int | str | None = None) -> str:
     return str(code)
 
 
+def team_metric_label(team: str | None, *, allowed: frozenset[str] | None = None) -> str:
+    """Bounded ``team`` label for opt-in request/error series (#1997).
+
+    Empty / unknown / not-in-allowlist values collapse to ``"-"`` so scrapers
+    never see unbounded request-input cardinality.
+    """
+    raw = (team or "").strip()
+    if not raw:
+        return "-"
+    if allowed is not None and raw not in allowed:
+        return "-"
+    return raw
+
+
+def _team_from_spend_context() -> str:
+    try:
+        from daari.observability.spend import current_spend_context
+
+        ctx = current_spend_context()
+        if ctx is None:
+            return ""
+        return str(getattr(ctx, "team_id", "") or "")
+    except Exception:
+        return ""
+
+
+def sync_team_metrics_allowlist(metrics: Metrics, store: Any | None) -> None:
+    """Refresh Metrics team allowlist from the virtual-key teams store (#1997)."""
+    if metrics is None or not getattr(metrics, "team_metrics", False):
+        return
+    allowed: set[str] = set()
+    if store is not None:
+        try:
+            list_teams = getattr(store, "list_teams", None)
+            for team in list(list_teams()) if callable(list_teams) else []:
+                tid = getattr(team, "team_id", None) or getattr(team, "id", None) or team
+                name = str(tid or "").strip()
+                if name:
+                    allowed.add(name)
+        except Exception:
+            allowed = set()
+    metrics.configure_team_metrics(enabled=True, allowed=allowed)
+
+
 def histogram_percentile_ms(
     buckets: dict[float | str, int],
     *,
@@ -253,11 +297,35 @@ class Metrics:
     gzip_bytes_after: int = 0
     # Cache-write tokens by TTL class (30m|12h|1h|unset) (#1872).
     cache_write_tokens: dict[str, int] = field(default_factory=dict)
+    # Opt-in per-team request/error counters (#1997). Off → no team dims.
+    team_metrics: bool = False
+    team_allowlist: frozenset[str] = field(default_factory=frozenset)
+    # (tier, team) → count; (status, team) → count when team_metrics is on.
+    team_requests: dict[tuple[str, str], int] = field(default_factory=dict)
+    team_errors: dict[tuple[str, str], int] = field(default_factory=dict)
     # Optional full-fleet inventory provider (set by AppContext) (#1932).
     breaker_inventory_fn: Callable[[], list[dict[str, Any]]] | None = field(
         default=None, repr=False
     )
     _lock: Lock = field(default_factory=Lock, repr=False)
+
+    def configure_team_metrics(
+        self,
+        *,
+        enabled: bool,
+        allowed: frozenset[str] | set[str] | list[str] | None = None,
+    ) -> None:
+        """Enable/disable team-labeled series and refresh the allowlist (#1997)."""
+        with self._lock:
+            self.team_metrics = bool(enabled)
+            if allowed is None:
+                self.team_allowlist = frozenset()
+            else:
+                self.team_allowlist = frozenset(str(t).strip() for t in allowed if str(t).strip())
+
+    def _bound_team(self, team: str | None) -> str:
+        raw = team if team is not None else _team_from_spend_context()
+        return team_metric_label(raw, allowed=self.team_allowlist)
 
     def record(
         self,
@@ -269,6 +337,7 @@ class Metrics:
         modality: str | None = None,
         input_tokens: int = 0,
         output_tokens: int = 0,
+        team: str | None = None,
     ) -> None:
         mod = infer_modality(tier, modality)
         with self._lock:
@@ -289,18 +358,28 @@ class Metrics:
             if output_tokens:
                 tok_key = (mod, tier, "output")
                 self.tokens[tok_key] = self.tokens.get(tok_key, 0) + max(0, int(output_tokens))
+            if self.team_metrics:
+                team_label = self._bound_team(team)
+                tkey = (tier, team_label)
+                self.team_requests[tkey] = self.team_requests.get(tkey, 0) + 1
 
     def record_ttft(self, tier: str, *, ttft_ms: int) -> None:
         """Record stream time-to-first-token. Non-stream requests omit TTFT (#508)."""
         with self._lock:
             self.ttft.setdefault(tier, TtftStats()).observe(ttft_ms)
 
-    def record_error(self, status: int | str | None = None) -> None:
+    def record_error(
+        self, status: int | str | None = None, *, team: str | None = None
+    ) -> None:
         """Count a gateway/router error; optional HTTP status for Prom labels (#1661)."""
         label = error_status_label(status)
         with self._lock:
             self.errors += 1
             self.errors_by_status[label] = self.errors_by_status.get(label, 0) + 1
+            if self.team_metrics:
+                team_label = self._bound_team(team)
+                ekey = (label, team_label)
+                self.team_errors[ekey] = self.team_errors.get(ekey, 0) + 1
 
     def record_escalation(self) -> None:
         with self._lock:
@@ -612,5 +691,13 @@ class Metrics:
                 "tokens": {
                     f"{mod}:{tier}:{direction}": count
                     for (mod, tier, direction), count in sorted(self.tokens.items())
+                },
+                "team_requests": {
+                    f"{tier}:{team}": count
+                    for (tier, team), count in sorted(self.team_requests.items())
+                },
+                "team_errors": {
+                    f"{status}:{team}": count
+                    for (status, team), count in sorted(self.team_errors.items())
                 },
             }
