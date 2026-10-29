@@ -54,8 +54,10 @@ this GA cut. daari does **not** ship those.
 LiteLLM [v1.106.0](https://github.com/BerriAI/litellm/releases/tag/v1.106.0)
 (18 Oct 2026) is **GA**. After trust and image-scan hygiene backports, the
 stable comparison floor is
-**[1.106.4 GA](https://github.com/BerriAI/litellm/releases/tag/v1.106.4)**
-(25 Oct 2026; also backported as 1.103.9 / 1.104.7 / 1.105.5). The 1.106 cut
+**[1.106.5 GA](https://github.com/BerriAI/litellm/releases/tag/v1.106.5)**
+(27 Oct 2026; prior hygiene floor
+[1.106.4](https://github.com/BerriAI/litellm/releases/tag/v1.106.4) on
+25 Oct 2026; also backported as 1.103.9 / 1.104.7 / 1.105.5). The 1.106 cut
 includes a native
 [decision-model guardrail](https://docs.litellm.ai/docs/proxy/guardrails/decision_model)
 (`guardrail: decision_model`): yes/no questions against any `/v1/decisions`
@@ -87,11 +89,35 @@ PyPI quarantined the version; the Docker image was removed from Docker Hub /
 GHCR. Indicators include `/tmp/.pc_once_*` and `/tmp/remote_code_loader.lock`.
 
 **Do not** `pip install litellm==1.107.0` or pull `litellm/litellm:1.107.0`.
-Stay on LiteLLM **1.106.4** (or skip LiteLLM entirely). Treat 1.107.0 as
+Stay on LiteLLM **1.106.5** (or skip LiteLLM entirely). Treat 1.107.0 as
 unsafe / do-not-install — not a feature comparison bar. Do **not** advertise
 compromised 1.107 watchables as safe.
 
 daari does **not** depend on LiteLLM at runtime; the local-first install path
 never pulled the poisoned artifact.
+
+## LiteLLM 1.109-dev watch
+
+LiteLLM
+[v1.109.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.1)
+(28 Oct 2026) is a **prerelease** — do not promote it to the GA floor (stable
+comparison remains **1.106.5 GA**). Watchables and daari's stance:
+
+- **Mid-stream fallback continuation** — LiteLLM can keep a streaming chat
+  going on a configured fallback mid-answer; daari already emits stream
+  partials on the active hop, but mid-stream hop continuation after upstream
+  death is a next gap (not claimed here).
+- **`LITELLM_OFFLINE_MODE`** — one switch to disable outbound fetches; daari is
+  already local-first by default, so this is a naming/ergonomics watch rather
+  than a missing trust floor.
+- **`agent_access_default_deny`** — keys with no agent grants reach no agents;
+  daari already fail-closes MCP grants via
+  `integrations.mcp_policy.require_key_access_defined`, and the same posture
+  for multi-agent keys is a tracked follow-on.
+- **`model_info.pricing_provider`** — price a deployment from another
+  provider's catalog; daari keeps spend math on-box via local
+  `pricing.models` (no catalog fetch required).
+- **Admin Chat UI / model hub** — cloud control-plane surface; non-goal for
+  daari (no Lens / hosted hub parity).
 
 Measured on the same Ollama corpus: [benchmark vs LiteLLM](benchmark-vs-litellm.md). Short matrix: [compare](compare.md).

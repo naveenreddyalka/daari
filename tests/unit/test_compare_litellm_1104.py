@@ -110,8 +110,28 @@ def test_compare_litellm_pins_1107_compromise_advisory() -> None:
     assert "litellm==1.107.0" in text
     assert "litellm/litellm:1.107.0" in text
     assert "aikido.dev" in lower
-    assert "1.106.4" in section
+    assert "1.106.4" in section or "1.106.5" in section
     assert "does not depend" in lower or "does **not** depend" in lower
     assert "agent_access_default_deny" not in lower
     assert "prerelease rc watchables" not in lower
     assert "not a feature comparison bar" in lower or "do-not-install" in lower
+
+
+def test_compare_litellm_pins_1109_dev_watch_keep_ga_floor() -> None:
+    """1.109.0-dev.1 is prerelease watch; GA floor stays 1.106.5 (#2002)."""
+    text = DOC.read_text(encoding="utf-8")
+    section = _markdown_section(text, "## LiteLLM 1.109")
+    lower = section.lower()
+    assert "v1.109.0-dev.1" in section or "1.109.0-dev.1" in section
+    assert "prerelease" in lower
+    assert "do not promote" in lower
+    assert "mid-stream" in lower or "midstream" in lower
+    assert "offline" in lower
+    assert "agent_access_default_deny" in section
+    assert "pricing_provider" in section
+    assert "chat ui" in lower or "admin chat" in lower or "model hub" in lower
+    # Stable floor remains 1.106.5 GA — do not claim 1.109 is GA.
+    floor = _markdown_section(text, "## LiteLLM 1.106")
+    assert "1.106.5" in floor
+    assert "ga" in floor.lower()
+    assert "1.109" not in floor
