@@ -250,6 +250,14 @@ def render_prometheus(
         f"daari_compact_to_fit_tokens_dropped_total {snap.get('compact_to_fit_tokens_dropped', 0)}"
     )
     lines.append(
+        "# HELP daari_stream_fallback_continue_total Streaming hops that "
+        "continued on the next tier/slot after mid-stream upstream death."
+    )
+    lines.append("# TYPE daari_stream_fallback_continue_total counter")
+    lines.append(
+        f"daari_stream_fallback_continue_total {snap.get('stream_fallback_continue', 0)}"
+    )
+    lines.append(
         "# HELP daari_signal_override_total routing.signal_overrides matches "
         "that applied a category / max_tier / tier_pin lever."
     )

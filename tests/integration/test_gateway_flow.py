@@ -4551,3 +4551,61 @@ async def test_chat_guardrail_block_returns_per_rule_message(settings, monkeypat
     body = response.json()
     assert body["choices"][0]["message"]["content"] == "Remove account numbers and retry."
     assert body["daari_meta"]["tier"] == "guardrail"
+
+
+@pytest.mark.asyncio
+async def test_stream_fallback_continue_after_mid_chunk_death(app, monkeypatch):
+    """#2003: opt-in mid-stream continue yields fallback tokens on same SSE id."""
+    router = app.state.ctx.router
+    router.stream_fallback_continue = True
+    calls = {"n": 0}
+
+    async def dying_then_continue(request: InternalRequest):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            yield {"message": {"content": "HI "}}
+            raise RuntimeError("upstream died mid-chunk")
+        yield {"message": {"content": "THERE"}}
+        yield {"done": True}
+
+    for attr in ("ollama_l3", "ollama_l4", "ollama_l5", "ollama"):
+        executor = getattr(router, attr, None)
+        if executor is not None:
+            monkeypatch.setattr(executor, "stream", dying_then_continue)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "stream": True,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "explain quantum decoherence in detail please",
+                    }
+                ],
+            },
+            headers={**META_HEADERS, "X-Daari-Tier-Override": "L4"},
+        )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    body = response.text
+    texts = []
+    ids = set()
+    for line in body.splitlines():
+        if not line.startswith("data: ") or line.endswith("[DONE]"):
+            continue
+        payload = json.loads(line[len("data: ") :])
+        if isinstance(payload, dict) and payload.get("id"):
+            ids.add(payload["id"])
+        if "error" in payload:
+            continue
+        for choice in payload.get("choices", []):
+            texts.append(choice.get("delta", {}).get("content") or "")
+    joined = "".join(texts)
+    assert "HI " in joined
+    assert "THERE" in joined
+    assert len(ids) == 1
+    assert router.metrics.stream_fallback_continue >= 1

@@ -28,6 +28,7 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("routing", "decision_classifier", "model"),
     ("routing", "decision_classifier", "timeout_seconds"),
     ("routing", "decision_classifier", "agent_turns"),
+    ("routing", "stream_fallback_continue"),
     ("routing", "compact_to_fit", "enabled"),
     ("routing", "compact_to_fit", "max_messages"),
     ("routing", "compact_to_fit", "max_tokens"),
