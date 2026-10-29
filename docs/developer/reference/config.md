@@ -213,6 +213,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `observability.request_log.backend` | Literal | `'jsonl'` | jsonl (default, pod-local rotated file) or postgres (observability.postgres_url) so fleet replicas share one queryable event table (#1631). |
 | `observability.prometheus` | bool | `True` |  |
 | `observability.metrics_port` | int | `0` |  |
+| `observability.team_metrics` | bool | `False` | Opt-in team label on daari_requests_total / daari_errors_total (#1997). Off keeps exposition byte-identical. When on, team values are bounded to the virtual-key teams store (unknown/empty → '-'). Latency histograms stay team-less as a deliberate cardinality guard. |
 | `observability.otel` | bool | `False` |  |
 | `observability.config_editor` | bool | `False` |  |
 | `observability.backend` | Literal | `'sqlite'` |  |

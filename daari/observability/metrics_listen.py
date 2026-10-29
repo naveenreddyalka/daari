@@ -94,6 +94,14 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
             listed_teams = list(list_teams()) if callable(list_teams) else []
         except Exception:
             listed_teams = None
+    team_metrics_on = bool(getattr(settings.observability, "team_metrics", False))
+    if team_metrics_on:
+        from daari.observability.metrics import sync_team_metrics_allowlist
+
+        try:
+            sync_team_metrics_allowlist(ctx.metrics, store)
+        except Exception:
+            pass
     if store is not None and limiter is not None and hasattr(limiter, "team_rate_gauges"):
         try:
             teams = listed_teams if listed_teams is not None else []
@@ -168,6 +176,7 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
         virtual_keys=virtual_keys,
         schema_ok=schema_ok,
         anthropic_enforced_profiles=anthropic_enforced_profiles,
+        team_metrics=team_metrics_on,
     )
 
 

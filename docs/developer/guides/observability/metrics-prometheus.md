@@ -113,7 +113,15 @@ prometheus-operator), same as `ServiceMonitor`.
 | `daari_decision_classifier_latency_ms` | Histogram of classifier hop wall time (ms) for `success` / `heuristic_fallback` / `error` — not recorded on `skipped`. No-op when `observability.prometheus=false`. Overview Grafana charts p50/p95 under **Decision classifier latency p50 / p95**. |
 | `daari_gzip_total{result,reason?}` / `daari_gzip_uncompressed_bytes_total` / `daari_gzip_compressed_bytes_total` | Buffered `application/json` gzip middleware (`Accept-Encoding: gzip`). `result="compressed"` or `result="skipped"` with low-cardinality `reason` (`below_min`\|`not_json`\|`already_encoded`\|`streaming`). Byte counters only on compressed responses. No path labels. Overview Grafana charts outcomes under **Gzip outcomes by result** and bytes under **Gzip bytes (uncompressed vs compressed)**. |
 | `daari_cache_write_tokens_total{ttl}` | Provider prompt-cache write tokens by TTL class (`ttl="30m"\|"12h"\|"1h"\|"unset"`). Zero-token responses do not increment. Rising `12h` vs `30m` means invoice-true write premium pressure (OpenAI 2.5× / 1.25×). No-op when `observability.prometheus=false`. Overview Grafana charts under **Cache-write tokens by TTL**. |
-| `daari_escalations_total` / `daari_errors_total{status}` | Local→frontier (L6) escalations and gateway/router errors. `status` is the HTTP status returned to the client (`503`, `500`, …); unlabeled call sites bucket as `status="0"`. Alert pack uses `sum(rate(daari_errors_total[…]))` so labeled series stay compatible. Stats counterpart: `errors_by_status` on `GET /v1/daari/stats`. Overview Grafana charts both under **Escalations & errors**. |
+| `daari_escalations_total` / `daari_errors_total{status}` | Local→frontier (L6) escalations and gateway/router errors. `status` is the HTTP status returned to the client (`503`, `500`, …); unlabeled call sites bucket as `status="0"`. Alert pack uses `sum(rate(daari_errors_total[…]))` so labeled series stay compatible. Stats counterpart: `errors_by_status` on `GET /v1/daari/stats`. Overview Grafana charts both under **Escalations & errors**. Opt-in `observability.team_metrics` adds a bounded `team` label on `daari_requests_total` / `daari_errors_total` (virtual-key teams store only; unknown/empty → `"-"`; off keeps exposition byte-identical). Latency histograms stay team-less as a deliberate cardinality bound. |
+
+## Grafana
+
+Per-team traffic (requires `observability.team_metrics=true`):
+
+```promql
+sum by (team) (rate(daari_requests_total[5m]))
+```
 
 The same `soft_warnings` / `rejects` maps are also on `GET /v1/daari/stats` (and the
 local web-ui) so operators can see cliff pressure without scraping Prometheus.

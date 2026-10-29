@@ -6522,6 +6522,8 @@ class AppContext:
         )
         mcp_egress = getattr(settings.integrations, "mcp_egress", None)
         metrics = Metrics()
+        if bool(getattr(settings.observability, "team_metrics", False)):
+            metrics.configure_team_metrics(enabled=True, allowed=frozenset())
         mcp_providers = build_mcp_providers(
             settings.integrations.mcp_servers,
             egress_guardrails,
