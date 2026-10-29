@@ -1780,6 +1780,15 @@ class GuardrailRuleSettings(BaseModel):
     pattern: str | None = None
     action: str = "block"  # block | warn | redact
     kind: str = "deny"  # deny | allow | secret | pii | decision
+    # Optional denial text when action=block (#1994). Empty/None → engine block_message.
+    message: str | None = Field(
+        default=None,
+        max_length=512,
+        description=(
+            "Custom refusal text when this rule blocks (≤512 chars). "
+            "Empty or unset falls back to guardrails.block_message."
+        ),
+    )
     # Decision-model guardrail (#1589). Used when kind=decision.
     statement: str | None = None
     threshold: float = Field(default=0.5, ge=0.0, le=1.0)

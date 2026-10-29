@@ -456,3 +456,37 @@ async def test_images_redact(settings, monkeypatch):
     payload = seen[0].read()
     assert b"SECRET" not in payload
     assert b"<redacted>" in payload
+
+
+def test_endpoint_policy_prefers_rule_message_over_engine():
+    engine = GuardrailEngine(
+        enabled=True,
+        block_message="policy default",
+        input_rules=[
+            GuardrailRule(
+                name="nope",
+                pattern=r"banned",
+                action="block",
+                message="Endpoint custom denial.",
+            )
+        ],
+    )
+    blocked = apply_endpoint_input_policy("this is banned", engine)
+    assert blocked.blocked is True
+    assert blocked.block_message == "Endpoint custom denial."
+
+    out_engine = GuardrailEngine(
+        enabled=True,
+        block_message="policy default",
+        output_rules=[
+            GuardrailRule(
+                name="scrub",
+                pattern=r"SECRET",
+                action="block",
+                message="Output custom denial.",
+            )
+        ],
+    )
+    out = apply_endpoint_output_policy("heard SECRET words", out_engine)
+    assert out.blocked is True
+    assert out.block_message == "Output custom denial."
