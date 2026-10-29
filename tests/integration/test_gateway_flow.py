@@ -1171,6 +1171,47 @@ async def test_non_stream_includes_daari_meta(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_non_stream_daari_meta_includes_signals(app, monkeypatch):
+    """Routed chat responses expose bounded request-fact signals (#1996)."""
+
+    async def fake_execute(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content=MOCK_MODEL_CONTENT,
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama:l3",
+                latency_ms=1,
+            ),
+        )
+
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, fake_execute)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "hello there"}],
+                "stream": False,
+            },
+            headers={"X-Daari-Meta": "true"},
+        )
+
+    assert response.status_code == 200
+    signals = response.json()["daari_meta"]["signals"]
+    assert signals["has_images"] is False
+    assert signals["has_tools"] is False
+    assert signals["tool_count"] == 0
+    assert signals["approx_context_tokens"] in {"lt_1k", "1k_4k", "4k_16k", "gte_16k"}
+    assert signals["client_agent"] in {"none", "other", "cursor", "claude-code", "codex"}
+    assert signals["category"]
+    assert signals["complexity"]
+
+
+@pytest.mark.asyncio
 async def test_stream_include_usage_chunk(app, monkeypatch):
     async def fake_stream(_request: InternalRequest):
         yield {"message": {"content": "Hi"}}

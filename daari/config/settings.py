@@ -715,6 +715,35 @@ class CategoryPolicy(BaseModel):
     latency_budget_ms: int | None = None
 
 
+class SignalOverrideRule(BaseModel):
+    """Match request-fact signals and apply an existing routing lever (#1996)."""
+
+    id: str = Field(
+        default="",
+        description="Stable rule id for traces / Prometheus ``rule`` label.",
+    )
+    match: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Equality match on signal keys (has_images, has_tools, tool_count, "
+            "approx_context_tokens bucket, client_agent, category, complexity, "
+            "phase). All listed keys must match; first winning rule applies."
+        ),
+    )
+    category: str | None = Field(
+        default=None,
+        description="When set, replace the heuristic profile category.",
+    )
+    max_tier: Literal["L3", "L4", "L5"] | None = Field(
+        default=None,
+        description="When set, cap the local tier like X-Daari-Tier-Cap for this request.",
+    )
+    tier_pin: Literal["L3", "L4", "L5"] | None = Field(
+        default=None,
+        description="When set, pin the initial tier like X-Daari-Tier-Override.",
+    )
+
+
 class CompactToFitSettings(BaseModel):
     """Trim oversized history before L6; never drop tool-call payloads (#1340)."""
 
@@ -887,6 +916,16 @@ class RoutingSettings(RuntimeSettings):
     prefer: Literal["latency", "accuracy", "balanced", "cost"] = "balanced"
     confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     category_policies: dict[str, CategoryPolicy] = Field(default_factory=dict)
+    signal_overrides: list[SignalOverrideRule] = Field(
+        default_factory=list,
+        description=(
+            "Opt-in list of request-fact signal matches that apply category / "
+            "max_tier / tier_pin levers before local tier pick (#1996). Empty "
+            "(default) leaves routing unchanged. First match wins. Documented "
+            "in the routing-tiers guide; set in config.yaml (not live-editable "
+            "via the config editor ownership subset)."
+        ),
+    )
     # Cap the local tier chosen for chat/Ask requests (L3|L4|L5). None keeps
     # the weight/length heuristics unbounded. X-Daari-Tier-Cap header wins.
     max_tier_for_chat: Literal["L3", "L4", "L5"] | None = None

@@ -466,6 +466,7 @@ class Router:
         org_learning_enabled: bool = False,
         usage_ledger: UsageLedger | None = None,
         category_policies: dict[str, Any] | None = None,
+        signal_overrides: list[Any] | None = None,
         trace_store: TraceStore | None = None,
         feedback_store: Any | None = None,
         tuner: Any | None = None,
@@ -589,6 +590,7 @@ class Router:
         self.confidence_threshold = confidence_threshold
         self.usage_ledger = usage_ledger
         self.category_policies = category_policies or {}
+        self.signal_overrides = list(signal_overrides or [])
         self.trace_store = trace_store
         self.feedback_store = feedback_store
         self.tuner = tuner
@@ -1122,6 +1124,7 @@ class Router:
             profile = await self._apply_learned_route(request, profile)
             profile = await self._apply_decision_classifier(request, profile)
             self._remember_user_turn_profile(request, profile)
+        profile, request_signals = self._apply_signal_overrides(request, profile)
         policy = await self._apply_input_policy(request, profile)
         boundary_meta = policy.boundary_meta
         input_warning = policy.warning or ultrafast_warning
@@ -1131,6 +1134,8 @@ class Router:
             response = policy.refusal
             if response.daari_meta.task_type is None:
                 response.daari_meta.task_type = profile.category
+            if request_signals is not None and response.daari_meta.signals is None:
+                response.daari_meta.signals = dict(request_signals)
             add_step("served", tier=policy.refusal_tier, cache_hit=False, latency_ms=0)
             if trace is not None:
                 response.daari_meta.trace_id = trace.trace_id
@@ -1193,6 +1198,8 @@ class Router:
             response.daari_meta.task_type = profile.category
         if response.daari_meta.complexity is None:
             response.daari_meta.complexity = profile.complexity
+        if request_signals is not None and response.daari_meta.signals is None:
+            response.daari_meta.signals = dict(request_signals)
         if request.meta.decision_classifier and response.daari_meta.decision is None:
             response.daari_meta.decision = dict(request.meta.decision_classifier)
         self._copy_compact_to_fit_meta(request, response)
@@ -1259,6 +1266,57 @@ class Router:
             )
         except Exception:
             pass
+
+    def _apply_signal_overrides(
+        self, request: InternalRequest, profile: PromptProfile
+    ) -> tuple[PromptProfile, dict[str, Any]]:
+        """Extract request-fact signals; optionally apply first matching override (#1996)."""
+        from daari.gateway.request_log import log_gateway_event
+        from daari.router.phase import classify_phase
+        from daari.router.signals import (
+            apply_signal_override,
+            extract_signals,
+            match_signal_override,
+        )
+
+        phase_name: str | None = None
+        if self.phase_routing and (request.tools or request.has_tool_calls_in_history):
+            match = classify_phase(request.messages, window=self.phase_window)
+            if match is not None:
+                phase_name = match.phase
+        signals = extract_signals(request, profile, phase=phase_name)
+        log_gateway_event(
+            "signals",
+            {
+                "signals": signals,
+                "request_id": getattr(request.meta, "request_id", None),
+            },
+        )
+        rule = match_signal_override(signals, self.signal_overrides)
+        if rule is None:
+            return profile, signals
+        rule_id = str(getattr(rule, "id", None) or "anonymous")
+        profile, levers = apply_signal_override(profile, request, rule)
+        # Refresh category/complexity on the stamped signals after override.
+        signals = {
+            **signals,
+            "category": profile.category,
+            "complexity": profile.complexity,
+        }
+        detail = {
+            "rule": rule_id,
+            "match": dict(getattr(rule, "match", None) or {}),
+            "category": getattr(rule, "category", None),
+            "max_tier": levers.get("max_tier"),
+            "tier_pin": levers.get("tier_pin"),
+            "request_id": getattr(request.meta, "request_id", None),
+        }
+        add_step("signal_override", **{k: v for k, v in detail.items() if k != "request_id"})
+        log_gateway_event("signal_override", detail)
+        metrics = getattr(self, "metrics", None)
+        if metrics is not None and hasattr(metrics, "record_signal_override"):
+            metrics.record_signal_override(rule=rule_id)
+        return profile, signals
 
     def _policy_for(self, profile: PromptProfile | None) -> Any | None:
         if profile is None:
@@ -6586,6 +6644,7 @@ class AppContext:
             org_learning_enabled=learning_enabled,
             usage_ledger=usage_ledger,
             category_policies=dict(settings.routing.category_policies),
+            signal_overrides=list(settings.routing.signal_overrides or []),
             trace_store=trace_store,
             feedback_store=feedback_store,
             tuner=tuner,

@@ -237,6 +237,8 @@ class Metrics:
     deadline_exhausted: int = 0
     compact_to_fit_applied: int = 0
     compact_to_fit_tokens_dropped: int = 0
+    # rule id → count for routing.signal_overrides (#1996).
+    signal_override: dict[str, int] = field(default_factory=dict)
     mcp_grant_denied: int = 0
     # outcome → count for optional systemone decision classifier (#1452).
     decision_classifier: dict[str, int] = field(default_factory=dict)
@@ -449,6 +451,15 @@ class Metrics:
             self.compact_to_fit_applied += 1
             self.compact_to_fit_tokens_dropped += max(0, int(tokens_dropped))
 
+    def record_signal_override(self, *, rule: str) -> None:
+        """A routing.signal_overrides rule matched and applied a lever (#1996)."""
+        label = (rule or "anonymous").strip() or "anonymous"
+        # Bound cardinality: truncate long ids.
+        if len(label) > 64:
+            label = label[:64]
+        with self._lock:
+            self.signal_override[label] = self.signal_override.get(label, 0) + 1
+
     def record_mcp_grant_denied(self) -> None:
         """Fail-closed MCP grant missing on initialize / list / call (#1390)."""
         with self._lock:
@@ -580,6 +591,7 @@ class Metrics:
                 "deadline_exhausted": self.deadline_exhausted,
                 "compact_to_fit_applied": self.compact_to_fit_applied,
                 "compact_to_fit_tokens_dropped": self.compact_to_fit_tokens_dropped,
+                "signal_override": dict(self.signal_override),
                 "mcp_grant_denied": self.mcp_grant_denied,
                 "cache_invalidate": dict(self.cache_invalidate),
                 "cache_invalidate_entries_removed": dict(self.cache_invalidate_entries_removed),

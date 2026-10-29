@@ -98,6 +98,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.prefer` | Literal | `'balanced'` |  |
 | `routing.confidence_threshold` | float | `0.7` |  |
 | `routing.category_policies` | dict | `{}` |  |
+| `routing.signal_overrides` | list | `[]` | Opt-in list of request-fact signal matches that apply category / max_tier / tier_pin levers before local tier pick (#1996). Empty (default) leaves routing unchanged. First match wins. Documented in the routing-tiers guide; set in config.yaml (not live-editable via the config editor ownership subset). |
 | `routing.max_tier_for_chat` | Optional | `None` |  |
 | `routing.latency_budget_ms` | int | `0` |  |
 | `routing.warm_model_preference` | bool | `True` |  |

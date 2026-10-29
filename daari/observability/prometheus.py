@@ -202,6 +202,19 @@ def render_prometheus(
         f"daari_compact_to_fit_tokens_dropped_total {snap.get('compact_to_fit_tokens_dropped', 0)}"
     )
     lines.append(
+        "# HELP daari_signal_override_total routing.signal_overrides matches "
+        "that applied a category / max_tier / tier_pin lever."
+    )
+    lines.append("# TYPE daari_signal_override_total counter")
+    signal_overrides = snap.get("signal_override") or {}
+    if not signal_overrides:
+        lines.append("daari_signal_override_total 0")
+    else:
+        for rule, count in sorted(signal_overrides.items()):
+            lines.append(
+                f"daari_signal_override_total{_labels(rule=str(rule))} {int(count)}"
+            )
+    lines.append(
         "# HELP daari_mcp_grant_denied_total MCP initialize, tools/list, or "
         "tools/call rejected because the virtual key has no MCP grant."
     )

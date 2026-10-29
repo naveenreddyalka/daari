@@ -54,6 +54,43 @@ Local models escalate on low confidence, latency budget miss, or capability gaps
 
 Agent/`tool_calls` flows skip L1 and Lt/L2. Exact L0 is on for an identical full history + tools schema; changing the last tool result is a miss (ADR-0004 / G1).
 
+## Request-fact signals + overrides
+
+Every routed chat turn attaches a bounded `daari_meta.signals` dict (also
+written to the request log as a `signals` event). Facts are cheap derivations
+of data the router already has — no model calls:
+
+| Key | Values |
+|-----|--------|
+| `has_images` | bool — any message carries `images` |
+| `has_tools` | bool — request tools or tool-call history |
+| `tool_count` | int — len of inbound `tools` |
+| `approx_context_tokens` | `lt_1k` / `1k_4k` / `4k_16k` / `gte_16k` |
+| `client_agent` | `cursor` / `claude-code` / `codex` / `other` / `none` |
+| `category` | prompt profile category |
+| `complexity` | `trivial` / `standard` / `complex` |
+| `phase` | tool-history phase when phase routing is on, else null |
+
+Opt-in `routing.signal_overrides` (empty by default) matches on those facts
+with equality / bucket match (first match wins) and applies an existing lever:
+`category`, `max_tier` (like `X-Daari-Tier-Cap`), or `tier_pin` (like
+`X-Daari-Tier-Override`). Matches are traced (`signal_override` step), logged,
+counted on `/v1/daari/stats` (`signal_override`), and exported as
+`daari_signal_override_total{rule="..."}`. Set the list in `config.yaml` (not
+part of the live config-editor ownership subset).
+
+```yaml
+routing:
+  signal_overrides:
+    - id: images-to-doc
+      match: { has_images: true }
+      category: doc_qa
+      max_tier: L4
+    - id: cursor-cap
+      match: { client_agent: cursor }
+      max_tier: L4
+```
+
 ## Shadow evals for tier decisions
 
 "Would a bigger model have answered differently?" is measurable without
