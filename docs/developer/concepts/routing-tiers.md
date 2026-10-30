@@ -80,8 +80,8 @@ known signal keys, match values of `str | bool | int | None`
 one lever set — otherwise load / `daari config validate` fails naming the rule
 `id`. Matches are traced (`signal_override` step), logged, counted on
 `/v1/daari/stats` (`signal_override`), and exported as
-`daari_signal_override_total{rule="..."}`. Set the list in `config.yaml` (not
-part of the live config-editor ownership subset).
+`daari_signal_override_total{rule="..."}`. Editable via GET/PATCH
+`/v1/daari/config` ownership (full list replacement) or set in `config.yaml`.
 
 ```yaml
 routing:

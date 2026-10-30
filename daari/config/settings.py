@@ -967,8 +967,9 @@ class RoutingSettings(RuntimeSettings):
             "Opt-in list of request-fact signal matches that apply category / "
             "max_tier / tier_pin levers before local tier pick (#1996). Empty "
             "(default) leaves routing unchanged. First match wins. Documented "
-            "in the routing-tiers guide; set in config.yaml (not live-editable "
-            "via the config editor ownership subset)."
+            "in the routing-tiers guide. Editable via GET/PATCH "
+            "/v1/daari/config ownership (config editor; full list replacement) "
+            "(#2014)."
         ),
     )
     # Cap the local tier chosen for chat/Ask requests (L3|L4|L5). None keeps

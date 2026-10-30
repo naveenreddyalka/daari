@@ -2897,6 +2897,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if "max_tokens" in compact:
                 ctx.settings.routing.compact_to_fit.max_tokens = compact["max_tokens"]
                 ctx.router.compact_to_fit_max_tokens = compact["max_tokens"]
+            if "signal_overrides" in routing:
+                from daari.config.settings import SignalOverrideRule
+
+                rules = [
+                    SignalOverrideRule.model_validate(row)
+                    for row in routing["signal_overrides"]
+                ]
+                ctx.settings.routing.signal_overrides = rules
+                ctx.router.signal_overrides = list(rules)
             for key in ("daily_budget_usd", "monthly_budget_usd", "soft_budget_ratio"):
                 if key in frontier:
                     setattr(ctx.settings.frontier, key, frontier[key])

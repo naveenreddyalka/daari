@@ -274,6 +274,31 @@ def validated_decisions(patch: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def validated_signal_overrides(value: Any) -> list[dict[str, Any]]:
+    """Full replacement list validated via SignalOverrideRule (#2014)."""
+    if not isinstance(value, list):
+        raise ConfigValidationError("signal_overrides must be a list")
+    from pydantic import ValidationError
+
+    from daari.config.settings import SignalOverrideRule
+
+    out: list[dict[str, Any]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ConfigValidationError(f"signal_overrides[{index}] must be an object")
+        try:
+            rule = SignalOverrideRule.model_validate(item)
+        except ValidationError as exc:
+            msgs = "; ".join(
+                f"{'.'.join(str(p) for p in err.get('loc', ()) or ('<root>',))}: "
+                f"{err.get('msg', 'invalid')}"
+                for err in exc.errors()
+            )
+            raise ConfigValidationError(f"signal_overrides[{index}]: {msgs}") from exc
+        out.append(rule.model_dump())
+    return out
+
+
 def validated_routing(patch: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if "confidence_threshold" in patch:
@@ -308,6 +333,8 @@ def validated_routing(patch: dict[str, Any]) -> dict[str, Any]:
         compact = validated_compact_to_fit(patch["compact_to_fit"] or {})
         if compact:
             out["compact_to_fit"] = compact
+    if "signal_overrides" in patch:
+        out["signal_overrides"] = validated_signal_overrides(patch["signal_overrides"])
     return out
 
 
