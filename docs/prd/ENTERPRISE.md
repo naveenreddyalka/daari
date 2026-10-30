@@ -50,7 +50,7 @@ ordered candidate list (only `:floor`/`:nitro` + pool frontier_fallback).
 | 250 | Grafana panel for `daari_signal_override_total` by rule | 2 | 1 | Portkey analytics tab | Rule visibility scraped next to the router | Filed [#2015](https://github.com/naveenreddyalka/daari/issues/2015) |
 | 242 | compare-litellm: 1.109.0-dev.1 watch; GA floor 1.106.6 | 2 | 1 | LiteLLM release notes | Honest prerelease bar; on-box stance clear | Filed [#2002](https://github.com/naveenreddyalka/daari/issues/2002) |
 | 243 | Mid-stream fallback continuation after upstream death | 4 | 3 | LiteLLM 1.109 mid-stream fallback | Continue on next local/L6 hop; no SaaS proxy | Filed [#2003](https://github.com/naveenreddyalka/daari/issues/2003) |
-| 244 | Opt-in `agent_access_default_deny` for multi_agent keys | 4 | 2 | LiteLLM `agent_access_default_deny` | Same trust floor as MCP grants, on-box | Filed [#2004](https://github.com/naveenreddyalka/daari/issues/2004) |
+| 244 | Opt-in `agent_access_default_deny` for multi_agent keys | 4 | 2 | LiteLLM `agent_access_default_deny` | Same trust floor as MCP grants, on-box | Shipped [#2004](https://github.com/naveenreddyalka/daari/issues/2004) |
 | 245 | Optional `pricing_provider` / alias_of per model rates | 3 | 2 | LiteLLM `model_info.pricing_provider` | FinOps truth for aliases without cloud cost-map | Filed [#2005](https://github.com/naveenreddyalka/daari/issues/2005) |
 | 246 | Optional `lfm3-vl` multimodal setup recipe + doctor tip | 3 | 2 | Ollama `ollama run lfm3-vl` | Vision agent turns stay local | Filed [#2006](https://github.com/naveenreddyalka/daari/issues/2006) |
 | 237–239 | Portkey denial / MCP timeout / request-fact signals | 3–4 | 1–3 | Portkey v2.31.0 / Signals | Operator-owned on-box | Shipped (#2009–#2011) |

@@ -44,6 +44,11 @@ because the virtual key has no MCP grant. Ordinary tool-name `deny`, granted
 keys, master key, and flag-off installs do not increment it. The Prometheus
 counterpart is `daari_mcp_grant_denied_total` (no-op when
 `observability.prometheus=false`).
+`agent_access_denied` increments once per Responses `multi_agent.enabled`
+deny when `server.virtual_keys.agent_access_default_deny` fail-closed applies
+because the virtual key (and team) has no agent grant. Flag-off, master key,
+and granted keys do not increment it. The Prometheus counterpart is
+`daari_agent_access_denied_total` (no-op when `observability.prometheus=false`).
 
 ## Retention
 

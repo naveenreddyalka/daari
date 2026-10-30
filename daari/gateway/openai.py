@@ -1942,6 +1942,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "compact_to_fit_applied": 0,
                     "compact_to_fit_tokens_dropped": 0,
                     "mcp_grant_denied": 0,
+                    "agent_access_denied": 0,
                 }
             from daari.gateway.systemone import breaker_snapshot
             from daari.router.breaker_inventory import inventory_from_ctx
@@ -1971,6 +1972,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     full.get("compact_to_fit_tokens_dropped") or 0
                 ),
                 "mcp_grant_denied": int(full.get("mcp_grant_denied") or 0),
+                "agent_access_denied": int(full.get("agent_access_denied") or 0),
             }
             if scope:
                 payload["team_id"] = scope

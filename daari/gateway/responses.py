@@ -1095,6 +1095,31 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             if tool_reject:
                 raise HTTPException(status_code=400, detail=tool_reject)
             if multi_agent_enabled(body.multi_agent):
+                from daari.auth.agent_access import virtual_key_lacks_agent_grant
+
+                claims = getattr(request.state, "auth_claims", None)
+                store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+                    ctx, "virtual_key_store", None
+                )
+                if virtual_key_lacks_agent_grant(claims, ctx.settings, store=store):
+                    metrics = getattr(ctx, "metrics", None) or getattr(
+                        getattr(ctx, "router", None), "metrics", None
+                    )
+                    if getattr(ctx.settings.observability, "prometheus", True) and metrics is not None:
+                        if hasattr(metrics, "record_agent_access_denied"):
+                            metrics.record_agent_access_denied()
+                    key_id = getattr(claims, "key_id", None) if claims is not None else None
+                    log_gateway_event(
+                        "agent_access_denied",
+                        {"key_id": key_id, "reason": "no_agent_grant"},
+                    )
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            "agent access denied: virtual key has no agent grant "
+                            "(set metadata.agents_access or metadata.allowed_agents)"
+                        ),
+                    )
                 if x_daari_no_frontier == "true":
                     raise HTTPException(
                         status_code=400,

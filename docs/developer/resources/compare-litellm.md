@@ -111,9 +111,11 @@ comparison remains **1.106.5 GA**). Watchables and daari's stance:
   already local-first by default, so this is a naming/ergonomics watch rather
   than a missing trust floor.
 - **`agent_access_default_deny`** — keys with no agent grants reach no agents;
-  daari already fail-closes MCP grants via
-  `integrations.mcp_policy.require_key_access_defined`, and the same posture
-  for multi-agent keys is a tracked follow-on.
+  daari mirrors this on-box via opt-in
+  `server.virtual_keys.agent_access_default_deny` (default false): virtual keys
+  without `metadata.agents_access` / `allowed_agents` get HTTP 403 on Responses
+  `multi_agent.enabled` (same trust floor as MCP
+  `integrations.mcp_policy.require_key_access_defined`).
 - **`model_info.pricing_provider`** — price a deployment from another
   provider's catalog; daari keeps spend math on-box via local
   `pricing.models` (no catalog fetch required).

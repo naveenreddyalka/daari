@@ -92,6 +92,31 @@ daari keys create agent --max-in-flight 2 --team fleet
 daari keys list   # mif column
 ```
 
+## Agent access (multi_agent)
+
+By default any authenticated key that can call `/v1/responses` may set
+`multi_agent.enabled`. Opt into fail-closed grants (LiteLLM-style
+`agent_access_default_deny`):
+
+```yaml
+server:
+  virtual_keys:
+    agent_access_default_deny: true
+```
+
+When the flag is on, a virtual key (or its team) without an agent grant gets
+**HTTP 403** on `multi_agent.enabled`. Declare a grant in key or team
+metadata:
+
+- `agents_access: true`
+- `allowed_agents: ["multi_agent"]` (presence of the field counts, even `[]`)
+- `agents: { allow: [...] }` / `{ deny: [...] }`
+
+Master key and flag-off installs are unchanged. Denied calls bump
+`agent_access_denied` / `daari_agent_access_denied_total` and write an
+`agent_access_denied` request-log event. `daari doctor` tips when the flag is
+on and zero keys/teams have grants.
+
 ## Cache scope
 
 The org-shared cache is the default: identical prompts (L0) and similar prompts

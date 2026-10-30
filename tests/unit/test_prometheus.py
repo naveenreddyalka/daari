@@ -128,6 +128,18 @@ class TestRenderPrometheus:
         text = render_prometheus(metrics)
         assert "daari_mcp_grant_denied_total 1" in text
 
+    def test_agent_access_denied_zero_on_empty_metrics(self):
+        """Exporter must emit agent_access_denied series even when unused (#2004)."""
+        text = render_prometheus(Metrics())
+        assert "daari_agent_access_denied_total 0" in text
+
+    def test_agent_access_denied_increments_on_record(self):
+        """A recorded fail-closed agent deny must increment the series (#2004)."""
+        metrics = Metrics()
+        metrics.record_agent_access_denied()
+        text = render_prometheus(metrics)
+        assert "daari_agent_access_denied_total 1" in text
+
     def test_decision_classifier_outcome_and_latency(self):
         """Classifier outcome counter + latency histogram (#1452)."""
         metrics = Metrics()

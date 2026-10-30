@@ -8335,6 +8335,20 @@ the next local/L6 slot with partial replay; honors no-frontier; metrics
 ownership. Covered by `tests/unit/test_stream_fallback_continue.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Opt-in agent_access_default_deny for multi_agent keys ([#2004](https://github.com/naveenreddyalka/daari/issues/2004))
+
+<!-- tracking:#2004 -->
+**Status:** Done (2026-10-30). `server.virtual_keys.agent_access_default_deny`
+(default false) fail-closes Responses `multi_agent.enabled` with HTTP 403 when
+the virtual key (or team) lacks `metadata.agents_access` /
+`allowed_agents` / `agents` grant. Stats/Prometheus
+`agent_access_denied` / `daari_agent_access_denied_total`, request-log
+`agent_access_denied`, doctor tip when deny is on and zero grants. Docs:
+virtual-keys, auth-and-keys, compare-litellm, config, doctor-health,
+metrics/traces. Covered by `tests/unit/test_agent_access_default_deny.py`,
+`tests/unit/test_doctor_agent_access_default_deny.py`, and
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
