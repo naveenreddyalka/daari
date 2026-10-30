@@ -8369,6 +8369,16 @@ Apple-first). Doctor tip `ollama_lfm3_vl_unused` when the host lists the tag
 but L4 is unwired. Docs: ollama.md. Covered by `tests/test_setup.py` and
 `tests/unit/test_doctor_lfm3_vl_unused.py`.
 
+### LFM3 platform notes ride Ollama 0.40.13 Linux/Windows GA ([#2012](https://github.com/naveenreddyalka/daari/issues/2012))
+
+<!-- tracking:#2012 -->
+**Status:** Done (2026-10-30). `LFM3_RECIPE_NOTE`, `--lfm3` CLI help, and
+`ollama.md` state Linux/Windows/macOS with Ollama ≥ 0.40.13 (Apple from
+0.40.12); recipe floor stays ≥ 0.40.12. Doctor TTS/ASR speech tips recognize
+`lfm3-omni` beside `lfm3-audio` (honest configured note; no Phonon CC BY-NC /
+Gradium tips). Docs: tts.md. Covered by `tests/test_setup.py`,
+`tests/unit/test_doctor_lfm3_audio.py`, and `tests/unit/test_tts_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

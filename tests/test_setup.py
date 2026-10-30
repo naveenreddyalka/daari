@@ -338,16 +338,19 @@ class TestSetupModels:
         assert LFM3_MODEL in text
         assert "l3:" in text
 
-    def test_lfm3_recipe_note_apple_first_and_floor(self):
+    def test_lfm3_recipe_note_platform_ga_and_floor(self):
+        """LFM3 notes ride Ollama 0.40.13 Linux/Windows/macOS GA (#2012)."""
         from daari.setup.models import LFM3_OLLAMA_FLOOR, LFM3_RECIPE_NOTE
 
         assert LFM3_OLLAMA_FLOOR == (0, 40, 12)
         assert "0.40.12" in LFM3_RECIPE_NOTE
+        assert "0.40.13" in LFM3_RECIPE_NOTE
         assert f"ollama pull {LFM3_MODEL}" in LFM3_RECIPE_NOTE
         assert "Apple" in LFM3_RECIPE_NOTE
         assert "Linux" in LFM3_RECIPE_NOTE
         assert "Windows" in LFM3_RECIPE_NOTE
-        assert "coming soon" in LFM3_RECIPE_NOTE.lower()
+        assert "macOS" in LFM3_RECIPE_NOTE or "mac" in LFM3_RECIPE_NOTE.lower()
+        assert "coming soon" not in LFM3_RECIPE_NOTE.lower()
 
     def test_lfm3_vl_l4_recipe_dry_run_does_not_write(self, tmp_path):
         """Optional LFM3-VL L4 recipe dry-run leaves config untouched (#2006)."""

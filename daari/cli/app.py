@@ -3373,7 +3373,8 @@ def setup_models(
         "--lfm3",
         help=(
             "Apply optional LFM3 L3 local-agent recipe "
-            "(models.l3=lfm3; Ollama ≥ 0.40.12; Apple-first)."
+            "(models.l3=lfm3; Ollama ≥ 0.40.12; "
+            "Linux/Windows/macOS ≥ 0.40.13, Apple from 0.40.12)."
         ),
     ),
     lfm3_vl: bool = typer.Option(

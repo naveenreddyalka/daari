@@ -106,3 +106,48 @@ def test_configured_asr_lfm3_audio_notes_backend(settings):
     assert "reachable" in result.detail
     assert "lfm3-audio" in result.detail
     assert "CC BY-NC" not in result.detail
+
+
+def test_unconfigured_tts_tips_lfm3_omni_when_tag_present(settings):
+    """lfm3-omni TTS tip mirrors lfm3-audio when speech is empty (#2012)."""
+    settings.ollama.base_url = "http://127.0.0.1:11434"
+    settings.tts.base_url = ""
+
+    result = _check_tts(settings, _tags_and_version(["lfm3-omni", "llama3.2:3b"]))
+    assert result.name == "tts"
+    assert result.ok
+    assert result.optional
+    assert "lfm3-omni" in result.detail
+    assert "tts.base_url" in result.detail
+    assert "11434/v1" in result.detail
+
+
+def test_unconfigured_tts_quiet_when_lfm3_omni_absent(settings):
+    """No omni tip when tags lack lfm3-omni and lfm3-audio (#2012)."""
+    settings.ollama.base_url = "http://127.0.0.1:11434"
+    settings.tts.base_url = ""
+
+    result = _check_tts(
+        settings, _tags_and_version(["llama3.2:3b"], version="0.40.5")
+    )
+    assert result.ok
+    assert "lfm3-omni" not in result.detail
+    assert "lfm3-audio" not in result.detail
+
+
+def test_configured_tts_lfm3_omni_notes_backend_not_phonon_license(settings):
+    """Configured lfm3-omni must not inherit Phonon CC BY-NC / Gradium tips (#2012)."""
+    settings.ollama.base_url = "http://127.0.0.1:11434"
+    settings.tts.base_url = "http://127.0.0.1:11434/v1"
+    settings.tts.model = "lfm3-omni"
+
+    result = _check_tts(
+        settings, _tags_and_version(["lfm3-omni"], version="0.40.9")
+    )
+    assert result.ok
+    assert "reachable" in result.detail
+    assert "lfm3-omni" in result.detail
+    assert "CC BY-NC" not in result.detail
+    assert "BY-NC" not in result.detail
+    assert "upgrade to ≥0.40.11" not in result.detail
+    assert "phonon:40m" not in result.detail.casefold()

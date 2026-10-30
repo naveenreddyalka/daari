@@ -22,7 +22,7 @@ without pulling weights. Pull later with `ollama pull nemotron-3.5-bolt:e4b`.
 
 Optional **LFM3** L3 local-agent recipe (Ollama ≥ 0.40.12, 256K context):
 `daari setup models --lfm3` sets `models.l3=lfm3` without pulling weights.
-Apple hardware first in 0.40.12; Linux/Windows support coming soon. Pull later
+Linux/Windows/macOS with Ollama ≥ 0.40.13 (Apple from 0.40.12). Pull later
 with `ollama pull lfm3`.
 
 Optional **LFM3-VL** L4 vision recipe (Ollama ≥ 0.40.12):
