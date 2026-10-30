@@ -57,6 +57,13 @@ def test_tts_guide_mentions_lfm3_audio_beside_phonon() -> None:
     assert "18" in text or "language" in text.lower()
 
 
+def test_tts_guide_mentions_lfm3_omni_beside_audio() -> None:
+    """lfm3-omni TTS named beside lfm3-audio after Ollama 0.40.13 (#2012)."""
+    text = TTS_GUIDE.read_text(encoding="utf-8")
+    assert "lfm3-omni" in text
+    assert "lfm3-audio" in text
+
+
 def test_tts_guide_documents_voice_catalog_and_list() -> None:
     text = TTS_GUIDE.read_text(encoding="utf-8")
     assert "0.40.11" in text

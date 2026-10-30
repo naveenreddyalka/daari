@@ -1,6 +1,6 @@
 # Local text-to-speech
 
-**Outcome:** `POST /v1/audio/speech` stays on the machine. Point daari at **Ollama 0.40.9+ Phonon**, **Ollama 0.40.12+ `lfm3-audio`** (18-language ASR/TTS beside Phonon), Kokoro, openedai-speech, or any OpenAI-compatible TTS server.
+**Outcome:** `POST /v1/audio/speech` stays on the machine. Point daari at **Ollama 0.40.9+ Phonon**, **Ollama 0.40.12+ `lfm3-audio`** / **`lfm3-omni`** (18-language ASR/TTS beside Phonon; omni TTS on Linux/Windows/macOS from Ollama 0.40.13), Kokoro, openedai-speech, or any OpenAI-compatible TTS server.
 
 ## Config
 
@@ -16,7 +16,7 @@ tts:
 
 **Ollama Phonon (local-first):** as of Ollama **0.40.9**, the same daemon that serves chat tiers exposes streaming `POST /v1/audio/speech`. Ollama **0.40.11+** adds Phonon's Gradium **voice catalog** (`ollama show phonon` / `/api/show` `voices`) and **language tags**. Set `tts.base_url` to `{ollama.base_url}/v1` (for example `http://127.0.0.1:11434/v1`) and preferably `tts.model: phonon`. daari does not auto-wire this — `daari doctor` tips when TTS is empty and Ollama reports a speech-capable version; when Phonon is already configured it also tips if Ollama is older than **0.40.11** (catalog / language tags) or if `tts.model` is a 40M tag (license).
 
-**Ollama `lfm3-audio` (beside Phonon):** Ollama **0.40.12+** can also list Liquid AI `lfm3-audio` for speech recognition, translation, and TTS in 18 languages (LFM Open License — not Phonon's CC BY-NC 40M cliff). Point the same `tts.base_url` at `{ollama.base_url}/v1` and set `tts.model: lfm3-audio`. Doctor tips when `/api/tags` lists `lfm3-audio` while TTS is empty, and notes the backend honestly when configured (no false Phonon license / Gradium voice-catalog tips).
+**Ollama `lfm3-audio` / `lfm3-omni` (beside Phonon):** Ollama **0.40.12+** can list Liquid AI `lfm3-audio` for speech recognition, translation, and TTS in 18 languages; Ollama **0.40.13+** also serves TTS via `lfm3-omni` on Linux/Windows/macOS (LFM Open License — not Phonon's CC BY-NC 40M cliff). Point the same `tts.base_url` at `{ollama.base_url}/v1` and set `tts.model` to `lfm3-audio` or `lfm3-omni`. Doctor tips when `/api/tags` lists either tag while TTS is empty, and notes the backend honestly when configured (no false Phonon license / Gradium voice-catalog tips).
 
 **Pull recipe:**
 

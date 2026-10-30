@@ -3579,11 +3579,15 @@ def _check_cors_origins(settings: Settings) -> CheckResult:
 _OLLAMA_PHONON_FLOOR = (0, 40, 9)
 _OLLAMA_PHONON_CATALOG_FLOOR = (0, 40, 11)
 LFM3_AUDIO_MODEL = "lfm3-audio"
+LFM3_OMNI_MODEL = "lfm3-omni"
+# Local speech tags: audio (ASR/TTS) and omni (TTS per Ollama 0.40.13) (#1986, #2012).
+_LFM3_SPEECH_TAGS = (LFM3_AUDIO_MODEL, LFM3_OMNI_MODEL)
 
 
 def _looks_like_lfm3_audio(model: str) -> bool:
-    """True when a configured model string names Liquid AI lfm3-audio (#1986)."""
-    return "lfm3-audio" in (model or "").casefold()
+    """True when a configured model names lfm3-audio or lfm3-omni (#1986, #2012)."""
+    blob = (model or "").casefold()
+    return "lfm3-audio" in blob or "lfm3-omni" in blob
 
 
 def _ollama_tag_names(http: httpx.Client, ollama_base: str) -> list[str] | None:
@@ -3603,14 +3607,26 @@ def _ollama_tag_names(http: httpx.Client, ollama_base: str) -> list[str] | None:
     ]
 
 
+def _listed_lfm3_speech_tag(names: list[str]) -> str | None:
+    """Return preferred host speech tag (audio before omni) (#2012)."""
+    for tag in _LFM3_SPEECH_TAGS:
+        if _host_lists_model(names, tag):
+            return tag
+    return None
+
+
 def _host_lists_lfm3_audio(http: httpx.Client, settings: Settings) -> bool:
+    return _host_lfm3_speech_tag(http, settings) is not None
+
+
+def _host_lfm3_speech_tag(http: httpx.Client, settings: Settings) -> str | None:
     ollama_base = str(getattr(settings.ollama, "base_url", "") or "").strip().rstrip("/")
     if not ollama_base:
-        return False
+        return None
     names = _ollama_tag_names(http, ollama_base)
     if names is None:
-        return False
-    return _host_lists_model(names, LFM3_AUDIO_MODEL)
+        return None
+    return _listed_lfm3_speech_tag(names)
 
 
 def _tts_looks_like_phonon(settings: Settings, base: str) -> bool:
@@ -3644,11 +3660,13 @@ def _tts_ollama_root(settings: Settings, tts_base: str) -> str | None:
 
 
 def _lfm3_audio_configured_note(model: str) -> str:
-    """Honest backend note for configured lfm3-audio (no Phonon CC BY-NC) (#1986)."""
+    """Honest backend note for configured lfm3 speech (no Phonon CC BY-NC) (#1986, #2012)."""
     if not _looks_like_lfm3_audio(model):
         return ""
+    blob = (model or "").casefold()
+    tag = LFM3_OMNI_MODEL if "lfm3-omni" in blob else LFM3_AUDIO_MODEL
     return (
-        "; lfm3-audio local speech backend (ASR/TTS, 18 languages; "
+        f"; {tag} local speech backend (ASR/TTS, 18 languages; "
         "LFM Open License — not Phonon / no Gradium voice catalog)"
     )
 
@@ -3688,16 +3706,17 @@ def _tts_phonon_configured_notes(
 def _tts_ollama_lfm3_audio_detail(
     settings: Settings, http: httpx.Client
 ) -> str | None:
-    """Tip when Ollama lists lfm3-audio but tts.base_url is empty (#1986)."""
+    """Tip when Ollama lists lfm3-audio/omni but tts.base_url is empty (#1986, #2012)."""
     if str(getattr(settings.tts, "base_url", "") or "").strip():
         return None
     ollama_base = str(getattr(settings.ollama, "base_url", "") or "").strip().rstrip("/")
-    if not ollama_base or not _host_lists_lfm3_audio(http, settings):
+    tag = _host_lfm3_speech_tag(http, settings) if ollama_base else None
+    if not ollama_base or tag is None:
         return None
     tip_url = f"{ollama_base}/v1"
     return (
-        f"not configured — Ollama lists {LFM3_AUDIO_MODEL}; "
-        f"set tts.base_url: {tip_url} (and preferably tts.model: {LFM3_AUDIO_MODEL}) "
+        f"not configured — Ollama lists {tag}; "
+        f"set tts.base_url: {tip_url} (and preferably tts.model: {tag}) "
         "for local POST /v1/audio/speech (no silent auto-wire)"
     )
 
@@ -3705,16 +3724,17 @@ def _tts_ollama_lfm3_audio_detail(
 def _asr_ollama_lfm3_audio_detail(
     settings: Settings, http: httpx.Client
 ) -> str | None:
-    """Tip when Ollama lists lfm3-audio but asr.base_url is empty (#1986)."""
+    """Tip when Ollama lists lfm3-audio/omni but asr.base_url is empty (#1986, #2012)."""
     if str(getattr(settings.asr, "base_url", "") or "").strip():
         return None
     ollama_base = str(getattr(settings.ollama, "base_url", "") or "").strip().rstrip("/")
-    if not ollama_base or not _host_lists_lfm3_audio(http, settings):
+    tag = _host_lfm3_speech_tag(http, settings) if ollama_base else None
+    if not ollama_base or tag is None:
         return None
     tip_url = f"{ollama_base}/v1"
     return (
-        f"not configured — Ollama lists {LFM3_AUDIO_MODEL}; "
-        f"set asr.base_url: {tip_url} (and preferably asr.model: {LFM3_AUDIO_MODEL}) "
+        f"not configured — Ollama lists {tag}; "
+        f"set asr.base_url: {tip_url} (and preferably asr.model: {tag}) "
         "for local POST /v1/audio/transcriptions (no silent auto-wire)"
     )
 
@@ -3742,10 +3762,11 @@ def _tts_ollama_phonon_detail(
             "GET /v1/audio/voices after configuring tts.base_url"
         )
     lfm3_note = ""
-    if _host_lists_lfm3_audio(http, settings):
+    speech_tag = _host_lfm3_speech_tag(http, settings)
+    if speech_tag is not None:
         lfm3_note = (
-            f"; also lists {LFM3_AUDIO_MODEL} (18-language ASR/TTS beside Phonon) "
-            f"— set tts.model: {LFM3_AUDIO_MODEL} when using that backend"
+            f"; also lists {speech_tag} (18-language ASR/TTS beside Phonon) "
+            f"— set tts.model: {speech_tag} when using that backend"
         )
     return (
         f"not configured — Ollama {raw} supports Phonon speech; "

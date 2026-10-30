@@ -27,13 +27,13 @@ NEMOTRON_BOLT_RECIPE_NOTE = (
     f"Pull with: ollama pull {NEMOTRON_BOLT_MODEL}"
 )
 
-# Liquid AI LFM3 — optional 256K local agent L3 (Ollama ≥ 0.40.12; Apple-first) (#1984).
+# Liquid AI LFM3 — optional 256K local agent L3 (Ollama ≥ 0.40.12; GA on all OS in 0.40.13) (#1984, #2012).
 LFM3_MODEL = "lfm3"
 LFM3_OLLAMA_FLOOR = (0, 40, 12)
 LFM3_RECIPE_NOTE = (
     "Optional LFM3 L3 local-agent recipe "
     f"(models.l3={LFM3_MODEL}, 256K context). Requires Ollama ≥ 0.40.12. "
-    "Apple hardware first in 0.40.12; Linux/Windows support coming soon. "
+    "Linux/Windows/macOS with Ollama ≥ 0.40.13 (Apple from 0.40.12). "
     f"Pull with: ollama pull {LFM3_MODEL}"
 )
 
