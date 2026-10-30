@@ -4609,3 +4609,63 @@ async def test_stream_fallback_continue_after_mid_chunk_death(app, monkeypatch):
     assert "THERE" in joined
     assert len(ids) == 1
     assert router.metrics.stream_fallback_continue >= 1
+
+
+@pytest.mark.asyncio
+async def test_agent_access_default_deny_on_multi_agent(settings, tmp_path, monkeypatch):
+    """Issue #2004: opt-in deny blocks multi_agent without an agent grant."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.server.virtual_keys.agent_access_default_deny = True
+    settings.frontier.enabled = True
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    denied = store.create("nogrant", client_id="nogrant")
+    granted = store.create(
+        "withgrant", client_id="withgrant", metadata={"agents_access": True}
+    )
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = store
+    application.state.ctx.virtual_key_store = store
+    application.state.ctx.router.frontier_enabled = True
+    application.state.ctx.router.frontier = type("F", (), {"api_key": "sk-test"})()
+
+    async def fake_route(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="m",
+            daari_meta=DaariMeta(tier="L6", executor="openai", latency_ms=1),
+        )
+
+    application.state.ctx.router.route = fake_route
+    body = {
+        "model": "gpt-6.1-sol",
+        "input": "delegate",
+        "multi_agent": {"enabled": True},
+    }
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        blocked = await client.post(
+            "/v1/responses",
+            headers={"Authorization": f"Bearer {denied.plaintext}"},
+            json=body,
+        )
+        allowed = await client.post(
+            "/v1/responses",
+            headers={"Authorization": f"Bearer {granted.plaintext}"},
+            json=body,
+        )
+        off = await client.post(
+            "/v1/responses",
+            headers={"Authorization": f"Bearer {denied.plaintext}"},
+            json={**body, "multi_agent": {"enabled": False}},
+        )
+    assert blocked.status_code == 403
+    assert "agent" in str(blocked.json().get("detail", "")).lower() or "grant" in str(
+        blocked.json().get("detail", "")
+    ).lower()
+    assert allowed.status_code != 403
+    assert off.status_code != 403

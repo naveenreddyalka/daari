@@ -276,6 +276,13 @@ def render_prometheus(
     )
     lines.append("# TYPE daari_mcp_grant_denied_total counter")
     lines.append(f"daari_mcp_grant_denied_total {snap.get('mcp_grant_denied', 0)}")
+    lines.append(
+        "# HELP daari_agent_access_denied_total Responses multi_agent rejected "
+        "because the virtual key has no agent grant under "
+        "agent_access_default_deny."
+    )
+    lines.append("# TYPE daari_agent_access_denied_total counter")
+    lines.append(f"daari_agent_access_denied_total {snap.get('agent_access_denied', 0)}")
 
     lines.append(
         "# HELP daari_tier_shadow_samples_total Local-tier answers replayed at a "

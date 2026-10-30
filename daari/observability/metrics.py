@@ -285,6 +285,7 @@ class Metrics:
     # rule id → count for routing.signal_overrides (#1996).
     signal_override: dict[str, int] = field(default_factory=dict)
     mcp_grant_denied: int = 0
+    agent_access_denied: int = 0
     # outcome → count for optional systemone decision classifier (#1452).
     decision_classifier: dict[str, int] = field(default_factory=dict)
     decision_classifier_latency: TtftStats = field(default_factory=TtftStats)
@@ -550,6 +551,11 @@ class Metrics:
         with self._lock:
             self.mcp_grant_denied += 1
 
+    def record_agent_access_denied(self) -> None:
+        """Fail-closed agent grant missing on multi_agent (#2004)."""
+        with self._lock:
+            self.agent_access_denied += 1
+
     def record_cache_invalidate(
         self,
         *,
@@ -679,6 +685,7 @@ class Metrics:
                 "stream_fallback_continue": self.stream_fallback_continue,
                 "signal_override": dict(self.signal_override),
                 "mcp_grant_denied": self.mcp_grant_denied,
+                "agent_access_denied": self.agent_access_denied,
                 "cache_invalidate": dict(self.cache_invalidate),
                 "cache_invalidate_entries_removed": dict(self.cache_invalidate_entries_removed),
                 "gzip": dict(self.gzip),
