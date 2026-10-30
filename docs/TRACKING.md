@@ -8349,6 +8349,17 @@ metrics/traces. Covered by `tests/unit/test_agent_access_default_deny.py`,
 `tests/unit/test_doctor_agent_access_default_deny.py`, and
 `tests/integration/test_gateway_flow.py`.
 
+### Optional pricing_provider / alias_of catalog alias ([#2005](https://github.com/naveenreddyalka/daari/issues/2005))
+
+<!-- tracking:#2005 -->
+**Status:** Done (2026-10-30). `pricing.models` entries may set `alias_of` or
+`pricing_provider` to inherit shipped/configured catalog rates (longest-key
+match); explicit rate fields still override. Doctor warns on unknown aliases;
+ledger / report / cost headers use resolved rates. No remote cost-map fetch.
+Docs: budgets-frontier, config.md (file ownership, not live editor). Covered by
+`tests/unit/test_pricing_provider_alias.py` and
+`tests/integration/test_cost_headers.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -7,7 +7,9 @@ is how every provider quotes them.
 
 The shipped table is a convenience, not a contract: list prices change, so
 `pricing.models` in config always wins and unknown models fall back to the flat
-rate with a `daari doctor` warning.
+rate with a `daari doctor` warning. An entry may set ``alias_of`` /
+``pricing_provider`` to inherit rates from another catalog key (#2005); explicit
+rate fields on that entry still override the aliased values.
 """
 
 from __future__ import annotations
@@ -291,12 +293,20 @@ def resolve_price(
             return _resolved_from_entry(_DECISIONS_MODEL_PRICES[decisions_key])
     table = getattr(pricing, "models", None) or {}
     entry = None
+    matched_key: str | None = None
     if model:
-        key = matching_model_key(model, table)
-        if key is not None:
-            entry = table[key]
+        matched_key = matching_model_key(model, table)
+        if matched_key is not None:
+            entry = table[matched_key]
     if entry is not None:
-        return _resolved_from_entry(entry, input_tokens=input_tokens)
+        resolved = _resolved_from_entry(
+            entry,
+            input_tokens=input_tokens,
+            table=table,
+            exclude_keys={matched_key} if matched_key else set(),
+        )
+        if resolved is not None:
+            return resolved
     flat_per_1m = float(fallback_per_1k) * 1000.0
     return ResolvedPrice(
         input_per_1m=flat_per_1m, output_per_1m=flat_per_1m, is_fallback=True
@@ -370,17 +380,123 @@ def _cache_write_rate(price: ResolvedPrice, cache_ttl: str | None) -> float:
     return float(price.input_per_1m)
 
 
-def _resolved_from_entry(entry: object, *, input_tokens: int = 0) -> ResolvedPrice:
-    input_rate = float(_field(entry, "input_per_1m"))
-    output_rate = float(_field(entry, "output_per_1m"))
-    cached_rate = _optional_field(entry, "cached_input_per_1m")
-    write_1h = _optional_field(entry, "cache_write_1h_per_1m")
-    write_30m = _optional_field(entry, "cache_write_30m_per_1m")
-    write_12h = _optional_field(entry, "cache_write_12h_per_1m")
-    write_rate = _optional_field(entry, "cache_write_per_1m")
-    threshold = _optional_int_field(entry, "input_threshold_tokens")
-    above_input = _optional_field(entry, "above_input_per_1m")
-    above_output = _optional_field(entry, "above_output_per_1m")
+_RATE_FIELDS = (
+    "input_per_1m",
+    "output_per_1m",
+    "cached_input_per_1m",
+    "cache_write_1h_per_1m",
+    "cache_write_30m_per_1m",
+    "cache_write_12h_per_1m",
+    "cache_write_per_1m",
+    "input_threshold_tokens",
+    "above_input_per_1m",
+    "above_output_per_1m",
+)
+
+
+def _alias_target(entry: object) -> str | None:
+    """``alias_of`` wins over ``pricing_provider`` when both are set."""
+    for name in ("alias_of", "pricing_provider"):
+        raw = entry.get(name) if isinstance(entry, dict) else getattr(entry, name, None)
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if text:
+            return text
+    return None
+
+
+def _entry_rate_dict(entry: object) -> dict[str, float | int]:
+    """Copy configured rate fields; omit unset / alias-only Nones."""
+    out: dict[str, float | int] = {}
+    for name in _RATE_FIELDS:
+        if name == "input_threshold_tokens":
+            value = _optional_int_field(entry, name)
+        else:
+            value = _optional_field(entry, name)
+        if value is not None:
+            out[name] = value
+    return out
+
+
+def _merged_rate_entry(
+    entry: object,
+    *,
+    table: object | None,
+    exclude_keys: set[str],
+) -> dict[str, float | int] | None:
+    """Alias chain + explicit overrides → one rate dict (no threshold applied)."""
+    merged: dict[str, float | int] = {}
+    alias = _alias_target(entry)
+    if alias and table is not None:
+        candidates = [k for k in list(table) if k not in exclude_keys]
+        target_key = matching_model_key(alias, candidates)
+        if target_key is not None:
+            parent = _merged_rate_entry(
+                table[target_key],
+                table=table,
+                exclude_keys=exclude_keys | {target_key},
+            )
+            if parent is not None:
+                merged.update(parent)
+    merged.update(_entry_rate_dict(entry))
+    if "input_per_1m" not in merged or "output_per_1m" not in merged:
+        return None
+    return merged
+
+
+def _resolved_from_entry(
+    entry: object,
+    *,
+    input_tokens: int = 0,
+    table: object | None = None,
+    exclude_keys: set[str] | None = None,
+) -> ResolvedPrice | None:
+    """Resolve rates, following ``alias_of`` / ``pricing_provider`` when present.
+
+    Returns None when an alias cannot be resolved and the entry has no
+    explicit input/output rates (caller falls back to the flat rate).
+    """
+    merged = _merged_rate_entry(
+        entry, table=table, exclude_keys=set(exclude_keys or ())
+    )
+    if merged is None:
+        return None
+
+    input_rate = float(merged["input_per_1m"])
+    output_rate = float(merged["output_per_1m"])
+    cached_rate = (
+        float(merged["cached_input_per_1m"]) if "cached_input_per_1m" in merged else None
+    )
+    write_1h = (
+        float(merged["cache_write_1h_per_1m"])
+        if "cache_write_1h_per_1m" in merged
+        else None
+    )
+    write_30m = (
+        float(merged["cache_write_30m_per_1m"])
+        if "cache_write_30m_per_1m" in merged
+        else None
+    )
+    write_12h = (
+        float(merged["cache_write_12h_per_1m"])
+        if "cache_write_12h_per_1m" in merged
+        else None
+    )
+    write_rate = (
+        float(merged["cache_write_per_1m"]) if "cache_write_per_1m" in merged else None
+    )
+    threshold = (
+        int(merged["input_threshold_tokens"])
+        if "input_threshold_tokens" in merged
+        else None
+    )
+    above_input = (
+        float(merged["above_input_per_1m"]) if "above_input_per_1m" in merged else None
+    )
+    above_output = (
+        float(merged["above_output_per_1m"]) if "above_output_per_1m" in merged else None
+    )
     if (
         threshold is not None
         and threshold > 0
@@ -484,6 +600,18 @@ def pricing_warnings(settings: object) -> list[str]:
                 f"no price configured for Ollama cloud model {model!r}; "
                 f"costing it at the flat ${fallback}/1k fallback. "
                 "Set pricing.models to report real spend."
+            )
+    table = getattr(pricing, "models", None) or {}
+    for key, entry in table.items():
+        alias = _alias_target(entry)
+        if not alias:
+            continue
+        candidates = [k for k in table if k != key]
+        if matching_model_key(alias, candidates) is None:
+            warnings.append(
+                f"pricing.models[{key!r}] alias_of/pricing_provider {alias!r} "
+                "is unknown; costing it at the flat fallback unless this entry "
+                "sets explicit rates. Set alias_of to a shipped or configured key."
             )
     return warnings
 

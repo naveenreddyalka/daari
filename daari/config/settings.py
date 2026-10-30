@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from daari.enterprise.config import OrgSettings
 
@@ -1217,8 +1217,9 @@ class UpstreamSettings(BaseModel):
 class ModelPrice(BaseModel):
     """USD per 1M tokens, which is how providers quote list prices."""
 
-    input_per_1m: float
-    output_per_1m: float
+    # Optional when alias_of / pricing_provider resolves rates from the catalog (#2005).
+    input_per_1m: float | None = None
+    output_per_1m: float | None = None
     # Providers discount cached prompt prefixes; None means bill at input rate.
     cached_input_per_1m: float | None = None
     # Anthropic prompt-cache write at 1h TTL (2× base input). Missing TTL / 5m
@@ -1236,6 +1237,35 @@ class ModelPrice(BaseModel):
     input_threshold_tokens: int | None = None
     above_input_per_1m: float | None = None
     above_output_per_1m: float | None = None
+    # Bill this id like another catalog / configured key (LiteLLM pricing_provider).
+    # Set in config.yaml (not live-editable via the config editor ownership subset).
+    alias_of: str | None = Field(
+        default=None,
+        description=(
+            "Optional catalog key to inherit rates from (longest-key match). "
+            "Explicit rate fields on this entry override the aliased values. "
+            "Set in config.yaml; not live-editable via the config editor ownership subset."
+        ),
+    )
+    pricing_provider: str | None = Field(
+        default=None,
+        description=(
+            "Synonym for alias_of (LiteLLM model_info.pricing_provider). "
+            "alias_of wins when both are set."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _require_rates_or_alias(self) -> ModelPrice:
+        alias = (self.alias_of or self.pricing_provider or "").strip()
+        if alias:
+            return self
+        if self.input_per_1m is None or self.output_per_1m is None:
+            raise ValueError(
+                "input_per_1m and output_per_1m are required unless "
+                "alias_of or pricing_provider is set"
+            )
+        return self
 
 
 # OpenAI retirement calendar shipped so doctor / 410 / /v1/models light up
@@ -1509,8 +1539,12 @@ class PricingSettings(BaseModel):
             "Per-model, per-direction USD rates per 1M tokens. Keys match on "
             "longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06` and a "
             "vendor prefix (`anthropic.claude-fable-5-1`) resolves the same way. "
+            "Optional `alias_of` / `pricing_provider` inherits rates from another "
+            "shipped or configured key (explicit fields still override). "
             "Models absent here fall back to `usage.frontier_price_per_1k_tokens`; "
-            "run `daari doctor` to list models being billed at the fallback rate."
+            "run `daari doctor` to list models being billed at the fallback rate "
+            "or aliases pointing at unknown keys. Set in config.yaml (not "
+            "live-editable via the config editor ownership subset)."
         ),
     )
 
