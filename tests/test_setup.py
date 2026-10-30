@@ -26,9 +26,11 @@ from daari.setup.jsonc import load_jsonc
 from daari.setup.models import (
     FLINT_MODEL,
     LFM3_MODEL,
+    LFM3_VL_MODEL,
     NEMOTRON_BOLT_MODEL,
     apply_flint_l4_recipe,
     apply_lfm3_l3_recipe,
+    apply_lfm3_vl_l4_recipe,
     apply_nemotron_bolt_l3_recipe,
     fetch_ollama_models,
     write_models_config,
@@ -346,6 +348,37 @@ class TestSetupModels:
         assert "Linux" in LFM3_RECIPE_NOTE
         assert "Windows" in LFM3_RECIPE_NOTE
         assert "coming soon" in LFM3_RECIPE_NOTE.lower()
+
+    def test_lfm3_vl_l4_recipe_dry_run_does_not_write(self, tmp_path):
+        """Optional LFM3-VL L4 recipe dry-run leaves config untouched (#2006)."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("models:\n  l3: llama3.2:3b\n  l4: llama3.1:8b\n", encoding="utf-8")
+        before = config_path.read_text(encoding="utf-8")
+        plan = apply_lfm3_vl_l4_recipe(config_path=config_path, dry_run=True)
+        assert plan.changed is True
+        assert plan.tier == "l4"
+        assert plan.model == LFM3_VL_MODEL
+        assert config_path.read_text(encoding="utf-8") == before
+
+    def test_lfm3_vl_l4_recipe_apply_sets_l4(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        result = apply_lfm3_vl_l4_recipe(config_path=config_path, dry_run=False)
+        assert result.changed is True
+        assert result.model == LFM3_VL_MODEL
+        text = config_path.read_text(encoding="utf-8")
+        assert LFM3_VL_MODEL in text
+        assert "l4:" in text
+
+    def test_lfm3_vl_recipe_note_apple_first_and_floor(self):
+        from daari.setup.models import LFM3_VL_OLLAMA_FLOOR, LFM3_VL_RECIPE_NOTE
+
+        assert LFM3_VL_OLLAMA_FLOOR == (0, 40, 12)
+        assert "0.40.12" in LFM3_VL_RECIPE_NOTE
+        assert f"ollama pull {LFM3_VL_MODEL}" in LFM3_VL_RECIPE_NOTE
+        assert "Apple" in LFM3_VL_RECIPE_NOTE
+        assert "Linux" in LFM3_VL_RECIPE_NOTE
+        assert "Windows" in LFM3_VL_RECIPE_NOTE
+        assert "coming soon" in LFM3_VL_RECIPE_NOTE.lower()
 
 
 class TestSetupCLI:

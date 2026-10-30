@@ -332,20 +332,31 @@ pricing:
     my-self-hosted-model:
       input_per_1m: 0.0
       output_per_1m: 0.0
+    # Bill an OpenRouter / Azure / local alias like a shipped catalog id
+    # without copying the whole rate row (#2005). Explicit fields still override.
+    openrouter/gpt-4o:
+      alias_of: gpt-4o
+    azure-gpt-4o-mini:
+      pricing_provider: gpt-4o-mini
+      output_per_1m: 0.80   # keep input from the catalog; override output
 ```
 
 Names match on longest prefix, so a `gpt-4o` entry also prices
 `gpt-4o-2024-08-06`. A vendor prefix resolves the same way:
 `anthropic.claude-fable-5-1` and `models/gemini-3.8-flash` use the shipped
-id. Anything unmatched falls back to the flat
+id. Optional `alias_of` / `pricing_provider` (synonyms; `alias_of` wins when
+both are set) inherits rates from another shipped or configured key with the
+same longest-key match — set in `config.yaml` (not live-editable via the
+config editor ownership subset). Anything unmatched falls back to the flat
 `usage.frontier_price_per_1k_tokens`, which ignores direction and will misprice a
 model whose output rate differs sharply from its input rate. `daari doctor` warns
-about models being billed at that fallback, so add an entry when you adopt a new
-model or your budgets will drift from your real invoice. Ollama ids that end
-with `:cloud` (`clef:cloud`, `clef-flash:cloud`) are metered the same way even
-when a local tier serves them: a `pricing.models` entry sets the ledger cost,
-and a missing entry warns from `daari doctor` and `daari_meta.warning` instead
-of recording $0. Other L3–L5 models stay $0.
+about models being billed at that fallback and about aliases pointing at
+unknown keys, so add an entry when you adopt a new model or your budgets will
+drift from your real invoice. Ollama ids that end with `:cloud`
+(`clef:cloud`, `clef-flash:cloud`) are metered the same way even when a local
+tier serves them: a `pricing.models` entry sets the ledger cost, and a missing
+entry warns from `daari doctor` and `daari_meta.warning` instead of recording
+$0. Other L3–L5 models stay $0.
 
 ### Shipped list prices (captured 2026-09-07)
 

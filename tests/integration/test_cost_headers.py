@@ -176,6 +176,58 @@ async def test_frontier_serve_reports_spend_and_avoids_nothing(frontier_settings
     assert float(response.headers[COST_AVOIDED_HEADER]) == 0.0
 
 
+async def test_aliased_pricing_model_chat_records_nonzero_cost(
+    frontier_settings, monkeypatch
+):
+    """Alias_of catalog rates bill L6 when the provider omits usage.cost (#2005)."""
+    from daari.config.settings import ModelPrice
+    from daari.pricing import cost_usd
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
+    frontier_settings.pricing.models["openrouter/gpt-4o-mini"] = ModelPrice(
+        alias_of="gpt-4o-mini"
+    )
+    frontier_settings.frontier.model = "openrouter/gpt-4o-mini"
+    app = _app(frontier_settings)
+
+    async def fake_l6(request: InternalRequest, *, escalated_from: str, local_confidence: float):
+        return InternalResponse(
+            content="Frontier answer priced via catalog alias.",
+            model="openrouter/gpt-4o-mini",
+            daari_meta=DaariMeta(
+                tier="L6",
+                executor="frontier",
+                provider_id="openai",
+                model="openrouter/gpt-4o-mini",
+                escalated_from=escalated_from,
+                input_tokens=1_000_000,
+                output_tokens=500_000,
+            ),
+        )
+
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, _low_confidence)
+    monkeypatch.setattr(app.state.ctx.router.frontier, "execute", fake_l6)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": "hard question"}],
+            },
+            headers=META_HEADERS,
+        )
+    expected = cost_usd(
+        "openrouter/gpt-4o-mini",
+        1_000_000,
+        500_000,
+        frontier_settings.pricing,
+        fallback_per_1k=frontier_settings.usage.frontier_price_per_1k_tokens,
+    )
+    assert expected > 0
+    assert float(response.headers[COST_HEADER]) == pytest.approx(expected)
+    assert response.json()["daari_meta"]["tier"] == "L6"
+
+
 async def test_stream_headers_carry_tier_and_cache_but_no_cost(settings, monkeypatch):
     app = _app(settings)
     calls = 0
