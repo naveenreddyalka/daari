@@ -74,8 +74,12 @@ of data the router already has — no model calls:
 Opt-in `routing.signal_overrides` (empty by default) matches on those facts
 with equality / bucket match (first match wins) and applies an existing lever:
 `category`, `max_tier` (like `X-Daari-Tier-Cap`), or `tier_pin` (like
-`X-Daari-Tier-Override`). Matches are traced (`signal_override` step), logged,
-counted on `/v1/daari/stats` (`signal_override`), and exported as
+`X-Daari-Tier-Override`). Each rule must have a non-empty `match` using only
+known signal keys, match values of `str | bool | int | None`
+(`approx_context_tokens` must be one of the four bucket strings), and at least
+one lever set — otherwise load / `daari config validate` fails naming the rule
+`id`. Matches are traced (`signal_override` step), logged, counted on
+`/v1/daari/stats` (`signal_override`), and exported as
 `daari_signal_override_total{rule="..."}`. Set the list in `config.yaml` (not
 part of the live config-editor ownership subset).
 

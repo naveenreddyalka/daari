@@ -8379,6 +8379,16 @@ but L4 is unwired. Docs: ollama.md. Covered by `tests/test_setup.py` and
 Gradium tips). Docs: tts.md. Covered by `tests/test_setup.py`,
 `tests/unit/test_doctor_lfm3_audio.py`, and `tests/unit/test_tts_docs.py`.
 
+### Validate signal_overrides match keys and buckets ([#2013](https://github.com/naveenreddyalka/daari/issues/2013))
+
+<!-- tracking:#2013 -->
+**Status:** Done (2026-10-30). `SignalOverrideRule` rejects unknown match keys,
+non-`str|bool|int|None` values, non-bucket `approx_context_tokens`, empty
+`match`, and lever-less rules (message names rule `id`).
+`CONTEXT_TOKEN_BUCKETS` is the single source with `context_token_bucket`.
+`daari config validate` surfaces the id. Docs: routing-tiers. Covered by
+`tests/unit/test_signal_overrides.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

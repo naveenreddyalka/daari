@@ -124,6 +124,67 @@ def test_signal_override_rule_rejects_bad_tier():
         SignalOverrideRule(id="bad", match={"has_images": True}, max_tier="L9")
 
 
+def test_signal_override_rejects_typo_match_key():
+    with pytest.raises(ValidationError, match=r"typo-key|has_image|unknown match key"):
+        SignalOverrideRule(id="typo-key", match={"has_image": True}, category="doc_qa")
+
+
+def test_signal_override_rejects_bad_context_bucket():
+    with pytest.raises(ValidationError, match=r"bad-bucket|approx_context_tokens|4000"):
+        SignalOverrideRule(
+            id="bad-bucket",
+            match={"approx_context_tokens": "4000"},
+            max_tier="L4",
+        )
+
+
+def test_signal_override_rejects_bad_match_value_type():
+    with pytest.raises(ValidationError, match=r"bad-type|has_images|list|type"):
+        SignalOverrideRule(id="bad-type", match={"has_images": [True]}, category="doc_qa")
+
+
+def test_signal_override_rejects_empty_match():
+    with pytest.raises(ValidationError, match=r"empty-match|empty match"):
+        SignalOverrideRule(id="empty-match", match={}, category="doc_qa")
+
+
+def test_signal_override_rejects_leverless_rule():
+    with pytest.raises(ValidationError, match=r"no-lever|lever|category|max_tier|tier_pin"):
+        SignalOverrideRule(id="no-lever", match={"has_images": True})
+
+
+def test_signal_override_valid_rule_loads():
+    rule = SignalOverrideRule(
+        id="ok",
+        match={"has_images": True, "approx_context_tokens": "4k_16k", "tool_count": 2},
+        category="doc_qa",
+        max_tier="L4",
+    )
+    assert rule.id == "ok"
+    assert rule.match["approx_context_tokens"] == "4k_16k"
+
+
+def test_config_validate_surfaces_signal_override_rule_id(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from daari.cli.app import app as cli_app
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "routing:\n"
+        "  signal_overrides:\n"
+        "    - id: dead-typo\n"
+        "      match: { has_image: true }\n"
+        "      category: doc_qa\n",
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(cli_app, ["config", "validate", str(path)])
+    assert result.exit_code == 1
+    combined = (result.stdout or "") + (result.stderr or "")
+    assert "dead-typo" in combined
+
+
 def test_routing_settings_default_empty_overrides():
     routing = RoutingSettings()
     assert routing.signal_overrides == []
