@@ -752,6 +752,42 @@ class SignalOverrideRule(BaseModel):
         description="When set, pin the initial tier like X-Daari-Tier-Override.",
     )
 
+    @model_validator(mode="after")
+    def _validate_match_and_levers(self) -> SignalOverrideRule:
+        from daari.router.signals import CONTEXT_TOKEN_BUCKETS, SIGNAL_KEYS
+
+        rule_id = self.id or "<unnamed>"
+        if not self.match:
+            raise ValueError(
+                f"signal_overrides rule {rule_id!r} has an empty match "
+                "(dead rule; every override needs at least one signal key)"
+            )
+        if self.category is None and self.max_tier is None and self.tier_pin is None:
+            raise ValueError(
+                f"signal_overrides rule {rule_id!r} sets no lever "
+                "(set category, max_tier, and/or tier_pin)"
+            )
+        for key, value in self.match.items():
+            if key not in SIGNAL_KEYS:
+                raise ValueError(
+                    f"signal_overrides rule {rule_id!r} has unknown match key "
+                    f"{key!r} (allowed: {sorted(SIGNAL_KEYS)})"
+                )
+            if value is not None and not isinstance(value, (str, bool, int)):
+                raise ValueError(
+                    f"signal_overrides rule {rule_id!r} match[{key!r}] has "
+                    f"invalid type {type(value).__name__} "
+                    "(allowed: str | bool | int | None)"
+                )
+            if key == "approx_context_tokens":
+                if not isinstance(value, str) or value not in CONTEXT_TOKEN_BUCKETS:
+                    raise ValueError(
+                        f"signal_overrides rule {rule_id!r} "
+                        f"approx_context_tokens must be one of "
+                        f"{sorted(CONTEXT_TOKEN_BUCKETS)}, got {value!r}"
+                    )
+        return self
+
 
 class CompactToFitSettings(BaseModel):
     """Trim oversized history before L6; never drop tool-call payloads (#1340)."""

@@ -24,6 +24,9 @@ SIGNAL_KEYS = frozenset(
     }
 )
 
+# Single source with ``context_token_bucket`` — config validation uses the same set.
+CONTEXT_TOKEN_BUCKETS = frozenset({"lt_1k", "1k_4k", "4k_16k", "gte_16k"})
+
 _TIER_SET = frozenset({"L3", "L4", "L5"})
 
 
