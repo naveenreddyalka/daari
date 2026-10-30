@@ -8316,6 +8316,25 @@ vs Ollama 0.40.12 Apple-only / 0.40.13 Linux notes, and watch-only
 [04-competitive-landscape.md](discovery/04-competitive-landscape.md).
 Covered by `tests/unit/test_llamacpp_local_tier_docs.py`.
 
+### Docs: LiteLLM 1.109.0-dev.1 watch; GA floor 1.106.5 ([#2002](https://github.com/naveenreddyalka/daari/issues/2002))
+
+<!-- tracking:#2002 -->
+**Status:** Done (2026-10-29). `compare-litellm.md` watches LiteLLM
+**v1.109.0-dev.1** as **prerelease** (mid-stream fallback,
+`LITELLM_OFFLINE_MODE`, `agent_access_default_deny`, `pricing_provider`,
+Admin Chat UI) with on-box stance; stable floor stays **1.106.5 GA**.
+Covered by `tests/unit/test_compare_litellm_1104.py`.
+
+### Mid-stream fallback continuation ([#2003](https://github.com/naveenreddyalka/daari/issues/2003))
+
+<!-- tracking:#2003 -->
+**Status:** Done (2026-10-29). Opt-in `routing.stream_fallback_continue`
+(default off) continues a streaming hop after mid-stream upstream death on
+the next local/L6 slot with partial replay; honors no-frontier; metrics
+`daari_stream_fallback_continue_total`. Docs: routing-tiers + config
+ownership. Covered by `tests/unit/test_stream_fallback_continue.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

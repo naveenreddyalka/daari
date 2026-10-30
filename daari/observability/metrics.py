@@ -281,6 +281,7 @@ class Metrics:
     deadline_exhausted: int = 0
     compact_to_fit_applied: int = 0
     compact_to_fit_tokens_dropped: int = 0
+    stream_fallback_continue: int = 0
     # rule id → count for routing.signal_overrides (#1996).
     signal_override: dict[str, int] = field(default_factory=dict)
     mcp_grant_denied: int = 0
@@ -530,6 +531,11 @@ class Metrics:
             self.compact_to_fit_applied += 1
             self.compact_to_fit_tokens_dropped += max(0, int(tokens_dropped))
 
+    def record_stream_fallback_continue(self) -> None:
+        """Mid-stream death continued on the next tier/slot (#2003)."""
+        with self._lock:
+            self.stream_fallback_continue += 1
+
     def record_signal_override(self, *, rule: str) -> None:
         """A routing.signal_overrides rule matched and applied a lever (#1996)."""
         label = (rule or "anonymous").strip() or "anonymous"
@@ -670,6 +676,7 @@ class Metrics:
                 "deadline_exhausted": self.deadline_exhausted,
                 "compact_to_fit_applied": self.compact_to_fit_applied,
                 "compact_to_fit_tokens_dropped": self.compact_to_fit_tokens_dropped,
+                "stream_fallback_continue": self.stream_fallback_continue,
                 "signal_override": dict(self.signal_override),
                 "mcp_grant_denied": self.mcp_grant_denied,
                 "cache_invalidate": dict(self.cache_invalidate),

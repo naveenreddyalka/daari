@@ -960,6 +960,17 @@ class RoutingSettings(RuntimeSettings):
     # When True, client reasoning_effort=high biases local tier selection
     # upward (and marks the profile complex). Default off (#297).
     reasoning_effort_escalation: bool = False
+    stream_fallback_continue: bool = Field(
+        default=False,
+        description=(
+            "When true, a streaming local/L6 hop that dies after ≥1 content "
+            "token was sent continues on the next tier/slot (local first, "
+            "frontier last) with the partial replayed into the transcript. "
+            "Default off keeps today's in-band stream_incomplete behavior. "
+            "Honors no_frontier / X-Daari-No-Frontier (never escalates to L6 "
+            "when forbidden). Editable via config editor ownership."
+        ),
+    )
     compact_to_fit: CompactToFitSettings = Field(
         default_factory=CompactToFitSettings,
         description=(

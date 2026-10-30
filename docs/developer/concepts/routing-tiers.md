@@ -132,6 +132,18 @@ to in-process memory and log `session_affinity.degraded`. Confidence
 failure, context-length failover, an open circuit, a down model,
 `X-Daari-Tier-Cap`, and a pin whose tier has only `:cloud` hosts while the
 request is fenced (`no_frontier`, a tier cap, or `region_pin`) beat the pin.
+
+## Mid-stream fallback continuation
+
+`routing.stream_fallback_continue` (default off) changes what happens when a
+streaming local (or L6) hop dies **after** at least one content token reached
+the client. Off keeps today's in-band `stream_incomplete` signal on the last
+hop. On, daari flushes the partial, trips the dead slot's breaker, rewrites the
+transcript with the assistant partial plus a short continue instruction, and
+keeps the same SSE response id while streaming the next tier/slot (local first,
+frontier last). `no_frontier` / `X-Daari-No-Frontier` still block L6; an
+exhausted chain ends with `stream_incomplete`. Continuations increment
+`daari_stream_fallback_continue_total` and log `stream_fallback_continue`.
 That override logs `session_pin_override` with reason `cloud_fenced` and the
 next reply re-pins the tier that actually served. Hits log `session_pin`; overrides log
 `session_pin_override`.
