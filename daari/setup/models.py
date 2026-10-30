@@ -37,6 +37,16 @@ LFM3_RECIPE_NOTE = (
     f"Pull with: ollama pull {LFM3_MODEL}"
 )
 
+# Liquid AI LFM3-VL — optional multimodal L4 vision (Ollama ≥ 0.40.12; Apple-first) (#2006).
+LFM3_VL_MODEL = "lfm3-vl"
+LFM3_VL_OLLAMA_FLOOR = (0, 40, 12)
+LFM3_VL_RECIPE_NOTE = (
+    "Optional LFM3-VL L4 vision recipe "
+    f"(models.l4={LFM3_VL_MODEL}). Requires Ollama ≥ 0.40.12. "
+    "Apple hardware first in 0.40.12; Linux/Windows support coming soon. "
+    f"Pull with: ollama pull {LFM3_VL_MODEL}"
+)
+
 
 @dataclass
 class ModelSetupResult:
@@ -247,6 +257,33 @@ def apply_lfm3_l3_recipe(
     return write_models_config(LFM3_MODEL, tier="l3", config_path=path)
 
 
+def apply_lfm3_vl_l4_recipe(
+    *,
+    config_path: Path | None = None,
+    dry_run: bool = False,
+) -> ModelSetupResult:
+    """Set ``models.l4`` to LFM3-VL without pulling weights (#2006)."""
+    path = config_path or Path.home() / ".daari" / "config.yaml"
+    if dry_run:
+        current_l4: str | None = None
+        if path.is_file():
+            with path.open(encoding="utf-8") as handle:
+                loaded = yaml.safe_load(handle) or {}
+            if isinstance(loaded, dict):
+                models = loaded.get("models") or {}
+                if isinstance(models, dict):
+                    raw = models.get("l4")
+                    current_l4 = str(raw) if raw is not None else None
+        changed = current_l4 != LFM3_VL_MODEL
+        return ModelSetupResult(
+            tier="l4",
+            model=LFM3_VL_MODEL,
+            config_path=path,
+            changed=changed,
+        )
+    return write_models_config(LFM3_VL_MODEL, tier="l4", config_path=path)
+
+
 def write_models_config(
     model: str | None = None,
     *,
@@ -307,6 +344,7 @@ def setup_models_interactive(
     flint: bool = False,
     nemotron_bolt: bool = False,
     lfm3: bool = False,
+    lfm3_vl: bool = False,
     config_path: Path | None = None,
     httpx_client: httpx.Client | None = None,
 ) -> ModelSetupResult | None:
@@ -337,6 +375,12 @@ def setup_models_interactive(
         typer.echo(LFM3_RECIPE_NOTE)
         result = apply_lfm3_l3_recipe(config_path=path, dry_run=False)
         typer.echo(f"Set models.l3 = {LFM3_MODEL} in {path}")
+        return result
+
+    if lfm3_vl:
+        typer.echo(LFM3_VL_RECIPE_NOTE)
+        result = apply_lfm3_vl_l4_recipe(config_path=path, dry_run=False)
+        typer.echo(f"Set models.l4 = {LFM3_VL_MODEL} in {path}")
         return result
 
     if model is not None:
@@ -413,7 +457,7 @@ def setup_models_interactive(
             ):
                 result = apply_lfm3_l3_recipe(config_path=path, dry_run=False)
                 typer.echo(f"Set models.l3 = {LFM3_MODEL} in {path}")
-    if tier == "l4" and picked != FLINT_MODEL:
+    if tier == "l4" and picked not in {FLINT_MODEL, LFM3_VL_MODEL}:
         typer.echo(FLINT_RECIPE_NOTE)
         if typer.confirm(
             f"Apply optional Flint L4 coding recipe (set models.l4={FLINT_MODEL})?",
@@ -421,4 +465,13 @@ def setup_models_interactive(
         ):
             result = apply_flint_l4_recipe(config_path=path, dry_run=False)
             typer.echo(f"Set models.l4 = {FLINT_MODEL} in {path}")
+        else:
+            typer.echo(LFM3_VL_RECIPE_NOTE)
+            if typer.confirm(
+                f"Apply optional LFM3-VL L4 vision recipe "
+                f"(set models.l4={LFM3_VL_MODEL})?",
+                default=False,
+            ):
+                result = apply_lfm3_vl_l4_recipe(config_path=path, dry_run=False)
+                typer.echo(f"Set models.l4 = {LFM3_VL_MODEL} in {path}")
     return result

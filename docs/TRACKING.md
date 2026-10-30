@@ -8360,6 +8360,15 @@ Docs: budgets-frontier, config.md (file ownership, not live editor). Covered by
 `tests/unit/test_pricing_provider_alias.py` and
 `tests/integration/test_cost_headers.py`.
 
+### Optional lfm3-vl multimodal L4 recipe ([#2006](https://github.com/naveenreddyalka/daari/issues/2006))
+
+<!-- tracking:#2006 -->
+**Status:** Done (2026-10-30). `daari setup models --lfm3-vl` / wizard opt-in
+sets `models.l4=lfm3-vl` without pulling weights (Ollama ≥ 0.40.12;
+Apple-first). Doctor tip `ollama_lfm3_vl_unused` when the host lists the tag
+but L4 is unwired. Docs: ollama.md. Covered by `tests/test_setup.py` and
+`tests/unit/test_doctor_lfm3_vl_unused.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

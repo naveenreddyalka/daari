@@ -73,6 +73,9 @@ def run_doctor(
     lfm3_unused_tip = _check_lfm3_unused(cfg, httpx_client)
     if lfm3_unused_tip is not None:
         results.append(lfm3_unused_tip)
+    lfm3_vl_unused_tip = _check_lfm3_vl_unused(cfg, httpx_client)
+    if lfm3_vl_unused_tip is not None:
+        results.append(lfm3_vl_unused_tip)
     daemon_stats = _daemon_stats_payload(cfg, httpx_client)
     breaker_tip = _check_systemone_breaker(
         cfg, httpx_client=httpx_client, daemon_stats=daemon_stats
@@ -1240,6 +1243,53 @@ def _check_lfm3_unused(
             detail=(
                 f"{LFM3_MODEL} is present on Ollama at {base} but models.l3={l3!r} — "
                 f"run `daari setup models --lfm3` for the 256K local-agent L3 recipe"
+            ),
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+
+
+def _check_lfm3_vl_unused(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult | None:
+    """Tip when Ollama lists lfm3-vl but models.l4 is not wired to it (#2006)."""
+    from daari.setup.models import LFM3_VL_MODEL
+
+    l4 = str(getattr(settings.models, "l4", None) or "").strip()
+    if l4 == LFM3_VL_MODEL or l4.startswith(f"{LFM3_VL_MODEL}:"):
+        return None
+    base = settings.ollama.base_url.rstrip("/")
+    own_client = client is None
+    http = client or httpx.Client(timeout=5.0)
+    try:
+        try:
+            response = http.get(f"{base}/api/tags")
+        except Exception:
+            return None
+        if response.status_code != 200:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        names = [
+            str(m.get("name") or "")
+            for m in (data.get("models") or [])
+            if isinstance(m, dict)
+        ]
+        if not _host_lists_model(names, LFM3_VL_MODEL):
+            return None
+        return CheckResult(
+            name="ollama_lfm3_vl_unused",
+            ok=False,
+            detail=(
+                f"{LFM3_VL_MODEL} is present on Ollama at {base} but models.l4={l4!r} — "
+                f"run `daari setup models --lfm3-vl` for the multimodal L4 vision recipe"
             ),
             optional=True,
         )

@@ -3376,6 +3376,14 @@ def setup_models(
             "(models.l3=lfm3; Ollama ≥ 0.40.12; Apple-first)."
         ),
     ),
+    lfm3_vl: bool = typer.Option(
+        False,
+        "--lfm3-vl",
+        help=(
+            "Apply optional LFM3-VL L4 vision recipe "
+            "(models.l4=lfm3-vl; Ollama ≥ 0.40.12; Apple-first)."
+        ),
+    ),
 ) -> None:
     """Pick an Ollama model for a daari tier."""
     setup_models_interactive(
@@ -3386,6 +3394,7 @@ def setup_models(
         flint=flint,
         nemotron_bolt=nemotron_bolt,
         lfm3=lfm3,
+        lfm3_vl=lfm3_vl,
     )
 
 
