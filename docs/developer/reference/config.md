@@ -15,6 +15,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.virtual_keys.enabled` | bool | `True` |  |
 | `server.virtual_keys.path` | str | `'~/.daari/auth/virtual-keys.sqlite3'` |  |
 | `server.virtual_keys.backend` | Literal | `'sqlite'` | sqlite (default) or postgres (observability.postgres_url) so keys and teams resolve across replicas (#544). Env: DAARI_SERVER__VIRTUAL_KEYS__BACKEND. |
+| `server.virtual_keys.agent_access_default_deny` | bool | `False` | When true, virtual keys (and teams) without an agent grant (metadata.agents_access / allowed_agents / agents.allow|deny) get HTTP 403 on multi_agent.enabled Responses (and future /v1/agents*). Default false. Env: DAARI_SERVER__VIRTUAL_KEYS__AGENT_ACCESS_DEFAULT_DENY. |
 | `server.max_body_bytes` | int | `10485760` | Hard cap on inbound request body size (#933). Oversized requests return 413 before the body is buffered. 0 disables the cap. File and multipart audio upload routes may use a higher floor so files.max_total_bytes still applies; JSON /v1/audio/speech stays on this cap (#1916). Env: DAARI_SERVER__MAX_BODY_BYTES. |
 | `server.header_policy.enabled` | bool | `False` | When true, evaluate required/deny/allow before require_api_key. Env: DAARI_SERVER__HEADER_POLICY__ENABLED. |
 | `server.header_policy.required` | list | `[]` | Header names that must be present and non-empty. |

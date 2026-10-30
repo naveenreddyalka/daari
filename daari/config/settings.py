@@ -32,6 +32,15 @@ class VirtualKeysSettings(BaseModel):
             "DAARI_SERVER__VIRTUAL_KEYS__BACKEND."
         ),
     )
+    agent_access_default_deny: bool = Field(
+        default=False,
+        description=(
+            "When true, virtual keys (and teams) without an agent grant "
+            "(metadata.agents_access / allowed_agents / agents.allow|deny) get "
+            "HTTP 403 on multi_agent.enabled Responses (and future /v1/agents*). "
+            "Default false. Env: DAARI_SERVER__VIRTUAL_KEYS__AGENT_ACCESS_DEFAULT_DENY."
+        ),
+    )
 
 
 class ModelRateLimitSettings(BaseModel):

@@ -95,6 +95,9 @@ def run_doctor(
     require_key_tip = _check_mcp_require_key_access(cfg)
     if require_key_tip is not None:
         results.append(require_key_tip)
+    agent_access_tip = _check_agent_access_default_deny(cfg)
+    if agent_access_tip is not None:
+        results.append(agent_access_tip)
     registry_tip = _check_mcp_registry(cfg)
     if registry_tip is not None:
         results.append(registry_tip)
@@ -3926,6 +3929,41 @@ def _check_mcp_require_key_access(settings: Settings) -> CheckResult | None:
             "integrations.mcp_policy.require_key_access_defined: virtual keys "
             "without metadata.mcp allow/deny/servers fail initialize, get empty "
             "tools/list, and tools/call deny; master key unchanged"
+        ),
+        optional=True,
+    )
+
+
+def _check_agent_access_default_deny(settings: Settings) -> CheckResult | None:
+    """Tip when agent deny is on and no keys/teams have grants (#2004).
+
+    Absent when ``agent_access_default_deny`` is false (default) or at least one
+    key/team declares ``agents_access`` / ``allowed_agents`` / ``agents``.
+    """
+    vk = getattr(settings.server, "virtual_keys", None)
+    if vk is None or not bool(getattr(vk, "agent_access_default_deny", False)):
+        return None
+    try:
+        from daari.auth.agent_access import key_has_agent_grant, team_has_agent_grant
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+        for key in store.list():
+            if key_has_agent_grant(getattr(key, "metadata", None) or {}):
+                return None
+        for team in store.list_teams():
+            if team_has_agent_grant(team):
+                return None
+    except Exception:
+        # Store unread — still tip so operators know the flag is on.
+        pass
+    return CheckResult(
+        name="agent_access_default_deny",
+        ok=True,
+        detail=(
+            "server.virtual_keys.agent_access_default_deny: no virtual keys or "
+            "teams have an agent grant (metadata.agents_access / allowed_agents); "
+            "multi_agent.enabled returns 403 for ungranted keys; master key unchanged"
         ),
         optional=True,
     )

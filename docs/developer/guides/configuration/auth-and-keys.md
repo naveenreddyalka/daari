@@ -73,6 +73,12 @@ Recipe and payload: [budgets and frontier](budgets-frontier.md#key-expiry-alerts
 daari keys create --name ci --rpm 60 --tpm 40000
 ```
 
+Opt-in **agent access** deny for Responses `multi_agent.enabled` (same trust
+floor as MCP grants): set `server.virtual_keys.agent_access_default_deny: true`
+and grant keys/teams via `metadata.agents_access: true` or
+`metadata.allowed_agents`. Ungranted virtual keys get HTTP 403; master key
+unchanged. Details: [virtual keys](../features/virtual-keys.md#agent-access-multi_agent).
+
 ## Rate limits
 
 Defaults apply to every key (including the master key). A virtual key's `--rpm` / `--tpm` override the global defaults for that key. `0` means unlimited. Chat and embeddings charge TPM from request characters (`len // 4`, minimum 1). `POST /v1/audio/transcriptions` and `POST /v1/audio/translations` charge `len(file_bytes) // 4` so a large upload is not counted as one token. Teams can also set aggregate ceilings with `daari keys team-create --rpm/--tpm` (or `team-update`); those counters use `rpm:team:{team_id}` / `tpm:team:{team_id}` and are checked after per-key limits so N keys on one team share one budget (#546).
