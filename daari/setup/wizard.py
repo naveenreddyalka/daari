@@ -101,10 +101,13 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
             FLINT_RECIPE_NOTE,
             LFM3_MODEL,
             LFM3_RECIPE_NOTE,
+            LFM3_VL_MODEL,
+            LFM3_VL_RECIPE_NOTE,
             NEMOTRON_BOLT_MODEL,
             NEMOTRON_BOLT_RECIPE_NOTE,
             apply_flint_l4_recipe,
             apply_lfm3_l3_recipe,
+            apply_lfm3_vl_l4_recipe,
             apply_nemotron_bolt_l3_recipe,
         )
 
@@ -128,7 +131,7 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
             else:
                 setup_models_interactive(cfg, tier="l3")
         if typer.confirm("Configure L4 model as well?", default=True):
-            # Interactive L4 path also offers the optional Flint coding recipe (#1852).
+            # Interactive L4 path also offers Flint / LFM3-VL recipes (#1852 / #2006).
             setup_models_interactive(cfg, tier="l4")
         else:
             typer.echo(FLINT_RECIPE_NOTE)
@@ -138,6 +141,15 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
             ):
                 apply_flint_l4_recipe(dry_run=False)
                 typer.echo(f"Set models.l4 = {FLINT_MODEL}")
+            else:
+                typer.echo(LFM3_VL_RECIPE_NOTE)
+                if typer.confirm(
+                    f"Apply optional LFM3-VL L4 vision recipe "
+                    f"(set models.l4={LFM3_VL_MODEL})?",
+                    default=False,
+                ):
+                    apply_lfm3_vl_l4_recipe(dry_run=False)
+                    typer.echo(f"Set models.l4 = {LFM3_VL_MODEL}")
     elif choice == "5":
         setup_openai_compat(cfg, write_env_example=True)
     elif choice == "6":
