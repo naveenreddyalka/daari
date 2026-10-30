@@ -8389,6 +8389,14 @@ non-`str|bool|int|None` values, non-bucket `approx_context_tokens`, empty
 `daari config validate` surfaces the id. Docs: routing-tiers. Covered by
 `tests/unit/test_signal_overrides.py`.
 
+### Config ownership + PATCH for routing.signal_overrides ([#2014](https://github.com/naveenreddyalka/daari/issues/2014))
+
+<!-- tracking:#2014 -->
+**Status:** Done (2026-10-30). `GET/PATCH /v1/daari/config` ownership exposes
+`routing.signal_overrides` as a full list replacement; invalid rules 400;
+VK without master 403; live router + audit + persist. Docs: config.md,
+http-api, routing-tiers. Covered by `tests/unit/test_config_ownership.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
