@@ -8426,6 +8426,16 @@ Doctor warns on empty/unknown ids. Docs: routing-tiers, config.md. Covered by
 `tests/unit/test_virtual_models.py` and a gateway-flow assertion.
 
 
+### Hour bucket on spend report rollups ([#2030](https://github.com/naveenreddyalka/daari/issues/2030))
+
+<!-- tracking:#2030 -->
+**Status:** Done (2026-10-31). `bucket=hour` on spend grouped reports (store,
+HTTP, CLI) emits UTC `YYYY-MM-DDTHH` keys via `_bucket_expr` for sqlite and
+postgres TEXT `ts`. Invalid-bucket errors list day/month/hour; minute grain
+stays out of scope. Docs: chargeback. Covered by
+`tests/unit/test_spend_grouped_report.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

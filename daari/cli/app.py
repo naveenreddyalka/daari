@@ -2130,7 +2130,9 @@ def spend_report(
         ),
     ),
     bucket: str | None = typer.Option(
-        None, "--bucket", help="UTC time bucket: day or month (with --group-by)."
+        None,
+        "--bucket",
+        help="UTC time bucket: day, month, or hour (with --group-by). Minute is out of scope.",
     ),
     format: str = typer.Option(
         "table", "--format", help="table (default), csv, or json (with --group-by)."
