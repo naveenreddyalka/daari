@@ -63,12 +63,12 @@ def test_compare_litellm_pins_1105_ga_agent_vs_multi_agent() -> None:
 
 
 def test_compare_litellm_pins_1106_decision_model_guardrail() -> None:
-    """1.106.x is GA; floor 1.106.4; decision-model guardrail still not shipped (#1758, #1929)."""
+    """1.106.x is GA; floor 1.106.6; decision-model guardrail still not shipped (#1758, #1929, #2019)."""
     text = DOC.read_text(encoding="utf-8")
     section = _markdown_section(text, "## LiteLLM 1.106")
     lower = section.lower()
     assert "1.106.0" in section
-    assert "1.106.4" in section
+    assert "1.106.6" in section
     assert "ga" in lower
     assert "prerelease" not in lower
     assert "-rc" not in lower
@@ -78,12 +78,30 @@ def test_compare_litellm_pins_1106_decision_model_guardrail() -> None:
     assert "does **not** ship" in lower or "does not ship" in lower
     assert "/v1/decisions" in section
     assert "1.104" in text
-    assert "releases/tag/v1.106.4" in text
+    assert "releases/tag/v1.106.6" in text
     assert "e82a3c6" in section
     assert "cosign" in lower
     assert "emudhra" in lower or "emsign" in lower
     assert "distrust_emudhra_ca" in section
     assert "brotli" in lower or "image" in lower
+
+
+def test_compare_litellm_pins_1108_rc_parity_not_ga() -> None:
+    """1.108.0-rc.1 is prerelease parity onto 1.106.x — not a feature GA (#2019)."""
+    text = DOC.read_text(encoding="utf-8")
+    section = _markdown_section(text, "## LiteLLM 1.108")
+    lower = section.lower()
+    assert "1.108.0-rc.1" in section
+    assert "releases/tag/v1.108.0-rc.1" in text
+    assert "prerelease" in lower or "rc" in lower
+    assert "parity" in lower or "1.106" in section
+    assert "not a feature" in lower or "not feature" in lower
+    assert "do not promote" in lower
+    # Stable floor remains 1.106.6 GA — do not claim 1.108 RC is GA.
+    floor = _markdown_section(text, "## LiteLLM 1.106")
+    assert "1.106.6" in floor
+    assert "ga" in floor.lower()
+    assert "1.108" not in floor
 
 
 def test_compare_litellm_pins_1105_ga_decisions_parity() -> None:
@@ -110,7 +128,7 @@ def test_compare_litellm_pins_1107_compromise_advisory() -> None:
     assert "litellm==1.107.0" in text
     assert "litellm/litellm:1.107.0" in text
     assert "aikido.dev" in lower
-    assert "1.106.4" in section or "1.106.5" in section
+    assert "1.106.6" in section or "1.106.5" in section or "1.106.4" in section
     assert "does not depend" in lower or "does **not** depend" in lower
     assert "agent_access_default_deny" not in lower
     assert "prerelease rc watchables" not in lower
@@ -118,7 +136,7 @@ def test_compare_litellm_pins_1107_compromise_advisory() -> None:
 
 
 def test_compare_litellm_pins_1109_dev_watch_keep_ga_floor() -> None:
-    """1.109.0-dev.1 is prerelease watch; GA floor stays 1.106.5 (#2002)."""
+    """1.109.0-dev.1 is prerelease watch; GA floor stays 1.106.6 (#2002, #2019)."""
     text = DOC.read_text(encoding="utf-8")
     section = _markdown_section(text, "## LiteLLM 1.109")
     lower = section.lower()
@@ -130,8 +148,9 @@ def test_compare_litellm_pins_1109_dev_watch_keep_ga_floor() -> None:
     assert "agent_access_default_deny" in section
     assert "pricing_provider" in section
     assert "chat ui" in lower or "admin chat" in lower or "model hub" in lower
-    # Stable floor remains 1.106.5 GA — do not claim 1.109 is GA.
+    # Stable floor remains 1.106.6 GA — do not claim 1.109 is GA.
+    assert "1.106.6" in section
     floor = _markdown_section(text, "## LiteLLM 1.106")
-    assert "1.106.5" in floor
+    assert "1.106.6" in floor
     assert "ga" in floor.lower()
     assert "1.109" not in floor
