@@ -51,6 +51,7 @@ def test_chargeback_guide_documents_grouped_reports() -> None:
     text = DOC.read_text(encoding="utf-8")
     assert "--group-by model,service_tier" in text
     assert "--bucket day" in text
+    assert "hour" in text
     assert "/v1/daari/spend/report" in text
     assert "service_tier" in text
 
