@@ -3387,6 +3387,20 @@ def setup_models(
             "(models.l4=lfm3-vl; Ollama ≥ 0.40.12; Apple-first)."
         ),
     ),
+    safeguard: bool = typer.Option(
+        False,
+        "--safeguard",
+        help=(
+            "Apply optional gpt-oss-safeguard decision-guardrail recipe "
+            "(kind=decision rule targeting gpt-oss-safeguard:20b; "
+            "20b ≈ 16 GB VRAM, 120b = H100-class)."
+        ),
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Print the recipe plan without writing config or pulling weights.",
+    ),
 ) -> None:
     """Pick an Ollama model for a daari tier."""
     setup_models_interactive(
@@ -3398,6 +3412,8 @@ def setup_models(
         nemotron_bolt=nemotron_bolt,
         lfm3=lfm3,
         lfm3_vl=lfm3_vl,
+        safeguard=safeguard,
+        dry_run=dry_run,
     )
 
 

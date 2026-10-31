@@ -47,6 +47,23 @@ LFM3_VL_RECIPE_NOTE = (
     f"Pull with: ollama pull {LFM3_VL_MODEL}"
 )
 
+# gpt-oss-safeguard — optional local bring-your-own-policy decision guardrail (#2032).
+SAFEGUARD_TAG = "gpt-oss-safeguard"
+SAFEGUARD_MODEL = "gpt-oss-safeguard:20b"
+SAFEGUARD_RULE_NAME = "byo_policy"
+SAFEGUARD_SAMPLE_STATEMENT = (
+    "Does this content violate the operator's written Trust & Safety policy? "
+    "Replace this statement with your policy question/instructions."
+)
+SAFEGUARD_RECIPE_NOTE = (
+    "Optional gpt-oss-safeguard decision-guardrail recipe "
+    f"(writes a kind=decision input rule targeting {SAFEGUARD_MODEL}). "
+    "VRAM: 20b ≈ 16 GB; 120b needs H100-class hardware. "
+    "The rule's statement (question/instructions) carries the operator's "
+    "written policy — edit it after apply. "
+    f"Pull with: ollama pull {SAFEGUARD_MODEL}"
+)
+
 
 @dataclass
 class ModelSetupResult:
@@ -284,6 +301,87 @@ def apply_lfm3_vl_l4_recipe(
     return write_models_config(LFM3_VL_MODEL, tier="l4", config_path=path)
 
 
+def _safeguard_rule_present(current: dict[str, Any]) -> bool:
+    guardrails = current.get("guardrails")
+    if not isinstance(guardrails, dict):
+        return False
+    for key in ("input_rules", "output_rules"):
+        rows = guardrails.get(key) or []
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("kind") or "").strip().lower() != "decision":
+                continue
+            model = str(row.get("model") or "").strip()
+            if model == SAFEGUARD_MODEL or model.startswith(f"{SAFEGUARD_TAG}:"):
+                return True
+            if model == SAFEGUARD_TAG:
+                return True
+    return False
+
+
+def apply_safeguard_recipe(
+    *,
+    config_path: Path | None = None,
+    dry_run: bool = False,
+) -> ModelSetupResult:
+    """Write a sample kind=decision guardrail targeting gpt-oss-safeguard (#2032).
+
+    Does not pull weights. The rule's ``statement`` is the operator's written
+    policy question/instructions (edit after apply).
+    """
+    path = config_path or Path.home() / ".daari" / "config.yaml"
+    current: dict[str, Any] = {}
+    if path.is_file():
+        with path.open(encoding="utf-8") as handle:
+            loaded = yaml.safe_load(handle) or {}
+        if isinstance(loaded, dict):
+            current = loaded
+
+    already = _safeguard_rule_present(current)
+    if dry_run or already:
+        return ModelSetupResult(
+            tier=None,
+            model=SAFEGUARD_MODEL,
+            config_path=path,
+            changed=not already,
+        )
+
+    guardrails = current.setdefault("guardrails", {})
+    if not isinstance(guardrails, dict):
+        guardrails = {}
+        current["guardrails"] = guardrails
+    guardrails["enabled"] = True
+    input_rules = guardrails.get("input_rules")
+    if not isinstance(input_rules, list):
+        input_rules = []
+        guardrails["input_rules"] = input_rules
+    input_rules.append(
+        {
+            "name": SAFEGUARD_RULE_NAME,
+            "kind": "decision",
+            "statement": SAFEGUARD_SAMPLE_STATEMENT,
+            "threshold": 0.7,
+            "model": SAFEGUARD_MODEL,
+            "action": "block",
+            "on_error": "warn",
+        }
+    )
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(current, handle, default_flow_style=False, sort_keys=False)
+
+    return ModelSetupResult(
+        tier=None,
+        model=SAFEGUARD_MODEL,
+        config_path=path,
+        changed=True,
+    )
+
+
 def write_models_config(
     model: str | None = None,
     *,
@@ -345,6 +443,8 @@ def setup_models_interactive(
     nemotron_bolt: bool = False,
     lfm3: bool = False,
     lfm3_vl: bool = False,
+    safeguard: bool = False,
+    dry_run: bool = False,
     config_path: Path | None = None,
     httpx_client: httpx.Client | None = None,
 ) -> ModelSetupResult | None:
@@ -361,26 +461,52 @@ def setup_models_interactive(
 
     if flint:
         typer.echo(FLINT_RECIPE_NOTE)
-        result = apply_flint_l4_recipe(config_path=path, dry_run=False)
-        typer.echo(f"Set models.l4 = {FLINT_MODEL} in {path}")
+        result = apply_flint_l4_recipe(config_path=path, dry_run=dry_run)
+        if dry_run:
+            typer.echo(f"Dry-run: would set models.l4 = {FLINT_MODEL} in {path}")
+        else:
+            typer.echo(f"Set models.l4 = {FLINT_MODEL} in {path}")
         return result
 
     if nemotron_bolt:
         typer.echo(NEMOTRON_BOLT_RECIPE_NOTE)
-        result = apply_nemotron_bolt_l3_recipe(config_path=path, dry_run=False)
-        typer.echo(f"Set models.l3 = {NEMOTRON_BOLT_MODEL} in {path}")
+        result = apply_nemotron_bolt_l3_recipe(config_path=path, dry_run=dry_run)
+        if dry_run:
+            typer.echo(f"Dry-run: would set models.l3 = {NEMOTRON_BOLT_MODEL} in {path}")
+        else:
+            typer.echo(f"Set models.l3 = {NEMOTRON_BOLT_MODEL} in {path}")
         return result
 
     if lfm3:
         typer.echo(LFM3_RECIPE_NOTE)
-        result = apply_lfm3_l3_recipe(config_path=path, dry_run=False)
-        typer.echo(f"Set models.l3 = {LFM3_MODEL} in {path}")
+        result = apply_lfm3_l3_recipe(config_path=path, dry_run=dry_run)
+        if dry_run:
+            typer.echo(f"Dry-run: would set models.l3 = {LFM3_MODEL} in {path}")
+        else:
+            typer.echo(f"Set models.l3 = {LFM3_MODEL} in {path}")
         return result
 
     if lfm3_vl:
         typer.echo(LFM3_VL_RECIPE_NOTE)
-        result = apply_lfm3_vl_l4_recipe(config_path=path, dry_run=False)
-        typer.echo(f"Set models.l4 = {LFM3_VL_MODEL} in {path}")
+        result = apply_lfm3_vl_l4_recipe(config_path=path, dry_run=dry_run)
+        if dry_run:
+            typer.echo(f"Dry-run: would set models.l4 = {LFM3_VL_MODEL} in {path}")
+        else:
+            typer.echo(f"Set models.l4 = {LFM3_VL_MODEL} in {path}")
+        return result
+
+    if safeguard:
+        typer.echo(SAFEGUARD_RECIPE_NOTE)
+        result = apply_safeguard_recipe(config_path=path, dry_run=dry_run)
+        if dry_run:
+            typer.echo(
+                f"Dry-run: would write kind=decision guardrail "
+                f"(model={SAFEGUARD_MODEL}) in {path}"
+            )
+        else:
+            typer.echo(
+                f"Wrote kind=decision guardrail (model={SAFEGUARD_MODEL}) in {path}"
+            )
         return result
 
     if model is not None:

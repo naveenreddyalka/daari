@@ -56,6 +56,35 @@ The same `kind: "decision"` rules work on chat output and MCP
 `integrations.mcp_guardrails` argument/result scans. Hits surface like other
 guardrails (trace step, `Metrics.record_guardrail`, `daari_meta.warning`).
 
+### Bring-your-own-policy with gpt-oss-safeguard
+
+[gpt-oss-safeguard](https://ollama.com/library/gpt-oss-safeguard) is an
+Apache-2.0 policy-reasoning model (20b ≈ 16 GB VRAM; 120b = H100-class).
+Use it as a local `kind: "decision"` guardrail so moderation stays on-box
+and the policy text is yours. Apply a sample rule with
+`daari setup models --safeguard` (or `--dry-run` to preview); then edit the
+rule's `statement` — that field is the question/instructions sent to the
+model and should carry your written Trust & Safety policy.
+
+```yaml
+guardrails:
+  enabled: true
+  input_rules:
+    - name: byo_policy
+      kind: "decision"
+      statement: >
+        Does this content violate our Acceptable Use Policy:
+        no credentials exfil, no malware instructions, no CSAM?
+      threshold: 0.7
+      model: gpt-oss-safeguard:20b
+      action: block
+      on_error: warn
+```
+
+Pull later with `ollama pull gpt-oss-safeguard:20b`. Doctor tips
+`ollama_safeguard_unused` when the host lists a `gpt-oss-safeguard` tag but
+no decision rule uses it.
+
 ## Verify
 
 Send a prompt containing a classic injection phrase; expect `tier=guardrail`.

@@ -8444,6 +8444,17 @@ below 32 MiB (quiet when 0 or ≥ 32 MiB, or no Anthropic path). Docs:
 config.md, capacity-helm, doctor-health. Covered by
 `tests/unit/test_doctor_body_cap.py`.
 
+### gpt-oss-safeguard recipe for local decision guardrails ([#2032](https://github.com/naveenreddyalka/daari/issues/2032))
+
+<!-- tracking:#2032 -->
+**Status:** Done (2026-10-31). `daari setup models --safeguard` writes a sample
+`kind: decision` input rule targeting `gpt-oss-safeguard:20b` (no weight pull;
+`--dry-run` prints the plan). Recipe note covers VRAM (20b ≈ 16 GB; 120b =
+H100-class) and that the rule's `statement` carries the operator policy.
+Doctor tip `ollama_safeguard_unused` when the host lists a safeguard tag but
+no decision rule uses it. Docs: guardrails, ollama, doctor-health. Covered by
+`tests/test_setup.py` and `tests/unit/test_doctor_safeguard_unused.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -28,10 +28,12 @@ from daari.setup.models import (
     LFM3_MODEL,
     LFM3_VL_MODEL,
     NEMOTRON_BOLT_MODEL,
+    SAFEGUARD_MODEL,
     apply_flint_l4_recipe,
     apply_lfm3_l3_recipe,
     apply_lfm3_vl_l4_recipe,
     apply_nemotron_bolt_l3_recipe,
+    apply_safeguard_recipe,
     fetch_ollama_models,
     write_models_config,
 )
@@ -382,6 +384,47 @@ class TestSetupModels:
         assert "Linux" in LFM3_VL_RECIPE_NOTE
         assert "Windows" in LFM3_VL_RECIPE_NOTE
         assert "coming soon" in LFM3_VL_RECIPE_NOTE.lower()
+
+    def test_safeguard_recipe_dry_run_does_not_write(self, tmp_path):
+        """Optional gpt-oss-safeguard dry-run leaves config untouched (#2032)."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("models:\n  l3: llama3.2:3b\n", encoding="utf-8")
+        before = config_path.read_text(encoding="utf-8")
+        plan = apply_safeguard_recipe(config_path=config_path, dry_run=True)
+        assert plan.changed is True
+        assert plan.model == SAFEGUARD_MODEL
+        assert config_path.read_text(encoding="utf-8") == before
+
+    def test_safeguard_recipe_apply_writes_decision_rule(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        result = apply_safeguard_recipe(config_path=config_path, dry_run=False)
+        assert result.changed is True
+        assert result.model == SAFEGUARD_MODEL
+        text = config_path.read_text(encoding="utf-8")
+        assert SAFEGUARD_MODEL in text
+        assert 'kind: "decision"' in text or "kind: decision" in text
+        loaded = __import__("yaml").safe_load(text)
+        rules = (loaded.get("guardrails") or {}).get("input_rules") or []
+        decision = next(r for r in rules if r.get("kind") == "decision")
+        assert decision["model"] == SAFEGUARD_MODEL
+        assert decision.get("statement")
+        assert loaded["guardrails"]["enabled"] is True
+
+    def test_safeguard_recipe_idempotent_when_rule_present(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        first = apply_safeguard_recipe(config_path=config_path, dry_run=False)
+        assert first.changed is True
+        second = apply_safeguard_recipe(config_path=config_path, dry_run=False)
+        assert second.changed is False
+
+    def test_safeguard_recipe_note_vram_and_policy(self):
+        from daari.setup.models import SAFEGUARD_RECIPE_NOTE
+
+        assert "16 GB" in SAFEGUARD_RECIPE_NOTE or "16GB" in SAFEGUARD_RECIPE_NOTE
+        assert "120b" in SAFEGUARD_RECIPE_NOTE.lower() or "H100" in SAFEGUARD_RECIPE_NOTE
+        assert "policy" in SAFEGUARD_RECIPE_NOTE.lower()
+        assert f"ollama pull {SAFEGUARD_MODEL}" in SAFEGUARD_RECIPE_NOTE
+        assert "statement" in SAFEGUARD_RECIPE_NOTE.lower() or "instructions" in SAFEGUARD_RECIPE_NOTE.lower()
 
 
 class TestSetupCLI:
