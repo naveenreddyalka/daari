@@ -626,6 +626,14 @@ class AnthropicSettings(BaseModel):
             "Anthropic hop when the client did not send one."
         ),
     )
+    analytics_api_key: str = Field(
+        default="",
+        description=(
+            "Admin / read:analytics key for Usage and Cost Analytics reconcile "
+            "(#2033). Supports secret://. Empty falls back to the frontier API "
+            "key used by enforcement-sync."
+        ),
+    )
     enforcement_state_path: str = Field(
         default="~/.daari/anthropic-enforcement.json",
         description=(
