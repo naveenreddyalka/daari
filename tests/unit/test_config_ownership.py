@@ -41,6 +41,7 @@ _MCP_LEAVES = (
     "integrations.mcp_servers",
 )
 _OBS_JSON_LOGS = "observability.structured_json_logs"
+_OBS_TEAM_METRICS = "observability.team_metrics"
 
 
 def _base_live() -> dict:
@@ -97,7 +98,10 @@ def _base_live() -> dict:
             "mcp_policy": {"require_key_access_defined": False},
             "mcp_servers": [],
         },
-        "observability": {"structured_json_logs": False},
+        "observability": {
+            "structured_json_logs": False,
+            "team_metrics": False,
+        },
     }
 
 
@@ -410,6 +414,22 @@ def test_ownership_fields_include_structured_json_logs():
     assert meta[_OBS_JSON_LOGS]["file_value"] is False
 
 
+def test_ownership_fields_include_team_metrics():
+    """observability.team_metrics is an ownership leaf (#2021)."""
+    live = _base_live()
+    live["observability"]["team_metrics"] = True
+    file_doc = {"observability": {"team_metrics": False}}
+    meta = ownership_fields(
+        live,
+        file_doc=file_doc,
+        runtime_overrides={_OBS_TEAM_METRICS},
+    )
+    assert _OBS_TEAM_METRICS in meta
+    assert meta[_OBS_TEAM_METRICS]["editable"] is True
+    assert meta[_OBS_TEAM_METRICS]["source"] == "runtime"
+    assert meta[_OBS_TEAM_METRICS]["file_value"] is False
+
+
 def test_live_config_payload_matches_editor_shape(settings):
     payload = live_config_payload(settings)
     assert set(payload) >= {
@@ -441,8 +461,12 @@ def test_live_config_payload_matches_editor_shape(settings):
     assert set(payload["integrations"]["mcp_policy"]) == {"require_key_access_defined"}
     assert payload["integrations"]["mcp_policy"]["require_key_access_defined"] is False
     assert payload["integrations"]["mcp_servers"] == []
-    assert set(payload["observability"]) == {"structured_json_logs"}
+    assert set(payload["observability"]) == {
+        "structured_json_logs",
+        "team_metrics",
+    }
     assert payload["observability"]["structured_json_logs"] is False
+    assert payload["observability"]["team_metrics"] is False
 
 
 def test_live_config_payload_mcp_servers_ceilings_omit_secrets(settings):
@@ -572,6 +596,72 @@ async def test_patch_structured_json_logs_round_trip(settings, tmp_path, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_patch_team_metrics_round_trip_and_metrics_label(
+    settings, tmp_path, monkeypatch
+):
+    """PATCH observability.team_metrics toggles scrape team label (#2021)."""
+    settings.observability.config_editor = True
+    settings.observability.prometheus = True
+    assert settings.observability.team_metrics is False
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump({"observability": {"team_metrics": False}}),
+        encoding="utf-8",
+    )
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        got = await client.get("/v1/daari/config")
+        assert got.status_code == 200
+        body = got.json()
+        assert _OBS_TEAM_METRICS in body["ownership"]
+        assert body["ownership"][_OBS_TEAM_METRICS]["editable"] is True
+        assert body["observability"]["team_metrics"] is False
+
+        off_metrics = await client.get("/metrics")
+        assert off_metrics.status_code == 200
+        assert "daari_requests_total" in off_metrics.text
+        assert 'team="' not in off_metrics.text
+
+        bad = await client.patch(
+            "/v1/daari/config",
+            json={"observability": {"team_metrics": "yes"}},
+        )
+        assert bad.status_code == 400
+        assert settings.observability.team_metrics is False
+
+        on = await client.patch(
+            "/v1/daari/config",
+            json={"observability": {"team_metrics": True}, "persist": True},
+        )
+        assert on.status_code == 200
+        payload = on.json()
+        assert payload["observability"]["team_metrics"] is True
+        assert payload["ownership"][_OBS_TEAM_METRICS]["source"] == "file"
+        written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert written["observability"]["team_metrics"] is True
+        assert settings.observability.team_metrics is True
+
+        on_metrics = await client.get("/metrics")
+        assert on_metrics.status_code == 200
+        assert 'team="-"' in on_metrics.text
+
+        off = await client.patch(
+            "/v1/daari/config",
+            json={"observability": {"team_metrics": False}},
+        )
+        assert off.status_code == 200
+        assert settings.observability.team_metrics is False
+        restored = await client.get("/metrics")
+        assert restored.status_code == 200
+        assert 'team="' not in restored.text
+
+
+@pytest.mark.asyncio
 async def test_patch_mcp_server_ceilings_round_trip(settings, tmp_path, monkeypatch):
     from daari.config.settings import McpServerSettings
 
@@ -667,6 +757,7 @@ def test_docs_pin_classifier_mcp_config_ownership():
     http_api = HTTP_API.read_text(encoding="utf-8")
     for key in _CLASSIFIER_LEAVES + _MCP_LEAVES + _COMPACT_LEAVES + (
         _OBS_JSON_LOGS,
+        _OBS_TEAM_METRICS,
         _SIGNAL_OVERRIDES,
     ):
         assert key in config
@@ -678,6 +769,7 @@ def test_docs_pin_classifier_mcp_config_ownership():
     assert "signal_overrides" in http_api
     assert "require_key_access_defined" in http_api or "mcp_policy" in http_api
     assert "structured_json_logs" in http_api
+    assert "team_metrics" in http_api
     assert "mcp_servers" in http_api
 
 

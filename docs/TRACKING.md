@@ -8405,6 +8405,14 @@ http-api, routing-tiers. Covered by `tests/unit/test_config_ownership.py`.
 1.109-dev watch keeps the same floor. Covered by
 `tests/unit/test_compare_litellm_1104.py`.
 
+### Config ownership + PATCH for observability.team_metrics ([#2021](https://github.com/naveenreddyalka/daari/issues/2021))
+
+<!-- tracking:#2021 -->
+**Status:** Done (2026-10-31). `observability.team_metrics` is an ownership
+leaf; GET/PATCH `/v1/daari/config` toggles the scrape `team` label live
+(default false; non-bool rejected). Docs: config.md, http-api,
+metrics-prometheus. Covered by `tests/unit/test_config_ownership.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

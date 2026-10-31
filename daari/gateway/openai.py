@@ -2963,6 +2963,25 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 from daari.gateway.request_log import configure_request_log
 
                 configure_request_log(structured_json_logs=observability["structured_json_logs"])
+            if "team_metrics" in observability:
+                enabled = bool(observability["team_metrics"])
+                ctx.settings.observability.team_metrics = enabled
+                metrics = getattr(ctx, "metrics", None)
+                if metrics is not None:
+                    if enabled:
+                        from daari.observability.metrics import sync_team_metrics_allowlist
+
+                        metrics.configure_team_metrics(
+                            enabled=True, allowed=frozenset()
+                        )
+                        store = getattr(request.app.state, "virtual_key_store", None)
+                        if store is None:
+                            store = getattr(ctx, "virtual_key_store", None)
+                        sync_team_metrics_allowlist(metrics, store)
+                    else:
+                        metrics.configure_team_metrics(
+                            enabled=False, allowed=frozenset()
+                        )
             if "local_models" in decisions:
                 ctx.settings.decisions.local_models = list(decisions["local_models"])
             if "base_url" in systemone:
