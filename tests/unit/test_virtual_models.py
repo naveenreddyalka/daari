@@ -7,7 +7,7 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
 from daari.config.settings import RoutingSettings
-from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
 from daari.observability.metrics import Metrics
 from daari.router.local_pool import BackendUnavailable
 from daari.router.router import AppContext
