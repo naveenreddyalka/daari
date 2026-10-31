@@ -30,6 +30,13 @@ Optional **LFM3-VL** L4 vision recipe (Ollama ≥ 0.40.12):
 Same Apple-first / Linux-Windows coming soon note as LFM3. Pull later with
 `ollama pull lfm3-vl`. (`lfm3-omni` / `lfm3-audio` are separate.)
 
+Optional **gpt-oss-safeguard** decision-guardrail recipe:
+`daari setup models --safeguard` writes a sample `kind: decision` input rule
+targeting `gpt-oss-safeguard:20b` (no weight pull; `--dry-run` prints the plan).
+VRAM: 20b ≈ 16 GB; 120b needs H100-class hardware. Edit the rule's `statement`
+(question/instructions) to your written policy. Pull later with
+`ollama pull gpt-oss-safeguard:20b`. See [guardrails](../features/guardrails.md).
+
 Compose stack pulls models for you (`docker compose up`).
 
 ## Config

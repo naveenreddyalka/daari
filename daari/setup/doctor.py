@@ -76,6 +76,9 @@ def run_doctor(
     lfm3_vl_unused_tip = _check_lfm3_vl_unused(cfg, httpx_client)
     if lfm3_vl_unused_tip is not None:
         results.append(lfm3_vl_unused_tip)
+    safeguard_unused_tip = _check_safeguard_unused(cfg, httpx_client)
+    if safeguard_unused_tip is not None:
+        results.append(safeguard_unused_tip)
     daemon_stats = _daemon_stats_payload(cfg, httpx_client)
     breaker_tip = _check_systemone_breaker(
         cfg, httpx_client=httpx_client, daemon_stats=daemon_stats
@@ -1340,6 +1343,71 @@ def _check_lfm3_vl_unused(
             detail=(
                 f"{LFM3_VL_MODEL} is present on Ollama at {base} but models.l4={l4!r} — "
                 f"run `daari setup models --lfm3-vl` for the multimodal L4 vision recipe"
+            ),
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+
+
+def _decision_rules_use_safeguard(settings: Settings) -> bool:
+    from daari.setup.models import SAFEGUARD_TAG
+
+    guardrails = getattr(settings, "guardrails", None)
+    if guardrails is None:
+        return False
+    for rules in (guardrails.input_rules or [], guardrails.output_rules or []):
+        for rule in rules:
+            if str(getattr(rule, "kind", "") or "").strip().lower() != "decision":
+                continue
+            model = str(getattr(rule, "model", None) or "").strip()
+            if not model:
+                continue
+            if model == SAFEGUARD_TAG or model.startswith(f"{SAFEGUARD_TAG}:"):
+                return True
+    return False
+
+
+def _check_safeguard_unused(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult | None:
+    """Tip when Ollama lists gpt-oss-safeguard but no decision guardrail uses it (#2032)."""
+    from daari.setup.models import SAFEGUARD_TAG
+
+    if _decision_rules_use_safeguard(settings):
+        return None
+    base = settings.ollama.base_url.rstrip("/")
+    own_client = client is None
+    http = client or httpx.Client(timeout=5.0)
+    try:
+        try:
+            response = http.get(f"{base}/api/tags")
+        except Exception:
+            return None
+        if response.status_code != 200:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        names = [
+            str(m.get("name") or "")
+            for m in (data.get("models") or [])
+            if isinstance(m, dict)
+        ]
+        if not _host_lists_model(names, SAFEGUARD_TAG):
+            return None
+        return CheckResult(
+            name="ollama_safeguard_unused",
+            ok=False,
+            detail=(
+                f"{SAFEGUARD_TAG} is present on Ollama at {base} but no "
+                "kind=decision guardrail rule uses it — "
+                "run `daari setup models --safeguard` for the bring-your-own-policy recipe"
             ),
             optional=True,
         )
