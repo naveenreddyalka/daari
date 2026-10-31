@@ -8435,6 +8435,14 @@ postgres TEXT `ts`. Invalid-bucket errors list day/month/hour; minute grain
 stays out of scope. Docs: chargeback. Covered by
 `tests/unit/test_spend_grouped_report.py`.
 
+### Doctor tip: body cap vs Anthropic 128 MB Messages ([#2031](https://github.com/naveenreddyalka/daari/issues/2031))
+
+<!-- tracking:#2031 -->
+**Status:** Done (2026-10-31). Doctor `body_cap_below_provider` tips when an
+Anthropic frontier/BYOK path is configured and `server.max_body_bytes` is
+below 32 MiB (quiet when 0 or ≥ 32 MiB, or no Anthropic path). Docs:
+config.md, capacity-helm, doctor-health. Covered by
+`tests/unit/test_doctor_body_cap.py`.
 
 ## How to update
 

@@ -138,6 +138,9 @@ def run_doctor(
     results.append(_check_virtual_models(cfg))
     results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
+    body_cap_tip = _check_body_cap_below_provider(cfg)
+    if body_cap_tip is not None:
+        results.append(body_cap_tip)
     results.append(_check_model_lifecycle(cfg))
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
@@ -752,6 +755,52 @@ def _check_frontier(settings: Settings) -> CheckResult:
         detail=(
             "enabled but no API key — set DAARI_FRONTIER_API_KEY or OPENAI_API_KEY "
             "for L6 escalation"
+        ),
+        optional=True,
+    )
+
+
+_ANTHROPIC_BODY_CAP_FLOOR = 32 * 1024 * 1024  # tip when below Anthropic's prior 32 MB floor
+_ANTHROPIC_MESSAGES_BODY_CAP_MB = 128  # Messages + token-counting as of 2026-10-28
+
+
+def _anthropic_frontier_configured(settings: Settings) -> bool:
+    """True when frontier/BYOK can send Anthropic Messages (#2031)."""
+    frontier = settings.frontier
+    if not getattr(frontier, "enabled", False):
+        return False
+    from daari.router.anthropic_messages import infer_frontier_kind
+
+    if infer_frontier_kind(frontier.provider, frontier.base_url) == "anthropic":
+        return True
+    for entry in list(getattr(frontier, "providers", None) or []):
+        provider = str(getattr(entry, "provider", "") or "")
+        base_url = str(getattr(entry, "base_url", "") or "")
+        if infer_frontier_kind(provider, base_url) == "anthropic":
+            return True
+    return False
+
+
+def _check_body_cap_below_provider(settings: Settings) -> CheckResult | None:
+    """Tip when server.max_body_bytes binds before Anthropic's Messages cap (#2031)."""
+    if not _anthropic_frontier_configured(settings):
+        return None
+    raw = getattr(getattr(settings, "server", None), "max_body_bytes", 0)
+    try:
+        cap = int(raw)
+    except (TypeError, ValueError):
+        cap = 0
+    if cap <= 0 or cap >= _ANTHROPIC_BODY_CAP_FLOOR:
+        return None
+    return CheckResult(
+        name="body_cap_below_provider",
+        ok=False,
+        detail=(
+            f"server.max_body_bytes={cap} is below Anthropic's "
+            f"{_ANTHROPIC_MESSAGES_BODY_CAP_MB} MB Messages/token-counting limit "
+            f"(raised 2026-10-28); BYOK clients may 413 here first. Raise via "
+            f"DAARI_SERVER__MAX_BODY_BYTES on gateway-only hosts, or keep the "
+            f"tight default when co-hosting local models"
         ),
         optional=True,
     )

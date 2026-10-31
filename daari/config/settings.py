@@ -188,7 +188,13 @@ class ServerSettings(BaseModel):
             "return 413 before the body is buffered. 0 disables the cap. "
             "File and multipart audio upload routes may use a higher floor so "
             "files.max_total_bytes still applies; JSON /v1/audio/speech stays "
-            "on this cap (#1916). Env: DAARI_SERVER__MAX_BODY_BYTES."
+            "on this cap (#1916). Default 10 MiB stays tight for boxes that "
+            "co-host local models; Anthropic Messages / token-counting accept "
+            "up to 128 MB as of 2026-10-28 — raise via "
+            "DAARI_SERVER__MAX_BODY_BYTES on gateway-only pods (doctor tip "
+            "body_cap_below_provider when an Anthropic frontier path is "
+            "configured and the cap is below 32 MiB; #2031). Env: "
+            "DAARI_SERVER__MAX_BODY_BYTES."
         ),
     )
     header_policy: HeaderPolicySettings = Field(
