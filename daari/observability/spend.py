@@ -310,14 +310,23 @@ def parse_group_by(raw: str | list[str] | None) -> list[str]:
 
 
 def _bucket_expr(bucket: str | None, *, dialect: str = "sqlite") -> str | None:
+    """UTC bucket SQL over ISO-8601 ``ts`` text (sqlite + postgres) (#2030).
+
+    ``hour`` yields ``YYYY-MM-DDTHH``. Minute grain is out of scope (row blowup).
+    ``dialect`` is accepted so both ledger backends share one helper; expressions
+    stay ``substr`` because spend ``ts`` is TEXT on both backends.
+    """
     if not bucket:
         return None
     key = bucket.strip().lower()
+    _ = dialect  # sqlite and postgres share TEXT ts + substr
     if key == "day":
         return "substr(ts, 1, 10)"
     if key == "month":
         return "substr(ts, 1, 7)"
-    raise ValueError("bucket must be day or month")
+    if key == "hour":
+        return "substr(ts, 1, 13)"
+    raise ValueError("bucket must be day, month, or hour")
 
 
 def annotate_model_group(
@@ -631,13 +640,14 @@ class SpendLedger:
         model: str | None = None,
         usage_speed: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Multi-dimension spend rollup with optional day/month UTC buckets (#1931)."""
+        """Multi-dimension spend rollup with optional day/month/hour UTC buckets (#1931, #2030)."""
         if not self.enabled:
             return []
         dims = parse_group_by(group_by)
         if not dims:
             raise ValueError("group_by requires at least one dimension")
-        bucket_sql = _bucket_expr(bucket)
+        dialect = "postgres" if hasattr(self, "dsn") else "sqlite"
+        bucket_sql = _bucket_expr(bucket, dialect=dialect)
         ph = "%s" if hasattr(self, "dsn") else "?"
         where, params = _where(
             since,

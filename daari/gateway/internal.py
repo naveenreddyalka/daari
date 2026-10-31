@@ -222,6 +222,10 @@ class DaariMeta(BaseModel):
     # Bounded request-fact signals (#1996): has_images, has_tools, tool_count,
     # approx_context_tokens bucket, client_agent, category, complexity, phase.
     signals: dict | None = None
+    # Named virtual model that resolved this response (#2023).
+    virtual_model: str | None = None
+    # Candidate id from routing.virtual_models that actually served (#2023).
+    virtual_candidate: str | None = None
 
 
 class InternalResponse(BaseModel):

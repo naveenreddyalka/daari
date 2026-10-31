@@ -16,7 +16,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.virtual_keys.path` | str | `'~/.daari/auth/virtual-keys.sqlite3'` |  |
 | `server.virtual_keys.backend` | Literal | `'sqlite'` | sqlite (default) or postgres (observability.postgres_url) so keys and teams resolve across replicas (#544). Env: DAARI_SERVER__VIRTUAL_KEYS__BACKEND. |
 | `server.virtual_keys.agent_access_default_deny` | bool | `False` | When true, virtual keys (and teams) without an agent grant (metadata.agents_access / allowed_agents / agents.allow|deny) get HTTP 403 on multi_agent.enabled Responses (and future /v1/agents*). Default false. Env: DAARI_SERVER__VIRTUAL_KEYS__AGENT_ACCESS_DEFAULT_DENY. |
-| `server.max_body_bytes` | int | `10485760` | Hard cap on inbound request body size (#933). Oversized requests return 413 before the body is buffered. 0 disables the cap. File and multipart audio upload routes may use a higher floor so files.max_total_bytes still applies; JSON /v1/audio/speech stays on this cap (#1916). Env: DAARI_SERVER__MAX_BODY_BYTES. |
+| `server.max_body_bytes` | int | `10485760` | Hard cap on inbound request body size (#933). Oversized requests return 413 before the body is buffered. 0 disables the cap. File and multipart audio upload routes may use a higher floor so files.max_total_bytes still applies; JSON /v1/audio/speech stays on this cap (#1916). Default 10 MiB stays tight for boxes that co-host local models; Anthropic Messages / token-counting accept up to 128 MB as of 2026-10-28 — raise via DAARI_SERVER__MAX_BODY_BYTES on gateway-only pods (doctor tip body_cap_below_provider when an Anthropic frontier path is configured and the cap is below 32 MiB; #2031). Env: DAARI_SERVER__MAX_BODY_BYTES. |
 | `server.header_policy.enabled` | bool | `False` | When true, evaluate required/deny/allow before require_api_key. Env: DAARI_SERVER__HEADER_POLICY__ENABLED. |
 | `server.header_policy.required` | list | `[]` | Header names that must be present and non-empty. |
 | `server.header_policy.deny` | list | `[]` | Denylist rules (exact and/or regex) evaluated against headers. |
@@ -143,6 +143,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.local_pool.health_interval_seconds` | float | `15.0` | Background health-check interval. Requests use the last snapshot. |
 | `routing.local_pool.frontier_fallback` | bool | `False` | When true and every local backend for the chosen tier is down or circuit-open, escalate to L6 instead of raising BackendUnavailable. Respects no_frontier, allowlists, budgets, and PII scrub. Default false so outages stay a hard 503 unless opted in (#846). |
 | `routing.local_pool.backends` | list | `[]` |  |
+| `routing.virtual_models` | dict | `{}` | Named virtual models: client-facing name → ordered non-empty list of candidate model ids (local tier L3–L5, configured models.* id, or L6 / provider/model frontier id). When request.model matches a name, try candidates in order; on typed backend-unavailable / circuit-open continue to the next. Empty map (default) leaves routing unchanged. Respects no_frontier, allowlists, budgets, and PII scrub before any L6 candidate (#2023). |
 | `frontier.enabled` | bool | `False` |  |
 | `frontier.provider` | str | `'openai'` |  |
 | `frontier.model` | str | `'gpt-6-luna'` |  |

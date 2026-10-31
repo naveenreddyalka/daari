@@ -258,6 +258,14 @@ def render_prometheus(
         f"daari_stream_fallback_continue_total {snap.get('stream_fallback_continue', 0)}"
     )
     lines.append(
+        "# HELP daari_virtual_model_failover_total Virtual-model candidate hops "
+        "when a prior candidate was backend-unavailable or circuit-open."
+    )
+    lines.append("# TYPE daari_virtual_model_failover_total counter")
+    lines.append(
+        f"daari_virtual_model_failover_total {snap.get('virtual_model_failover', 0)}"
+    )
+    lines.append(
         "# HELP daari_signal_override_total routing.signal_overrides matches "
         "that applied a category / max_tier / tier_pin lever."
     )

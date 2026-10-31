@@ -515,6 +515,8 @@ class Router:
         org_pool: OllamaExecutor | MLXExecutor | None = None,
         local_pool: Any | None = None,
         local_pool_frontier_fallback: bool = False,
+        virtual_models: dict[str, list[str]] | None = None,
+        virtual_classify_settings: Any | None = None,
         reasoning_effort_escalation: bool = False,
         stall_escalation: bool = False,
         stall_repeats: int = 3,
@@ -687,6 +689,8 @@ class Router:
         self.models_lifecycle = dict(models_lifecycle) if models_lifecycle else {}
         self.local_pool = local_pool
         self.local_pool_frontier_fallback = bool(local_pool_frontier_fallback)
+        self.virtual_models = dict(virtual_models or {})
+        self.virtual_classify_settings = virtual_classify_settings
 
     @property
     def ollama(self) -> OllamaExecutor:
@@ -2129,58 +2133,62 @@ class Router:
     ) -> InternalResponse:
         """Upstream execute + L0 write-back (singleflight leader only)."""
         await self._refresh_warm_models()
-        initial_tier = self._choose_initial_tier(request, profile)
+        response = await self._try_virtual_model(gen_request, request, started, profile)
         pool_frontier_fallback = False
-        try:
-            response = await self._run_model_tier(initial_tier, gen_request)
-        except Exception as exc:
-            from daari.router.deadline import reraise_deadline
-
-            reraise_deadline(exc)
+        if response is None:
+            initial_tier = self._choose_initial_tier(request, profile)
             try:
-                from daari.router.local_pool import CloudEgressBlocked
-
-                if isinstance(exc, CloudEgressBlocked):
-                    alt = self._alternate_non_cloud_tier(request, skip={initial_tier})
-                    if alt is None:
-                        raise
-                    response = await self._run_model_tier(alt, gen_request)
-                    response.daari_meta.warning = "cloud_egress_skipped"
-                elif initial_tier == "L3":
-                    from daari.router.failover import is_context_length_error
-
-                    if is_context_length_error(exc):
-                        response = await self._failover_context_length(gen_request, exc)
-                    else:
-                        raise
-                elif initial_tier == "L4":
-                    response = await self._run_model_tier("L3", gen_request)
-                    response.daari_meta.warning = "l4_unavailable_fell_back_to_l3"
-                elif initial_tier == "L5":
-                    try:
-                        response = await self._run_model_tier("L4", gen_request)
-                        response.daari_meta.warning = "l5_unavailable_fell_back_to_l4"
-                    except Exception as nested:
-                        from daari.router.deadline import reraise_deadline
-
-                        reraise_deadline(nested)
-                        response = await self._run_model_tier("L3", gen_request)
-                        response.daari_meta.warning = "l5_unavailable_fell_back_to_l3"
-                else:
-                    raise
-            except Exception as final_exc:
+                response = await self._run_model_tier(initial_tier, gen_request)
+            except Exception as exc:
                 from daari.router.deadline import reraise_deadline
 
-                reraise_deadline(final_exc)
-                fallback = await self._try_local_pool_frontier_fallback(
-                    gen_request, from_tier=initial_tier, exc=final_exc
+                reraise_deadline(exc)
+                try:
+                    from daari.router.local_pool import CloudEgressBlocked
+
+                    if isinstance(exc, CloudEgressBlocked):
+                        alt = self._alternate_non_cloud_tier(request, skip={initial_tier})
+                        if alt is None:
+                            raise
+                        response = await self._run_model_tier(alt, gen_request)
+                        response.daari_meta.warning = "cloud_egress_skipped"
+                    elif initial_tier == "L3":
+                        from daari.router.failover import is_context_length_error
+
+                        if is_context_length_error(exc):
+                            response = await self._failover_context_length(gen_request, exc)
+                        else:
+                            raise
+                    elif initial_tier == "L4":
+                        response = await self._run_model_tier("L3", gen_request)
+                        response.daari_meta.warning = "l4_unavailable_fell_back_to_l3"
+                    elif initial_tier == "L5":
+                        try:
+                            response = await self._run_model_tier("L4", gen_request)
+                            response.daari_meta.warning = "l5_unavailable_fell_back_to_l4"
+                        except Exception as nested:
+                            from daari.router.deadline import reraise_deadline
+
+                            reraise_deadline(nested)
+                            response = await self._run_model_tier("L3", gen_request)
+                            response.daari_meta.warning = "l5_unavailable_fell_back_to_l3"
+                    else:
+                        raise
+                except Exception as final_exc:
+                    from daari.router.deadline import reraise_deadline
+
+                    reraise_deadline(final_exc)
+                    fallback = await self._try_local_pool_frontier_fallback(
+                        gen_request, from_tier=initial_tier, exc=final_exc
+                    )
+                    if fallback is None:
+                        raise
+                    response = fallback
+                    pool_frontier_fallback = True
+            if not pool_frontier_fallback:
+                response = await self._maybe_escalate(
+                    gen_request, response, started, profile=profile
                 )
-                if fallback is None:
-                    raise
-                response = fallback
-                pool_frontier_fallback = True
-        if not pool_frontier_fallback:
-            response = await self._maybe_escalate(gen_request, response, started, profile=profile)
         self._finish_session_pin(request, response)
         if (
             not request.meta.no_cache
@@ -5676,6 +5684,106 @@ class Router:
             response.daari_meta.warning = "below_confidence_threshold"
             return response
 
+    async def _try_virtual_model(
+        self,
+        gen_request: InternalRequest,
+        request: InternalRequest,
+        started: float,
+        profile: PromptProfile | None,
+    ) -> InternalResponse | None:
+        """Serve ``routing.virtual_models`` ordered candidates (#2023).
+
+        Returns None when the request model is not a configured virtual name
+        so the normal tier path runs. On typed BackendUnavailable for a local
+        candidate (or a skipped/unreachable L6 candidate), continues to the
+        next and increments ``virtual_model_failover``. Exhaustion re-raises
+        the last BackendUnavailable (or raises one) for a typed 503.
+        """
+        from daari.router.local_pool import BackendUnavailable
+        from daari.router.virtual_models import classify_candidate, resolve_virtual_candidates
+
+        virtual_name = (request.model or "").strip()
+        candidates = resolve_virtual_candidates(virtual_name, self.virtual_models)
+        if not candidates:
+            return None
+
+        settings = self.virtual_classify_settings
+        last_exc: BaseException | None = None
+        hops = 0
+        for index, candidate in enumerate(candidates):
+            kind, target = classify_candidate(candidate, settings)
+            try:
+                if kind == "local":
+                    response = await self._run_model_tier(target, gen_request)
+                else:
+                    if not self._frontier_reachable(request):
+                        raise BackendUnavailable(
+                            "L6",
+                            "virtual model frontier candidate blocked by no_frontier / "
+                            "allowlist / budget / frontier disabled",
+                        )
+                    budget_state = self._frontier_budget_state()
+                    if budget_state == "exceeded":
+                        raise BackendUnavailable("L6", "frontier daily/monthly budget exceeded")
+                    from daari.router.deadline import guard_upstream
+
+                    guard_upstream("L6")
+                    l6_request = await self._frontier_request(gen_request)
+                    if candidate.strip().upper() not in {"L6", "FRONTIER"}:
+                        l6_request.model = candidate
+                    elif self.frontier is not None and getattr(self.frontier, "default_model", None):
+                        l6_request.model = self.frontier.default_model
+                    response = await self.frontier.execute(
+                        l6_request,
+                        escalated_from=target if target != "L6" else "virtual",
+                        local_confidence=0.0,
+                    )
+                    response.daari_meta.prompt_chars = sum(
+                        len(message.content or "") for message in l6_request.messages
+                    )
+                    if budget_state == "soft" and not response.daari_meta.warning:
+                        response.daari_meta.warning = "frontier_budget_warning"
+                    self.metrics.record_escalation()
+            except BackendUnavailable as exc:
+                last_exc = exc
+                if index + 1 < len(candidates):
+                    hops += 1
+                    if hasattr(self.metrics, "record_virtual_model_failover"):
+                        self.metrics.record_virtual_model_failover()
+                    add_step(
+                        "virtual_model_failover",
+                        virtual_model=virtual_name,
+                        failed_candidate=candidate,
+                        next_candidate=candidates[index + 1],
+                    )
+                    from daari.gateway.request_log import log_gateway_event
+
+                    log_gateway_event(
+                        "virtual_model_failover",
+                        {
+                            "virtual_model": virtual_name,
+                            "failed_candidate": candidate,
+                            "next_candidate": candidates[index + 1],
+                            "detail": str(exc)[:200],
+                        },
+                    )
+                    continue
+                raise
+
+            response.daari_meta.virtual_model = virtual_name
+            response.daari_meta.virtual_candidate = candidate
+            add_step(
+                "virtual_model",
+                virtual_model=virtual_name,
+                candidate=candidate,
+                hops=hops,
+            )
+            return response
+
+        if last_exc is not None:
+            raise last_exc
+        raise BackendUnavailable("virtual", f"virtual model {virtual_name!r} exhausted candidates")
+
     async def _try_local_pool_frontier_fallback(
         self,
         request: InternalRequest,
@@ -6865,6 +6973,8 @@ class AppContext:
             local_pool_frontier_fallback=bool(
                 getattr(getattr(settings.routing, "local_pool", None), "frontier_fallback", False)
             ),
+            virtual_models=dict(getattr(settings.routing, "virtual_models", None) or {}),
+            virtual_classify_settings=settings,
             reasoning_effort_escalation=settings.routing.reasoning_effort_escalation,
             stall_escalation=settings.routing.stall_escalation.enabled,
             stall_repeats=settings.routing.stall_escalation.repeats,

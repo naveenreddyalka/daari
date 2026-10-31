@@ -148,6 +148,30 @@ def test_grouped_report_multi_dim_and_day_bucket(tmp_path):
     assert haiku["requests"] == 3
 
 
+def test_hour_bucket_groups_same_hour_splits_adjacent(tmp_path):
+    """UTC hour keys YYYY-MM-DDTHH; same hour merges, adjacent hours split (#2030)."""
+    from daari.observability.spend import _bucket_expr
+
+    assert _bucket_expr("hour") == "substr(ts, 1, 13)"
+    assert _bucket_expr("hour", dialect="postgres") == "substr(ts, 1, 13)"
+    with pytest.raises(ValueError, match="day, month, or hour"):
+        _bucket_expr("minute")
+
+    ledger = SpendLedger(tmp_path / "spend.sqlite3", enabled=True)
+    hour_a = "2026-06-15T14:05:00+00:00"
+    hour_a2 = "2026-06-15T14:55:00+00:00"
+    hour_b = "2026-06-15T15:01:00+00:00"
+    _row(ledger, request_id="h1", ts=hour_a, cost_usd=0.10, input_tokens=10)
+    _row(ledger, request_id="h2", ts=hour_a2, cost_usd=0.05, input_tokens=5)
+    _row(ledger, request_id="h3", ts=hour_b, cost_usd=0.20, input_tokens=20)
+    rows = ledger.grouped_report(since=SINCE, group_by=["model"], bucket="hour")
+    by_bucket = {r["bucket"]: r for r in rows}
+    assert set(by_bucket) == {"2026-06-15T14", "2026-06-15T15"}
+    assert by_bucket["2026-06-15T14"]["requests"] == 2
+    assert abs(by_bucket["2026-06-15T14"]["cost_usd"] - 0.15) < 1e-9
+    assert by_bucket["2026-06-15T15"]["requests"] == 1
+
+
 def test_spend_report_group_by_cli_json(tmp_path, monkeypatch):
     spend_path = tmp_path / "spend.sqlite3"
     ledger = SpendLedger(spend_path, enabled=True)
@@ -214,6 +238,14 @@ async def test_http_spend_report_group_by_analyst_scoped(settings, tmp_path):
             headers=headers,
         )
         assert bad.status_code == 400
+
+        bad_bucket = await client.get(
+            "/v1/daari/spend/report",
+            params={"since": SINCE, "group_by": "model", "bucket": "minute"},
+            headers=headers,
+        )
+        assert bad_bucket.status_code == 400
+        assert bad_bucket.json()["detail"] == "bucket must be day, month, or hour"
 
         resp = await client.get(
             "/v1/daari/spend/report",

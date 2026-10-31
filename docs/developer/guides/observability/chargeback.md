@@ -56,7 +56,8 @@ Chat rows without a provider fall back to `model`. Pass exactly one of
 `--by-user` or `--by-tool`.
 
 For Anthropic-parity dimension reports, use `--group-by` with one or more of
-`model,team,key,user,tier,usage_speed,service_tier` and optional `--bucket day|month`
+`model,team,key,user,tier,usage_speed,service_tier` and optional
+`--bucket day|month|hour` (UTC keys; minute grain is out of scope)
 (UTC). Example matching Admin API usage-by-dimension:
 
 ```bash

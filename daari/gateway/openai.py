@@ -2351,8 +2351,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if not dims:
                 raise HTTPException(status_code=400, detail="group_by is required")
             bucket_raw = (bucket or "").strip().lower() or None
-            if bucket_raw is not None and bucket_raw not in {"day", "month"}:
-                raise HTTPException(status_code=400, detail="bucket must be day or month")
+            if bucket_raw is not None and bucket_raw not in {"day", "month", "hour"}:
+                raise HTTPException(
+                    status_code=400, detail="bucket must be day, month, or hour"
+                )
             speed_raw = (usage_speed or "").strip().lower() or None
             if speed_raw is not None and speed_raw not in {"fast", "standard"}:
                 raise HTTPException(

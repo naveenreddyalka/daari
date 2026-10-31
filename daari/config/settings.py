@@ -188,7 +188,13 @@ class ServerSettings(BaseModel):
             "return 413 before the body is buffered. 0 disables the cap. "
             "File and multipart audio upload routes may use a higher floor so "
             "files.max_total_bytes still applies; JSON /v1/audio/speech stays "
-            "on this cap (#1916). Env: DAARI_SERVER__MAX_BODY_BYTES."
+            "on this cap (#1916). Default 10 MiB stays tight for boxes that "
+            "co-host local models; Anthropic Messages / token-counting accept "
+            "up to 128 MB as of 2026-10-28 — raise via "
+            "DAARI_SERVER__MAX_BODY_BYTES on gateway-only pods (doctor tip "
+            "body_cap_below_provider when an Anthropic frontier path is "
+            "configured and the cap is below 32 MiB; #2031). Env: "
+            "DAARI_SERVER__MAX_BODY_BYTES."
         ),
     )
     header_policy: HeaderPolicySettings = Field(
@@ -1140,11 +1146,41 @@ class RoutingSettings(RuntimeSettings):
     # Org inference pool (device-local → org pool → frontier).
     org_pool: OrgPoolSettings = Field(default_factory=OrgPoolSettings)
     local_pool: LocalPoolSettings = Field(default_factory=LocalPoolSettings)
+    virtual_models: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Named virtual models: client-facing name → ordered non-empty list of "
+            "candidate model ids (local tier L3–L5, configured models.* id, or L6 / "
+            "provider/model frontier id). When request.model matches a name, try "
+            "candidates in order; on typed backend-unavailable / circuit-open continue "
+            "to the next. Empty map (default) leaves routing unchanged. Respects "
+            "no_frontier, allowlists, budgets, and PII scrub before any L6 candidate "
+            "(#2023)."
+        ),
+    )
 
     @field_validator("shadow_compare_tier", mode="before")
     @classmethod
     def _upper_tier(cls, value: Any) -> Any:
         return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("virtual_models")
+    @classmethod
+    def _virtual_models_nonempty(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        if not value:
+            return {}
+        cleaned: dict[str, list[str]] = {}
+        for name, candidates in value.items():
+            key = str(name).strip()
+            if not key:
+                raise ValueError("routing.virtual_models keys must be non-empty names")
+            items = [str(c).strip() for c in (candidates or []) if str(c).strip()]
+            if not items:
+                raise ValueError(
+                    f"routing.virtual_models[{key!r}] must be a non-empty list of model ids"
+                )
+            cleaned[key] = items
+        return cleaned
 
 
 class ToolsSettings(BaseModel):
