@@ -61,6 +61,7 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("integrations", "mcp_policy", "require_key_access_defined"),
     ("integrations", "mcp_servers"),
     ("observability", "structured_json_logs"),
+    ("observability", "team_metrics"),
     ("decisions", "local_models"),
     ("systemone", "base_url"),
 )
@@ -238,6 +239,7 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
         },
         "observability": {
             "structured_json_logs": s.observability.structured_json_logs,
+            "team_metrics": s.observability.team_metrics,
         },
         "decisions": {
             "local_models": list(getattr(s.decisions, "local_models", None) or []),

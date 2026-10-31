@@ -8397,6 +8397,22 @@ non-`str|bool|int|None` values, non-bucket `approx_context_tokens`, empty
 VK without master 403; live router + audit + persist. Docs: config.md,
 http-api, routing-tiers. Covered by `tests/unit/test_config_ownership.py`.
 
+### Docs: LiteLLM GA floor 1.106.6; note 1.108.0-rc.1 ([#2019](https://github.com/naveenreddyalka/daari/issues/2019))
+
+<!-- tracking:#2019 -->
+**Status:** Done (2026-10-31). compare-litellm stable floor is **1.106.6 GA**;
+1.108.0-rc.1 called out as parity-only prerelease (not a feature cut);
+1.109-dev watch keeps the same floor. Covered by
+`tests/unit/test_compare_litellm_1104.py`.
+
+### Config ownership + PATCH for observability.team_metrics ([#2021](https://github.com/naveenreddyalka/daari/issues/2021))
+
+<!-- tracking:#2021 -->
+**Status:** Done (2026-10-31). `observability.team_metrics` is an ownership
+leaf; GET/PATCH `/v1/daari/config` toggles the scrape `team` label live
+(default false; non-bool rejected). Docs: config.md, http-api,
+metrics-prometheus. Covered by `tests/unit/test_config_ownership.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

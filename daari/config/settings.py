@@ -1836,7 +1836,8 @@ class ObservabilitySettings(RuntimeSettings):
             "Opt-in team label on daari_requests_total / daari_errors_total (#1997). "
             "Off keeps exposition byte-identical. When on, team values are bounded "
             "to the virtual-key teams store (unknown/empty → '-'). Latency "
-            "histograms stay team-less as a deliberate cardinality guard."
+            "histograms stay team-less as a deliberate cardinality guard. "
+            "Editable via GET/PATCH /v1/daari/config ownership (config editor)."
         ),
     )
     # Optional OTel export of RequestTrace steps (issue #115). Requires
