@@ -8379,6 +8379,24 @@ but L4 is unwired. Docs: ollama.md. Covered by `tests/test_setup.py` and
 Gradium tips). Docs: tts.md. Covered by `tests/test_setup.py`,
 `tests/unit/test_doctor_lfm3_audio.py`, and `tests/unit/test_tts_docs.py`.
 
+### Validate signal_overrides match keys and buckets ([#2013](https://github.com/naveenreddyalka/daari/issues/2013))
+
+<!-- tracking:#2013 -->
+**Status:** Done (2026-10-30). `SignalOverrideRule` rejects unknown match keys,
+non-`str|bool|int|None` values, non-bucket `approx_context_tokens`, empty
+`match`, and lever-less rules (message names rule `id`).
+`CONTEXT_TOKEN_BUCKETS` is the single source with `context_token_bucket`.
+`daari config validate` surfaces the id. Docs: routing-tiers. Covered by
+`tests/unit/test_signal_overrides.py`.
+
+### Config ownership + PATCH for routing.signal_overrides ([#2014](https://github.com/naveenreddyalka/daari/issues/2014))
+
+<!-- tracking:#2014 -->
+**Status:** Done (2026-10-30). `GET/PATCH /v1/daari/config` ownership exposes
+`routing.signal_overrides` as a full list replacement; invalid rules 400;
+VK without master 403; live router + audit + persist. Docs: config.md,
+http-api, routing-tiers. Covered by `tests/unit/test_config_ownership.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

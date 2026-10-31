@@ -31,6 +31,7 @@ _COMPACT_LEAVES = (
     "routing.compact_to_fit.max_messages",
     "routing.compact_to_fit.max_tokens",
 )
+_SIGNAL_OVERRIDES = "routing.signal_overrides"
 _MCP_LEAVES = (
     "integrations.mcp_oauth.local_as",
     "integrations.mcp_oauth.protected_resource",
@@ -60,6 +61,7 @@ def _base_live() -> dict:
                 "max_messages": 32,
                 "max_tokens": 0,
             },
+            "signal_overrides": [],
         },
         "frontier": {
             "daily_budget_usd": 1.0,
@@ -433,6 +435,7 @@ def test_live_config_payload_matches_editor_shape(settings):
     assert payload["routing"]["compact_to_fit"]["enabled"] is False
     assert payload["routing"]["compact_to_fit"]["max_messages"] == 32
     assert payload["routing"]["compact_to_fit"]["max_tokens"] == 0
+    assert payload["routing"]["signal_overrides"] == []
     assert set(payload["integrations"]["mcp_oauth"]) == {"local_as", "protected_resource"}
     assert "signing_secret" not in payload["integrations"]["mcp_oauth"]
     assert set(payload["integrations"]["mcp_policy"]) == {"require_key_access_defined"}
@@ -662,13 +665,100 @@ async def test_patch_mcp_server_ceilings_round_trip(settings, tmp_path, monkeypa
 def test_docs_pin_classifier_mcp_config_ownership():
     config = CONFIG_MD.read_text(encoding="utf-8")
     http_api = HTTP_API.read_text(encoding="utf-8")
-    for key in _CLASSIFIER_LEAVES + _MCP_LEAVES + _COMPACT_LEAVES + (_OBS_JSON_LOGS,):
+    for key in _CLASSIFIER_LEAVES + _MCP_LEAVES + _COMPACT_LEAVES + (
+        _OBS_JSON_LOGS,
+        _SIGNAL_OVERRIDES,
+    ):
         assert key in config
     assert "config editor" in config.lower() or "/v1/daari/config" in config
     assert "| `GET` | `/v1/daari/config`" in http_api
     assert "| `PATCH` | `/v1/daari/config`" in http_api
     assert "decision_classifier" in http_api or "ownership" in http_api.lower()
     assert "compact_to_fit" in http_api
+    assert "signal_overrides" in http_api
     assert "require_key_access_defined" in http_api or "mcp_policy" in http_api
     assert "structured_json_logs" in http_api
     assert "mcp_servers" in http_api
+
+
+@pytest.mark.asyncio
+async def test_patch_signal_overrides_round_trip_invalid_and_forbidden(
+    settings, tmp_path, monkeypatch
+):
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.enterprise.postgres_audit import audit_log_from_settings
+
+    settings.observability.config_editor = True
+    settings.server.api_key = "master-sekret"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.enterprise.sso.enabled = False
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    assert settings.routing.signal_overrides == []
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump({"routing": {"signal_overrides": []}}),
+        encoding="utf-8",
+    )
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    created = store.create("agent", client_id="agent", daily_budget_usd=1.0)
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    transport = ASGITransport(app=app)
+    headers_vk = {"Authorization": f"Bearer {created.plaintext}"}
+    headers_master = {"Authorization": "Bearer master-sekret"}
+    rule = {
+        "id": "img-doc",
+        "match": {"has_images": True},
+        "category": "doc_qa",
+        "max_tier": "L4",
+    }
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        got = await client.get("/v1/daari/config", headers=headers_master)
+        assert got.status_code == 200
+        body = got.json()
+        assert _SIGNAL_OVERRIDES in body["ownership"]
+        assert body["ownership"][_SIGNAL_OVERRIDES]["editable"] is True
+        assert body["routing"]["signal_overrides"] == []
+
+        denied = await client.patch(
+            "/v1/daari/config",
+            headers=headers_vk,
+            json={"routing": {"signal_overrides": [rule]}},
+        )
+        assert denied.status_code == 403
+
+        bad = await client.patch(
+            "/v1/daari/config",
+            headers=headers_master,
+            json={
+                "routing": {
+                    "signal_overrides": [
+                        {"id": "dead", "match": {"has_image": True}, "category": "doc_qa"}
+                    ]
+                }
+            },
+        )
+        assert bad.status_code == 400
+        assert settings.routing.signal_overrides == []
+        assert app.state.ctx.router.signal_overrides == []
+
+        patched = await client.patch(
+            "/v1/daari/config",
+            headers=headers_master,
+            json={"routing": {"signal_overrides": [rule]}, "persist": True},
+        )
+        assert patched.status_code == 200
+        payload = patched.json()
+        assert payload["routing"]["signal_overrides"][0]["id"] == "img-doc"
+        assert payload["ownership"][_SIGNAL_OVERRIDES]["source"] == "file"
+        assert settings.routing.signal_overrides[0].id == "img-doc"
+        assert app.state.ctx.router.signal_overrides[0].id == "img-doc"
+        written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert written["routing"]["signal_overrides"][0]["id"] == "img-doc"
+        audit = audit_log_from_settings(settings).list(limit=20)
+        assert any(entry.get("action") == "config.patch" for entry in audit)

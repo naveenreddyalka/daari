@@ -32,6 +32,7 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("routing", "compact_to_fit", "enabled"),
     ("routing", "compact_to_fit", "max_messages"),
     ("routing", "compact_to_fit", "max_tokens"),
+    ("routing", "signal_overrides"),
     ("frontier", "daily_budget_usd"),
     ("frontier", "monthly_budget_usd"),
     ("frontier", "soft_budget_ratio"),
@@ -185,6 +186,10 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
                 "max_messages": s.routing.compact_to_fit.max_messages,
                 "max_tokens": s.routing.compact_to_fit.max_tokens,
             },
+            "signal_overrides": [
+                rule.model_dump() if hasattr(rule, "model_dump") else dict(rule)
+                for rule in (s.routing.signal_overrides or [])
+            ],
         },
         "frontier": {
             "daily_budget_usd": s.frontier.daily_budget_usd,
