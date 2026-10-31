@@ -162,6 +162,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `frontier.compress_context` | bool | `False` |  |
 | `frontier.compress_target_ratio` | float | `0.6` |  |
 | `anthropic.user_profiles` | dict | `{}` | Map daari end-user / key_id / team_id / client_id to an Anthropic user-profile id. Injected as anthropic-user-profile-id on the L6 Anthropic hop when the client did not send one. |
+| `anthropic.analytics_api_key` | str | `''` | Admin / read:analytics key for Usage and Cost Analytics reconcile (#2033). Supports secret://. Empty falls back to the frontier API key used by enforcement-sync. |
 | `anthropic.enforcement_state_path` | str | `'~/.daari/anthropic-enforcement.json'` | JSON path for cached Anthropic user-profile enforcement status (#1866). Written by `daari anthropic enforcement-sync`. |
 | `anthropic.enforcement_webhook_url` | str | `''` | Optional webhook for enforcement start/end transitions (#1866). Empty disables. Signed like budget alerts when enforcement_webhook_secret is set. |
 | `anthropic.enforcement_webhook_secret` | str | `''` | HMAC secret for enforcement webhooks (X-Daari-Signature) (#1866). |

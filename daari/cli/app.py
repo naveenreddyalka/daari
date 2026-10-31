@@ -2019,6 +2019,103 @@ def trace(
         typer.echo(f"  +{step['elapsed_ms']:>5}ms  {step['step']:<14} {detail_text}")
 
 
+@spend_app.command("reconcile")
+def spend_reconcile(
+    provider: str = typer.Option(
+        ...,
+        "--provider",
+        help="Provider to reconcile against (currently: anthropic).",
+    ),
+    since: str = typer.Option(
+        ..., "--since", help="ISO-8601 timestamp or relative window (7d, 12h)."
+    ),
+    until: str | None = typer.Option(
+        None,
+        "--until",
+        help="Exclusive end bound (ISO-8601 or relative). Defaults to now.",
+    ),
+    threshold_pct: float = typer.Option(
+        5.0,
+        "--threshold-pct",
+        help="Exit nonzero when any model/day drift %% exceeds this value.",
+    ),
+    base_url: str = typer.Option(
+        "",
+        "--base-url",
+        help="Anthropic API root (default https://api.anthropic.com).",
+    ),
+) -> None:
+    """Compare local spend ledger to Anthropic Usage/Cost Analytics (#2033)."""
+    from datetime import datetime, timezone
+
+    from daari.enterprise.analytics_reconcile import (
+        AnalyticsReconcileError,
+        format_reconcile_table,
+        reconcile,
+        resolve_anthropic_admin_key,
+    )
+    from daari.enterprise.audit import parse_since
+    from daari.enterprise.enforcement_sync import DEFAULT_BASE_URL
+    from daari.observability.spend import spend_ledger_from_settings
+
+    if (provider or "").strip().lower() != "anthropic":
+        typer.echo(
+            f"Unsupported --provider {provider!r}; only 'anthropic' is implemented.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    try:
+        cutoff = parse_since(since)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    if until is not None and str(until).strip():
+        try:
+            until_cut = parse_since(str(until).strip())
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+    else:
+        until_cut = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    settings = get_settings()
+    api_key = resolve_anthropic_admin_key(settings)
+    if not api_key:
+        typer.echo(
+            "Anthropic admin/analytics API key missing — set "
+            "anthropic.analytics_api_key (secret:// ok) or a frontier key.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    ledger = spend_ledger_from_settings(settings)
+    if not ledger.enabled:
+        typer.echo("Spend log is disabled (settings: usage.spend.enabled).", err=True)
+        raise typer.Exit(code=1)
+    root = (base_url or "").strip() or DEFAULT_BASE_URL
+    try:
+        result = reconcile(
+            api_key=api_key,
+            ledger=ledger,
+            since=cutoff,
+            until=until_cut,
+            threshold_pct=float(threshold_pct),
+            base_url=root,
+        )
+    except AnalyticsReconcileError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:
+        typer.echo(f"reconcile failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(format_reconcile_table(result.rows))
+    if result.exceeded:
+        typer.echo(
+            f"{len(result.exceeded)} row(s) exceed --threshold-pct "
+            f"{result.threshold_pct:g}.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+
 @spend_app.command("export")
 def spend_export(
     since: str = typer.Option(

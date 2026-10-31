@@ -75,6 +75,26 @@ chargeback survives export.
 
 `cost_avoided_usd` uses `pricing.models` for the model the client asked for. Models missing from that table use `usage.frontier_price_per_1k_tokens`. Frontier (`L6`) rows keep the real cost and record $0 avoided. A successful transcription exports as `tier` `asr` (local) or `L6` (frontier fallback). A successful translation exports as `tier` `translation` (local) or `L6` (frontier fallback). Speech synthesis exports as `tier` `tts`. Embedding calls export as `tier` `embed` with the caller's key and team. An unknown embedding model returns 400 and writes no row. Allowlist 403 and unconfigured transcription/translation/speech 501 write no row.
 
+## Anthropic analytics reconcile
+
+When Anthropic is the L6 provider, prove the local ledger against the bill with
+`daari spend reconcile --provider anthropic`. It calls Anthropic's Usage and
+Cost Analytics API (`GET /v1/organizations/analytics/cost` and `/usage`, beta
+header `analytics-usage-cost-2026-08-24`) grouped by model + day, compares
+provider discounted `amount` (cents → USD) to Anthropic-served ledger rows,
+and prints daari cost, provider amount, and drift %. Windows are at most 31
+days. Auth uses `anthropic.analytics_api_key` (`secret://` ok) or falls back
+to the frontier key (same credential path as enforcement-sync).
+
+```bash
+daari spend reconcile --provider anthropic --since 7d --threshold-pct 5
+daari spend reconcile --provider anthropic \
+  --since 2026-09-01T00:00:00Z --until 2026-09-15T00:00:00Z
+```
+
+Exits nonzero when any model/day drift exceeds `--threshold-pct`, or when the
+admin key is missing / the window exceeds 31 days.
+
 OpenAI Responses prompt-cache **writes** are TTL-dependent totals (not surcharges):
 `prompt_cache_options.ttl` of `30m` bills at **1.25×** input and `12h` at **2.5×**
 input for GPT-5.6+ models (`cache_write_30m_per_1m` / `cache_write_12h_per_1m`).

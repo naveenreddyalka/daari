@@ -8455,6 +8455,17 @@ Doctor tip `ollama_safeguard_unused` when the host lists a safeguard tag but
 no decision rule uses it. Docs: guardrails, ollama, doctor-health. Covered by
 `tests/test_setup.py` and `tests/unit/test_doctor_safeguard_unused.py`.
 
+### Anthropic Analytics spend reconcile ([#2033](https://github.com/naveenreddyalka/daari/issues/2033))
+
+<!-- tracking:#2033 -->
+**Status:** Done (2026-10-31). `daari spend reconcile --provider anthropic`
+fetches `/v1/organizations/analytics/cost` (+ usage) with beta header
+`analytics-usage-cost-2026-08-24`, compares model/day provider `amount` to the
+local Anthropic-served ledger rollup, prints drift %, and exits nonzero over
+`--threshold-pct`. Admin key via `anthropic.analytics_api_key` (secret://) or
+frontier fallback; 31-day window enforced. Docs: chargeback. Covered by
+`tests/unit/test_analytics_reconcile.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
