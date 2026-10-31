@@ -1140,11 +1140,41 @@ class RoutingSettings(RuntimeSettings):
     # Org inference pool (device-local → org pool → frontier).
     org_pool: OrgPoolSettings = Field(default_factory=OrgPoolSettings)
     local_pool: LocalPoolSettings = Field(default_factory=LocalPoolSettings)
+    virtual_models: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Named virtual models: client-facing name → ordered non-empty list of "
+            "candidate model ids (local tier L3–L5, configured models.* id, or L6 / "
+            "provider/model frontier id). When request.model matches a name, try "
+            "candidates in order; on typed backend-unavailable / circuit-open continue "
+            "to the next. Empty map (default) leaves routing unchanged. Respects "
+            "no_frontier, allowlists, budgets, and PII scrub before any L6 candidate "
+            "(#2023)."
+        ),
+    )
 
     @field_validator("shadow_compare_tier", mode="before")
     @classmethod
     def _upper_tier(cls, value: Any) -> Any:
         return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("virtual_models")
+    @classmethod
+    def _virtual_models_nonempty(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        if not value:
+            return {}
+        cleaned: dict[str, list[str]] = {}
+        for name, candidates in value.items():
+            key = str(name).strip()
+            if not key:
+                raise ValueError("routing.virtual_models keys must be non-empty names")
+            items = [str(c).strip() for c in (candidates or []) if str(c).strip()]
+            if not items:
+                raise ValueError(
+                    f"routing.virtual_models[{key!r}] must be a non-empty list of model ids"
+                )
+            cleaned[key] = items
+        return cleaned
 
 
 class ToolsSettings(BaseModel):

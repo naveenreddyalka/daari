@@ -8413,6 +8413,19 @@ leaf; GET/PATCH `/v1/daari/config` toggles the scrape `team` label live
 (default false; non-bool rejected). Docs: config.md, http-api,
 metrics-prometheus. Covered by `tests/unit/test_config_ownership.py`.
 
+### Named virtual models with ordered failover ([#2023](https://github.com/naveenreddyalka/daari/issues/2023))
+
+<!-- tracking:#2023 -->
+**Status:** Done (2026-10-31). `routing.virtual_models` maps a client-facing
+name to an ordered candidate list (local tier / configured models.* id / L6
+provider id). On typed BackendUnavailable the router continues to the next
+candidate; L6 candidates still honor no_frontier, allowlists, budgets, and
+PII scrub. `daari_meta.virtual_model` / `virtual_candidate` and
+`daari_virtual_model_failover_total` record hops (no per-candidate labels).
+Doctor warns on empty/unknown ids. Docs: routing-tiers, config.md. Covered by
+`tests/unit/test_virtual_models.py` and a gateway-flow assertion.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

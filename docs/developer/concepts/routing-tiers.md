@@ -278,6 +278,29 @@ Frontier/L6 cards are never overwritten from this table. Capability
 `long_context` is no longer inferred from a 24k-char threshold (#401) —
 this escalation path is the single length hop.
 
+## Named virtual models
+
+`routing.virtual_models` (default `{}`) maps a stable client-facing name to an
+ordered list of candidate model ids. When `request.model` matches a name, the
+router tries each candidate in order and stops on the first success:
+
+```yaml
+routing:
+  virtual_models:
+    chat-default:
+      - L3                 # local tier (or models.l3 / models.l4 / models.l5 id)
+      - L5
+      - openai/gpt-4o-mini # L6 / provider-style frontier id
+```
+
+On typed `BackendUnavailable` / circuit-open for a local candidate, the router
+continues to the next id and increments `daari_virtual_model_failover_total`
+(no per-candidate labels). Before any L6 candidate it still honors
+`no_frontier`, allowlists, budgets, and PII scrub. `daari_meta.virtual_model`
+and `daari_meta.virtual_candidate` record the name and the id that served.
+An empty map leaves today's routing unchanged. Doctor warns on empty lists or
+unknown-looking ids.
+
 ## Per-entry retry and timeout
 
 `upstream.retry` and `upstream.local_timeout_seconds` /
