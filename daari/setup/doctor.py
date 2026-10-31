@@ -135,6 +135,7 @@ def run_doctor(
     results.append(_check_egress_https(cfg, strict=strict))
     results.append(_check_egress_tls_trust(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
+    results.append(_check_virtual_models(cfg))
     results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
     results.append(_check_model_lifecycle(cfg))
@@ -3041,6 +3042,32 @@ def _check_local_pool_frontier_fallback(settings: Settings) -> CheckResult:
         )
     return CheckResult(
         name="local_pool_frontier_fallback",
+        ok=False,
+        detail="; ".join(findings),
+        optional=True,
+    )
+
+
+def _check_virtual_models(settings: Settings) -> CheckResult:
+    """Warn on empty / unknown-looking routing.virtual_models candidates (#2023)."""
+    from daari.router.virtual_models import virtual_models_findings
+
+    mapping = getattr(getattr(settings, "routing", None), "virtual_models", None) or {}
+    findings = virtual_models_findings(settings)
+    if not findings:
+        detail = (
+            f"routing.virtual_models={len(mapping)} name(s)"
+            if mapping
+            else "routing.virtual_models={}"
+        )
+        return CheckResult(
+            name="virtual_models",
+            ok=True,
+            detail=detail,
+            optional=True,
+        )
+    return CheckResult(
+        name="virtual_models",
         ok=False,
         detail="; ".join(findings),
         optional=True,

@@ -1171,6 +1171,48 @@ async def test_non_stream_includes_daari_meta(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_virtual_model_meta_on_chat(settings, monkeypatch):
+    """Virtual model name + serving candidate land on daari_meta (#2023)."""
+    settings.routing.virtual_models = {"chat-default": ["L3", "L5"]}
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    async def fake_execute(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content=MOCK_MODEL_CONTENT,
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama:l3",
+                latency_ms=1,
+            ),
+        )
+
+    mock_all_ollama_executors(monkeypatch, application.state.ctx.router, fake_execute)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "chat-default",
+                "messages": [{"role": "user", "content": "virtual gateway"}],
+                "stream": False,
+            },
+            headers=META_HEADERS,
+        )
+
+    assert response.status_code == 200
+    meta = response.json()["daari_meta"]
+    assert meta["tier"] == "L3"
+    assert meta["virtual_model"] == "chat-default"
+    assert meta["virtual_candidate"] == "L3"
+
+
+@pytest.mark.asyncio
 async def test_non_stream_daari_meta_includes_signals(app, monkeypatch):
     """Routed chat responses expose bounded request-fact signals (#1996)."""
 

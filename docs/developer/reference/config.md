@@ -143,6 +143,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.local_pool.health_interval_seconds` | float | `15.0` | Background health-check interval. Requests use the last snapshot. |
 | `routing.local_pool.frontier_fallback` | bool | `False` | When true and every local backend for the chosen tier is down or circuit-open, escalate to L6 instead of raising BackendUnavailable. Respects no_frontier, allowlists, budgets, and PII scrub. Default false so outages stay a hard 503 unless opted in (#846). |
 | `routing.local_pool.backends` | list | `[]` |  |
+| `routing.virtual_models` | dict | `{}` | Named virtual models: client-facing name → ordered non-empty list of candidate model ids (local tier L3–L5, configured models.* id, or L6 / provider/model frontier id). When request.model matches a name, try candidates in order; on typed backend-unavailable / circuit-open continue to the next. Empty map (default) leaves routing unchanged. Respects no_frontier, allowlists, budgets, and PII scrub before any L6 candidate (#2023). |
 | `frontier.enabled` | bool | `False` |  |
 | `frontier.provider` | str | `'openai'` |  |
 | `frontier.model` | str | `'gpt-6-luna'` |  |
