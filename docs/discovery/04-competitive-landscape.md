@@ -62,7 +62,7 @@ daari is **not** an LLM proxy in the LiteLLM sense. It is an **open-source, loca
 
 | Product | What it is | Why not a direct competitor |
 |---------|------------|----------------------------|
-| **[OpenRouter](https://openrouter.ai)** | Multi-model cloud API aggregator | Cloud-first; optimizes model *choice*, not local execution or zero-cost tiers |
+| **[OpenRouter](https://openrouter.ai)** | Multi-model cloud API aggregator | Cloud-first; optimizes model *choice*, not local execution or zero-cost tiers. Late Oct 2026: [Private Endpoints](https://openrouter.ai/blog/announcements/private-endpoints/) (BYOK dedicated/fine-tuned via same API) and in-flight [CSAM screening](https://openrouter.ai/blog/announcements/csam-screening/) (including ZDR traffic; flagged content may be retained). Still a third party on the path — contrast with on-box tiers/guardrails in [compare-openrouter](../developer/resources/compare-openrouter.md). |
 | **[Portkey](https://portkey.ai)** | AI gateway (OSS gateway exists) | Enterprise observability, cloud routing; local-first is secondary |
 | **Cloudflare AI Gateway** | Edge proxy + cache | Cloud infra; exact-match cache only; not local AI |
 | **Kong AI Gateway** | Enterprise API gateway | Org-scale, not personal local dev stack |
