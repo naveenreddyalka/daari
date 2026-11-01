@@ -274,9 +274,16 @@ def render_prometheus(
     if not signal_overrides:
         lines.append("daari_signal_override_total 0")
     else:
-        for rule, count in sorted(signal_overrides.items()):
+        for key, count in sorted(signal_overrides.items()):
+            raw = str(key)
+            if ":" in raw:
+                rule, scope = raw.rsplit(":", 1)
+                if scope not in {"key", "team", "global"}:
+                    rule, scope = raw, "global"
+            else:
+                rule, scope = raw, "global"
             lines.append(
-                f"daari_signal_override_total{_labels(rule=str(rule))} {int(count)}"
+                f"daari_signal_override_total{_labels(rule=rule, scope=scope)} {int(count)}"
             )
     lines.append(
         "# HELP daari_mcp_grant_denied_total MCP initialize, tools/list, or "

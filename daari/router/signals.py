@@ -98,6 +98,66 @@ def match_signal_override(signals: dict[str, Any], rules: list[Any]) -> Any | No
     return None
 
 
+def coerce_signal_overrides(raw: Any) -> tuple[Any, ...]:
+    """Validate a list of signal override rules; raise on bad match/lever (#2050)."""
+    from daari.config.settings import SignalOverrideRule
+
+    if raw is None:
+        return ()
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError("signal_overrides must be a list of rules")
+    return tuple(SignalOverrideRule.model_validate(row) for row in raw)
+
+
+def encode_signal_overrides(rules: Any) -> list[dict[str, Any]]:
+    """Serialize validated rules for metadata / inventory JSON (#2050)."""
+    out: list[dict[str, Any]] = []
+    for rule in coerce_signal_overrides(rules):
+        if hasattr(rule, "model_dump"):
+            out.append(rule.model_dump())
+        elif isinstance(rule, dict):
+            out.append(dict(rule))
+    return out
+
+
+def signal_overrides_from_meta(meta: Any) -> tuple[Any, ...]:
+    """Read ``metadata.signal_overrides`` with the same validation as config (#2050)."""
+    if not isinstance(meta, dict):
+        return ()
+    raw = meta.get("signal_overrides")
+    if not raw:
+        return ()
+    return coerce_signal_overrides(raw)
+
+
+def merge_scoped_signal_overrides(
+    *,
+    key_rules: list[Any] | tuple[Any, ...] | None = None,
+    team_rules: list[Any] | tuple[Any, ...] | None = None,
+    global_rules: list[Any] | tuple[Any, ...] | None = None,
+) -> list[tuple[Any, str]]:
+    """Merge rules in precedence order: key → team → global (#2050)."""
+    merged: list[tuple[Any, str]] = []
+    for rule in key_rules or ():
+        merged.append((rule, "key"))
+    for rule in team_rules or ():
+        merged.append((rule, "team"))
+    for rule in global_rules or ():
+        merged.append((rule, "global"))
+    return merged
+
+
+def match_scoped_signal_override(
+    signals: dict[str, Any], scoped_rules: list[tuple[Any, str]]
+) -> tuple[Any | None, str | None]:
+    """First scoped rule whose match is satisfied; returns ``(rule, scope)`` (#2050)."""
+    for rule, scope in scoped_rules or []:
+        matched = match_signal_override(signals, [rule])
+        if matched is not None:
+            return matched, scope
+    return None, None
+
+
 def apply_signal_override(
     profile: PromptProfile,
     request: InternalRequest,

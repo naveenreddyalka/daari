@@ -254,5 +254,6 @@ async def test_router_attaches_signals_and_applies_override(tmp_path, monkeypatc
     assert response.daari_meta.signals["has_images"] is True
     assert response.daari_meta.task_type == "doc_qa"
     snap = metrics.snapshot(include_histograms=True)
-    assert snap.get("signal_override", {}).get("img-doc", 0) >= 1
+    so = snap.get("signal_override", {}) or {}
+    assert so.get("img-doc:global", 0) >= 1 or so.get("img-doc", 0) >= 1
     assert any(event == "signal_override" for event, _ in events)

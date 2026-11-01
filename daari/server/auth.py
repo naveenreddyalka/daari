@@ -51,6 +51,8 @@ class AuthClaims:
     cache_scope: str = "global"
     # Request-time team selection (#1107). None = key-pinned / default.
     selected_team_id: str | None = None
+    # Team-scoped signal_overrides stamped at resolve / team select (#2050).
+    team_signal_overrides: list[Any] | None = None
 
 
 def extract_api_key(headers: Any) -> str:
@@ -129,6 +131,16 @@ def apply_auth_claims_to_meta(
         team_id = selected
     if not getattr(meta, "team_id", None) and team_id:
         meta.team_id = team_id
+    # Key / team signal_overrides (#2050). Empty list is intentional clear.
+    if getattr(meta, "key_signal_overrides", None) is None:
+        vk = getattr(claims, "virtual_key", None)
+        key_rules = list(getattr(vk, "signal_overrides", None) or ())
+        if key_rules:
+            meta.key_signal_overrides = key_rules
+    if getattr(meta, "team_signal_overrides", None) is None:
+        team_rules = list(getattr(claims, "team_signal_overrides", None) or ())
+        if team_rules:
+            meta.team_signal_overrides = team_rules
     scope = getattr(claims, "cache_scope", None) or "global"
     if scope in {"team", "key"}:
         meta.cache_scope = scope
@@ -211,6 +223,7 @@ def apply_selected_team(
         return
     claims.team_allowed_models = team.allowed_models
     claims.team_model_groups = team.model_groups
+    claims.team_signal_overrides = list(team.signal_overrides or ())
     team_scope = team.cache_scope
     key_scope = getattr(claims.virtual_key, "cache_scope", "global") if claims.virtual_key else "global"
     claims.cache_scope = effective_cache_scope(key_scope, team_scope)
@@ -244,6 +257,7 @@ def resolve_auth(
             region_pin = key.region_pin
             team_allowed = None
             team_groups = None
+            team_signal_overrides = None
             team_scope = "global"
             if key.team_id:
                 team = store.get_team(key.team_id)
@@ -253,6 +267,7 @@ def resolve_auth(
                     team_allowed = team.allowed_models
                     team_groups = team.model_groups
                     team_scope = team.cache_scope
+                    team_signal_overrides = list(team.signal_overrides or ())
             return AuthClaims(
                 kind="virtual",
                 key_id=key.key_id,
@@ -268,6 +283,7 @@ def resolve_auth(
                 team_allowed_models=team_allowed,
                 team_model_groups=team_groups,
                 cache_scope=effective_cache_scope(key.cache_scope, team_scope),
+                team_signal_overrides=team_signal_overrides,
             )
     # Auth required but nothing matched.
     if normalize_master_keys(master_key) or store_enforces_auth(store):

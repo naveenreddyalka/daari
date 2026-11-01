@@ -1279,13 +1279,14 @@ class Router:
     def _apply_signal_overrides(
         self, request: InternalRequest, profile: PromptProfile
     ) -> tuple[PromptProfile, dict[str, Any]]:
-        """Extract request-fact signals; optionally apply first matching override (#1996)."""
+        """Extract request-fact signals; optionally apply first matching override (#1996/#2050)."""
         from daari.gateway.request_log import log_gateway_event
         from daari.router.phase import classify_phase
         from daari.router.signals import (
             apply_signal_override,
             extract_signals,
-            match_signal_override,
+            match_scoped_signal_override,
+            merge_scoped_signal_overrides,
         )
 
         phase_name: str | None = None
@@ -1301,10 +1302,17 @@ class Router:
                 "request_id": getattr(request.meta, "request_id", None),
             },
         )
-        rule = match_signal_override(signals, self.signal_overrides)
+        # Precedence: key → team → global; unauthenticated sees global only (#2050).
+        scoped = merge_scoped_signal_overrides(
+            key_rules=getattr(request.meta, "key_signal_overrides", None) or (),
+            team_rules=getattr(request.meta, "team_signal_overrides", None) or (),
+            global_rules=self.signal_overrides,
+        )
+        rule, scope = match_scoped_signal_override(signals, scoped)
         if rule is None:
             return profile, signals
         rule_id = str(getattr(rule, "id", None) or "anonymous")
+        scope_label = scope if scope in {"key", "team", "global"} else "global"
         profile, levers = apply_signal_override(profile, request, rule)
         # Refresh category/complexity on the stamped signals after override.
         signals = {
@@ -1314,6 +1322,7 @@ class Router:
         }
         detail = {
             "rule": rule_id,
+            "scope": scope_label,
             "match": dict(getattr(rule, "match", None) or {}),
             "category": getattr(rule, "category", None),
             "max_tier": levers.get("max_tier"),
@@ -1324,7 +1333,7 @@ class Router:
         log_gateway_event("signal_override", detail)
         metrics = getattr(self, "metrics", None)
         if metrics is not None and hasattr(metrics, "record_signal_override"):
-            metrics.record_signal_override(rule=rule_id)
+            metrics.record_signal_override(rule=rule_id, scope=scope_label)
         return profile, signals
 
     def _policy_for(self, profile: PromptProfile | None) -> Any | None:

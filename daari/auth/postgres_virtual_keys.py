@@ -239,6 +239,7 @@ class PostgresVirtualKeyStore:
         model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
         model_max_budget: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
+        signal_overrides: list[Any] | tuple[Any, ...] | None = None,
     ) -> Team:
         if self._inner is not None:
             return self._inner.create_team(
@@ -258,6 +259,7 @@ class PostgresVirtualKeyStore:
                 model_group_budgets=model_group_budgets,
                 model_max_budget=model_max_budget,
                 metadata=metadata,
+                signal_overrides=signal_overrides,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -267,6 +269,7 @@ class PostgresVirtualKeyStore:
             encode_model_max_budget,
             windows_from_flat,
         )
+        from daari.router.signals import encode_signal_overrides
 
         windows = coalesce_windows(
             list(budget_windows or ())
@@ -288,6 +291,12 @@ class PostgresVirtualKeyStore:
             meta["model_group_budgets"] = encode_model_group_budgets(model_group_budgets)
         if model_max_budget:
             meta["model_max_budget"] = encode_model_max_budget(model_max_budget)
+        if signal_overrides is not None:
+            encoded = encode_signal_overrides(signal_overrides)
+            if encoded:
+                meta["signal_overrides"] = encoded
+            else:
+                meta.pop("signal_overrides", None)
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
@@ -372,6 +381,7 @@ class PostgresVirtualKeyStore:
         rpd: int | None = None,
         allowed_models: list[str] | tuple[str, ...] | None | object = _UNSET,
         model_groups: list[str] | tuple[str, ...] | None | object = _UNSET,
+        signal_overrides: list[Any] | tuple[Any, ...] | None | object = _UNSET,
     ) -> Team:
         if self._inner is not None:
             return self._inner.update_team(
@@ -385,10 +395,12 @@ class PostgresVirtualKeyStore:
                 rpd=rpd,
                 allowed_models=allowed_models,
                 model_groups=model_groups,
+                signal_overrides=signal_overrides,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
         from daari.auth.budgets import coalesce_windows, windows_from_flat
+        from daari.router.signals import encode_signal_overrides
 
         windows = coalesce_windows(
             list(budget_windows or ())
@@ -398,7 +410,8 @@ class PostgresVirtualKeyStore:
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT name, region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd"
+                    "SELECT name, region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd,"
+                    " metadata_json"
                     " FROM teams WHERE team_id = %s",
                     (team_id,),
                 )
@@ -420,10 +433,17 @@ class PostgresVirtualKeyStore:
                 groups = (
                     decode_names(row[5]) if model_groups is _UNSET else coerce_names(model_groups)  # type: ignore[arg-type]
                 )
+                meta = _parse_metadata(row[7]) if len(row) > 7 else {}
+                if signal_overrides is not _UNSET:
+                    encoded = encode_signal_overrides(signal_overrides)
+                    if encoded:
+                        meta["signal_overrides"] = encoded
+                    else:
+                        meta.pop("signal_overrides", None)
                 cur.execute(
                     "UPDATE teams SET budget_windows_json = %s, region_pin = %s,"
                     " rpm = %s, tpm = %s, allowed_models_json = %s, model_groups_json = %s,"
-                    " rpd = %s"
+                    " rpd = %s, metadata_json = %s"
                     " WHERE team_id = %s",
                     (
                         self._windows_json(windows),
@@ -433,6 +453,7 @@ class PostgresVirtualKeyStore:
                         encode_names(models),
                         encode_names(groups),
                         team_rpd,
+                        json.dumps(meta),
                         team_id,
                     ),
                 )
@@ -447,6 +468,7 @@ class PostgresVirtualKeyStore:
             allowed_models=models,
             model_groups=groups,
             rpd=team_rpd,
+            metadata=meta,
         )
 
     def get_team(self, team_id: str | None = None, *, name: str | None = None) -> Team | None:
@@ -637,6 +659,8 @@ class PostgresVirtualKeyStore:
         priority: str = "normal",
         model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
         model_max_budget: dict[str, Any] | None = None,
+        signal_overrides: list[Any] | tuple[Any, ...] | None = None,
+        max_in_flight: int = 0,
     ) -> CreatedKey:
         if self._inner is not None:
             return self._inner.create(
@@ -661,6 +685,8 @@ class PostgresVirtualKeyStore:
                 priority=priority,
                 model_group_budgets=model_group_budgets,
                 model_max_budget=model_max_budget,
+                signal_overrides=signal_overrides,
+                max_in_flight=max_in_flight,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -670,6 +696,7 @@ class PostgresVirtualKeyStore:
             encode_model_max_budget,
             windows_from_flat,
         )
+        from daari.router.signals import encode_signal_overrides
 
         expires_at = expiry_from(expires_at)
         plaintext = f"dk_{secrets.token_urlsafe(32)}"
@@ -682,6 +709,9 @@ class PostgresVirtualKeyStore:
             + list(windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd))
         )
         meta = dict(metadata or {})
+        key_mif = max(0, int(max_in_flight))
+        if key_mif > 0:
+            meta["max_in_flight"] = key_mif
         if model_group_budgets:
             meta["model_group_budgets"] = encode_model_group_budgets(model_group_budgets)
         if model_max_budget:
@@ -692,6 +722,12 @@ class PostgresVirtualKeyStore:
         prio = coerce_priority(priority)
         if "priority" in meta or priority != "normal":
             meta["priority"] = prio
+        if signal_overrides is not None:
+            encoded = encode_signal_overrides(signal_overrides)
+            if encoded:
+                meta["signal_overrides"] = encoded
+            else:
+                meta.pop("signal_overrides", None)
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
         scope = normalize_cache_scope(cache_scope)
@@ -876,6 +912,74 @@ class PostgresVirtualKeyStore:
             if key.key_id == key_id:
                 return key
         return None
+
+    def update_signal_overrides(
+        self,
+        key_id: str,
+        rules: list[Any] | tuple[Any, ...] | None,
+    ) -> bool:
+        if self._inner is not None:
+            return self._inner.update_signal_overrides(key_id, rules)
+        if not self.enabled:
+            return False
+        from daari.router.signals import encode_signal_overrides
+
+        encoded = encode_signal_overrides(rules)
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata_json FROM virtual_keys"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (key_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return False
+                meta = _parse_metadata(row[0])
+                if encoded:
+                    meta["signal_overrides"] = encoded
+                else:
+                    meta.pop("signal_overrides", None)
+                cur.execute(
+                    "UPDATE virtual_keys SET metadata_json = %s"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (json.dumps(meta), key_id),
+                )
+            conn.commit()
+        return True
+
+    def update_team_signal_overrides(
+        self,
+        team_id: str,
+        rules: list[Any] | tuple[Any, ...] | None,
+    ) -> bool:
+        if self._inner is not None:
+            return self._inner.update_team_signal_overrides(team_id, rules)
+        if not self.enabled:
+            return False
+        from daari.router.signals import encode_signal_overrides
+
+        encoded = encode_signal_overrides(rules)
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata_json FROM teams WHERE team_id = %s",
+                    (team_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return False
+                meta = _parse_metadata(row[0] if len(row) else None)
+                if encoded:
+                    meta["signal_overrides"] = encoded
+                else:
+                    meta.pop("signal_overrides", None)
+                cur.execute(
+                    "UPDATE teams SET metadata_json = %s WHERE team_id = %s",
+                    (json.dumps(meta), team_id),
+                )
+            conn.commit()
+        return True
 
     def grant_budget_boost(
         self,
