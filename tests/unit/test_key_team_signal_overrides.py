@@ -11,7 +11,6 @@ from daari.auth.virtual_keys import VirtualKeyStore
 from daari.config.settings import SignalOverrideRule
 from daari.gateway.internal import ContentImage, InternalRequest, Message, RequestMeta
 from daari.observability.metrics import Metrics
-from daari.router.profile import PromptProfile
 from daari.router.signals import (
     match_scoped_signal_override,
     merge_scoped_signal_overrides,
