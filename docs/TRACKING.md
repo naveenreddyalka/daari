@@ -8485,6 +8485,14 @@ no local/frontier candidate declares it; `lfm3-omni` ships vision+audio in the
 capability map. Doctor tip `ollama_lfm3_omni_unused`. Docs: ollama modality
 matrix + routing-tiers. Covered by `tests/unit/test_lfm3_omni_audio.py`.
 
+### OpenRouter CSAM screening and Private Endpoints compare ([#2038](https://github.com/naveenreddyalka/daari/issues/2038))
+
+<!-- tracking:#2038 -->
+**Status:** Done (2026-11-01). `compare-openrouter.md` adds Private Endpoints vs
+local tiers and CSAM in-flight screening vs on-box guardrails (with announcement
+links); compare index + landscape OpenRouter row dated for the late-Oct 2026
+delta. Covered by `tests/unit/test_compare_openrouter_csam_private.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
