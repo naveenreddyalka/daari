@@ -303,6 +303,33 @@ def validated_signal_overrides(value: Any) -> list[dict[str, Any]]:
     return out
 
 
+def validated_virtual_models(value: Any) -> dict[str, list[str]]:
+    """Full replacement map; reject empty names/lists like RoutingSettings (#2051).
+
+    Unknown-looking candidates are accepted (doctor warnings stay soft).
+    """
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ConfigValidationError("virtual_models must be an object mapping name → candidates")
+    from pydantic import ValidationError
+
+    from daari.config.settings import RoutingSettings
+
+    try:
+        cleaned = RoutingSettings.model_validate({"virtual_models": value}).virtual_models
+    except ValidationError as exc:
+        msgs = "; ".join(
+            f"{'.'.join(str(p) for p in err.get('loc', ()) or ('<root>',))}: "
+            f"{err.get('msg', 'invalid')}"
+            for err in exc.errors()
+        )
+        raise ConfigValidationError(f"virtual_models: {msgs}") from exc
+    except (ValueError, TypeError) as exc:
+        raise ConfigValidationError(str(exc)) from exc
+    return {str(k): [str(c) for c in v] for k, v in cleaned.items()}
+
+
 def validated_routing(patch: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if "confidence_threshold" in patch:
@@ -339,6 +366,8 @@ def validated_routing(patch: dict[str, Any]) -> dict[str, Any]:
             out["compact_to_fit"] = compact
     if "signal_overrides" in patch:
         out["signal_overrides"] = validated_signal_overrides(patch["signal_overrides"])
+    if "virtual_models" in patch:
+        out["virtual_models"] = validated_virtual_models(patch["virtual_models"])
     return out
 
 
