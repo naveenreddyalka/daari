@@ -3481,7 +3481,8 @@ def setup_models(
         "--lfm3-vl",
         help=(
             "Apply optional LFM3-VL L4 vision recipe "
-            "(models.l4=lfm3-vl; Ollama ≥ 0.40.12; Apple-first)."
+            "(models.l4=lfm3-vl; Ollama ≥ 0.40.12; "
+            "Linux/Windows/macOS ≥ 0.40.13, Apple from 0.40.12)."
         ),
     ),
     lfm3_omni: bool = typer.Option(

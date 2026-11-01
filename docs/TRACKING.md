@@ -8501,6 +8501,14 @@ delta. Covered by `tests/unit/test_compare_openrouter_csam_private.py`.
 path, and keeps SEP-2640 as the historical surface id. Covered by
 `tests/unit/test_mcp_sep3392_beta_docs.py`.
 
+### Docs: LFM3-VL platform notes for Ollama 0.40.13 ([#2040](https://github.com/naveenreddyalka/daari/issues/2040))
+
+<!-- tracking:#2040 -->
+**Status:** Done (2026-11-01). `LFM3_VL_RECIPE_NOTE`, `--lfm3-vl` help, and
+`ollama.md` state Linux/Windows/macOS with Ollama ≥ 0.40.13 (Apple from
+0.40.12); recipe floor stays ≥ 0.40.12. Covered by
+`tests/test_setup.py` and `tests/unit/test_lfm3_vl_platform_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

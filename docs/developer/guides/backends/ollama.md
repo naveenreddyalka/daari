@@ -27,7 +27,7 @@ with `ollama pull lfm3`.
 
 Optional **LFM3-VL** L4 vision recipe (Ollama ≥ 0.40.12):
 `daari setup models --lfm3-vl` sets `models.l4=lfm3-vl` without pulling weights.
-Same Apple-first / Linux-Windows coming soon note as LFM3. Pull later with
+Linux/Windows/macOS with Ollama ≥ 0.40.13 (Apple from 0.40.12). Pull later with
 `ollama pull lfm3-vl`.
 
 Optional **LFM3-Omni** speech recipe (Ollama ≥ 0.40.13):

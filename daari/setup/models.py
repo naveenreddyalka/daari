@@ -37,13 +37,13 @@ LFM3_RECIPE_NOTE = (
     f"Pull with: ollama pull {LFM3_MODEL}"
 )
 
-# Liquid AI LFM3-VL — optional multimodal L4 vision (Ollama ≥ 0.40.12; Apple-first) (#2006).
+# Liquid AI LFM3-VL — optional multimodal L4 vision (Ollama ≥ 0.40.12; GA on all OS in 0.40.13) (#2006, #2040).
 LFM3_VL_MODEL = "lfm3-vl"
 LFM3_VL_OLLAMA_FLOOR = (0, 40, 12)
 LFM3_VL_RECIPE_NOTE = (
     "Optional LFM3-VL L4 vision recipe "
     f"(models.l4={LFM3_VL_MODEL}). Requires Ollama ≥ 0.40.12. "
-    "Apple hardware first in 0.40.12; Linux/Windows support coming soon. "
+    "Linux/Windows/macOS with Ollama ≥ 0.40.13 (Apple from 0.40.12). "
     f"Pull with: ollama pull {LFM3_VL_MODEL}"
 )
 
