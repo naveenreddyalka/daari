@@ -304,7 +304,9 @@ continues to the next id and increments `daari_virtual_model_failover_total`
 `no_frontier`, allowlists, budgets, and PII scrub. `daari_meta.virtual_model`
 and `daari_meta.virtual_candidate` record the name and the id that served.
 An empty map leaves today's routing unchanged. Doctor warns on empty lists or
-unknown-looking ids.
+unknown-looking ids. Editable live via GET/PATCH `/v1/daari/config` ownership
+(full map replacement; empty names/lists 400; unknown-looking candidates stay
+soft warnings) (#2051).
 
 ## Per-entry retry and timeout
 

@@ -1163,7 +1163,8 @@ class RoutingSettings(RuntimeSettings):
             "candidates in order; on typed backend-unavailable / circuit-open continue "
             "to the next. Empty map (default) leaves routing unchanged. Respects "
             "no_frontier, allowlists, budgets, and PII scrub before any L6 candidate "
-            "(#2023)."
+            "(#2023). Editable via GET/PATCH /v1/daari/config ownership (full map "
+            "replacement) (#2051)."
         ),
     )
 

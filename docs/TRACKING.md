@@ -8518,6 +8518,14 @@ path, and keeps SEP-2640 as the historical surface id. Covered by
 global; metrics/events carry `scope`. CLI `--signal-override` + admin
 inventory. Covered by `tests/unit/test_key_team_signal_overrides.py`.
 
+### Config ownership + PATCH for routing.virtual_models ([#2051](https://github.com/naveenreddyalka/daari/issues/2051))
+
+<!-- tracking:#2051 -->
+**Status:** Done (2026-11-01). `routing.virtual_models` on the ownership
+allowlist; GET inventory + PATCH full map replacement (empty names/lists
+400; unknown candidates soft). Router reloads without restart. Covered by
+`tests/unit/test_config_ownership.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

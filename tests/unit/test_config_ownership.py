@@ -32,6 +32,7 @@ _COMPACT_LEAVES = (
     "routing.compact_to_fit.max_tokens",
 )
 _SIGNAL_OVERRIDES = "routing.signal_overrides"
+_VIRTUAL_MODELS = "routing.virtual_models"
 _MCP_LEAVES = (
     "integrations.mcp_oauth.local_as",
     "integrations.mcp_oauth.protected_resource",
@@ -63,6 +64,7 @@ def _base_live() -> dict:
                 "max_tokens": 0,
             },
             "signal_overrides": [],
+            "virtual_models": {},
         },
         "frontier": {
             "daily_budget_usd": 1.0,
@@ -767,6 +769,7 @@ def test_docs_pin_classifier_mcp_config_ownership():
     assert "decision_classifier" in http_api or "ownership" in http_api.lower()
     assert "compact_to_fit" in http_api
     assert "signal_overrides" in http_api
+    assert "virtual_models" in http_api
     assert "require_key_access_defined" in http_api or "mcp_policy" in http_api
     assert "structured_json_logs" in http_api
     assert "team_metrics" in http_api
@@ -854,3 +857,113 @@ async def test_patch_signal_overrides_round_trip_invalid_and_forbidden(
         assert written["routing"]["signal_overrides"][0]["id"] == "img-doc"
         audit = audit_log_from_settings(settings).list(limit=20)
         assert any(entry.get("action") == "config.patch" for entry in audit)
+
+
+@pytest.mark.asyncio
+async def test_patch_virtual_models_round_trip_invalid_and_live_reload(
+    settings, tmp_path, monkeypatch
+):
+    """Ownership + PATCH for routing.virtual_models; router reloads without restart (#2051)."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.enterprise.postgres_audit import audit_log_from_settings
+    from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+
+    settings.observability.config_editor = True
+    settings.server.api_key = "master-sekret"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.enterprise.sso.enabled = False
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    assert settings.routing.virtual_models == {}
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump({"routing": {"virtual_models": {}}}),
+        encoding="utf-8",
+    )
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    created = store.create("agent", client_id="agent", daily_budget_usd=1.0)
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+
+    async def ok_l4(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="from-l4-after-patch",
+            model=settings.models.l4,
+            daari_meta=DaariMeta(tier="L4", executor="ollama", provider_id="ollama"),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router.ollama_l4, "execute", ok_l4)
+
+    transport = ASGITransport(app=app)
+    headers_vk = {"Authorization": f"Bearer {created.plaintext}"}
+    headers_master = {"Authorization": "Bearer master-sekret"}
+    mapping = {"chat-default": ["L4"]}
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        got = await client.get("/v1/daari/config", headers=headers_master)
+        assert got.status_code == 200
+        body = got.json()
+        assert _VIRTUAL_MODELS in body["ownership"]
+        assert body["ownership"][_VIRTUAL_MODELS]["editable"] is True
+        assert body["routing"]["virtual_models"] == {}
+
+        denied = await client.patch(
+            "/v1/daari/config",
+            headers=headers_vk,
+            json={"routing": {"virtual_models": mapping}},
+        )
+        assert denied.status_code == 403
+
+        bad = await client.patch(
+            "/v1/daari/config",
+            headers=headers_master,
+            json={"routing": {"virtual_models": {"bad": []}}},
+        )
+        assert bad.status_code == 400
+        assert settings.routing.virtual_models == {}
+        assert app.state.ctx.router.virtual_models == {}
+
+        # Unknown-looking candidates are soft (accepted); empty lists are hard 400.
+        soft = await client.patch(
+            "/v1/daari/config",
+            headers=headers_master,
+            json={"routing": {"virtual_models": {"soft": ["mystery-model"]}}},
+        )
+        assert soft.status_code == 200
+        assert settings.routing.virtual_models["soft"] == ["mystery-model"]
+
+        patched = await client.patch(
+            "/v1/daari/config",
+            headers=headers_master,
+            json={"routing": {"virtual_models": mapping}, "persist": True},
+        )
+        assert patched.status_code == 200
+        payload = patched.json()
+        assert payload["routing"]["virtual_models"] == mapping
+        assert payload["ownership"][_VIRTUAL_MODELS]["source"] == "file"
+        assert settings.routing.virtual_models == mapping
+        assert app.state.ctx.router.virtual_models == mapping
+        written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert written["routing"]["virtual_models"] == mapping
+        audit = audit_log_from_settings(settings).list(limit=20)
+        assert any(entry.get("action") == "config.patch" for entry in audit)
+
+        # Live reload: chat to the virtual name uses the patched candidate list.
+        chat = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "chat-default",
+                "messages": [{"role": "user", "content": "route me"}],
+            },
+            headers={**headers_master, "X-Daari-Meta": "1"},
+        )
+        assert chat.status_code == 200
+        meta = chat.json().get("daari_meta") or {}
+        assert meta.get("virtual_model") == "chat-default"
+        assert meta.get("virtual_candidate") == "L4"
+        assert meta.get("tier") == "L4"

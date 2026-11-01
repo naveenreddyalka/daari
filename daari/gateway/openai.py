@@ -2908,6 +2908,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ]
                 ctx.settings.routing.signal_overrides = rules
                 ctx.router.signal_overrides = list(rules)
+            if "virtual_models" in routing:
+                mapping = {
+                    str(name): [str(c) for c in (candidates or [])]
+                    for name, candidates in dict(routing["virtual_models"] or {}).items()
+                }
+                ctx.settings.routing.virtual_models = mapping
+                ctx.router.virtual_models = dict(mapping)
             for key in ("daily_budget_usd", "monthly_budget_usd", "soft_budget_ratio"):
                 if key in frontier:
                     setattr(ctx.settings.frontier, key, frontier[key])
