@@ -78,10 +78,15 @@ with equality / bucket match (first match wins) and applies an existing lever:
 known signal keys, match values of `str | bool | int | None`
 (`approx_context_tokens` must be one of the four bucket strings), and at least
 one lever set — otherwise load / `daari config validate` fails naming the rule
-`id`. Matches are traced (`signal_override` step), logged, counted on
-`/v1/daari/stats` (`signal_override`), and exported as
-`daari_signal_override_total{rule="..."}`. Editable via GET/PATCH
-`/v1/daari/config` ownership (full list replacement) or set in `config.yaml`.
+`id`. Virtual keys and teams may bind the same rule shape via
+`signal_overrides` on the key/team record (CLI `--signal-override` JSON;
+validated at write time). Precedence is **key → team → global**; first match
+wins across the merged list. Unauthenticated / admin-less traffic still sees
+only the global list. Matches are traced (`signal_override` step with
+`scope`), logged, counted on `/v1/daari/stats` (`signal_override`), and
+exported as `daari_signal_override_total{rule="...",scope="key|team|global"}`.
+Global rules are editable via GET/PATCH `/v1/daari/config` ownership (full
+list replacement) or set in `config.yaml`.
 
 ```yaml
 routing:

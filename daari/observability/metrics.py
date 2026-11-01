@@ -544,14 +544,19 @@ class Metrics:
         with self._lock:
             self.virtual_model_failover += 1
 
-    def record_signal_override(self, *, rule: str) -> None:
-        """A routing.signal_overrides rule matched and applied a lever (#1996)."""
+    def record_signal_override(self, *, rule: str, scope: str = "global") -> None:
+        """A signal_overrides rule matched and applied a lever (#1996/#2050)."""
         label = (rule or "anonymous").strip() or "anonymous"
         # Bound cardinality: truncate long ids.
         if len(label) > 64:
             label = label[:64]
+        scope_label = (scope or "global").strip().lower() or "global"
+        if scope_label not in {"key", "team", "global"}:
+            scope_label = "global"
+        # Composite key so Prometheus can emit rule + scope labels.
+        key = f"{label}:{scope_label}"
         with self._lock:
-            self.signal_override[label] = self.signal_override.get(label, 0) + 1
+            self.signal_override[key] = self.signal_override.get(key, 0) + 1
 
     def record_mcp_grant_denied(self) -> None:
         """Fail-closed MCP grant missing on initialize / list / call (#1390)."""

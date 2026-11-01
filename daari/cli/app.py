@@ -384,15 +384,34 @@ def keys_update(
         "--user-rpd",
         help="Per end-user requests/UTC day (0=unlimited). Omit to leave unchanged.",
     ),
+    signal_override: list[str] = typer.Option(
+        [],
+        "--signal-override",
+        help=(
+            "Replace key signal_overrides with these JSON rule objects "
+            "(same shape as routing.signal_overrides). Repeatable (#2050)."
+        ),
+    ),
 ) -> None:
     """Update a virtual key's model allowlist (#708) or daily request cap (#717)."""
+    import json
     import os
 
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
     from daari.auth.virtual_keys import _UNSET
+    from daari.router.signals import coerce_signal_overrides, encode_signal_overrides
 
-    if rpd is None and user_rpd is None and not allowed_model and not model_group:
-        typer.echo("pass --rpd, --user-rpd, --allowed-model, and/or --model-group", err=True)
+    if (
+        rpd is None
+        and user_rpd is None
+        and not allowed_model
+        and not model_group
+        and not signal_override
+    ):
+        typer.echo(
+            "pass --rpd, --user-rpd, --allowed-model, --model-group, and/or --signal-override",
+            err=True,
+        )
         raise typer.Exit(code=1)
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
@@ -411,6 +430,18 @@ def keys_update(
         if not updated:
             typer.echo(f"No active key {key_id}", err=True)
             raise typer.Exit(code=1)
+    if signal_override:
+        try:
+            rules = []
+            for raw in signal_override:
+                rules.append(json.loads(raw))
+            coerce_signal_overrides(rules)
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            typer.echo(f"invalid --signal-override: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        if not store.update_signal_overrides(key_id, rules):
+            typer.echo(f"No active key {key_id}", err=True)
+            raise typer.Exit(code=1)
     key = next((item for item in store.list() if item.key_id == key_id), None)
     typer.echo(f"key_id: {key_id}")
     if key is not None and rpd is not None:
@@ -421,6 +452,8 @@ def keys_update(
         typer.echo(f"models: {', '.join(key.allowed_models)}")
     if key is not None and key.model_groups is not None:
         typer.echo(f"groups: {', '.join(key.model_groups)}")
+    if key is not None and key.signal_overrides:
+        typer.echo(f"signal_overrides: {len(key.signal_overrides)}")
     _audit_log_from_settings().record(
         actor=os.environ.get("USER") or "cli",
         role="admin",
@@ -429,6 +462,9 @@ def keys_update(
             "key_id": key_id,
             "allowed_models": list(key.allowed_models) if key and key.allowed_models else None,
             "model_groups": list(key.model_groups) if key and key.model_groups else None,
+            "signal_overrides": encode_signal_overrides(key.signal_overrides)
+            if key and key.signal_overrides
+            else None,
         },
     )
 
@@ -893,13 +929,23 @@ def keys_team_create(
         "--max-in-flight",
         help="Team aggregate in-flight concurrency cap (0=unlimited).",
     ),
+    signal_override: list[str] = typer.Option(
+        [],
+        "--signal-override",
+        help=(
+            "Team signal_overrides JSON rule (same shape as routing.signal_overrides). "
+            "Repeatable (#2050)."
+        ),
+    ),
 ) -> None:
     """Create a team whose caps apply to every key that joins it."""
+    import json
     import os
 
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
     from daari.auth.virtual_keys import coerce_priority, normalize_cache_scope
+    from daari.router.signals import coerce_signal_overrides, encode_signal_overrides
 
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
@@ -917,6 +963,14 @@ def keys_team_create(
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
+    team_rules = None
+    if signal_override:
+        try:
+            team_rules = [json.loads(raw) for raw in signal_override]
+            coerce_signal_overrides(team_rules)
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            typer.echo(f"invalid --signal-override: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
     prior = store.get_team(name=name)
     team = store.create_team(
         name,
@@ -932,6 +986,7 @@ def keys_team_create(
         cache_scope=scope,
         priority=prio,
         max_in_flight=max_in_flight,
+        signal_overrides=team_rules,
     )
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
@@ -971,6 +1026,9 @@ def keys_team_create(
                 "rpm": team.rpm,
                 "tpm": team.tpm,
                 "rpd": team.rpd,
+                "signal_overrides": encode_signal_overrides(team.signal_overrides)
+                if team.signal_overrides
+                else None,
             },
         )
 
@@ -1006,13 +1064,22 @@ def keys_team_update(
         "--model-group",
         help="Replace named model groups. Repeatable. Omit to leave unchanged.",
     ),
+    signal_override: list[str] = typer.Option(
+        [],
+        "--signal-override",
+        help=(
+            "Replace team signal_overrides with these JSON rules. Repeatable (#2050)."
+        ),
+    ),
 ) -> None:
     """Update a team's budget windows (#464) and optional rpm/tpm (#546)."""
+    import json
     import os
 
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
     from daari.auth.virtual_keys import _UNSET
+    from daari.router.signals import coerce_signal_overrides, encode_signal_overrides
 
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
@@ -1024,6 +1091,14 @@ def keys_team_update(
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
+    team_rules: list | object = _UNSET
+    if signal_override:
+        try:
+            team_rules = [json.loads(raw) for raw in signal_override]
+            coerce_signal_overrides(team_rules)
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            typer.echo(f"invalid --signal-override: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
     try:
         team = store.update_team(
             team_id,
@@ -1036,10 +1111,14 @@ def keys_team_update(
             rpd=rpd,
             allowed_models=allowed_model if allowed_model else _UNSET,
             model_groups=model_group if model_group else _UNSET,
+            signal_overrides=team_rules,
         )
     except KeyError:
         typer.echo(f"No team {team_id}", err=True)
         raise typer.Exit(code=1) from None
+    except (ValueError, TypeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
     if team.rpm or team.tpm:
@@ -1047,6 +1126,8 @@ def keys_team_update(
         typer.echo(f"tpm:     {team.tpm}")
     if team.rpd:
         typer.echo(f"rpd:     {team.rpd}")
+    if team.signal_overrides:
+        typer.echo(f"signal_overrides: {len(team.signal_overrides)}")
     for item in team.budget_windows:
         bits = []
         if item.max_usd > 0:
@@ -1065,6 +1146,9 @@ def keys_team_update(
             "rpm": team.rpm,
             "tpm": team.tpm,
             "rpd": team.rpd,
+            "signal_overrides": encode_signal_overrides(team.signal_overrides)
+            if team.signal_overrides
+            else None,
         },
     )
 

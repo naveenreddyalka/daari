@@ -8509,6 +8509,15 @@ path, and keeps SEP-2640 as the historical surface id. Covered by
 0.40.12); recipe floor stays ≥ 0.40.12. Covered by
 `tests/test_setup.py` and `tests/unit/test_lfm3_vl_platform_docs.py`.
 
+### Per-key/team signal_overrides binding ([#2050](https://github.com/naveenreddyalka/daari/issues/2050))
+
+<!-- tracking:#2050 -->
+**Status:** Done (2026-11-01). `VirtualKey` / `Team` accept optional
+`signal_overrides` (same `SignalOverrideRule` validation as
+`routing.signal_overrides`, stored in metadata). Precedence key → team →
+global; metrics/events carry `scope`. CLI `--signal-override` + admin
+inventory. Covered by `tests/unit/test_key_team_signal_overrides.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

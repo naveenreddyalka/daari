@@ -106,6 +106,9 @@ class RequestMeta(BaseModel):
     # cache_scope is team or key (#768); global leaves hashes unchanged.
     key_id: str | None = None
     team_id: str | None = None
+    # Key / team scoped routing.signal_overrides (#2050). None = none bound.
+    key_signal_overrides: list[Any] | None = None
+    team_signal_overrides: list[Any] | None = None
     # Effective isolation: global (default) | team | key. Set from the virtual
     # key and team; unauthenticated requests stay global.
     cache_scope: str = "global"

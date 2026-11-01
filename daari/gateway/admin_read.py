@@ -160,6 +160,10 @@ def redact_key(key: Any, *, spend: list[dict[str, Any]] | None = None) -> dict[s
         "client_id": key.client_id,
         "cache_scope": getattr(key, "cache_scope", "global"),
         "priority": getattr(key, "priority", "normal"),
+        "signal_overrides": [
+            rule.model_dump() if hasattr(rule, "model_dump") else dict(rule)
+            for rule in (getattr(key, "signal_overrides", None) or ())
+        ],
         "spend": list(spend or []),
     }
 
@@ -182,6 +186,10 @@ def redact_team(
         "region_pin": getattr(team, "region_pin", None),
         "cache_scope": getattr(team, "cache_scope", "global"),
         "priority": getattr(team, "priority", "normal"),
+        "signal_overrides": [
+            rule.model_dump() if hasattr(rule, "model_dump") else dict(rule)
+            for rule in (getattr(team, "signal_overrides", None) or ())
+        ],
         "key_count": int(key_count),
         "spend": list(spend or []),
     }
