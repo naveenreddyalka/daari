@@ -138,7 +138,17 @@ def deliver_responses_completion_webhook(
         try:
             import httpx
 
-            with httpx.Client(transport=transport, timeout=timeout) as client:
+            from daari.security.offline_mode import (
+                apply_offline_event_hooks,
+                assert_offline_url_allowed,
+            )
+
+            assert_offline_url_allowed(target, surface="webhook")
+            client_kwargs = apply_offline_event_hooks(
+                {"transport": transport, "timeout": timeout},
+                sync=True,
+            )
+            with httpx.Client(**client_kwargs) as client:
                 response = client.post(target, content=content, headers=headers)
                 response.raise_for_status()
             _record_result(metrics, "ok")

@@ -151,7 +151,14 @@ def list_enforced_profiles(
     }
     out: list[dict[str, Any]] = []
     page: str | None = None
-    with httpx.Client(transport=transport, timeout=timeout) as client:
+    from daari.security.offline_mode import apply_offline_event_hooks, assert_offline_url_allowed
+
+    assert_offline_url_allowed(root, surface="enforcement_sync")
+    client_kwargs = apply_offline_event_hooks(
+        {"transport": transport, "timeout": timeout},
+        sync=True,
+    )
+    with httpx.Client(**client_kwargs) as client:
         while True:
             params: list[tuple[str, str]] = [
                 ("enforcement_status[]", "restricted"),

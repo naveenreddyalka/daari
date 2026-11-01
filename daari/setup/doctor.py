@@ -56,6 +56,7 @@ def run_doctor(
         results.append(ungoverned_tip)
     results.append(_check_secret_refs(cfg))
     results.append(_check_at_rest_encryption(cfg))
+    results.append(_check_offline_mode(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
     results.append(_check_embedding_endpoint(cfg, httpx_client))
     results.append(_check_mlx(cfg, httpx_client))
@@ -340,6 +341,34 @@ def _check_at_rest_encryption(settings: Settings) -> CheckResult:
         name="at_rest_encryption",
         ok=True,
         detail=f"on — AES-GCM for {stores}{rotation}",
+        optional=True,
+    )
+
+
+def _check_offline_mode(settings: Settings) -> CheckResult:
+    """Report air-gapped offline mode state (#2034)."""
+    security = getattr(settings, "security", None)
+    enabled = bool(getattr(security, "offline_mode", False))
+    allow = [
+        str(h).strip()
+        for h in (getattr(security, "offline_allow_hosts", None) or [])
+        if str(h).strip()
+    ]
+    if not enabled:
+        return CheckResult(
+            name="offline_mode",
+            ok=True,
+            detail="off — off-box egress allowed (set security.offline_mode to fail-closed)",
+            optional=True,
+        )
+    allow_detail = f"; allowlist: {', '.join(allow)}" if allow else "; allowlist empty"
+    return CheckResult(
+        name="offline_mode",
+        ok=True,
+        detail=(
+            "on — refusing non-loopback/non-private egress"
+            f"{allow_detail}"
+        ),
         optional=True,
     )
 

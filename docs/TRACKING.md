@@ -8466,6 +8466,15 @@ local Anthropic-served ledger rollup, prints drift %, and exits nonzero over
 frontier fallback; 31-day window enforced. Docs: chargeback. Covered by
 `tests/unit/test_analytics_reconcile.py`.
 
+### Offline mode fail-closed off-box egress ([#2034](https://github.com/naveenreddyalka/daari/issues/2034))
+
+<!-- tracking:#2034 -->
+**Status:** Done (2026-10-31). `security.offline_mode` (+ `offline_allow_hosts`)
+refuses non-loopback/non-private egress from shared httpx clients; validate
+names off-box surfaces; doctor reports state; refused attempts log
+`security.offline_egress_refused`. Docs: config.md, security.md. Covered by
+`tests/unit/test_offline_mode.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

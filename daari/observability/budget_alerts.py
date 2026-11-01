@@ -342,7 +342,17 @@ class BudgetAlerter:
         try:
             import httpx
 
-            with httpx.Client(transport=self.transport, timeout=self.timeout) as client:
+            from daari.security.offline_mode import (
+                apply_offline_event_hooks,
+                assert_offline_url_allowed,
+            )
+
+            assert_offline_url_allowed(self.webhook_url, surface="webhook")
+            client_kwargs = apply_offline_event_hooks(
+                {"transport": self.transport, "timeout": self.timeout},
+                sync=True,
+            )
+            with httpx.Client(**client_kwargs) as client:
                 response = client.post(
                     self.webhook_url,
                     content=content,
