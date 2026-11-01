@@ -11,31 +11,28 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-31 pm)
+## Where daari stands (verified in-tree, 2026-11-01)
 
-**Loop velocity.** Morning board (rows 266–270) is live and unmerged; the
-overnight wave (247–249, 251, 253, 255–257) stays Shipped. The deferred
-10-30 pm PRD sibling finally landed on main after the morning PRD — content
-aligned, pinned rows 19–28 intact.
+**Loop velocity.** Rows 258–264 all shipped overnight (#2062–#2068, seven
+merges): safeguard recipe, Anthropic Analytics reconcile, offline mode,
+lfm3-omni speech + audio routing, and the three compare/docs rows. The
+10-31 morning + pm boards (266–275) stay Filed and open.
 
-**Outward.** LiteLLM **1.109.0-dev.2** (30 Oct): daily request **and token**
-limits, provider/model RPM/TPM on project quotas, `x-litellm-priority`,
-cosign under the rotated key, Anthropic `drop_params` drops `speed` after
-fast-mode removals — compare page still stuck on dev.1 and still calls
-mid-stream continuation a "next gap" though it shipped. OpenRouter's rebuilt
-performance router (10-28) still has **zero** honesty copy on
-`compare-openrouter.md` even though virtual models + the performance-aware
-follow-on are the product answer. Anthropic 10-30 also: Models API reports
-`capabilities.thinking.types.between_tools`; Compliance API returns saved
-Instructions/Cowork prefs (Enterprise) — watch. Flat otherwise: Ollama
-0.40.13, Portkey v2.31.0, Kong, vLLM 0.32.0, llama.cpp b12020 (no product
-delta).
+**Outward.** Flat day across the board: LiteLLM 1.109.0-dev.2 still the
+newest tag (GA floor 1.106.6), Ollama 0.40.13, vLLM 0.32.0, Kong 3.9.4,
+Portkey v2.31.0 (docs again served the stale v2.20.0 cache — do not
+regress the floor), Anthropic/OpenAI changelogs end at 10-30. Deltas that
+matter: OpenRouter `POST /batches` grew `callback_url` (completion
+callbacks instead of polling); Claude Code 10-31 added **pooled group
+budgets** to its apps gateway (daari team+key merged budget windows are
+already that — parity, nothing to file); MCP SEP-3398 moved the next spec
+release to late March 2027 (six-month cycle).
 
-**Inward theme: close the 1.109/OpenRouter honesty gap and the day-grain
-token dial.** Keys already have RPD but not TPD; admission priority is
-key/team only (no request header); `daari_virtual_model_failover_total`
-ships without a Grafana panel; compare pages lag the competitive claims
-already driving rows 268 / mid-stream.
+**Inward theme: finish the governance dials the frontier just named.**
+Batches have no completion webhook though Responses jobs do; keys/teams
+cannot restrict service tiers though ultrafast bills 6×; offline mode
+logs refusals but exports no Prometheus series; the lfm3-audio recipe
+trigger fired when omni merged; the 10-31/11-01 wave has no fence.
 
 ---
 
@@ -43,6 +40,11 @@ already driving rows 268 / mid-stream.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 276 | Signed completion webhooks for `/v1/batches` jobs | 3 | 2 | OpenRouter batches `callback_url` | Signed, on-box, offline-mode aware; Responses jobs already have it | Filed [#2069](https://github.com/naveenreddyalka/daari/issues/2069) |
+| 277 | Per-key/team service-tier allowlist | 3 | 2 | OpenAI project service-tier restriction (10-21) | Deny/degrade 6× ultrafast at the gateway before spend | Filed [#2070](https://github.com/naveenreddyalka/daari/issues/2070) |
+| 278 | `lfm3-audio` speech-only recipe | 2 | 1 | Ollama ≥0.40.12 lfm3-audio | On-box TTS/ASR without omni's vision+chat weights | Filed [#2071](https://github.com/naveenreddyalka/daari/issues/2071) |
+| 279 | Prometheus counter for offline-mode refused egress | 2 | 1 | — (ops honesty) | Prove the air gap held from the same box's scrape | Filed [#2072](https://github.com/naveenreddyalka/daari/issues/2072) |
+| 280 | Integration fence for the 10-31/11-01 overnight wave | 2 | 2 | — (testability) | Hermetic proof: reconcile, offline, audio routing, safeguard | Filed [#2073](https://github.com/naveenreddyalka/daari/issues/2073) |
 | 271 | Tokens-per-day (TPD) quota for keys/teams | 3 | 2 | LiteLLM 1.109.0-dev.2 daily token limits | Day-grain token dial next to RPD, on-box | Filed [#2056](https://github.com/naveenreddyalka/daari/issues/2056) |
 | 272 | compare-openrouter: rebuilt performance-router honesty | 2 | 1 | OpenRouter 10-28 blog / provider-selection docs | Name the claim; point at on-box virtual models | Filed [#2057](https://github.com/naveenreddyalka/daari/issues/2057) |
 | 273 | compare-litellm: 1.109.0-dev.2 watch + mid-stream honesty | 2 | 1 | LiteLLM release notes | Kill stale "next gap"; keep GA floor 1.106.6 | Filed [#2058](https://github.com/naveenreddyalka/daari/issues/2058) |
@@ -53,14 +55,12 @@ already driving rows 268 / mid-stream.
 | 268 | Performance-aware virtual-model candidate selection | 4 | 3 | OpenRouter rebuilt provider routing (10-28) | Realized latency/error EWMA on-box, incl. local tiers | Filed [#2052](https://github.com/naveenreddyalka/daari/issues/2052) |
 | 269 | Speed-scoped lifecycle: Opus 4.8 fast removal 11-30 shield | 3 | 2 | Anthropic release notes / client errors | Gateway warns then shields tenants before the hard 400 | Filed [#2053](https://github.com/naveenreddyalka/daari/issues/2053) |
 | 270 | Integration fence for the 10-30/31 overnight wave | 2 | 2 | — (testability) | Hermetic proof: virtual models, hour bucket, PATCHes | Filed [#2054](https://github.com/naveenreddyalka/daari/issues/2054) |
-| 261 | `lfm3-omni` recipe + audio capability routing matrix | 4 | 2 | Ollama lfm3-omni / cloud multimodal | One on-box model replaces ASR+VLM+LLM+TTS hops | Filed [#2037](https://github.com/naveenreddyalka/daari/issues/2037) |
-| 262 | compare-openrouter: CSAM screening + Private Endpoints | 2 | 1 | OpenRouter announcements | Honest on-box vs in-flight SaaS retention | Filed [#2038](https://github.com/naveenreddyalka/daari/issues/2038) |
-| 263 | MCP SEP-3392 Beta lifecycle for skills/tasks docs | 2 | 1 | MCP extensions overview | Local skills/Tasks labeled at true maturity | Filed [#2039](https://github.com/naveenreddyalka/daari/issues/2039) |
-| 264 | Finish LFM3-VL platform notes for Ollama 0.40.13 | 2 | 1 | Ollama release notes | Linux fleets get the vision L4 the copy denies | Filed [#2040](https://github.com/naveenreddyalka/daari/issues/2040) |
+| 261 | `lfm3-omni` recipe + audio capability routing matrix | 4 | 2 | Ollama lfm3-omni / cloud multimodal | One on-box model replaces ASR+VLM+LLM+TTS hops | Shipped (#2065) |
+| 262–264 | compare-openrouter CSAM/Private; MCP SEP-3392 Beta; LFM3-VL notes | 2 | 1 | OpenRouter / MCP / Ollama | Honest copy at true maturity | Shipped (#2066–#2068) |
 | 265 | Integration fence for 10-29/30 gateway wave | 2 | 2 | — (testability) | Hermetic proof mid-stream / agent deny / pricing / team | Filed [#2041](https://github.com/naveenreddyalka/daari/issues/2041) |
-| 258 | `gpt-oss-safeguard` recipe for decision guardrails | 3 | 2 | OpenRouter in-flight screening / Portkey cloud guardrails | Bring-your-own-policy moderation fully on-box, Apache 2.0 | Filed [#2032](https://github.com/naveenreddyalka/daari/issues/2032) |
-| 259 | Reconcile ledger vs Anthropic Analytics API | 4 | 3 | Anthropic console / LiteLLM spend tabs | Ledger of record stays on-box; pull proves it against the bill | Filed [#2033](https://github.com/naveenreddyalka/daari/issues/2033) |
-| 260 | `security.offline_mode`: fail-closed off-box egress switch | 3 | 2 | LiteLLM `LITELLM_OFFLINE_MODE` | Air-gapped is home turf; guarantee, not audit | Filed [#2034](https://github.com/naveenreddyalka/daari/issues/2034) |
+| 258 | `gpt-oss-safeguard` recipe for decision guardrails | 3 | 2 | OpenRouter in-flight screening / Portkey cloud guardrails | Bring-your-own-policy moderation fully on-box, Apache 2.0 | Shipped (#2062) |
+| 259 | Reconcile ledger vs Anthropic Analytics API | 4 | 3 | Anthropic console / LiteLLM spend tabs | Ledger of record stays on-box; pull proves it against the bill | Shipped (#2063, incl. `list_amount`) |
+| 260 | `security.offline_mode`: fail-closed off-box egress switch | 3 | 2 | LiteLLM `LITELLM_OFFLINE_MODE` | Air-gapped is home turf; guarantee, not audit | Shipped (#2064) |
 | 256–257 | Hour spend buckets; body-cap doctor honesty | 2–3 | 1 | Anthropic Analytics / — | Hour-grain FinOps + cap honesty on-box | Shipped (#2048/#2049) |
 | 251 | compare-litellm: GA floor 1.106.6; note 1.108.0-rc.1 | 2 | 1 | LiteLLM release notes | Honest floor; v1.106.6 now a full release | Shipped (#2045) |
 | 252 | Grafana panels for team-labeled request/error rates | 2 | 1 | Portkey analytics / extra labels | Per-team traffic scraped on-box | Filed [#2020](https://github.com/naveenreddyalka/daari/issues/2020) |
@@ -103,9 +103,9 @@ already driving rows 268 / mid-stream.
 
 Watch rows (do not file yet): minute-grain spend buckets (**deliberately
 scoped out in the hour-bucket work — row-blowup; only on an explicit FinOps
-ask**); `list_amount` vs discounted `amount` in the ledger (after row 259);
-weighted/latency SLO knobs on virtual-model selection (after row 268);
-`lfm3-audio` setup recipe (after row 261 proves the pattern); OpenAI org
+ask**); weighted/latency SLO knobs on virtual-model selection (after row
+268); MCP SEP-3398 six-month release cycle (next spec late March 2027 —
+docs date-pins only); OpenAI org
 **external key management** (SDK 10-31 — pair with the at-rest EKM analog
 when the Management API shape stabilizes beyond feature-flag); Anthropic
 Compliance API user-preferences export (Enterprise Instructions/Cowork —
@@ -127,39 +127,52 @@ Portkey WIF; SCIM + multi-issuer SSO; Kong Skills/A2A; OpenRouter Private
 Endpoints L6 recipe; certifi emSign drop (still ships 2026.10.23); Ollama
 d1 Linux/Windows GA.
 
-Verified fine this run — don't re-audit: IdP claim → team mapping already
-exists (`sso_keys.py`); minute spend buckets stay scoped out; mid-stream
-fallback continuation is **shipped** (row 242–246) — compare-litellm text
-lagged; `daari_virtual_model_failover_total` counter shipped (Grafana is
-the remaining gap — row 274); doctor validates virtual-model candidate ids;
-signal-rule validation enforces `SIGNAL_KEYS` + context buckets; Portkey
-changelog cache flake — v2.31.0 stays the floor; LiteLLM GA floor 1.106.6
-in-tree; RPD/RPM/TPM already cover request and minute grains (TPD is the
-day-token hole — row 271).
+Verified fine this run — don't re-audit: **Claude Code pooled group
+budgets (10-31) are parity** — key+team budget windows already merge
+(`daari/auth/budgets.py` `effective_caps`), the team window IS the shared
+pool; **Decisions facade already at GA parity** (400-question cap,
+`input_json`, `input_image` flattening in `gateway/decisions.py`);
+**ultrafast tier priced** at 6× with unsupported-model degrade (#1519);
+**anthropic-version 2026-10-21 sampling/citations removal handled**
+(#1849/#1891); `list_amount` vs discounted `amount` already reconciled
+(#2063 — watch row dead); Portkey changelog cache flake again — v2.31.0
+stays the floor; LiteLLM GA floor 1.106.6 in-tree; IdP claim → team
+mapping exists (`sso_keys.py`); minute spend buckets stay scoped out.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
 1. **Answer OpenRouter's performance router on-box** — virtual models (255
-   Shipped); performance-aware selection (268), live edit (267), fence
-   (270); compare honesty now splits CSAM/private (262) and performance-
-   router copy (272).
-2. **Tenant-aware routing + admission** — per-key/team signals (266);
-   request priority header (275); then rows 62–67.
-3. **FinOps truth + day-grain token dial** — Anthropic Analytics reconcile
-   (259); TPD next to RPD (271); `list_amount` (watch); hour buckets
-   shipped (256).
+   Shipped); performance-aware selection (268), live edit (267);
+   performance-router compare copy (272).
+2. **Tenant governance dials** — per-key/team signals (266); service-tier
+   allowlist (277); request priority header (275); TPD next to RPD (271);
+   then rows 62–67.
+3. **Jobs that finish loudly** — batch completion webhooks (276) beside
+   the shipped Responses-job webhooks; fence the wave (280).
 4. **Deprecation shield + air-gapped trust floor** — Opus 4.8 fast removal
-   (269), offline mode (260), `gpt-oss-safeguard` (258).
-5. **Local modality + honesty/ops tail** — `lfm3-omni` (261), LFM3-VL
-   (264), MCP Beta (263); compare-litellm 1.109.0-dev.2 refresh (273);
+   shield (269); offline-mode Prometheus counter (279) atop the shipped
+   switch (260) and reconcile (259).
+5. **Local modality + honesty/ops tail** — `lfm3-audio` recipe (278) after
+   omni (261 Shipped); compare-litellm 1.109.0-dev.2 refresh (273);
    virtual-model Grafana (274); hot-reload (6); P3 tail (225–226, 236,
    250, 252, 254, fences 265/270).
 
 ---
 
 ## Changelog
+
+- **2026-11-01 (governance dials; batch webhooks; air-gap telemetry)** —
+  Marked rows 258–264 Shipped (#2062–#2068, seven overnight merges).
+  Outward flat day (LiteLLM/Ollama/vLLM/Kong/Anthropic/OpenAI unchanged);
+  live deltas: OpenRouter batches `callback_url`, OpenAI project
+  service-tier restriction (10-21), Claude Code pooled group budgets
+  (verified parity — team windows already pool). Filed rows 276–280:
+  batch completion webhooks, service-tier allowlist, `lfm3-audio` recipe
+  (watch trigger fired), offline-egress Prometheus counter, 10-31/11-01
+  wave fence. Watch pruned: `list_amount` (shipped inside #2063),
+  `lfm3-audio` (filed); added MCP SEP-3398 March-2027 cycle.
 
 - **2026-10-31 pm (1.109/OpenRouter honesty; TPD; request priority)** —
   Morning rows 266–270 stay Filed. Outward: LiteLLM 1.109.0-dev.2 daily
