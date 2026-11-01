@@ -12,7 +12,7 @@ from typing import Any, Iterable
 
 from daari.gateway.internal import InternalRequest
 
-KNOWN_CAPABILITIES = ("tools", "json", "vision", "long_context")
+KNOWN_CAPABILITIES = ("tools", "json", "vision", "audio", "long_context")
 
 # Provider-documented capabilities for shipped frontier ids (issue #355).
 # Prefix / vendor-alias lookup lives in `known_model_capabilities`.
@@ -49,6 +49,32 @@ _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
 # Decisions API model: text + image inputs, typed answers (no chat tools).
 _FRONTIER_CAPABILITIES["gpt-6-luna"] = frozenset({"vision", "json"})
 
+# OpenAI chat + Gemini ship input_audio / native audio (#2037). Claude and
+# gpt-6-luna (decisions) stay vision-only.
+for _audio_model in (
+    "gpt-6-astra",
+    "gpt-6.1-sol",
+    "gpt-6.1-terra",
+    "chat-latest",
+    "gpt-5.6",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gemini-3.8-flash",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-4o-audio-preview",
+):
+    _FRONTIER_CAPABILITIES[_audio_model] = frozenset(
+        {"tools", "json", "vision", "audio", "long_context"}
+    )
+
+# Local Ollama multimodal tags when config capabilities are empty (#2037).
+_LOCAL_CAPABILITIES: dict[str, frozenset[str]] = {
+    "lfm3-omni": frozenset({"tools", "json", "vision", "audio"}),
+    "lfm3-vl": frozenset({"tools", "json", "vision"}),
+}
+
 
 class UnsupportedCapability(Exception):
     """The request needs a capability no configured local model declares."""
@@ -80,12 +106,25 @@ class CapabilityCatalog:
 
 
 def known_model_capabilities(model: str) -> frozenset[str]:
-    """Shipped capability tags for a frontier model id, or empty if unknown.
+    """Shipped capability tags for a frontier or local model id, or empty.
 
     Dated snapshots and vendor-prefixed aliases (`anthropic.claude-fable-5-1`)
-    resolve through the same longest-key match as pricing.
+    resolve through the same longest-key match as pricing. Local Ollama tags
+    such as ``lfm3-omni`` are exact / prefix matches (#2037).
     """
     from daari.pricing import matching_model_key
+
+    blob = (model or "").strip()
+    if blob:
+        local_key = matching_model_key(blob, _LOCAL_CAPABILITIES)
+        if local_key is None:
+            # matching_model_key may miss bare tags; try exact / prefix.
+            lowered = blob.casefold()
+            for name, caps in _LOCAL_CAPABILITIES.items():
+                if lowered == name or lowered.startswith(f"{name}:"):
+                    return caps
+        else:
+            return _LOCAL_CAPABILITIES[local_key]
 
     key = matching_model_key(model, _FRONTIER_CAPABILITIES)
     if key is None:
@@ -105,6 +144,8 @@ def required_capabilities(request: InternalRequest) -> set[str]:
         needed.add("tools")
     if any(message.images for message in request.messages):
         needed.add("vision")
+    if any(message.audio for message in request.messages):
+        needed.add("audio")
     if request.sampling.response_format_json:
         needed.add("json")
     return needed
@@ -626,12 +667,19 @@ def catalog_from_settings(settings: Any) -> CapabilityCatalog:
         if isinstance(caps, (list, tuple, set, frozenset)):
             models[str(name)] = frozenset(str(c) for c in caps)
     # Sensible defaults for the stock Ollama stack when config is empty.
+    # Prefer shipped local/frontier tags (e.g. lfm3-omni → vision+audio) (#2037).
     if not models:
-        models = {
-            settings.models.l3: frozenset({"tools"}),
-            settings.models.l4: frozenset({"tools", "json", "long_context"}),
-            settings.models.l5: frozenset({"tools", "json", "vision", "long_context"}),
-        }
+        tier_defaults = (
+            (settings.models.l3, frozenset({"tools"})),
+            (settings.models.l4, frozenset({"tools", "json", "long_context"})),
+            (settings.models.l5, frozenset({"tools", "json", "vision", "long_context"})),
+        )
+        models = {}
+        for model_id, fallback in tier_defaults:
+            if not model_id:
+                continue
+            known = known_model_capabilities(model_id)
+            models[str(model_id)] = known if known else fallback
     return CapabilityCatalog(models=models)
 
 
@@ -649,6 +697,8 @@ def ollama_facade_capabilities(model: str, catalog: CapabilityCatalog) -> list[s
         caps.append("tools")
     if "vision" in declared:
         caps.append("vision")
+    if "audio" in declared:
+        caps.append("audio")
     if model_supports_thinking(model):
         caps.append("thinking")
     return caps
@@ -666,7 +716,7 @@ def ollama_facade_capabilities_for_name(name: str, settings: Any) -> list[str]:
                 union.update(ollama_facade_capabilities(model_id, catalog))
         # completion is always present; keep a stable order.
         ordered = ["completion"]
-        for cap in ("tools", "vision", "thinking"):
+        for cap in ("tools", "vision", "audio", "thinking"):
             if cap in union:
                 ordered.append(cap)
         return ordered

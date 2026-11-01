@@ -28,7 +28,22 @@ with `ollama pull lfm3`.
 Optional **LFM3-VL** L4 vision recipe (Ollama ≥ 0.40.12):
 `daari setup models --lfm3-vl` sets `models.l4=lfm3-vl` without pulling weights.
 Same Apple-first / Linux-Windows coming soon note as LFM3. Pull later with
-`ollama pull lfm3-vl`. (`lfm3-omni` / `lfm3-audio` are separate.)
+`ollama pull lfm3-vl`.
+
+Optional **LFM3-Omni** speech recipe (Ollama ≥ 0.40.13):
+`daari setup models --lfm3-omni` wires `tts`/`asr` to `ollama.base_url/v1` with
+`model: lfm3-omni` (no weight pull). Optional chat path: also set
+`models.l4=lfm3-omni` for native vision+audio routing. Pull later with
+`ollama pull lfm3-omni`.
+
+### LFM3 modality matrix
+
+| Tag | Modality | Recipe |
+|-----|----------|--------|
+| `lfm3` | text / long-context agent | `daari setup models --lfm3` → `models.l3` |
+| `lfm3-vl` | vision | `daari setup models --lfm3-vl` → `models.l4` |
+| `lfm3-audio` | speech (ASR/TTS) | configure `tts`/`asr` toward Ollama `/v1` |
+| `lfm3-omni` | text + vision + audio (+ speech) | `daari setup models --lfm3-omni` (speech primary; optional L4) |
 
 Optional **gpt-oss-safeguard** decision-guardrail recipe:
 `daari setup models --safeguard` writes a sample `kind: decision` input rule

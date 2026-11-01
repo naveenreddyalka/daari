@@ -26,11 +26,13 @@ from daari.setup.jsonc import load_jsonc
 from daari.setup.models import (
     FLINT_MODEL,
     LFM3_MODEL,
+    LFM3_OMNI_MODEL,
     LFM3_VL_MODEL,
     NEMOTRON_BOLT_MODEL,
     SAFEGUARD_MODEL,
     apply_flint_l4_recipe,
     apply_lfm3_l3_recipe,
+    apply_lfm3_omni_speech_recipe,
     apply_lfm3_vl_l4_recipe,
     apply_nemotron_bolt_l3_recipe,
     apply_safeguard_recipe,
@@ -384,6 +386,45 @@ class TestSetupModels:
         assert "Linux" in LFM3_VL_RECIPE_NOTE
         assert "Windows" in LFM3_VL_RECIPE_NOTE
         assert "coming soon" in LFM3_VL_RECIPE_NOTE.lower()
+
+    def test_lfm3_omni_speech_recipe_dry_run_does_not_write(self, tmp_path):
+        """Optional LFM3-Omni speech recipe dry-run leaves config untouched (#2037)."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "ollama:\n  base_url: http://127.0.0.1:11434\nmodels:\n  l3: llama3.2:3b\n",
+            encoding="utf-8",
+        )
+        before = config_path.read_text(encoding="utf-8")
+        plan = apply_lfm3_omni_speech_recipe(config_path=config_path, dry_run=True)
+        assert plan.changed is True
+        assert plan.model == LFM3_OMNI_MODEL
+        assert config_path.read_text(encoding="utf-8") == before
+
+    def test_lfm3_omni_speech_recipe_apply_wires_tts_asr(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "ollama:\n  base_url: http://ollama.test:11434\nmodels:\n  l3: llama3.2:3b\n",
+            encoding="utf-8",
+        )
+        result = apply_lfm3_omni_speech_recipe(config_path=config_path, dry_run=False)
+        assert result.changed is True
+        loaded = __import__("yaml").safe_load(config_path.read_text(encoding="utf-8"))
+        assert loaded["tts"]["base_url"] == "http://ollama.test:11434/v1"
+        assert loaded["tts"]["model"] == LFM3_OMNI_MODEL
+        assert loaded["asr"]["base_url"] == "http://ollama.test:11434/v1"
+        assert loaded["asr"]["model"] == LFM3_OMNI_MODEL
+        caps = (loaded.get("models") or {}).get("capabilities") or {}
+        assert "audio" in caps.get(LFM3_OMNI_MODEL, [])
+        assert "vision" in caps.get(LFM3_OMNI_MODEL, [])
+
+    def test_lfm3_omni_recipe_note_speech_primary(self):
+        from daari.setup.models import LFM3_OMNI_OLLAMA_FLOOR, LFM3_OMNI_RECIPE_NOTE
+
+        assert LFM3_OMNI_OLLAMA_FLOOR == (0, 40, 13)
+        assert "0.40.13" in LFM3_OMNI_RECIPE_NOTE
+        assert f"ollama pull {LFM3_OMNI_MODEL}" in LFM3_OMNI_RECIPE_NOTE
+        assert "optional" in LFM3_OMNI_RECIPE_NOTE.lower()
+        assert "l4" in LFM3_OMNI_RECIPE_NOTE.lower()
 
     def test_safeguard_recipe_dry_run_does_not_write(self, tmp_path):
         """Optional gpt-oss-safeguard dry-run leaves config untouched (#2032)."""

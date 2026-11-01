@@ -77,6 +77,9 @@ def run_doctor(
     lfm3_vl_unused_tip = _check_lfm3_vl_unused(cfg, httpx_client)
     if lfm3_vl_unused_tip is not None:
         results.append(lfm3_vl_unused_tip)
+    lfm3_omni_unused_tip = _check_lfm3_omni_unused(cfg, httpx_client)
+    if lfm3_omni_unused_tip is not None:
+        results.append(lfm3_omni_unused_tip)
     safeguard_unused_tip = _check_safeguard_unused(cfg, httpx_client)
     if safeguard_unused_tip is not None:
         results.append(safeguard_unused_tip)
@@ -1372,6 +1375,82 @@ def _check_lfm3_vl_unused(
             detail=(
                 f"{LFM3_VL_MODEL} is present on Ollama at {base} but models.l4={l4!r} — "
                 f"run `daari setup models --lfm3-vl` for the multimodal L4 vision recipe"
+            ),
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+
+
+def _lfm3_omni_speech_wired(settings: Settings) -> bool:
+    """True when tts and asr both point at Ollama /v1 with lfm3-omni (#2037)."""
+    from daari.setup.models import LFM3_OMNI_MODEL
+
+    tip = f"{settings.ollama.base_url.rstrip('/')}/v1"
+    for section in (settings.tts, settings.asr):
+        base = str(getattr(section, "base_url", "") or "").strip().rstrip("/")
+        model = str(getattr(section, "model", "") or "").strip()
+        if base != tip:
+            return False
+        if model != LFM3_OMNI_MODEL and not model.startswith(f"{LFM3_OMNI_MODEL}:"):
+            return False
+    return True
+
+
+def _lfm3_omni_l4_wired(settings: Settings) -> bool:
+    from daari.setup.models import LFM3_OMNI_MODEL
+
+    l4 = str(getattr(settings.models, "l4", None) or "").strip()
+    return l4 == LFM3_OMNI_MODEL or l4.startswith(f"{LFM3_OMNI_MODEL}:")
+
+
+def _check_lfm3_omni_unused(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult | None:
+    """Tip when Ollama lists lfm3-omni but speech (and optional L4) are unwired (#2037)."""
+    from daari.setup.models import LFM3_OMNI_MODEL
+
+    speech_ok = _lfm3_omni_speech_wired(settings)
+    l4_ok = _lfm3_omni_l4_wired(settings)
+    # Primary recipe target is speech; quiet when speech is wired.
+    if speech_ok:
+        return None
+    base = settings.ollama.base_url.rstrip("/")
+    own_client = client is None
+    http = client or httpx.Client(timeout=5.0)
+    try:
+        try:
+            response = http.get(f"{base}/api/tags")
+        except Exception:
+            return None
+        if response.status_code != 200:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        names = [
+            str(m.get("name") or "")
+            for m in (data.get("models") or [])
+            if isinstance(m, dict)
+        ]
+        if not _host_lists_model(names, LFM3_OMNI_MODEL):
+            return None
+        l4 = str(getattr(settings.models, "l4", None) or "").strip()
+        extra = ""
+        if not l4_ok:
+            extra = f" (optional chat path: models.l4={l4!r}, not {LFM3_OMNI_MODEL})"
+        return CheckResult(
+            name="ollama_lfm3_omni_unused",
+            ok=False,
+            detail=(
+                f"{LFM3_OMNI_MODEL} is present on Ollama at {base} but tts/asr "
+                f"are unwired{extra} — run `daari setup models --lfm3-omni` for "
+                f"the local speech recipe"
             ),
             optional=True,
         )
