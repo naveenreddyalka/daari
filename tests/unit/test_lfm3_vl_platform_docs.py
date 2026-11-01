@@ -5,13 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer.main
-from typer.testing import CliRunner
 
 from daari.cli.app import app
 
 ROOT = Path(__file__).resolve().parents[2]
 OLLAMA = ROOT / "docs/developer/guides/backends/ollama.md"
-runner = CliRunner()
 
 
 def test_ollama_guide_lfm3_vl_platform_ga() -> None:
@@ -26,22 +24,15 @@ def test_ollama_guide_lfm3_vl_platform_ga() -> None:
 
 
 def test_setup_models_lfm3_vl_help_platform_ga() -> None:
-    result = runner.invoke(app, ["setup", "models", "--help"])
-    assert result.exit_code == 0
-    # Typer wraps long Option help; flatten whitespace for the pin.
-    help_text = " ".join(result.stdout.split())
-    assert "--lfm3-vl" in help_text
-    assert "0.40.13" in help_text
-    assert "Apple-first" not in help_text
-    assert "coming soon" not in help_text.lower()
-    # The --lfm3-vl option help itself names the GA platforms.
+    """Pin --lfm3-vl Option.help (not rendered stdout — Rich wrap/ANSI vary in CI)."""
     click_cmd = typer.main.get_command(app)
     setup = click_cmd.get_command(None, "setup")
     models = setup.get_command(None, "models")
     opt = next(p for p in models.params if "--lfm3-vl" in (p.opts or []))
-    assert "0.40.13" in (opt.help or "")
-    assert "Linux" in (opt.help or "")
-    assert "Windows" in (opt.help or "")
-    assert "Apple" in (opt.help or "")
-    assert "coming soon" not in (opt.help or "").lower()
-    assert "Apple-first" not in (opt.help or "")
+    help_text = opt.help or ""
+    assert "0.40.13" in help_text
+    assert "Linux" in help_text
+    assert "Windows" in help_text
+    assert "Apple" in help_text
+    assert "coming soon" not in help_text.lower()
+    assert "Apple-first" not in help_text
