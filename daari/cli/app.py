@@ -3484,6 +3484,15 @@ def setup_models(
             "(models.l4=lfm3-vl; Ollama ≥ 0.40.12; Apple-first)."
         ),
     ),
+    lfm3_omni: bool = typer.Option(
+        False,
+        "--lfm3-omni",
+        help=(
+            "Apply optional LFM3-Omni speech recipe "
+            "(tts/asr → ollama.base_url/v1 + model=lfm3-omni; "
+            "Ollama ≥ 0.40.13; optional L4 chat path in recipe note)."
+        ),
+    ),
     safeguard: bool = typer.Option(
         False,
         "--safeguard",
@@ -3509,6 +3518,7 @@ def setup_models(
         nemotron_bolt=nemotron_bolt,
         lfm3=lfm3,
         lfm3_vl=lfm3_vl,
+        lfm3_omni=lfm3_omni,
         safeguard=safeguard,
         dry_run=dry_run,
     )

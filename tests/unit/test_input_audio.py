@@ -102,6 +102,7 @@ class TestGatewayPassthrough:
         settings.cache.l1.enabled = False
         settings.frontier.enabled = True
         settings.frontier.base_url = "http://frontier.test/v1"
+        settings.frontier.model = "gpt-4o-mini"
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         settings.models.capabilities = {
             settings.models.l3: ["tools"],

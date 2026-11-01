@@ -782,7 +782,7 @@ class Router:
                 before=tiers,
                 after=kept,
             )
-            if "vision" in required:
+            if "vision" in required or "audio" in required:
                 from daari.gateway.request_log import log_gateway_event
 
                 log_gateway_event(
@@ -794,8 +794,12 @@ class Router:
                     },
                 )
         if not kept:
-            # A vision request on a text-only stack used to run anyway and answer
-            # as if no image was sent (#164). Refuse rather than silently degrade.
+            # A vision/audio request on a text-only stack used to run anyway and
+            # answer as if no media was sent (#164 / #2037). Refuse rather than
+            # silently degrade. Frontier counts as a candidate when it declares
+            # the required caps (audio input_audio → L6).
+            if self._frontier_satisfies_capabilities(required, request):
+                return kept
             from daari.router.capabilities import UnsupportedCapability
 
             raise UnsupportedCapability(required)
@@ -1053,8 +1057,7 @@ class Router:
                     self._apply_guardrail_hits(tool_scan.hits, warning=tool_scan.warning)
                 if tool_scan.blocked:
                     denial = (
-                        getattr(tool_scan, "block_message", None)
-                        or self.guardrails.block_message
+                        getattr(tool_scan, "block_message", None) or self.guardrails.block_message
                     )
                     policy.refusal = blocked_response(request, denial)
                     policy.refusal_tier = "guardrail"
@@ -1818,6 +1821,37 @@ class Router:
         if self._multi_agent_requested(request):
             self._ensure_multi_agent_frontier(request)
             return await self._serve_multi_agent_frontier(request, started)
+        # Audio (and other) modality with no local candidate but a capable
+        # frontier model: hop to L6 instead of running a text-only local (#2037).
+        if self.capability_catalog is not None and not self._local_tiers_cover_capabilities(
+            request
+        ):
+            from daari.router.capabilities import UnsupportedCapability, required_capabilities
+
+            required = required_capabilities(request)
+            if required and self._frontier_satisfies_capabilities(required, request):
+                add_step(
+                    "escalate",
+                    to="L6",
+                    reason="capability_frontier",
+                    required=sorted(required),
+                )
+                from daari.gateway.request_log import log_gateway_event
+
+                log_gateway_event(
+                    "modality_escalation",
+                    {"from": None, "to": "L6", "required": sorted(required)},
+                )
+                l6_request = await self._frontier_request(request)
+                response = await self.frontier.execute(
+                    l6_request,
+                    escalated_from="capability",
+                    local_confidence=0.0,
+                )
+                self.metrics.record_escalation()
+                return response
+            if required:
+                raise UnsupportedCapability(required)
         last_user = self._last_user_text(request.messages)
         cache_skip = self._category_cache_skip(profile)
         cache_max_age = self._category_cache_max_age(profile)
@@ -2954,9 +2988,7 @@ class Router:
                                 yield chunk
                             pending_chunks.clear()
                             partial = "".join(tier_text_parts)
-                            stream_request = self._with_stream_continuation(
-                                stream_request, partial
-                            )
+                            stream_request = self._with_stream_continuation(stream_request, partial)
                             to_tier = (
                                 tier_chain[tier_index + 1]
                                 if tier_index < len(tier_chain) - 1
@@ -3588,9 +3620,7 @@ class Router:
             return False
         return True
 
-    def _with_stream_continuation(
-        self, request: InternalRequest, partial: str
-    ) -> InternalRequest:
+    def _with_stream_continuation(self, request: InternalRequest, partial: str) -> InternalRequest:
         """Replay the partial assistant text and ask the next hop to continue."""
         from daari.gateway.internal import Message
 
@@ -5731,7 +5761,9 @@ class Router:
                     l6_request = await self._frontier_request(gen_request)
                     if candidate.strip().upper() not in {"L6", "FRONTIER"}:
                         l6_request.model = candidate
-                    elif self.frontier is not None and getattr(self.frontier, "default_model", None):
+                    elif self.frontier is not None and getattr(
+                        self.frontier, "default_model", None
+                    ):
                         l6_request.model = self.frontier.default_model
                     response = await self.frontier.execute(
                         l6_request,
@@ -5866,6 +5898,48 @@ class Router:
             key_patterns=getattr(request.meta, "key_model_patterns", None),
             team_patterns=getattr(request.meta, "team_model_patterns", None),
         )
+
+    def _frontier_satisfies_capabilities(
+        self, required: set[str], request: InternalRequest
+    ) -> bool:
+        """True when L6 is reachable and its model declares every required cap (#2037)."""
+        if not required or not self._frontier_reachable(request):
+            return False
+        from daari.router.capabilities import known_model_capabilities
+
+        model = ""
+        if self.frontier is not None:
+            model = str(getattr(self.frontier, "default_model", "") or "")
+        if not model:
+            return False
+        declared = known_model_capabilities(model)
+        if self.capability_catalog is not None:
+            declared = declared | self.capability_catalog.for_model(model)
+        return all(cap in declared for cap in required)
+
+    def _local_tiers_cover_capabilities(self, request: InternalRequest) -> bool:
+        """True when at least one local tier model declares required caps."""
+        if self.capability_catalog is None:
+            return True
+        from daari.router.capabilities import filter_tiers_by_capability, required_capabilities
+
+        required = required_capabilities(request)
+        if not required:
+            return True
+        extra_models: dict[str, list[str]] = {}
+        if self.local_pool is not None:
+            for slot in self.local_pool.slots:
+                if slot.kind == "openai" and slot.model:
+                    for slot_tier in slot.tiers:
+                        extra_models.setdefault(slot_tier, []).append(slot.model)
+        kept = filter_tiers_by_capability(
+            ["L3", "L4", "L5"],
+            tier_models=self._tier_models(),
+            catalog=self.capability_catalog,
+            required=required,
+            extra_models=extra_models,
+        )
+        return bool(kept)
 
     async def _frontier_request(self, request: InternalRequest) -> InternalRequest:
         """Apply the outbound slim/compress/scrub pipeline before leaving the device."""

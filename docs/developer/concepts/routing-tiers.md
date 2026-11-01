@@ -45,7 +45,7 @@ and keep exact-L0 singleflight only.
 
 ## Escalation
 
-Local models escalate on low confidence, latency budget miss, or capability gaps (tools/vision/json). Image blocks on user **or tool-result** messages require `vision` (#397); hops log `modality_escalation`. Caps:
+Local models escalate on low confidence, latency budget miss, or capability gaps (tools/vision/audio/json). Image blocks on user **or tool-result** messages require `vision` (#397); `input_audio` parts require `audio` (#2037). When no local tier declares the modality, a frontier model that does may take the hop; otherwise the gateway refuses (422). Hops log `modality_escalation`. LFM3 matrix: text `lfm3` / vision `lfm3-vl` / speech `lfm3-audio` / omni `lfm3-omni` (see [ollama.md](../guides/backends/ollama.md)). Caps:
 
 - Config: `routing.max_tier_for_chat`, `routing.no_frontier` (via project profile)
 - Headers: `X-Daari-Tier-Cap`, `X-Daari-No-Frontier`, `X-Daari-Tier-Override`

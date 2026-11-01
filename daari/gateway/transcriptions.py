@@ -206,7 +206,10 @@ async def inject_inline_audio_transcripts(request: Any, settings: Any) -> Any:
         joined = "\n".join(transcripts)
         existing = (message.content or "").strip()
         new_content = f"{existing}\n{joined}".strip() if existing else joined
-        updated.append(message.model_copy(update={"content": new_content}))
+        # Clear audio after a successful local ASR inject so text-only tiers
+        # are not refused for the `audio` capability (#2037). Frontier hops
+        # without ASR keep the original input_audio parts.
+        updated.append(message.model_copy(update={"content": new_content, "audio": []}))
         changed = True
         log_gateway_event(
             "input_audio_asr_injected",

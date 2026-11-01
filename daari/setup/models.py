@@ -47,6 +47,20 @@ LFM3_VL_RECIPE_NOTE = (
     f"Pull with: ollama pull {LFM3_VL_MODEL}"
 )
 
+# Liquid AI LFM3-Omni — optional local speech (TTS/ASR) via Ollama /v1 (#2037).
+# Primary path: wire tts+asr to ollama.base_url/v1 with model=lfm3-omni.
+# Optional: also set models.l4=lfm3-omni for native chat audio/vision routing.
+LFM3_OMNI_MODEL = "lfm3-omni"
+LFM3_OMNI_OLLAMA_FLOOR = (0, 40, 13)
+LFM3_OMNI_RECIPE_NOTE = (
+    "Optional LFM3-Omni speech recipe (primary): sets tts/asr base_url to "
+    f"ollama.base_url/v1 and tts/asr.model={LFM3_OMNI_MODEL} without pulling "
+    "weights. Requires Ollama ≥ 0.40.13 on Linux/Windows/macOS. "
+    f"Optional chat path: also set models.l4={LFM3_OMNI_MODEL} for native "
+    "vision+audio routing. "
+    f"Pull with: ollama pull {LFM3_OMNI_MODEL}"
+)
+
 # gpt-oss-safeguard — optional local bring-your-own-policy decision guardrail (#2032).
 SAFEGUARD_TAG = "gpt-oss-safeguard"
 SAFEGUARD_MODEL = "gpt-oss-safeguard:20b"
@@ -92,7 +106,9 @@ def model_present(model: str, available: list[str]) -> bool:
     return any(name == model or name.startswith(f"{model}:") for name in available)
 
 
-def l4_model_present(base_url: str, model: str, *, client: httpx.Client | None = None) -> bool | None:
+def l4_model_present(
+    base_url: str, model: str, *, client: httpx.Client | None = None
+) -> bool | None:
     """True/False if we could check, None when Ollama is unreachable."""
     try:
         available = fetch_ollama_models(base_url, client=client)
@@ -144,9 +160,7 @@ def warm_ollama_model(
     url = base_url.rstrip("/")
     own = client is None
     http = client or httpx.Client(timeout=timeout)
-    is_embed = bool(embed_model) and (
-        model == embed_model or model.startswith(f"{embed_model}:")
-    )
+    is_embed = bool(embed_model) and (model == embed_model or model.startswith(f"{embed_model}:"))
     try:
         if is_embed:
             response = http.post(
@@ -301,6 +315,86 @@ def apply_lfm3_vl_l4_recipe(
     return write_models_config(LFM3_VL_MODEL, tier="l4", config_path=path)
 
 
+def _ollama_v1_base(config: dict[str, Any]) -> str:
+    ollama = config.get("ollama") if isinstance(config.get("ollama"), dict) else {}
+    raw = str((ollama or {}).get("base_url") or "http://127.0.0.1:11434").strip().rstrip("/")
+    return f"{raw}/v1"
+
+
+def _speech_already_omni(config: dict[str, Any]) -> bool:
+    tip_url = _ollama_v1_base(config)
+    for key in ("tts", "asr"):
+        block = config.get(key)
+        if not isinstance(block, dict):
+            return False
+        base = str(block.get("base_url") or "").strip().rstrip("/")
+        model = str(block.get("model") or "").strip()
+        if base != tip_url.rstrip("/"):
+            return False
+        if model != LFM3_OMNI_MODEL and not model.startswith(f"{LFM3_OMNI_MODEL}:"):
+            return False
+    return True
+
+
+def apply_lfm3_omni_speech_recipe(
+    *,
+    config_path: Path | None = None,
+    dry_run: bool = False,
+) -> ModelSetupResult:
+    """Wire tts/asr to Ollama ``/v1`` + ``lfm3-omni`` without pulling weights (#2037).
+
+    Primary path is speech (TTS/ASR). Optional chat path (``models.l4``) is
+    documented in ``LFM3_OMNI_RECIPE_NOTE`` and left to the operator.
+    """
+    path = config_path or Path.home() / ".daari" / "config.yaml"
+    current: dict[str, Any] = {}
+    if path.is_file():
+        with path.open(encoding="utf-8") as handle:
+            loaded = yaml.safe_load(handle) or {}
+        if isinstance(loaded, dict):
+            current = loaded
+
+    already = _speech_already_omni(current)
+    if dry_run or already:
+        return ModelSetupResult(
+            tier=None,
+            model=LFM3_OMNI_MODEL,
+            config_path=path,
+            changed=not already,
+        )
+
+    tip_url = _ollama_v1_base(current)
+    for key in ("tts", "asr"):
+        block = current.get(key)
+        if not isinstance(block, dict):
+            block = {}
+            current[key] = block
+        block["base_url"] = tip_url
+        block["model"] = LFM3_OMNI_MODEL
+
+    # Declare chat capabilities when operators later set models.l4=lfm3-omni.
+    models = current.setdefault("models", {})
+    if not isinstance(models, dict):
+        models = {}
+        current["models"] = models
+    caps = models.setdefault("capabilities", {})
+    if not isinstance(caps, dict):
+        caps = {}
+        models["capabilities"] = caps
+    caps[LFM3_OMNI_MODEL] = ["tools", "json", "vision", "audio"]
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(current, handle, default_flow_style=False, sort_keys=False)
+
+    return ModelSetupResult(
+        tier=None,
+        model=LFM3_OMNI_MODEL,
+        config_path=path,
+        changed=True,
+    )
+
+
 def _safeguard_rule_present(current: dict[str, Any]) -> bool:
     guardrails = current.get("guardrails")
     if not isinstance(guardrails, dict):
@@ -430,7 +524,9 @@ def write_models_config(
     with path.open("w", encoding="utf-8") as handle:
         yaml.safe_dump(current, handle, default_flow_style=False, sort_keys=False)
 
-    return ModelSetupResult(tier=tier if model is not None else None, model=model, config_path=path, changed=changed)
+    return ModelSetupResult(
+        tier=tier if model is not None else None, model=model, config_path=path, changed=changed
+    )
 
 
 def setup_models_interactive(
@@ -443,6 +539,7 @@ def setup_models_interactive(
     nemotron_bolt: bool = False,
     lfm3: bool = False,
     lfm3_vl: bool = False,
+    lfm3_omni: bool = False,
     safeguard: bool = False,
     dry_run: bool = False,
     config_path: Path | None = None,
@@ -452,7 +549,13 @@ def setup_models_interactive(
     path = config_path or Path.home() / ".daari" / "config.yaml"
 
     if list_only:
-        current = cfg.models.l3 if tier == "l3" else cfg.models.l4 if tier == "l4" else getattr(cfg.models, tier, None)
+        current = (
+            cfg.models.l3
+            if tier == "l3"
+            else cfg.models.l4
+            if tier == "l4"
+            else getattr(cfg.models, tier, None)
+        )
         typer.echo(f"Tier map ({path}):")
         typer.echo(f"  l3: {cfg.models.l3}")
         typer.echo(f"  l4: {cfg.models.l4}")
@@ -495,18 +598,32 @@ def setup_models_interactive(
             typer.echo(f"Set models.l4 = {LFM3_VL_MODEL} in {path}")
         return result
 
+    if lfm3_omni:
+        typer.echo(LFM3_OMNI_RECIPE_NOTE)
+        result = apply_lfm3_omni_speech_recipe(config_path=path, dry_run=dry_run)
+        tip = _ollama_v1_base({})
+        if path.is_file():
+            with path.open(encoding="utf-8") as handle:
+                loaded = yaml.safe_load(handle) or {}
+            if isinstance(loaded, dict):
+                tip = _ollama_v1_base(loaded)
+        if dry_run:
+            typer.echo(
+                f"Dry-run: would set tts/asr base_url={tip} model={LFM3_OMNI_MODEL} in {path}"
+            )
+        else:
+            typer.echo(f"Set tts/asr base_url={tip} model={LFM3_OMNI_MODEL} in {path}")
+        return result
+
     if safeguard:
         typer.echo(SAFEGUARD_RECIPE_NOTE)
         result = apply_safeguard_recipe(config_path=path, dry_run=dry_run)
         if dry_run:
             typer.echo(
-                f"Dry-run: would write kind=decision guardrail "
-                f"(model={SAFEGUARD_MODEL}) in {path}"
+                f"Dry-run: would write kind=decision guardrail (model={SAFEGUARD_MODEL}) in {path}"
             )
         else:
-            typer.echo(
-                f"Wrote kind=decision guardrail (model={SAFEGUARD_MODEL}) in {path}"
-            )
+            typer.echo(f"Wrote kind=decision guardrail (model={SAFEGUARD_MODEL}) in {path}")
         return result
 
     if model is not None:
@@ -545,7 +662,9 @@ def setup_models_interactive(
         typer.echo("Invalid selection.", err=True)
         raise typer.Exit(code=1) from exc
 
-    prefer = typer.prompt("Routing preference (latency|accuracy|balanced)", default=cfg.routing.prefer)
+    prefer = typer.prompt(
+        "Routing preference (latency|accuracy|balanced)", default=cfg.routing.prefer
+    )
     if prefer not in {"latency", "accuracy", "balanced"}:
         typer.echo("Invalid preference; expected latency, accuracy, or balanced.", err=True)
         raise typer.Exit(code=1)
@@ -577,8 +696,7 @@ def setup_models_interactive(
         else:
             typer.echo(LFM3_RECIPE_NOTE)
             if typer.confirm(
-                f"Apply optional LFM3 L3 local-agent recipe "
-                f"(set models.l3={LFM3_MODEL})?",
+                f"Apply optional LFM3 L3 local-agent recipe (set models.l3={LFM3_MODEL})?",
                 default=False,
             ):
                 result = apply_lfm3_l3_recipe(config_path=path, dry_run=False)
@@ -594,8 +712,7 @@ def setup_models_interactive(
         else:
             typer.echo(LFM3_VL_RECIPE_NOTE)
             if typer.confirm(
-                f"Apply optional LFM3-VL L4 vision recipe "
-                f"(set models.l4={LFM3_VL_MODEL})?",
+                f"Apply optional LFM3-VL L4 vision recipe (set models.l4={LFM3_VL_MODEL})?",
                 default=False,
             ):
                 result = apply_lfm3_vl_l4_recipe(config_path=path, dry_run=False)

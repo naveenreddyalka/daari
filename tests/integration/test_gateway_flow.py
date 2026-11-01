@@ -2926,6 +2926,7 @@ async def test_input_audio_escalates_to_l6_with_openai_payload(settings, monkeyp
     tiny_wav = base64.b64encode(b"RIFF" + b"\x00" * 36 + b"data" + b"\x00" * 8).decode()
 
     settings.frontier.enabled = True
+    settings.frontier.model = "gpt-4o-mini"
     settings.frontier.confidence_threshold = 0.99
     settings.cache.l0.enabled = False
     settings.cache.l1.enabled = False

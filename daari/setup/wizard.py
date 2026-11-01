@@ -100,6 +100,8 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
             FLINT_MODEL,
             FLINT_RECIPE_NOTE,
             LFM3_MODEL,
+            LFM3_OMNI_MODEL,
+            LFM3_OMNI_RECIPE_NOTE,
             LFM3_RECIPE_NOTE,
             LFM3_VL_MODEL,
             LFM3_VL_RECIPE_NOTE,
@@ -107,6 +109,7 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
             NEMOTRON_BOLT_RECIPE_NOTE,
             apply_flint_l4_recipe,
             apply_lfm3_l3_recipe,
+            apply_lfm3_omni_speech_recipe,
             apply_lfm3_vl_l4_recipe,
             apply_nemotron_bolt_l3_recipe,
         )
@@ -150,6 +153,14 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
                 ):
                     apply_lfm3_vl_l4_recipe(dry_run=False)
                     typer.echo(f"Set models.l4 = {LFM3_VL_MODEL}")
+        typer.echo(LFM3_OMNI_RECIPE_NOTE)
+        if typer.confirm(
+            f"Apply optional LFM3-Omni speech recipe "
+            f"(wire tts/asr to Ollama /v1 + model={LFM3_OMNI_MODEL})?",
+            default=False,
+        ):
+            apply_lfm3_omni_speech_recipe(dry_run=False)
+            typer.echo(f"Wired tts/asr to Ollama /v1 with model={LFM3_OMNI_MODEL}")
     elif choice == "5":
         setup_openai_compat(cfg, write_env_example=True)
     elif choice == "6":

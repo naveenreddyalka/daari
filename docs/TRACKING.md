@@ -8475,6 +8475,16 @@ names off-box surfaces; doctor reports state; refused attempts log
 `security.offline_egress_refused`. Docs: config.md, security.md. Covered by
 `tests/unit/test_offline_mode.py`.
 
+### lfm3-omni recipe and audio capability routing ([#2037](https://github.com/naveenreddyalka/daari/issues/2037))
+
+<!-- tracking:#2037 -->
+**Status:** Done (2026-11-01). `daari setup models --lfm3-omni` wires tts/asr to
+Ollama `/v1` + `lfm3-omni` (optional L4 chat path in recipe note). 
+`required_capabilities` demands `audio` for `input_audio`; fail-closed 422 when
+no local/frontier candidate declares it; `lfm3-omni` ships vision+audio in the
+capability map. Doctor tip `ollama_lfm3_omni_unused`. Docs: ollama modality
+matrix + routing-tiers. Covered by `tests/unit/test_lfm3_omni_audio.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

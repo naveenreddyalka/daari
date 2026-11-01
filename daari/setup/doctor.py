@@ -77,6 +77,9 @@ def run_doctor(
     lfm3_vl_unused_tip = _check_lfm3_vl_unused(cfg, httpx_client)
     if lfm3_vl_unused_tip is not None:
         results.append(lfm3_vl_unused_tip)
+    lfm3_omni_unused_tip = _check_lfm3_omni_unused(cfg, httpx_client)
+    if lfm3_omni_unused_tip is not None:
+        results.append(lfm3_omni_unused_tip)
     safeguard_unused_tip = _check_safeguard_unused(cfg, httpx_client)
     if safeguard_unused_tip is not None:
         results.append(safeguard_unused_tip)
@@ -365,10 +368,7 @@ def _check_offline_mode(settings: Settings) -> CheckResult:
     return CheckResult(
         name="offline_mode",
         ok=True,
-        detail=(
-            "on — refusing non-loopback/non-private egress"
-            f"{allow_detail}"
-        ),
+        detail=(f"on — refusing non-loopback/non-private egress{allow_detail}"),
         optional=True,
     )
 
@@ -439,7 +439,9 @@ def _parse_ollama_semver(raw: str) -> tuple[int, int, int] | None:
     return int(match.group(1)), int(match.group(2)), int(match.group(3))
 
 
-def _ollama_version_payload(http: httpx.Client, base: str) -> tuple[str, tuple[int, int, int]] | None:
+def _ollama_version_payload(
+    http: httpx.Client, base: str
+) -> tuple[str, tuple[int, int, int]] | None:
     try:
         response = http.get(f"{base}/api/version")
         if response.status_code != 200:
@@ -469,9 +471,7 @@ def _ollama_q2_0_warning(http: httpx.Client, base: str) -> CheckResult | None:
     return CheckResult(
         name="ollama_q2_0",
         ok=False,
-        detail=(
-            f"Ollama {raw} — q2_0 GGUF tensors need Ollama 0.40.6 or newer"
-        ),
+        detail=(f"Ollama {raw} — q2_0 GGUF tensors need Ollama 0.40.6 or newer"),
         optional=True,
     )
 
@@ -488,10 +488,7 @@ def _ollama_flint_warning(http: httpx.Client, base: str, l4_model: str) -> Check
         return CheckResult(
             name="ollama_flint",
             ok=False,
-            detail=(
-                f"models.l4={name} needs Ollama ≥ 0.40.9 "
-                "(Linux, Windows, and macOS)"
-            ),
+            detail=(f"models.l4={name} needs Ollama ≥ 0.40.9 (Linux, Windows, and macOS)"),
             optional=True,
         )
     raw, parsed = version
@@ -501,8 +498,7 @@ def _ollama_flint_warning(http: httpx.Client, base: str, l4_model: str) -> Check
         name="ollama_flint",
         ok=False,
         detail=(
-            f"Ollama {raw} — models.l4={name} needs Ollama ≥ 0.40.9 "
-            "(Linux, Windows, and macOS)"
+            f"Ollama {raw} — models.l4={name} needs Ollama ≥ 0.40.9 (Linux, Windows, and macOS)"
         ),
         optional=True,
     )
@@ -670,9 +666,7 @@ def _check_ollama(
         flint_warning = _ollama_flint_warning(http, base, l4_model)
         if flint_warning is not None:
             results.append(flint_warning)
-        bolt_warning = _ollama_nemotron_bolt_warning(
-            http, base, l3_model, l3_present=l3_present
-        )
+        bolt_warning = _ollama_nemotron_bolt_warning(http, base, l3_model, l3_present=l3_present)
         if bolt_warning is not None:
             results.append(bolt_warning)
         return results
@@ -966,9 +960,7 @@ def _check_decisions(settings: Settings) -> CheckResult:
             from daari.gateway.systemone import explicit_systemone_base
 
             explicit = explicit_systemone_base(settings)
-            upstream = (
-                f"explicit base_url {explicit}" if explicit else "ollama default"
-            )
+            upstream = f"explicit base_url {explicit}" if explicit else "ollama default"
             parts.append(
                 "local models via systemone "
                 f"({upstream}; clef/nimble/tev1/drex-1.5/microsoft-decision-1 "
@@ -1055,9 +1047,7 @@ def _check_systemone_breaker(
         return None
     from daari.gateway.systemone import breaker_snapshot
 
-    rows = _systemone_breaker_rows_from_daemon(
-        settings, httpx_client, daemon_stats=daemon_stats
-    )
+    rows = _systemone_breaker_rows_from_daemon(settings, httpx_client, daemon_stats=daemon_stats)
     if rows is None:
         rows = list(breaker_snapshot())
     open_rows = [row for row in rows if str(row.get("state") or "") == "open"]
@@ -1109,10 +1099,7 @@ def _check_fleet_breakers(
     open_rows = [row for row in rows if str(row.get("state") or "") == "open"]
     if not open_rows:
         return None
-    parts = [
-        f"{row.get('family') or '?'}:{row.get('target') or '?'}"
-        for row in open_rows
-    ]
+    parts = [f"{row.get('family') or '?'}:{row.get('target') or '?'}" for row in open_rows]
     return CheckResult(
         name="fleet_breakers",
         ok=False,
@@ -1169,9 +1156,7 @@ def _check_decisions_local_models(
             return None
         rows = data.get("data") if openai_catalog else data.get("models")
         id_key = "id" if openai_catalog else "name"
-        names = [
-            str(m.get(id_key) or "") for m in (rows or []) if isinstance(m, dict)
-        ]
+        names = [str(m.get(id_key) or "") for m in (rows or []) if isinstance(m, dict)]
         cloud = [model for model in catalog if _ollama_cloud_route(model)]
         local_ids = [model for model in catalog if not _ollama_cloud_route(model)]
         if not local_ids:
@@ -1260,9 +1245,7 @@ def _check_decisions_unused_host_models(
             return None
         rows = data.get("data") if openai_catalog else data.get("models")
         id_key = "id" if openai_catalog else "name"
-        names = [
-            str(m.get(id_key) or "") for m in (rows or []) if isinstance(m, dict)
-        ]
+        names = [str(m.get(id_key) or "") for m in (rows or []) if isinstance(m, dict)]
         unused = [
             hint
             for hint in _D1_HOST_HINTS
@@ -1313,9 +1296,7 @@ def _check_lfm3_unused(
         if not isinstance(data, dict):
             return None
         names = [
-            str(m.get("name") or "")
-            for m in (data.get("models") or [])
-            if isinstance(m, dict)
+            str(m.get("name") or "") for m in (data.get("models") or []) if isinstance(m, dict)
         ]
         if not _host_lists_model(names, LFM3_MODEL):
             return None
@@ -1360,9 +1341,7 @@ def _check_lfm3_vl_unused(
         if not isinstance(data, dict):
             return None
         names = [
-            str(m.get("name") or "")
-            for m in (data.get("models") or [])
-            if isinstance(m, dict)
+            str(m.get("name") or "") for m in (data.get("models") or []) if isinstance(m, dict)
         ]
         if not _host_lists_model(names, LFM3_VL_MODEL):
             return None
@@ -1372,6 +1351,80 @@ def _check_lfm3_vl_unused(
             detail=(
                 f"{LFM3_VL_MODEL} is present on Ollama at {base} but models.l4={l4!r} — "
                 f"run `daari setup models --lfm3-vl` for the multimodal L4 vision recipe"
+            ),
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+
+
+def _lfm3_omni_speech_wired(settings: Settings) -> bool:
+    """True when tts and asr both point at Ollama /v1 with lfm3-omni (#2037)."""
+    from daari.setup.models import LFM3_OMNI_MODEL
+
+    tip = f"{settings.ollama.base_url.rstrip('/')}/v1"
+    for section in (settings.tts, settings.asr):
+        base = str(getattr(section, "base_url", "") or "").strip().rstrip("/")
+        model = str(getattr(section, "model", "") or "").strip()
+        if base != tip:
+            return False
+        if model != LFM3_OMNI_MODEL and not model.startswith(f"{LFM3_OMNI_MODEL}:"):
+            return False
+    return True
+
+
+def _lfm3_omni_l4_wired(settings: Settings) -> bool:
+    from daari.setup.models import LFM3_OMNI_MODEL
+
+    l4 = str(getattr(settings.models, "l4", None) or "").strip()
+    return l4 == LFM3_OMNI_MODEL or l4.startswith(f"{LFM3_OMNI_MODEL}:")
+
+
+def _check_lfm3_omni_unused(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult | None:
+    """Tip when Ollama lists lfm3-omni but speech (and optional L4) are unwired (#2037)."""
+    from daari.setup.models import LFM3_OMNI_MODEL
+
+    speech_ok = _lfm3_omni_speech_wired(settings)
+    l4_ok = _lfm3_omni_l4_wired(settings)
+    # Primary recipe target is speech; quiet when speech is wired.
+    if speech_ok:
+        return None
+    base = settings.ollama.base_url.rstrip("/")
+    own_client = client is None
+    http = client or httpx.Client(timeout=5.0)
+    try:
+        try:
+            response = http.get(f"{base}/api/tags")
+        except Exception:
+            return None
+        if response.status_code != 200:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        names = [
+            str(m.get("name") or "") for m in (data.get("models") or []) if isinstance(m, dict)
+        ]
+        if not _host_lists_model(names, LFM3_OMNI_MODEL):
+            return None
+        l4 = str(getattr(settings.models, "l4", None) or "").strip()
+        extra = ""
+        if not l4_ok:
+            extra = f" (optional chat path: models.l4={l4!r}, not {LFM3_OMNI_MODEL})"
+        return CheckResult(
+            name="ollama_lfm3_omni_unused",
+            ok=False,
+            detail=(
+                f"{LFM3_OMNI_MODEL} is present on Ollama at {base} but tts/asr "
+                f"are unwired{extra} — run `daari setup models --lfm3-omni` for "
+                f"the local speech recipe"
             ),
             optional=True,
         )
@@ -1424,9 +1477,7 @@ def _check_safeguard_unused(
         if not isinstance(data, dict):
             return None
         names = [
-            str(m.get("name") or "")
-            for m in (data.get("models") or [])
-            if isinstance(m, dict)
+            str(m.get("name") or "") for m in (data.get("models") or []) if isinstance(m, dict)
         ]
         if not _host_lists_model(names, SAFEGUARD_TAG):
             return None
@@ -1994,9 +2045,7 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
     if vk_backend == "sqlite":
         sqlite_artifacts.append("server.virtual_keys.backend=sqlite")
     rl_cfg = getattr(settings.observability, "request_log", None)
-    rl_backend = (
-        getattr(rl_cfg, "backend", "jsonl") if rl_cfg is not None else "jsonl"
-    ) or "jsonl"
+    rl_backend = (getattr(rl_cfg, "backend", "jsonl") if rl_cfg is not None else "jsonl") or "jsonl"
     if rl_backend == "jsonl":
         sqlite_artifacts.append("observability.request_log.backend=jsonl")
 
@@ -2509,9 +2558,7 @@ def _check_model_lifecycle(settings: Settings) -> CheckResult:
     )
 
 
-def _check_key_expiry(
-    settings: Settings, *, now: datetime | None = None
-) -> CheckResult:
+def _check_key_expiry(settings: Settings, *, now: datetime | None = None) -> CheckResult:
     """Warn on keys expiring soon; count expired-but-not-revoked (#1546)."""
     from daari.auth.virtual_keys import key_expiry_bucket
 
@@ -2588,11 +2635,7 @@ def _check_anthropic_enforcement(settings: Settings) -> CheckResult:
         )
     bits = [
         f"{row.get('profile_id')}={row.get('enforcement_status')}"
-        + (
-            f" end_users={','.join(row.get('end_users') or [])}"
-            if row.get("end_users")
-            else ""
-        )
+        + (f" end_users={','.join(row.get('end_users') or [])}" if row.get("end_users") else "")
         for row in rows[:8]
     ]
     extra = f" (+{len(rows) - 8} more)" if len(rows) > 8 else ""
@@ -2660,10 +2703,7 @@ def _check_vk_empty_allowlist(settings: Settings) -> CheckResult:
         patterns = effective_patterns(models, groups, catalog)
         if patterns is None:
             continue
-        if any(
-            model_permitted(mid, key_patterns=patterns, team_patterns=None)
-            for mid in card_ids
-        ):
+        if any(model_permitted(mid, key_patterns=patterns, team_patterns=None) for mid in card_ids):
             continue
         parts: list[str] = []
         if models:
@@ -2699,16 +2739,15 @@ def _check_vk_empty_allowlist(settings: Settings) -> CheckResult:
 def _check_key_lockout(settings: Settings) -> CheckResult:
     """Tip when prefix lockout is off; list Redis-locked prefixes when reachable (#1704)."""
     block = getattr(settings.auth, "key_lockout", None)
-    enabled = bool(getattr(block, "enabled", True)) and int(
-        getattr(block, "max_failures", 0) or 0
-    ) > 0
+    enabled = (
+        bool(getattr(block, "enabled", True)) and int(getattr(block, "max_failures", 0) or 0) > 0
+    )
     if not enabled:
         return CheckResult(
             name="key_lockout",
             ok=False,
             detail=(
-                "auth.key_lockout is disabled — invalid-auth storms are not "
-                "locked per key prefix"
+                "auth.key_lockout is disabled — invalid-auth storms are not locked per key prefix"
             ),
             optional=True,
         )
@@ -2804,9 +2843,7 @@ def _check_key_expiry_webhook_secret(settings: Settings) -> CheckResult:
         detail = "key_expiry webhook URL + secret configured"
     else:
         detail = "key_expiry webhook disabled (empty URL)"
-    return CheckResult(
-        name="key_expiry_webhook_secret", ok=True, detail=detail, optional=True
-    )
+    return CheckResult(name="key_expiry_webhook_secret", ok=True, detail=detail, optional=True)
 
 
 def _check_responses_completion_webhook_secret(settings: Settings) -> CheckResult:
@@ -2979,8 +3016,7 @@ def _check_recent_backup(settings: Settings) -> CheckResult:
         ok = True
         if recent_backups_all_plaintext(found):
             detail += (
-                " (all plaintext — consider: daari backup create … "
-                "--encrypt openssl --consistent)"
+                " (all plaintext — consider: daari backup create … --encrypt openssl --consistent)"
             )
         if _postgres_store_backends(settings):
             marker = read_archive_consistent(latest)
@@ -3345,11 +3381,7 @@ def _check_postgres_tls(settings: Settings, *, strict: bool = False) -> CheckRes
             detail=f"sslmode={mode} on remote host {host!r}",
             optional=True,
         )
-    hint = (
-        f"sslmode={mode!r} is weaker than require"
-        if mode
-        else "sslmode missing"
-    )
+    hint = f"sslmode={mode!r} is weaker than require" if mode else "sslmode missing"
     return CheckResult(
         name="postgres_tls",
         ok=False,
@@ -3522,10 +3554,7 @@ def _check_egress_tls_trust(settings: Settings) -> CheckResult:
     return CheckResult(
         name="egress_tls_trust",
         ok=True,
-        detail=(
-            "eMudhra/emSign roots excluded from egress httpx verify "
-            "(LiteLLM 1.106.3 parity)"
-        ),
+        detail=("eMudhra/emSign roots excluded from egress httpx verify (LiteLLM 1.106.3 parity)"),
         optional=True,
     )
 
@@ -3634,8 +3663,7 @@ def _check_asr(settings: Settings, client: httpx.Client | None) -> CheckResult:
     return CheckResult(
         name="asr",
         ok=True,
-        detail=detail
-        or "not configured (POST /v1/audio/transcriptions returns 501)",
+        detail=detail or "not configured (POST /v1/audio/transcriptions returns 501)",
         optional=True,
     )
 
@@ -3773,11 +3801,7 @@ def _ollama_tag_names(http: httpx.Client, ollama_base: str) -> list[str] | None:
         return None
     if not isinstance(data, dict):
         return None
-    return [
-        str(m.get("name") or "")
-        for m in (data.get("models") or [])
-        if isinstance(m, dict)
-    ]
+    return [str(m.get("name") or "") for m in (data.get("models") or []) if isinstance(m, dict)]
 
 
 def _listed_lfm3_speech_tag(names: list[str]) -> str | None:
@@ -3844,9 +3868,7 @@ def _lfm3_audio_configured_note(model: str) -> str:
     )
 
 
-def _tts_phonon_configured_notes(
-    settings: Settings, http: httpx.Client, tts_base: str
-) -> str:
+def _tts_phonon_configured_notes(settings: Settings, http: httpx.Client, tts_base: str) -> str:
     """Extra doctor notes when TTS is configured toward Phonon (#1936)."""
     model = str(getattr(settings.tts, "model", "") or "").strip()
     lfm3_note = _lfm3_audio_configured_note(model)
@@ -3868,17 +3890,14 @@ def _tts_phonon_configured_notes(
                 )
     if _tts_phonon_40m_noncommercial(model):
         notes.append(
-            f"{model} is CC BY-NC 4.0 (noncommercial); "
-            "default phonon 31M stays Apache-2.0"
+            f"{model} is CC BY-NC 4.0 (noncommercial); default phonon 31M stays Apache-2.0"
         )
     if not notes:
         return ""
     return "; " + "; ".join(notes)
 
 
-def _tts_ollama_lfm3_audio_detail(
-    settings: Settings, http: httpx.Client
-) -> str | None:
+def _tts_ollama_lfm3_audio_detail(settings: Settings, http: httpx.Client) -> str | None:
     """Tip when Ollama lists lfm3-audio/omni but tts.base_url is empty (#1986, #2012)."""
     if str(getattr(settings.tts, "base_url", "") or "").strip():
         return None
@@ -3894,9 +3913,7 @@ def _tts_ollama_lfm3_audio_detail(
     )
 
 
-def _asr_ollama_lfm3_audio_detail(
-    settings: Settings, http: httpx.Client
-) -> str | None:
+def _asr_ollama_lfm3_audio_detail(settings: Settings, http: httpx.Client) -> str | None:
     """Tip when Ollama lists lfm3-audio/omni but asr.base_url is empty (#1986, #2012)."""
     if str(getattr(settings.asr, "base_url", "") or "").strip():
         return None
@@ -3912,9 +3929,7 @@ def _asr_ollama_lfm3_audio_detail(
     )
 
 
-def _tts_ollama_phonon_detail(
-    settings: Settings, http: httpx.Client
-) -> str | None:
+def _tts_ollama_phonon_detail(settings: Settings, http: httpx.Client) -> str | None:
     """Advisory detail when Ollama ≥0.40.9 can serve Phonon TTS (#1888)."""
     if str(getattr(settings.tts, "base_url", "") or "").strip():
         return None
@@ -3962,8 +3977,7 @@ def _check_tts(settings: Settings, client: httpx.Client | None) -> CheckResult:
             return CheckResult(
                 name="tts",
                 ok=True,
-                detail=detail
-                or "not configured (POST /v1/audio/speech returns 501)",
+                detail=detail or "not configured (POST /v1/audio/speech returns 501)",
                 optional=True,
             )
         url = f"{base}/models"
@@ -4450,9 +4464,7 @@ def _check_decision_classifier_model(
             return None
         rows = data.get("data") if openai_catalog else data.get("models")
         id_key = "id" if openai_catalog else "name"
-        names = [
-            str(m.get(id_key) or "") for m in (rows or []) if isinstance(m, dict)
-        ]
+        names = [str(m.get(id_key) or "") for m in (rows or []) if isinstance(m, dict)]
         present = any(name == model or name.startswith(f"{model}:") for name in names if name)
         if present:
             return None
