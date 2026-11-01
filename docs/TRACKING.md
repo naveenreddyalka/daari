@@ -8493,6 +8493,14 @@ local tiers and CSAM in-flight screening vs on-box guardrails (with announcement
 links); compare index + landscape OpenRouter row dated for the late-Oct 2026
 delta. Covered by `tests/unit/test_compare_openrouter_csam_private.py`.
 
+### Docs: MCP SEP-3392 Beta lifecycle for skills and tasks ([#2039](https://github.com/naveenreddyalka/daari/issues/2039))
+
+<!-- tracking:#2039 -->
+**Status:** Done (2026-11-01). `mcp.md` labels Skills and Tasks as SEP-3392
+**Beta** (Tasks → Core), links the Skills overview + `specification/beta/`
+path, and keeps SEP-2640 as the historical surface id. Covered by
+`tests/unit/test_mcp_sep3392_beta_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
