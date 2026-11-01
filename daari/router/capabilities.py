@@ -206,9 +206,7 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
         # OpenAI facade: lifecycle + shutdown_date + server_tools (#1521 / #1653).
         card.update(openai_lifecycle_fields(model_id, settings))
         card["server_tools"] = anthropic_server_tools(model_id)
-        speed = anthropic_speed_capability(
-            model_id, pricing=getattr(settings, "pricing", None)
-        )
+        speed = anthropic_speed_capability(model_id, pricing=getattr(settings, "pricing", None))
         if speed is not None:
             card["speed"] = speed
         if is_ollama_cloud_model(model_id):

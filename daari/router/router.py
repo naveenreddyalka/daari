@@ -1057,8 +1057,7 @@ class Router:
                     self._apply_guardrail_hits(tool_scan.hits, warning=tool_scan.warning)
                 if tool_scan.blocked:
                     denial = (
-                        getattr(tool_scan, "block_message", None)
-                        or self.guardrails.block_message
+                        getattr(tool_scan, "block_message", None) or self.guardrails.block_message
                     )
                     policy.refusal = blocked_response(request, denial)
                     policy.refusal_tier = "guardrail"
@@ -1824,9 +1823,8 @@ class Router:
             return await self._serve_multi_agent_frontier(request, started)
         # Audio (and other) modality with no local candidate but a capable
         # frontier model: hop to L6 instead of running a text-only local (#2037).
-        if (
-            self.capability_catalog is not None
-            and not self._local_tiers_cover_capabilities(request)
+        if self.capability_catalog is not None and not self._local_tiers_cover_capabilities(
+            request
         ):
             from daari.router.capabilities import UnsupportedCapability, required_capabilities
 
@@ -2990,9 +2988,7 @@ class Router:
                                 yield chunk
                             pending_chunks.clear()
                             partial = "".join(tier_text_parts)
-                            stream_request = self._with_stream_continuation(
-                                stream_request, partial
-                            )
+                            stream_request = self._with_stream_continuation(stream_request, partial)
                             to_tier = (
                                 tier_chain[tier_index + 1]
                                 if tier_index < len(tier_chain) - 1
@@ -3624,9 +3620,7 @@ class Router:
             return False
         return True
 
-    def _with_stream_continuation(
-        self, request: InternalRequest, partial: str
-    ) -> InternalRequest:
+    def _with_stream_continuation(self, request: InternalRequest, partial: str) -> InternalRequest:
         """Replay the partial assistant text and ask the next hop to continue."""
         from daari.gateway.internal import Message
 
@@ -5767,7 +5761,9 @@ class Router:
                     l6_request = await self._frontier_request(gen_request)
                     if candidate.strip().upper() not in {"L6", "FRONTIER"}:
                         l6_request.model = candidate
-                    elif self.frontier is not None and getattr(self.frontier, "default_model", None):
+                    elif self.frontier is not None and getattr(
+                        self.frontier, "default_model", None
+                    ):
                         l6_request.model = self.frontier.default_model
                     response = await self.frontier.execute(
                         l6_request,

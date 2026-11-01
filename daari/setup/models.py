@@ -106,7 +106,9 @@ def model_present(model: str, available: list[str]) -> bool:
     return any(name == model or name.startswith(f"{model}:") for name in available)
 
 
-def l4_model_present(base_url: str, model: str, *, client: httpx.Client | None = None) -> bool | None:
+def l4_model_present(
+    base_url: str, model: str, *, client: httpx.Client | None = None
+) -> bool | None:
     """True/False if we could check, None when Ollama is unreachable."""
     try:
         available = fetch_ollama_models(base_url, client=client)
@@ -158,9 +160,7 @@ def warm_ollama_model(
     url = base_url.rstrip("/")
     own = client is None
     http = client or httpx.Client(timeout=timeout)
-    is_embed = bool(embed_model) and (
-        model == embed_model or model.startswith(f"{embed_model}:")
-    )
+    is_embed = bool(embed_model) and (model == embed_model or model.startswith(f"{embed_model}:"))
     try:
         if is_embed:
             response = http.post(
@@ -524,7 +524,9 @@ def write_models_config(
     with path.open("w", encoding="utf-8") as handle:
         yaml.safe_dump(current, handle, default_flow_style=False, sort_keys=False)
 
-    return ModelSetupResult(tier=tier if model is not None else None, model=model, config_path=path, changed=changed)
+    return ModelSetupResult(
+        tier=tier if model is not None else None, model=model, config_path=path, changed=changed
+    )
 
 
 def setup_models_interactive(
@@ -547,7 +549,13 @@ def setup_models_interactive(
     path = config_path or Path.home() / ".daari" / "config.yaml"
 
     if list_only:
-        current = cfg.models.l3 if tier == "l3" else cfg.models.l4 if tier == "l4" else getattr(cfg.models, tier, None)
+        current = (
+            cfg.models.l3
+            if tier == "l3"
+            else cfg.models.l4
+            if tier == "l4"
+            else getattr(cfg.models, tier, None)
+        )
         typer.echo(f"Tier map ({path}):")
         typer.echo(f"  l3: {cfg.models.l3}")
         typer.echo(f"  l4: {cfg.models.l4}")
@@ -601,13 +609,10 @@ def setup_models_interactive(
                 tip = _ollama_v1_base(loaded)
         if dry_run:
             typer.echo(
-                f"Dry-run: would set tts/asr base_url={tip} "
-                f"model={LFM3_OMNI_MODEL} in {path}"
+                f"Dry-run: would set tts/asr base_url={tip} model={LFM3_OMNI_MODEL} in {path}"
             )
         else:
-            typer.echo(
-                f"Set tts/asr base_url={tip} model={LFM3_OMNI_MODEL} in {path}"
-            )
+            typer.echo(f"Set tts/asr base_url={tip} model={LFM3_OMNI_MODEL} in {path}")
         return result
 
     if safeguard:
@@ -615,13 +620,10 @@ def setup_models_interactive(
         result = apply_safeguard_recipe(config_path=path, dry_run=dry_run)
         if dry_run:
             typer.echo(
-                f"Dry-run: would write kind=decision guardrail "
-                f"(model={SAFEGUARD_MODEL}) in {path}"
+                f"Dry-run: would write kind=decision guardrail (model={SAFEGUARD_MODEL}) in {path}"
             )
         else:
-            typer.echo(
-                f"Wrote kind=decision guardrail (model={SAFEGUARD_MODEL}) in {path}"
-            )
+            typer.echo(f"Wrote kind=decision guardrail (model={SAFEGUARD_MODEL}) in {path}")
         return result
 
     if model is not None:
@@ -660,7 +662,9 @@ def setup_models_interactive(
         typer.echo("Invalid selection.", err=True)
         raise typer.Exit(code=1) from exc
 
-    prefer = typer.prompt("Routing preference (latency|accuracy|balanced)", default=cfg.routing.prefer)
+    prefer = typer.prompt(
+        "Routing preference (latency|accuracy|balanced)", default=cfg.routing.prefer
+    )
     if prefer not in {"latency", "accuracy", "balanced"}:
         typer.echo("Invalid preference; expected latency, accuracy, or balanced.", err=True)
         raise typer.Exit(code=1)
@@ -692,8 +696,7 @@ def setup_models_interactive(
         else:
             typer.echo(LFM3_RECIPE_NOTE)
             if typer.confirm(
-                f"Apply optional LFM3 L3 local-agent recipe "
-                f"(set models.l3={LFM3_MODEL})?",
+                f"Apply optional LFM3 L3 local-agent recipe (set models.l3={LFM3_MODEL})?",
                 default=False,
             ):
                 result = apply_lfm3_l3_recipe(config_path=path, dry_run=False)
@@ -709,8 +712,7 @@ def setup_models_interactive(
         else:
             typer.echo(LFM3_VL_RECIPE_NOTE)
             if typer.confirm(
-                f"Apply optional LFM3-VL L4 vision recipe "
-                f"(set models.l4={LFM3_VL_MODEL})?",
+                f"Apply optional LFM3-VL L4 vision recipe (set models.l4={LFM3_VL_MODEL})?",
                 default=False,
             ):
                 result = apply_lfm3_vl_l4_recipe(config_path=path, dry_run=False)

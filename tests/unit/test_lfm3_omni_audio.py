@@ -12,7 +12,6 @@ from httpx import ASGITransport, AsyncClient
 from daari.config.settings import Settings
 from daari.gateway.internal import ContentAudio, InternalRequest, Message
 from daari.router.capabilities import (
-    UnsupportedCapability,
     catalog_from_settings,
     known_model_capabilities,
     required_capabilities,
@@ -69,11 +68,7 @@ def test_lfm3_omni_declares_vision_and_audio():
 
 
 def test_catalog_picks_up_lfm3_omni_when_wired_as_l4():
-    settings = Settings.model_validate({"models": {"l4": LFM3_OMNI_MODEL, "capabilities": {}}})
-    # Empty capabilities dict is truthy — force the known-model path via for_model.
-    catalog = catalog_from_settings(
-        Settings.model_validate({"models": {"l4": LFM3_OMNI_MODEL}})
-    )
+    catalog = catalog_from_settings(Settings.model_validate({"models": {"l4": LFM3_OMNI_MODEL}}))
     caps = catalog.for_model(LFM3_OMNI_MODEL)
     assert "audio" in caps
     assert "vision" in caps
@@ -96,8 +91,7 @@ def test_lfm3_omni_recipe_dry_run_does_not_write(tmp_path):
 def test_lfm3_omni_recipe_wires_speech(tmp_path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
-        "ollama:\n  base_url: http://ollama.test:11434\n"
-        "models:\n  l3: llama3.2:3b\n",
+        "ollama:\n  base_url: http://ollama.test:11434\nmodels:\n  l3: llama3.2:3b\n",
         encoding="utf-8",
     )
     result = apply_lfm3_omni_speech_recipe(config_path=config_path, dry_run=False)
@@ -120,9 +114,7 @@ def test_lfm3_omni_recipe_note_primary_speech_optional_l4():
 def _tags_client(names: list[str]) -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/api/tags"):
-            return httpx.Response(
-                200, json={"models": [{"name": n} for n in names]}
-            )
+            return httpx.Response(200, json={"models": [{"name": n} for n in names]})
         return httpx.Response(404)
 
     return httpx.Client(transport=httpx.MockTransport(handler))
@@ -137,9 +129,7 @@ def test_lfm3_omni_tip_when_host_has_tag_but_speech_empty():
             "asr": {"base_url": ""},
         }
     )
-    tip = _check_lfm3_omni_unused(
-        settings, _tags_client([LFM3_OMNI_MODEL, "llama3.1:8b"])
-    )
+    tip = _check_lfm3_omni_unused(settings, _tags_client([LFM3_OMNI_MODEL, "llama3.1:8b"]))
     assert tip is not None
     assert tip.ok is False
     assert tip.optional is True
