@@ -8,14 +8,21 @@ is set, send the same Bearer / `x-api-key` the rest of the daemon expects.
 `initialize` advertises `tools`, `resources`, and `prompts` capabilities;
 on protocol ≥ 2026-07-28 it also declares
 `extensions["io.modelcontextprotocol/skills"]` (with an explicit
-`directoryRead` flag) so SEP-2640 clients discover the skills surface.
+`directoryRead` flag) so clients discover the skills surface.
 `prompts/list` returns an empty array. `resources/list` includes
 `skill://<id>/SKILL.md` (and package supporting files) for on-box skills under
 `~/.daari/skills/` (flat `*.md` and AAIF `*/SKILL.md` packages);
-`resources/read` serves those URIs. SEP-2640 **Skills over MCP** methods
+`resources/read` serves those URIs. **Skills over MCP** methods
 `skills/list` and `skills/get` return entries with `frontmatter` (parsed YAML)
 and a `resources` manifest (`sha256:` digest + byte size per file). Missing
-skills return a JSON-RPC invalid-params error.
+skills return a JSON-RPC invalid-params error. Under
+[SEP-3392 Extension Lifecycle](https://modelcontextprotocol.io/extensions/overview),
+Skills is **Beta** (not Stable): see the
+[Skills overview](https://modelcontextprotocol.io/extensions/skills/overview)
+and the published
+[`specification/beta/`](https://github.com/modelcontextprotocol/ext-skills/tree/main/specification/beta)
+path. Wire ids and behavior match the historical **SEP-2640** surface; Beta
+allows breaking changes with changelog notice.
 `GET /v1/daari/stats` (and `daari web-ui serve`) expose `mcp_tool_calls` outcome
 counts and an `mcp_tasks` status summary for local ops without Prometheus.
 Admin ops can list in-flight `tools/call` work via `GET /v1/daari/mcp/activity`
@@ -388,6 +395,11 @@ without a prior handshake. Unsupported versions return JSON-RPC
 pre-2026-07-28 revisions.
 
 ## Tasks (long-running tools/call)
+
+Per the [MCP extensions overview](https://modelcontextprotocol.io/extensions/overview)
+(SEP-3392 lifecycle), **Tasks** is **Beta** with intended destination **Core**.
+Breaking changes may still land while Beta; expect a changelog notice when they
+do. Wire id `io.modelcontextprotocol/tasks` is unchanged across stages.
 
 When the negotiated protocol is `2026-07-28` or newer, `initialize` (and
 `server/discover`) advertises the `io.modelcontextprotocol/tasks` capability.
