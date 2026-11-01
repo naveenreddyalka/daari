@@ -52,6 +52,7 @@ def build_async_client(
     passed an explicit non-default ``verify`` (#1907).
     """
     from daari.security.egress_tls import resolve_httpx_verify
+    from daari.security.offline_mode import apply_offline_event_hooks
 
     pool = limits or PoolLimits()
     opts: dict[str, Any] = {
@@ -64,6 +65,7 @@ def build_async_client(
         opts["transport"] = transport
     opts.update(kwargs)
     opts["verify"] = resolve_httpx_verify(opts.get("verify"))
+    opts = apply_offline_event_hooks(opts, sync=False)
     return httpx_mod.AsyncClient(**opts)
 
 

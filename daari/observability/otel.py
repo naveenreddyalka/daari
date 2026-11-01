@@ -236,8 +236,20 @@ def configure_providers(
     a host app or `opentelemetry-instrument` wrapper always wins. Returns
     True only when this call installed at least one provider.
     """
-    if not os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
+    endpoint = (os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
+    if not endpoint:
         return False
+    from daari.security.offline_mode import (
+        OfflineEgressBlocked,
+        assert_offline_url_allowed,
+        offline_mode_enabled,
+    )
+
+    if offline_mode_enabled():
+        try:
+            assert_offline_url_allowed(endpoint, surface="otel")
+        except OfflineEgressBlocked:
+            return False
     installed = False
     if traces:
         installed = _configure_trace_meter_providers(service_name) or installed

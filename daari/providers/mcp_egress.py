@@ -150,19 +150,26 @@ class McpEgressProvider(HttpIntegrationProvider):
 
     def _ensure_egress_url_allowed(self) -> None:
         from daari.security.egress_url import validate_egress_url
+        from daari.security.offline_mode import assert_offline_url_allowed
 
         validate_egress_url(
             self.base_url, allow_private_networks=self.allow_private_networks
         )
+        assert_offline_url_allowed(self.base_url, surface="mcp_egress")
 
     def _client(self) -> httpx.AsyncClient:
         if self._http is None or self._http.is_closed:
             from daari.security.egress_tls import resolve_httpx_verify
+            from daari.security.offline_mode import apply_offline_event_hooks
 
-            self._http = httpx.AsyncClient(
-                timeout=self._http_timeout_seconds,
-                verify=resolve_httpx_verify(settings=self.settings),
+            opts = apply_offline_event_hooks(
+                {
+                    "timeout": self._http_timeout_seconds,
+                    "verify": resolve_httpx_verify(settings=self.settings),
+                },
+                sync=False,
             )
+            self._http = httpx.AsyncClient(**opts)
         return self._http
 
     async def aclose(self) -> None:

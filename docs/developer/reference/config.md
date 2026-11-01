@@ -40,6 +40,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `secrets.refresh_ttl_seconds` | float | `300.0` | TTL for re-resolving env-file/exec/keychain secret:// refs at use time. 0 = resolve once at boot (legacy). Default 300s. Env-file refs also re-resolve when the source file mtime changes. Env: DAARI_SECRETS__REFRESH_TTL_SECONDS. |
 | `security.at_rest_key` | str | `''` | Customer-held key for AES-GCM encryption of response-store bodies, request-log payloads, L0/L1 disk-cache values, files content, and batch job payloads. Accepts plaintext or secret:// refs. Empty (default) leaves stores plaintext — no migration required. Env: DAARI_SECURITY__AT_REST_KEY. |
 | `security.at_rest_key_previous` | str | `''` | Previous at-rest key kept during rotation so tagged rows still decrypt. New writes always use at_rest_key. Accepts secret://. Env: DAARI_SECURITY__AT_REST_KEY_PREVIOUS. |
+| `security.offline_mode` | bool | `False` | When true, shared outbound httpx clients (frontier, MCP egress, TTS, webhooks, enforcement sync, OTel) refuse connections to non-loopback / non-private hosts unless the hostname is listed in offline_allow_hosts (#2034). Local Ollama / RFC1918 backends stay open. Env: DAARI_SECURITY__OFFLINE_MODE. |
+| `security.offline_allow_hosts` | list | `[]` | Hostnames permitted for egress while offline_mode is on (on-estate DNS names). Loopback and RFC1918 targets need no entry. Env: DAARI_SECURITY__OFFLINE_ALLOW_HOSTS (JSON list). |
 | `rate_limit.rpm` | int | `0` | Default requests per minute per key (0=unlimited). |
 | `rate_limit.tpm` | int | `0` | Default tokens per minute per key (0=unlimited). |
 | `rate_limit.model_rpm` | int | `0` | Per-key-per-model RPM. 0 falls back to rpm. |

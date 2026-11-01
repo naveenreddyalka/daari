@@ -528,4 +528,14 @@ def config_findings(user: dict[str, Any], merged: dict[str, Any], model: type[Ba
     if settings is not None:
         findings.extend(asr_frontier_fallback_findings(settings))
         findings.extend(local_pool_frontier_fallback_findings(settings))
+        from daari.security.offline_mode import offline_mode_findings
+
+        findings.extend(offline_mode_findings(settings))
     return findings
+
+
+def offline_mode_findings(settings: Any) -> list[str]:
+    """Re-export for callers/tests (#2034)."""
+    from daari.security.offline_mode import offline_mode_findings as _findings
+
+    return _findings(settings)

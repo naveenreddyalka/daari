@@ -16,10 +16,12 @@ from daari.security.secret_refs import current_secret
 
 
 def _egress_client_kwargs(**kwargs: Any) -> dict[str, Any]:
-    """httpx kwargs with eMudhra/emSign CA distrust applied (#1907)."""
+    """httpx kwargs with eMudhra/emSign CA distrust + offline hooks (#1907, #2034)."""
+    from daari.security.offline_mode import apply_offline_event_hooks
+
     opts = dict(kwargs)
     opts["verify"] = resolve_httpx_verify(opts.get("verify"))
-    return opts
+    return apply_offline_event_hooks(opts, sync=False)
 
 
 def org_l0_key(request: InternalRequest) -> str:

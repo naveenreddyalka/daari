@@ -2741,7 +2741,7 @@ class SecretsSettings(BaseModel):
 
 
 class SecuritySettings(BaseModel):
-    """Optional at-rest encryption for persisted payload stores (#1958)."""
+    """Optional at-rest encryption and air-gapped egress controls."""
 
     at_rest_key: str = Field(
         default="",
@@ -2759,6 +2759,24 @@ class SecuritySettings(BaseModel):
             "Previous at-rest key kept during rotation so tagged rows still "
             "decrypt. New writes always use at_rest_key. Accepts secret://. "
             "Env: DAARI_SECURITY__AT_REST_KEY_PREVIOUS."
+        ),
+    )
+    offline_mode: bool = Field(
+        default=False,
+        description=(
+            "When true, shared outbound httpx clients (frontier, MCP egress, "
+            "TTS, webhooks, enforcement sync, OTel) refuse connections to "
+            "non-loopback / non-private hosts unless the hostname is listed in "
+            "offline_allow_hosts (#2034). Local Ollama / RFC1918 backends stay "
+            "open. Env: DAARI_SECURITY__OFFLINE_MODE."
+        ),
+    )
+    offline_allow_hosts: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Hostnames permitted for egress while offline_mode is on (on-estate "
+            "DNS names). Loopback and RFC1918 targets need no entry. Env: "
+            "DAARI_SECURITY__OFFLINE_ALLOW_HOSTS (JSON list)."
         ),
     )
 
