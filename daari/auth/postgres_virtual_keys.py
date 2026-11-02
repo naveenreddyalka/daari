@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS teams (
     rpm INTEGER NOT NULL DEFAULT 0,
     tpm INTEGER NOT NULL DEFAULT 0,
     rpd INTEGER NOT NULL DEFAULT 0,
+    tpd INTEGER NOT NULL DEFAULT 0,
     allowed_models_json TEXT,
     model_groups_json TEXT,
     cache_scope TEXT NOT NULL DEFAULT 'global',
@@ -71,6 +72,8 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     metadata_json TEXT NOT NULL DEFAULT '{}',
     user_daily_usd_cap DOUBLE PRECISION NOT NULL DEFAULT 0,
     user_rpd INTEGER NOT NULL DEFAULT 0,
+    tpd INTEGER NOT NULL DEFAULT 0,
+    user_tpd INTEGER NOT NULL DEFAULT 0,
     previous_key_hash TEXT,
     previous_prefix TEXT,
     previous_expires_at TEXT,
@@ -92,6 +95,7 @@ _PG_TEAM_MIGRATIONS = (
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS rpm INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS tpm INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS rpd INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE teams ADD COLUMN IF NOT EXISTS tpd INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS allowed_models_json TEXT",
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS model_groups_json TEXT",
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS cache_scope TEXT NOT NULL DEFAULT 'global'",
@@ -106,6 +110,8 @@ _PG_KEY_MIGRATIONS = (
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'",
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS last_used_at TEXT",
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS user_rpd INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS tpd INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS user_tpd INTEGER NOT NULL DEFAULT 0",
 )
 
 _MEMORY_PATHS: dict[str, Path] = {}
@@ -231,6 +237,7 @@ class PostgresVirtualKeyStore:
         rpm: int = 0,
         tpm: int = 0,
         rpd: int = 0,
+        tpd: int = 0,
         allowed_models: list[str] | tuple[str, ...] | None = None,
         model_groups: list[str] | tuple[str, ...] | None = None,
         cache_scope: str = "global",
@@ -251,6 +258,7 @@ class PostgresVirtualKeyStore:
                 rpm=rpm,
                 tpm=tpm,
                 rpd=rpd,
+                tpd=tpd,
                 allowed_models=allowed_models,
                 model_groups=model_groups,
                 cache_scope=cache_scope,
@@ -379,6 +387,7 @@ class PostgresVirtualKeyStore:
         rpm: int | None = None,
         tpm: int | None = None,
         rpd: int | None = None,
+        tpd: int | None = None,
         allowed_models: list[str] | tuple[str, ...] | None | object = _UNSET,
         model_groups: list[str] | tuple[str, ...] | None | object = _UNSET,
         signal_overrides: list[Any] | tuple[Any, ...] | None | object = _UNSET,
@@ -393,6 +402,7 @@ class PostgresVirtualKeyStore:
                 rpm=rpm,
                 tpm=tpm,
                 rpd=rpd,
+                tpd=tpd,
                 allowed_models=allowed_models,
                 model_groups=model_groups,
                 signal_overrides=signal_overrides,
@@ -644,6 +654,7 @@ class PostgresVirtualKeyStore:
         rpm: int = 0,
         tpm: int = 0,
         rpd: int = 0,
+        tpd: int = 0,
         tier_cap: str | None = None,
         client_id: str | None = None,
         team: str | None = None,
@@ -652,6 +663,7 @@ class PostgresVirtualKeyStore:
         expires_at: str | None = None,
         user_daily_usd_cap: float = 0.0,
         user_rpd: int = 0,
+        user_tpd: int = 0,
         region_pin: str | None = None,
         allowed_models: list[str] | tuple[str, ...] | None = None,
         model_groups: list[str] | tuple[str, ...] | None = None,
@@ -670,6 +682,7 @@ class PostgresVirtualKeyStore:
                 rpm=rpm,
                 tpm=tpm,
                 rpd=rpd,
+                tpd=tpd,
                 tier_cap=tier_cap,
                 client_id=client_id,
                 team=team,
@@ -678,6 +691,7 @@ class PostgresVirtualKeyStore:
                 expires_at=expires_at,
                 user_daily_usd_cap=user_daily_usd_cap,
                 user_rpd=user_rpd,
+                user_tpd=user_tpd,
                 region_pin=region_pin,
                 allowed_models=allowed_models,
                 model_groups=model_groups,
@@ -898,6 +912,36 @@ class PostgresVirtualKeyStore:
                 cur.execute(
                     "UPDATE virtual_keys SET user_rpd = %s WHERE key_id = %s AND revoked_at IS NULL",
                     (max(0, int(user_rpd)), key_id),
+                )
+                updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+
+    def update_tpd(self, key_id: str, tpd: int) -> bool:
+        if self._inner is not None:
+            return self._inner.update_tpd(key_id, tpd)
+        if not self.enabled:
+            return False
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE virtual_keys SET tpd = %s WHERE key_id = %s AND revoked_at IS NULL",
+                    (max(0, int(tpd)), key_id),
+                )
+                updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+
+    def update_user_tpd(self, key_id: str, user_tpd: int) -> bool:
+        if self._inner is not None:
+            return self._inner.update_user_tpd(key_id, user_tpd)
+        if not self.enabled:
+            return False
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE virtual_keys SET user_tpd = %s WHERE key_id = %s AND revoked_at IS NULL",
+                    (max(0, int(user_tpd)), key_id),
                 )
                 updated = cur.rowcount > 0
             conn.commit()

@@ -486,10 +486,10 @@ def render_prometheus(
 
     if team_rate_limits:
         lines.append(
-            "# HELP daari_team_rate_limit_remaining Team RPM/TPM/RPD remaining in the current window."
+            "# HELP daari_team_rate_limit_remaining Team RPM/TPM/RPD/TPD remaining in the current window."
         )
         lines.append("# TYPE daari_team_rate_limit_remaining gauge")
-        lines.append("# HELP daari_team_rate_limit_limit Configured team RPM/TPM/RPD ceilings.")
+        lines.append("# HELP daari_team_rate_limit_limit Configured team RPM/TPM/RPD/TPD ceilings.")
         lines.append("# TYPE daari_team_rate_limit_limit gauge")
         for row in team_rate_limits:
             team = str(row.get("team") or "unknown")
@@ -502,10 +502,10 @@ def render_prometheus(
 
     if key_rate_limits:
         lines.append(
-            "# HELP daari_key_rate_limit_remaining Virtual-key RPD remaining in the current UTC day."
+            "# HELP daari_key_rate_limit_remaining Virtual-key RPD/TPD remaining in the current UTC day."
         )
         lines.append("# TYPE daari_key_rate_limit_remaining gauge")
-        lines.append("# HELP daari_key_rate_limit_limit Configured virtual-key RPD ceilings.")
+        lines.append("# HELP daari_key_rate_limit_limit Configured virtual-key RPD/TPD ceilings.")
         lines.append("# TYPE daari_key_rate_limit_limit gauge")
         for row in key_rate_limits:
             key = str(row.get("key") or "unknown")

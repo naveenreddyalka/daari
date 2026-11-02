@@ -350,6 +350,10 @@ def introspect_token(
         payload["tpm"] = int(key.tpm)
     if int(key.rpd or 0) > 0:
         payload["rpd"] = int(key.rpd)
+    if int(getattr(key, "tpd", 0) or 0) > 0:
+        payload["tpd"] = int(key.tpd)
+    if int(getattr(key, "user_tpd", 0) or 0) > 0:
+        payload["user_tpd"] = int(key.user_tpd)
     payload["cache_scope"] = effective_cache_scope(
         key.cache_scope,
         _team_cache_scope(store, key.team_id),

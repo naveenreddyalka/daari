@@ -1002,6 +1002,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tpm = int(getattr(virtual, "tpm", 0) or 0) or None
         rpd = int(getattr(virtual, "rpd", 0) or 0) or None
         user_rpd = int(getattr(virtual, "user_rpd", 0) or 0) or None
+        tpd = int(getattr(virtual, "tpd", 0) or 0) or None
+        user_tpd = int(getattr(virtual, "user_tpd", 0) or 0) or None
         from daari.auth.end_user import end_user_from_payload
 
         named_user = end_user_from_payload(payload)
@@ -1016,6 +1018,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         team_rpm = None
         team_tpm = None
         team_rpd = None
+        team_tpd = None
         team = None
         if team_id:
             store = getattr(request.app.state, "virtual_key_store", None)
@@ -1028,6 +1031,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 team_rpm = int(getattr(team, "rpm", 0) or 0) or None
                 team_tpm = int(getattr(team, "tpm", 0) or 0) or None
                 team_rpd = int(getattr(team, "rpd", 0) or 0) or None
+                team_tpd = int(getattr(team, "tpd", 0) or 0) or None
         # Retired models 410 before RPM/in-flight admission so a 429 cannot mask them (#1701).
         ctx = getattr(request.app.state, "ctx", None)
         settings = getattr(ctx, "settings", None) if ctx is not None else None
@@ -1050,11 +1054,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             team_tpm=team_tpm,
             rpd=rpd,
             team_rpd=team_rpd,
+            tpd=tpd,
+            team_tpd=team_tpd,
             family=family,
             family_rpm=fam_rpm or None,
             family_tpm=fam_tpm or None,
             user_id=named_user or None,
             user_rpd=user_rpd,
+            user_tpd=user_tpd,
         )
         if not decision.allowed:
             metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)

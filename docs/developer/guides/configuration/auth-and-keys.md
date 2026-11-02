@@ -105,6 +105,8 @@ daari keys create --name studio --rate-family chat:120 --rate-family images:10
 
 `--user-rpd` on `daari keys create` / `keys update` fences each attributed end user on a shared key with the same UTC-day counter shape (`rpd:{key_id}:user:{user}`, `X-RateLimit-Scope: user`). Attribution is the OpenAI body `user` field, or Anthropic `metadata.user_id` on `/v1/messages` when `user` is absent (`user` wins when both are set). `0` or omitted = unlimited. Requests without a named end user skip the fence. `user_rpd` does not satisfy key-level `rpd` for the doctor unbounded-rpm tip; `daari doctor` lists keys that set end-user RPD.
 
+`--tpd` / `--user-tpd` mirror RPD with a tokens-per-UTC-day ceiling (`tpd:{key_id}`, `tpd:team:{team_id}`, `tpd:{key_id}:user:{user}`; `0` = unlimited). Debits use the same estimated request tokens as TPM at admission (`chars // 4`, minimum 1 for chat/embeddings; multipart ASR uses `file_bytes // 4`). Soft-band warnings reuse the existing rate-limit soft ratio before a hard `429` that names `tpd`. GET/HEAD and other zero-token paths never debit TPD. `daari doctor` tips when any key/team sets `tpd` so operators know the estimator path. Admin `GET /v1/daari/keys` / teams inventory expose `tpd` / `user_tpd`. Export/import round-trips the fields. Independent of RPD: a key can exhaust tokens/day while requests/day remain open.
+
 ```yaml
 rate_limit:
   rpm: 60

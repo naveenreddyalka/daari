@@ -528,11 +528,14 @@ class RateLimiter:
         team_tpm: int | None = None,
         rpd: int | None = None,
         team_rpd: int | None = None,
+        tpd: int | None = None,
+        team_tpd: int | None = None,
         family: str | None = None,
         family_rpm: int | None = None,
         family_tpm: int | None = None,
         user_id: str | None = None,
         user_rpd: int | None = None,
+        user_tpd: int | None = None,
     ) -> RateLimitDecision:
         key_rpm = self.default_rpm if rpm is None else rpm
         key_tpm = self.default_tpm if tpm is None else tpm
@@ -554,9 +557,13 @@ class RateLimiter:
         # 0 / unset = unlimited. Separate from rpm so a minute window can stay open (#717).
         key_rpd = 0 if rpd is None else int(rpd)
         agg_team_rpd = 0 if team_rpd is None else int(team_rpd)
+        # Tokens per UTC day (0 = unlimited). Same 86400s bucket as RPD (#2056).
+        key_tpd = 0 if tpd is None else int(tpd)
+        agg_team_tpd = 0 if team_tpd is None else int(team_tpd)
         fam = str(family or "").strip().lower() or None
         fam_rpm = 0 if family_rpm is None else max(0, int(family_rpm))
         fam_tpm = 0 if family_tpm is None else max(0, int(family_tpm))
+        token_amount = max(0, int(tokens))
 
         now = time.time()
         reset = (int(now // WINDOW_SECONDS) + 1) * WINDOW_SECONDS
@@ -614,6 +621,21 @@ class RateLimiter:
             checks.append((f"rpd:{key_id}", "rpd", "key", 1, key_rpd, DAY_SECONDS))
         if team_id and agg_team_rpd > 0:
             checks.append((f"rpd:team:{team_id}", "rpd", "team", 1, agg_team_rpd, DAY_SECONDS))
+        if key_tpd > 0:
+            checks.append(
+                (f"tpd:{key_id}", "tpd", "key", token_amount, key_tpd, DAY_SECONDS)
+            )
+        if team_id and agg_team_tpd > 0:
+            checks.append(
+                (
+                    f"tpd:team:{team_id}",
+                    "tpd",
+                    "team",
+                    token_amount,
+                    agg_team_tpd,
+                    DAY_SECONDS,
+                )
+            )
         # Per-end-user day cap on shared keys (#1911). Named user required; 0 = unlimited.
         named_user = (user_id or "").strip()
         per_user_rpd = 0 if user_rpd is None else max(0, int(user_rpd))
@@ -628,6 +650,18 @@ class RateLimiter:
                     DAY_SECONDS,
                 )
             )
+        per_user_tpd = 0 if user_tpd is None else max(0, int(user_tpd))
+        if named_user and per_user_tpd > 0:
+            checks.append(
+                (
+                    f"tpd:{key_id}:user:{named_user}",
+                    "tpd",
+                    "user",
+                    token_amount,
+                    per_user_tpd,
+                    DAY_SECONDS,
+                )
+            )
 
         for counter_key, scope, bucket, amount, limit, window_seconds in checks:
             count = self._increment(counter_key, amount, window_seconds=window_seconds)
@@ -637,7 +671,7 @@ class RateLimiter:
             # Day caps must not advertise the 1s rpm delay (#738).
             if not denied:
                 retry_after = None
-            elif scope == "rpd":
+            elif scope in ("rpd", "tpd"):
                 retry_after = max(1, int(window_reset - now))
             else:
                 retry_after = self.retry_after_seconds
@@ -837,30 +871,53 @@ class RateLimiter:
                         "remaining": max(0, rpd - used),
                     }
                 )
+            tpd = int(getattr(team, "tpd", 0) or 0)
+            if tpd > 0:
+                used = int(self._increment(f"tpd:team:{team_id}", 0, window_seconds=DAY_SECONDS))
+                rows.append(
+                    {
+                        "team": name,
+                        "kind": "tpd",
+                        "limit": tpd,
+                        "remaining": max(0, tpd - used),
+                    }
+                )
         return rows
 
     def key_rate_gauges(self, keys: list[Any]) -> list[dict[str, Any]]:
-        """Scrape-time RPD remaining for keys that opted into a day cap.
+        """Scrape-time RPD/TPD remaining for keys that opted into a day cap.
 
         Zero-increment read so a scrape does not consume the cap. The label is
         the key name, never the secret.
         """
         rows: list[dict[str, Any]] = []
         for key in keys:
-            rpd = int(getattr(key, "rpd", 0) or 0)
             key_id = str(getattr(key, "key_id", "") or "")
-            if rpd <= 0 or not key_id:
+            if not key_id:
                 continue
             name = str(getattr(key, "name", "") or "").strip() or key_id
-            used = int(self._increment(f"rpd:{key_id}", 0, window_seconds=DAY_SECONDS))
-            rows.append(
-                {
-                    "key": name,
-                    "kind": "rpd",
-                    "limit": rpd,
-                    "remaining": max(0, rpd - used),
-                }
-            )
+            rpd = int(getattr(key, "rpd", 0) or 0)
+            if rpd > 0:
+                used = int(self._increment(f"rpd:{key_id}", 0, window_seconds=DAY_SECONDS))
+                rows.append(
+                    {
+                        "key": name,
+                        "kind": "rpd",
+                        "limit": rpd,
+                        "remaining": max(0, rpd - used),
+                    }
+                )
+            tpd = int(getattr(key, "tpd", 0) or 0)
+            if tpd > 0:
+                used = int(self._increment(f"tpd:{key_id}", 0, window_seconds=DAY_SECONDS))
+                rows.append(
+                    {
+                        "key": name,
+                        "kind": "tpd",
+                        "limit": tpd,
+                        "remaining": max(0, tpd - used),
+                    }
+                )
         return rows
 
     def in_flight_gauges(
