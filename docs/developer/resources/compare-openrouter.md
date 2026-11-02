@@ -14,6 +14,14 @@ OpenRouter is a **hosted marketplace** (400+ models, one key, price/latency rout
 
 **Pick daari** when the goal is *not sending* most Cursor / Claude Code turns to any remote model.
 
+OpenRouter’s rebuilt [default provider routing](https://openrouter.ai/blog/announcements/how-we-rebuilt-provider-routing/)
+scores cloud endpoints on realized price, latency, throughput, and error rate.
+daari does not claim that marketplace. Opt-in
+`routing.virtual_model_selection: performance` applies a similar EWMA idea
+on-box across local tiers and estate OpenAI-compatible backends — no catalog
+telemetry leaves the machine (#2052). Broader honesty notes (CSAM / Private
+Endpoints) stay in the sections below (#2038).
+
 ## Private Endpoints vs local tiers
 
 OpenRouter [Private Endpoints](https://openrouter.ai/blog/announcements/private-endpoints/)

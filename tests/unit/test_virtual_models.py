@@ -275,3 +275,192 @@ def test_metrics_record_virtual_model_failover():
     assert metrics.virtual_model_failover == 2
     snap = metrics.snapshot(include_histograms=True)
     assert snap["virtual_model_failover"] == 2
+
+
+# --- performance-aware selection (#2052) ---
+
+
+def test_virtual_model_selection_default_ordered():
+    routing = RoutingSettings()
+    assert routing.virtual_model_selection == "ordered"
+
+
+def test_virtual_model_selection_rejects_unknown():
+    with pytest.raises(ValidationError):
+        RoutingSettings(virtual_model_selection="random")
+
+
+def test_ewma_erroring_candidate_loses_then_recovers():
+    from daari.router.virtual_models import (
+        VirtualModelPerformanceTracker,
+        order_virtual_candidates,
+    )
+
+    tracker = VirtualModelPerformanceTracker(alpha=0.5)
+    ordered = ["slow", "fast"]
+    # Cold: preserve config order.
+    assert order_virtual_candidates(
+        ordered, mode="performance", virtual_model="chat", tracker=tracker
+    ) == ["slow", "fast"]
+
+    for _ in range(5):
+        tracker.observe_error("chat", "slow")
+        tracker.observe_success("chat", "fast", latency_ms=50.0)
+
+    ranked = order_virtual_candidates(
+        ordered, mode="performance", virtual_model="chat", tracker=tracker
+    )
+    assert ranked[0] == "fast"
+    assert ranked[1] == "slow"
+
+    for _ in range(20):
+        tracker.observe_success("chat", "slow", latency_ms=40.0)
+
+    recovered = order_virtual_candidates(
+        ordered, mode="performance", virtual_model="chat", tracker=tracker
+    )
+    assert recovered[0] == "slow"
+
+
+def test_order_mode_untouched_by_tracker():
+    from daari.router.virtual_models import (
+        VirtualModelPerformanceTracker,
+        order_virtual_candidates,
+    )
+
+    tracker = VirtualModelPerformanceTracker()
+    tracker.observe_error("chat", "L3")
+    tracker.observe_success("chat", "L4", latency_ms=10.0)
+    assert order_virtual_candidates(
+        ["L3", "L4", "L6"],
+        mode="ordered",
+        virtual_model="chat",
+        tracker=tracker,
+    ) == ["L3", "L4", "L6"]
+
+
+def test_breaker_open_candidates_skipped_in_order():
+    from daari.router.virtual_models import order_virtual_candidates
+
+    result = order_virtual_candidates(
+        ["L3", "L4", "L5"],
+        mode="ordered",
+        virtual_model="chat",
+        tracker=None,
+        breaker_open=lambda c: c == "L3",
+    )
+    assert result == ["L4", "L5"]
+
+
+def test_metrics_record_virtual_model_selection_by_mode():
+    from daari.observability.prometheus import render_prometheus
+
+    metrics = Metrics()
+    metrics.record_virtual_model_selection("ordered")
+    metrics.record_virtual_model_selection("performance")
+    metrics.record_virtual_model_selection("performance")
+    snap = metrics.snapshot(include_histograms=True)
+    assert snap["virtual_model_selection"]["ordered"] == 1
+    assert snap["virtual_model_selection"]["performance"] == 2
+    assert snap["virtual_model_failover"] == 0
+    text = render_prometheus(metrics)
+    assert 'daari_virtual_model_selection_total{mode="ordered"} 1' in text
+    assert 'daari_virtual_model_selection_total{mode="performance"} 2' in text
+    assert "daari_virtual_model_failover_total 0" in text
+
+
+def test_performance_tracker_snapshot_shape():
+    from daari.router.virtual_models import VirtualModelPerformanceTracker
+
+    tracker = VirtualModelPerformanceTracker()
+    tracker.observe_success("chat", "L3", latency_ms=100.0)
+    tracker.observe_error("chat", "L4")
+    snap = tracker.snapshot()
+    assert "chat" in snap
+    assert "L3" in snap["chat"]
+    assert snap["chat"]["L3"]["latency_ms"] == pytest.approx(100.0)
+    assert snap["chat"]["L3"]["error_rate"] == pytest.approx(0.0)
+    assert snap["chat"]["L4"]["error_rate"] > 0
+
+
+@pytest.mark.asyncio
+async def test_performance_mode_prefers_healthy_candidate(settings, monkeypatch):
+    settings.routing.virtual_models = {"chat-default": ["L3", "L4"]}
+    settings.routing.virtual_model_selection = "performance"
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    tracker = app.state.ctx.router.virtual_model_perf
+    for _ in range(5):
+        tracker.observe_error("chat-default", "L3")
+        tracker.observe_success("chat-default", "L4", latency_ms=40.0)
+
+    calls: list[str] = []
+
+    async def run_tier(tier: str, request: InternalRequest):
+        calls.append(tier)
+        return InternalResponse(
+            content=f"from-{tier}",
+            model=getattr(settings.models, tier.lower()),
+            daari_meta=DaariMeta(tier=tier, executor="ollama", provider_id="ollama"),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router, "_run_model_tier", run_tier)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "chat-default",
+                "messages": [{"role": "user", "content": "prefer healthy"}],
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["daari_meta"]["virtual_candidate"] == "L4"
+    assert calls == ["L4"]
+    assert app.state.ctx.metrics.virtual_model_selection.get("performance", 0) >= 1
+
+
+@pytest.mark.asyncio
+async def test_ordered_mode_still_tries_first_candidate(settings, monkeypatch):
+    settings.routing.virtual_models = {"chat-default": ["L3", "L4"]}
+    settings.routing.virtual_model_selection = "ordered"
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    tracker = app.state.ctx.router.virtual_model_perf
+    for _ in range(5):
+        tracker.observe_error("chat-default", "L3")
+        tracker.observe_success("chat-default", "L4", latency_ms=40.0)
+
+    calls: list[str] = []
+
+    async def run_tier(tier: str, request: InternalRequest):
+        calls.append(tier)
+        return InternalResponse(
+            content=f"from-{tier}",
+            model=getattr(settings.models, tier.lower()),
+            daari_meta=DaariMeta(tier=tier, executor="ollama", provider_id="ollama"),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router, "_run_model_tier", run_tier)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "chat-default",
+                "messages": [{"role": "user", "content": "ordered first"}],
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200
+    assert response.json()["daari_meta"]["virtual_candidate"] == "L3"
+    assert calls == ["L3"]
+    assert app.state.ctx.metrics.virtual_model_selection.get("ordered", 0) >= 1

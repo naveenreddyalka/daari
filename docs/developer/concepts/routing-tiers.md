@@ -287,7 +287,7 @@ this escalation path is the single length hop.
 
 `routing.virtual_models` (default `{}`) maps a stable client-facing name to an
 ordered list of candidate model ids. When `request.model` matches a name, the
-router tries each candidate in order and stops on the first success:
+router tries each candidate and stops on the first success:
 
 ```yaml
 routing:
@@ -296,14 +296,24 @@ routing:
       - L3                 # local tier (or models.l3 / models.l4 / models.l5 id)
       - L5
       - openai/gpt-4o-mini # L6 / provider-style frontier id
+  # ordered (default) = config list order; performance = EWMA latency/error (#2052)
+  virtual_model_selection: ordered
 ```
 
-On typed `BackendUnavailable` / circuit-open for a local candidate, the router
-continues to the next id and increments `daari_virtual_model_failover_total`
-(no per-candidate labels). Before any L6 candidate it still honors
-`no_frontier`, allowlists, budgets, and PII scrub. `daari_meta.virtual_model`
-and `daari_meta.virtual_candidate` record the name and the id that served.
-An empty map leaves today's routing unchanged. Doctor warns on empty lists or
+`routing.virtual_model_selection` defaults to `ordered` (shipped behavior). Set
+`performance` to prefer the healthiest candidate by an in-process EWMA of
+realized latency and error rate (config position is the tiebreak). Breaker-open
+candidates are skipped using the existing circuit state. Failover on typed
+`BackendUnavailable` is unchanged and still increments
+`daari_virtual_model_failover_total`. Selection decisions emit
+`daari_virtual_model_selection_total{mode=...}` and a `virtual_model_selection`
+gateway event; `GET /v1/daari/stats` exposes `virtual_model_performance` (per
+candidate EWMA). Stats are process-local in v1 (no fleet/Redis share yet).
+
+Before any L6 candidate the router still honors `no_frontier`, allowlists,
+budgets, and PII scrub. `daari_meta.virtual_model` and
+`daari_meta.virtual_candidate` record the name and the id that served. An empty
+map leaves today's routing unchanged. Doctor warns on empty lists or
 unknown-looking ids. Editable live via GET/PATCH `/v1/daari/config` ownership
 (full map replacement; empty names/lists 400; unknown-looking candidates stay
 soft warnings) (#2051).
