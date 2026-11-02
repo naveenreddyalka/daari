@@ -516,6 +516,7 @@ class Router:
         local_pool: Any | None = None,
         local_pool_frontier_fallback: bool = False,
         virtual_models: dict[str, list[str]] | None = None,
+        virtual_model_selection: str = "ordered",
         virtual_classify_settings: Any | None = None,
         reasoning_effort_escalation: bool = False,
         stall_escalation: bool = False,
@@ -690,6 +691,13 @@ class Router:
         self.local_pool = local_pool
         self.local_pool_frontier_fallback = bool(local_pool_frontier_fallback)
         self.virtual_models = dict(virtual_models or {})
+        sel = (virtual_model_selection or "ordered").strip().lower() or "ordered"
+        self.virtual_model_selection = (
+            sel if sel in {"ordered", "performance"} else "ordered"
+        )
+        from daari.router.virtual_models import VirtualModelPerformanceTracker
+
+        self.virtual_model_perf = VirtualModelPerformanceTracker()
         self.virtual_classify_settings = virtual_classify_settings
 
     @property
@@ -5730,27 +5738,63 @@ class Router:
         started: float,
         profile: PromptProfile | None,
     ) -> InternalResponse | None:
-        """Serve ``routing.virtual_models`` ordered candidates (#2023).
+        """Serve ``routing.virtual_models`` candidates (#2023, #2052).
 
         Returns None when the request model is not a configured virtual name
-        so the normal tier path runs. On typed BackendUnavailable for a local
-        candidate (or a skipped/unreachable L6 candidate), continues to the
-        next and increments ``virtual_model_failover``. Exhaustion re-raises
-        the last BackendUnavailable (or raises one) for a typed 503.
+        so the normal tier path runs. Selection mode ``ordered`` (default) keeps
+        config order; ``performance`` reorders by in-process EWMA health.
+        Breaker-open candidates are skipped. On typed BackendUnavailable,
+        continues to the next and increments ``virtual_model_failover``.
+        Exhaustion re-raises the last BackendUnavailable (or raises one).
         """
+        import time as _time
+
+        from daari.gateway.request_log import log_gateway_event
         from daari.router.local_pool import BackendUnavailable
-        from daari.router.virtual_models import classify_candidate, resolve_virtual_candidates
+        from daari.router.virtual_models import (
+            candidate_breaker_open,
+            classify_candidate,
+            order_virtual_candidates,
+            resolve_virtual_candidates,
+        )
 
         virtual_name = (request.model or "").strip()
-        candidates = resolve_virtual_candidates(virtual_name, self.virtual_models)
-        if not candidates:
+        configured = resolve_virtual_candidates(virtual_name, self.virtual_models)
+        if not configured:
             return None
 
         settings = self.virtual_classify_settings
+        mode = getattr(self, "virtual_model_selection", "ordered") or "ordered"
+        tracker = getattr(self, "virtual_model_perf", None)
+        candidates = order_virtual_candidates(
+            configured,
+            mode=mode,
+            virtual_model=virtual_name,
+            tracker=tracker,
+            breaker_open=lambda c: candidate_breaker_open(self, c, settings),
+        )
+        if hasattr(self.metrics, "record_virtual_model_selection"):
+            self.metrics.record_virtual_model_selection(mode)
+        log_gateway_event(
+            "virtual_model_selection",
+            {
+                "virtual_model": virtual_name,
+                "mode": mode,
+                "configured": list(configured),
+                "ordered": list(candidates),
+            },
+        )
+        if not candidates:
+            raise BackendUnavailable(
+                "virtual",
+                f"virtual model {virtual_name!r} has no candidates with closed breakers",
+            )
+
         last_exc: BaseException | None = None
         hops = 0
         for index, candidate in enumerate(candidates):
             kind, target = classify_candidate(candidate, settings)
+            hop_started = _time.monotonic()
             try:
                 if kind == "local":
                     response = await self._run_model_tier(target, gen_request)
@@ -5787,6 +5831,12 @@ class Router:
                     self.metrics.record_escalation()
             except BackendUnavailable as exc:
                 last_exc = exc
+                if tracker is not None:
+                    tracker.observe_error(
+                        virtual_name,
+                        candidate,
+                        latency_ms=(_time.monotonic() - hop_started) * 1000.0,
+                    )
                 if index + 1 < len(candidates):
                     hops += 1
                     if hasattr(self.metrics, "record_virtual_model_failover"):
@@ -5797,8 +5847,6 @@ class Router:
                         failed_candidate=candidate,
                         next_candidate=candidates[index + 1],
                     )
-                    from daari.gateway.request_log import log_gateway_event
-
                     log_gateway_event(
                         "virtual_model_failover",
                         {
@@ -5811,6 +5859,9 @@ class Router:
                     continue
                 raise
 
+            latency_ms = (_time.monotonic() - hop_started) * 1000.0
+            if tracker is not None:
+                tracker.observe_success(virtual_name, candidate, latency_ms=latency_ms)
             response.daari_meta.virtual_model = virtual_name
             response.daari_meta.virtual_candidate = candidate
             add_step(
@@ -5818,6 +5869,7 @@ class Router:
                 virtual_model=virtual_name,
                 candidate=candidate,
                 hops=hops,
+                selection_mode=mode,
             )
             return response
 
@@ -7057,6 +7109,9 @@ class AppContext:
                 getattr(getattr(settings.routing, "local_pool", None), "frontier_fallback", False)
             ),
             virtual_models=dict(getattr(settings.routing, "virtual_models", None) or {}),
+            virtual_model_selection=str(
+                getattr(settings.routing, "virtual_model_selection", "ordered") or "ordered"
+            ),
             virtual_classify_settings=settings,
             reasoning_effort_escalation=settings.routing.reasoning_effort_escalation,
             stall_escalation=settings.routing.stall_escalation.enabled,

@@ -1973,7 +1973,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ),
                 "mcp_grant_denied": int(full.get("mcp_grant_denied") or 0),
                 "agent_access_denied": int(full.get("agent_access_denied") or 0),
+                "virtual_model_failover": int(full.get("virtual_model_failover") or 0),
+                "virtual_model_selection": dict(full.get("virtual_model_selection") or {}),
             }
+            perf = getattr(getattr(ctx, "router", None), "virtual_model_perf", None)
+            if perf is not None and hasattr(perf, "snapshot"):
+                payload["virtual_model_performance"] = perf.snapshot()
             if scope:
                 payload["team_id"] = scope
             return payload

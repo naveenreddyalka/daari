@@ -266,6 +266,19 @@ def render_prometheus(
         f"daari_virtual_model_failover_total {snap.get('virtual_model_failover', 0)}"
     )
     lines.append(
+        "# HELP daari_virtual_model_selection_total Virtual-model candidate "
+        "list orderings by mode (ordered|performance)."
+    )
+    lines.append("# TYPE daari_virtual_model_selection_total counter")
+    selections = snap.get("virtual_model_selection") or {}
+    if not selections:
+        lines.append("daari_virtual_model_selection_total 0")
+    else:
+        for mode, count in sorted(selections.items()):
+            lines.append(
+                f"daari_virtual_model_selection_total{_labels(mode=str(mode))} {int(count)}"
+            )
+    lines.append(
         "# HELP daari_signal_override_total routing.signal_overrides matches "
         "that applied a category / max_tier / tier_pin lever."
     )

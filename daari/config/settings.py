@@ -1167,11 +1167,30 @@ class RoutingSettings(RuntimeSettings):
             "replacement) (#2051)."
         ),
     )
+    virtual_model_selection: Literal["ordered", "performance"] = Field(
+        default="ordered",
+        description=(
+            "How to order virtual_models candidates before failover (#2052). "
+            "'ordered' (default) keeps the configured list order. 'performance' "
+            "prefers the healthiest candidate by in-process EWMA of realized "
+            "latency and error rate (config position is the tiebreak); breaker-open "
+            "candidates are skipped. Strict failover on BackendUnavailable is "
+            "unchanged. Stats expose the EWMA snapshot; fleet/Redis sharing is "
+            "out of scope for v1."
+        ),
+    )
 
     @field_validator("shadow_compare_tier", mode="before")
     @classmethod
     def _upper_tier(cls, value: Any) -> Any:
         return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("virtual_model_selection", mode="before")
+    @classmethod
+    def _virtual_model_selection_lower(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
 
     @field_validator("virtual_models")
     @classmethod

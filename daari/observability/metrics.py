@@ -284,6 +284,8 @@ class Metrics:
     stream_fallback_continue: int = 0
     # Virtual-model candidate hops (failed → next) — no per-candidate labels (#2023).
     virtual_model_failover: int = 0
+    # mode (ordered|performance) → count of virtual-model selection decisions (#2052).
+    virtual_model_selection: dict[str, int] = field(default_factory=dict)
     # rule id → count for routing.signal_overrides (#1996).
     signal_override: dict[str, int] = field(default_factory=dict)
     mcp_grant_denied: int = 0
@@ -544,6 +546,14 @@ class Metrics:
         with self._lock:
             self.virtual_model_failover += 1
 
+    def record_virtual_model_selection(self, mode: str) -> None:
+        """Record how a virtual-model candidate list was ordered (#2052)."""
+        label = (mode or "ordered").strip().lower() or "ordered"
+        if label not in {"ordered", "performance"}:
+            label = "ordered"
+        with self._lock:
+            self.virtual_model_selection[label] = self.virtual_model_selection.get(label, 0) + 1
+
     def record_signal_override(self, *, rule: str, scope: str = "global") -> None:
         """A signal_overrides rule matched and applied a lever (#1996/#2050)."""
         label = (rule or "anonymous").strip() or "anonymous"
@@ -696,6 +706,7 @@ class Metrics:
                 "compact_to_fit_tokens_dropped": self.compact_to_fit_tokens_dropped,
                 "stream_fallback_continue": self.stream_fallback_continue,
                 "virtual_model_failover": self.virtual_model_failover,
+                "virtual_model_selection": dict(self.virtual_model_selection),
                 "signal_override": dict(self.signal_override),
                 "mcp_grant_denied": self.mcp_grant_denied,
                 "agent_access_denied": self.agent_access_denied,

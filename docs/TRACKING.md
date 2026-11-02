@@ -8526,6 +8526,16 @@ allowlist; GET inventory + PATCH full map replacement (empty names/lists
 400; unknown candidates soft). Router reloads without restart. Covered by
 `tests/unit/test_config_ownership.py`.
 
+### Performance-aware virtual-model candidate selection ([#2052](https://github.com/naveenreddyalka/daari/issues/2052))
+
+<!-- tracking:#2052 -->
+**Status:** Done (2026-11-02). Opt-in `routing.virtual_model_selection:
+performance` reorders virtual-model candidates by in-process EWMA of latency
+and error rate (default `ordered` unchanged). Breaker-open candidates skipped;
+failover counter unchanged; `daari_virtual_model_selection_total{mode}` added;
+stats expose `virtual_model_performance`. Docs: routing-tiers + compare-openrouter
+honesty line. Covered by `tests/unit/test_virtual_models.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
