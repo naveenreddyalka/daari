@@ -440,6 +440,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                     },
                 )
             from daari.gateway.model_access import (
+                reject_deprecated_anthropic_speed,
                 reject_disallowed_model,
                 reject_retired_model,
             )
@@ -450,6 +451,11 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             retired = reject_retired_model(request, body.model, ctx.settings)
             if retired is not None:
                 return retired
+            speed_gone = reject_deprecated_anthropic_speed(
+                body.model, body.speed, ctx.settings
+            )
+            if speed_gone is not None:
+                return speed_gone
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             # Per-end-user daily cap on shared virtual keys (#1933). metadata.user_id

@@ -191,6 +191,36 @@ def reject_retired_model(
     return JSONResponse(status_code=410, content={"error": error})
 
 
+def reject_deprecated_anthropic_speed(
+    model: str | None,
+    speed: str | None,
+    settings: Any,
+) -> JSONResponse | None:
+    """400 when a removed model+speed combo is requested without degrade (#2053)."""
+    from daari.pricing import resolve_anthropic_speed_lifecycle
+
+    decision = resolve_anthropic_speed_lifecycle(
+        model=model, speed=speed, settings=settings
+    )
+    if decision.action != "reject" or not decision.reject_detail:
+        return None
+    log_gateway_event(
+        "deprecated_speed_rejected",
+        {"model": model, "speed": speed, "detail": decision.reject_detail},
+    )
+    return JSONResponse(
+        status_code=400,
+        content={
+            "detail": decision.reject_detail,
+            "error": {
+                "type": "invalid_request_error",
+                "code": "deprecated_speed_removed",
+                "message": decision.reject_detail,
+            },
+        },
+    )
+
+
 def reject_model_group_budget(
     request: Any,
     model: str,

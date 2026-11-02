@@ -15,6 +15,8 @@ rate fields on that entry still override the aliased values.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime
+from typing import Any
 
 # OpenAI / Anthropic / OpenRouter service_tier multipliers (#430).
 # `fast` is OpenAI's 30 Jul 2026 rename of Priority (same 2× Standard) (#1527).
@@ -44,6 +46,24 @@ _ANTHROPIC_FAST_MODELS = (
 _ANTHROPIC_FAST_PREVIEW = frozenset({"claude-opus-5", "claude-opus-4.8", "claude-opus-4-8"})
 # Astra Ultrafast supports US residency + global only; EU pin is unsupported.
 _ULTRAFAST_EU_UNSUPPORTED = frozenset({"gpt-6-astra"})
+
+# Model+speed deprecations the model-level lifecycle table cannot express (#2053).
+# Seeded for Anthropic's Opus 4.8 fast-mode removal (deprecated 2026-10-30,
+# removed 2026-11-30; migrate to Opus 5.5).
+_DEFAULT_ANTHROPIC_SPEED_LIFECYCLE: dict[str, dict[str, Any]] = {
+    "claude-opus-4-8": {
+        "speed": "fast",
+        "deprecated_at": "2026-10-30",
+        "removed_at": "2026-11-30",
+        "migrate_to": "claude-opus-5-5",
+    },
+    "claude-opus-4.8": {
+        "speed": "fast",
+        "deprecated_at": "2026-10-30",
+        "removed_at": "2026-11-30",
+        "migrate_to": "claude-opus-5-5",
+    },
+}
 
 # OpenAI regional processing (data residency) is 1.10× for models released on
 # or after 2026-03-05 when a us/eu pin is active (#1531). FedRAMP is out of scope.
@@ -175,6 +195,137 @@ def anthropic_fast_mode_spec(model: str | None) -> dict[str, bool] | None:
     if matched is None:
         return None
     return {"supported": True, "beta_header": matched in _ANTHROPIC_FAST_PREVIEW}
+
+
+@dataclass(frozen=True)
+class AnthropicSpeedLifecycleDecision:
+    """Outcome of a model+speed deprecation check (#2053)."""
+
+    action: str  # allow | warn | reject | degrade
+    speed: str | None
+    warning: str | None = None
+    reject_detail: str | None = None
+
+
+def _parse_lifecycle_day(raw: object) -> date | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _speed_lifecycle_today(
+    settings: Any | None,
+    now: date | datetime | None,
+) -> date:
+    if now is not None:
+        if isinstance(now, datetime):
+            return now.date()
+        return now
+    if settings is not None:
+        models = getattr(settings, "models", None)
+        override = getattr(models, "speed_lifecycle_as_of", None) if models else None
+        parsed = _parse_lifecycle_day(override)
+        if parsed is not None:
+            return parsed
+    return date.today()
+
+
+def merged_anthropic_speed_lifecycle(settings: Any | None = None) -> dict[str, dict[str, Any]]:
+    """Stock Anthropic speed sunsets under operator ``models.speed_lifecycle`` (#2053)."""
+    raw: dict[str, Any] = {}
+    if settings is not None:
+        raw = getattr(getattr(settings, "models", None), "speed_lifecycle", None) or {}
+    if not isinstance(raw, dict):
+        raw = {}
+    merged: dict[str, dict[str, Any]] = {
+        key: dict(value) for key, value in _DEFAULT_ANTHROPIC_SPEED_LIFECYCLE.items()
+    }
+    for key, value in raw.items():
+        if isinstance(value, dict):
+            merged[str(key)] = dict(value)
+    return merged
+
+
+def lookup_anthropic_speed_lifecycle(
+    model: str | None,
+    speed: str | None,
+    settings: Any | None = None,
+) -> dict[str, Any] | None:
+    """Return the speed-lifecycle entry for ``model``+``speed``, or None."""
+    if speed is None or str(speed).strip().lower() != "fast":
+        return None
+    table = merged_anthropic_speed_lifecycle(settings)
+    matched = matching_model_key(model or "", table.keys()) if model else None
+    if matched is None:
+        return None
+    entry = table.get(matched) or {}
+    if str(entry.get("speed") or "").strip().lower() != "fast":
+        return None
+    return dict(entry)
+
+
+def resolve_anthropic_speed_lifecycle(
+    *,
+    model: str | None,
+    speed: str | None,
+    settings: Any | None = None,
+    now: date | datetime | None = None,
+    anthropic_beta: str | None = None,
+    degrade_deprecated_speed: bool | None = None,
+) -> AnthropicSpeedLifecycleDecision:
+    """Warn / reject / degrade ``speed=fast`` on sunset models (#2053).
+
+    ``anthropic_beta`` is accepted for call-site symmetry with
+    ``resolve_anthropic_speed``; lifecycle keys off the requested combo.
+    """
+    del anthropic_beta  # reserved for future beta-scoped sunsets
+    entry = lookup_anthropic_speed_lifecycle(model, speed, settings)
+    if entry is None:
+        return AnthropicSpeedLifecycleDecision(action="allow", speed=speed)
+    removed_at = _parse_lifecycle_day(entry.get("removed_at"))
+    deprecated_at = _parse_lifecycle_day(entry.get("deprecated_at"))
+    migrate_to = str(entry.get("migrate_to") or "").strip() or "claude-opus-5-5"
+    today = _speed_lifecycle_today(settings, now)
+    removed = removed_at is not None and today >= removed_at
+    deprecated = deprecated_at is not None and today >= deprecated_at
+    if degrade_deprecated_speed is None and settings is not None:
+        models = getattr(settings, "models", None)
+        degrade_deprecated_speed = bool(
+            getattr(models, "degrade_deprecated_speed", False) if models else False
+        )
+    degrade = bool(degrade_deprecated_speed)
+    removal_label = removed_at.isoformat() if removed_at else "unknown"
+    if removed:
+        detail = (
+            f"speed=fast on {model} was removed on {removal_label}; "
+            f"migrate to {migrate_to} "
+            "(set models.degrade_deprecated_speed=true to strip speed and continue)"
+        )
+        if degrade:
+            return AnthropicSpeedLifecycleDecision(
+                action="degrade",
+                speed=None,
+                warning="deprecated_speed_degraded",
+            )
+        return AnthropicSpeedLifecycleDecision(
+            action="reject",
+            speed=None,
+            reject_detail=detail,
+        )
+    if deprecated or removed_at is not None:
+        warning = (
+            f"fast_speed_deprecated:removed_at={removal_label}:migrate_to={migrate_to}"
+        )
+        return AnthropicSpeedLifecycleDecision(
+            action="warn",
+            speed="fast" if str(speed or "").strip().lower() == "fast" else speed,
+            warning=warning,
+        )
+    return AnthropicSpeedLifecycleDecision(action="allow", speed=speed)
 
 
 @dataclass(frozen=True)
