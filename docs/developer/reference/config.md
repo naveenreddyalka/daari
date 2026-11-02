@@ -58,6 +58,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `models.capabilities` | dict | `{}` |  |
 | `models.lifecycle` | dict | `{}` |  |
 | `models.reject_retired` | bool | `True` | When true (default), chat/messages/responses to a model whose catalog lifecycle is retired return HTTP 410 instead of routing (fail-closed). |
+| `models.speed_lifecycle` | dict | `{}` | Operator overrides for model+speed sunsets, merged over the shipped Anthropic Opus 4.8 fast-mode removal. Shape: {model_id: {speed, deprecated_at, removed_at, migrate_to}}. |
+| `models.degrade_deprecated_speed` | bool | `False` | When true, after a speed-lifecycle removed_at date strip ``speed`` and continue with soft_warning deprecated_speed_degraded instead of HTTP 400. |
+| `models.speed_lifecycle_as_of` | str | None | `None` | Optional YYYY-MM-DD operator clock for speed-lifecycle checks (tests and staged cutovers). None uses the host date. |
 | `models.timeout_s` | dict | `{}` | Optional per-tier request timeout in seconds (keys L3/L4/L5). Unset tiers use `upstream.local_timeout_seconds`. |
 | `ollama.base_url` | str | `'http://127.0.0.1:11434'` |  |
 | `systemone.enabled` | bool | `True` | When true, POST /v1/systemone proxies to systemone.base_url when set, otherwise ollama.base_url, and local decisions ids are advertised on GET /v1/models (OpenAI list tag `decision` and Anthropic `capabilities.decision.supported`) and Ollama /api/tags with capability decision. When false, the route returns 501 not_implemented and discovery omits those ids. |

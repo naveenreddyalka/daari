@@ -284,6 +284,30 @@ class ModelsSettings(BaseModel):
             "lifecycle is retired return HTTP 410 instead of routing (fail-closed)."
         ),
     )
+    # Model+speed sunsets (Anthropic Opus 4.8 fast removal) (#2053).
+    # Shape: {model_id: {speed, deprecated_at, removed_at, migrate_to}}.
+    speed_lifecycle: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description=(
+            "Operator overrides for model+speed sunsets, merged over the shipped "
+            "Anthropic Opus 4.8 fast-mode removal. Shape: "
+            "{model_id: {speed, deprecated_at, removed_at, migrate_to}}."
+        ),
+    )
+    degrade_deprecated_speed: bool = Field(
+        default=False,
+        description=(
+            "When true, after a speed-lifecycle removed_at date strip ``speed`` and "
+            "continue with soft_warning deprecated_speed_degraded instead of HTTP 400."
+        ),
+    )
+    speed_lifecycle_as_of: str | None = Field(
+        default=None,
+        description=(
+            "Optional YYYY-MM-DD operator clock for speed-lifecycle checks "
+            "(tests and staged cutovers). None uses the host date."
+        ),
+    )
     timeout_s: dict[str, float] = Field(
         default_factory=dict,
         description=(
@@ -1448,6 +1472,13 @@ def merged_model_lifecycle(settings: Any = None) -> dict[str, dict[str, Any]]:
         if isinstance(value, dict):
             merged[str(key)] = dict(value)
     return merged
+
+
+def merged_anthropic_speed_lifecycle(settings: Any = None) -> dict[str, dict[str, Any]]:
+    """Re-export: stock Anthropic speed sunsets + operator overrides (#2053)."""
+    from daari.pricing import merged_anthropic_speed_lifecycle as _merged
+
+    return _merged(settings)
 
 
 # List prices captured 2026-09-07. These move, so treat the table as a

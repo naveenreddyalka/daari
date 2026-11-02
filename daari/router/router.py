@@ -726,8 +726,12 @@ class Router:
         )
 
     def _gate_client_tiers(self, request: InternalRequest) -> str | None:
-        """Clear unsupported Ultrafast / Anthropic fast mode before egress (#1519, #1702)."""
-        from daari.pricing import resolve_anthropic_speed, resolve_service_tier_for_request
+        """Clear unsupported Ultrafast / Anthropic fast mode before egress (#1519, #1702, #2053)."""
+        from daari.pricing import (
+            resolve_anthropic_speed,
+            resolve_anthropic_speed_lifecycle,
+            resolve_service_tier_for_request,
+        )
 
         tier_decision = resolve_service_tier_for_request(
             model=request.model,
@@ -736,14 +740,40 @@ class Router:
         )
         if request.sampling.service_tier != tier_decision.service_tier:
             request.sampling.service_tier = tier_decision.service_tier
-        speed_decision = resolve_anthropic_speed(
+        requested_speed = getattr(request.sampling, "speed", None)
+        life = resolve_anthropic_speed_lifecycle(
             model=request.model,
-            speed=getattr(request.sampling, "speed", None),
+            speed=requested_speed,
+            settings=getattr(self, "virtual_classify_settings", None),
             anthropic_beta=getattr(request.meta, "anthropic_beta", None),
         )
-        if request.sampling.speed != speed_decision.speed:
-            request.sampling.speed = speed_decision.speed
-        warnings = [w for w in (tier_decision.warning, speed_decision.warning) if w]
+        warnings: list[str] = []
+        if tier_decision.warning:
+            warnings.append(tier_decision.warning)
+        if life.action == "reject":
+            # Gateway should 400 before route; if we get here, strip and surface.
+            request.sampling.speed = None
+            if life.reject_detail:
+                warnings.append(life.reject_detail)
+        elif life.action == "degrade":
+            request.sampling.speed = None
+            if life.warning:
+                warnings.append(life.warning)
+            metrics = getattr(self, "metrics", None)
+            if metrics is not None and hasattr(metrics, "record_soft_warning"):
+                metrics.record_soft_warning("deprecated_speed_degraded")
+        else:
+            speed_decision = resolve_anthropic_speed(
+                model=request.model,
+                speed=requested_speed,
+                anthropic_beta=getattr(request.meta, "anthropic_beta", None),
+            )
+            if request.sampling.speed != speed_decision.speed:
+                request.sampling.speed = speed_decision.speed
+            if speed_decision.warning:
+                warnings.append(speed_decision.warning)
+            if life.action == "warn" and life.warning:
+                warnings.append(life.warning)
         request.sampling.gate_warning = "; ".join(warnings) or None
         return request.sampling.gate_warning
 

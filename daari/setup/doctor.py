@@ -149,6 +149,7 @@ def run_doctor(
     if body_cap_tip is not None:
         results.append(body_cap_tip)
     results.append(_check_model_lifecycle(cfg))
+    results.append(_check_anthropic_speed_lifecycle(cfg))
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
@@ -2554,6 +2555,104 @@ def _check_model_lifecycle(settings: Settings) -> CheckResult:
         name="model_lifecycle",
         ok=True,
         detail="configured tier/frontier/pool models are active",
+        optional=True,
+    )
+
+
+def _check_anthropic_speed_lifecycle(settings: Settings) -> CheckResult:
+    """Tip when config or recent spend still uses a sunset Anthropic speed (#2053)."""
+    from daari.pricing import (
+        _parse_lifecycle_day,
+        _speed_lifecycle_today,
+        merged_anthropic_speed_lifecycle,
+    )
+
+    table = merged_anthropic_speed_lifecycle(settings)
+    today = _speed_lifecycle_today(settings, None)
+    hits: list[str] = []
+    configured: list[tuple[str, str]] = []
+    models = settings.models
+    for label, name in (
+        ("models.l3", models.l3),
+        ("models.l4", models.l4),
+        ("models.l5", models.l5),
+    ):
+        text = (name or "").strip()
+        if text:
+            configured.append((label, text))
+    frontier = settings.frontier
+    text = (getattr(frontier, "model", "") or "").strip()
+    if text:
+        configured.append(("frontier.model", text))
+    for index, provider in enumerate(list(getattr(frontier, "providers", None) or [])):
+        pmodel = (getattr(provider, "model", "") or "").strip()
+        if pmodel:
+            pid = (getattr(provider, "id", "") or "").strip() or str(index)
+            configured.append((f"frontier.providers[{pid}].model", pmodel))
+    pool = getattr(settings.routing, "local_pool", None)
+    backends = list(getattr(pool, "backends", None) or []) if pool is not None else []
+    for index, backend in enumerate(backends):
+        text = (getattr(backend, "model", "") or "").strip()
+        if text:
+            bid = (getattr(backend, "id", "") or "").strip() or str(index)
+            configured.append((f"routing.local_pool.backends[{bid}].model", text))
+
+    from daari.pricing import matching_model_key
+
+    for label, name in configured:
+        matched = matching_model_key(name, table.keys())
+        if matched is None:
+            continue
+        entry = table[matched]
+        removed = _parse_lifecycle_day(entry.get("removed_at"))
+        migrate = str(entry.get("migrate_to") or "").strip() or "claude-opus-5-5"
+        removed_label = removed.isoformat() if removed else "unknown"
+        stage = "removed" if removed is not None and today >= removed else "deprecated"
+        hits.append(
+            f"{label}={name} speed={entry.get('speed')} ({stage}; "
+            f"removed_at={removed_label}; migrate_to={migrate})"
+        )
+
+    spend = getattr(getattr(settings, "usage", None), "spend", None)
+    if spend is not None and bool(getattr(spend, "enabled", False)):
+        try:
+            from daari.observability.spend import spend_ledger_from_settings
+
+            ledger = spend_ledger_from_settings(settings)
+            for row in ledger.iter_rows(since="2000-01-01T00:00:00+00:00", usage_speed="fast"):
+                model = str(row.get("model") or "")
+                matched = matching_model_key(model, table.keys()) if model else None
+                if matched is None:
+                    continue
+                entry = table[matched]
+                removed = _parse_lifecycle_day(entry.get("removed_at"))
+                migrate = str(entry.get("migrate_to") or "").strip() or "claude-opus-5-5"
+                removed_label = removed.isoformat() if removed else "unknown"
+                hits.append(
+                    f"recent spend model={model} usage_speed=fast "
+                    f"(removed_at={removed_label}; migrate_to={migrate})"
+                )
+                break
+        except Exception:
+            pass
+
+    if hits:
+        return CheckResult(
+            name="anthropic_speed_lifecycle",
+            ok=False,
+            detail=(
+                "Anthropic speed lifecycle pressure: "
+                + "; ".join(hits[:6])
+                + (f" (+{len(hits) - 6} more)" if len(hits) > 6 else "")
+                + " — migrate off speed=fast on sunset ids or set "
+                "models.degrade_deprecated_speed after removal"
+            ),
+            optional=True,
+        )
+    return CheckResult(
+        name="anthropic_speed_lifecycle",
+        ok=True,
+        detail="no Anthropic speed-lifecycle pressure on configured models or spend",
         optional=True,
     )
 

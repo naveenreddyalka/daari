@@ -8536,6 +8536,17 @@ failover counter unchanged; `daari_virtual_model_selection_total{mode}` added;
 stats expose `virtual_model_performance`. Docs: routing-tiers + compare-openrouter
 honesty line. Covered by `tests/unit/test_virtual_models.py`.
 
+### Speed-scoped lifecycle shield for Opus 4.8 fast removal ([#2053](https://github.com/naveenreddyalka/daari/issues/2053))
+
+<!-- tracking:#2053 -->
+**Status:** Done (2026-11-02). Parallel Anthropic speed-lifecycle table seeds
+`claude-opus-4-8` / `claude-opus-4.8` fast deprecated 2026-10-30, removed
+2026-11-30, migrate to `claude-opus-5-5`. Pre-removal requests warn via
+`daari_meta` / gate; post-removal default HTTP 400; opt-in
+`models.degrade_deprecated_speed` strips speed with soft_warning
+`deprecated_speed_degraded` (standard billing). Doctor tip on config or recent
+fast spend. Covered by `tests/unit/test_anthropic_speed_lifecycle.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
