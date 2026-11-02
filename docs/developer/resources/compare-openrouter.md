@@ -14,13 +14,33 @@ OpenRouter is a **hosted marketplace** (400+ models, one key, price/latency rout
 
 **Pick daari** when the goal is *not sending* most Cursor / Claude Code turns to any remote model.
 
-OpenRouter’s rebuilt [default provider routing](https://openrouter.ai/blog/announcements/how-we-rebuilt-provider-routing/)
-scores cloud endpoints on realized price, latency, throughput, and error rate.
-daari does not claim that marketplace. Opt-in
-`routing.virtual_model_selection: performance` applies a similar EWMA idea
-on-box across local tiers and estate OpenAI-compatible backends — no catalog
-telemetry leaves the machine (#2052). Broader honesty notes (CSAM / Private
-Endpoints) stay in the sections below (#2038).
+## Rebuilt default provider routing (2026-10-28)
+
+OpenRouter's [rebuilt default provider routing](https://openrouter.ai/blog/announcements/how-we-rebuilt-provider-routing/)
+(28 Oct 2026) live-scores cloud endpoints on **realized price, TTFT,
+throughput, and error rate**. Their published deltas: **−16.9% median TTFT**,
+**−46% capacity 429s**, and about **6% lower cost**. Caller soft-reorder knobs
+`preferred_min_throughput` / `preferred_max_latency` (percentile-aware) are
+documented on OpenRouter's
+[provider routing](https://openrouter.ai/docs/guides/routing/provider-selection)
+page — they bias the marketplace pick without hard-failing when no endpoint
+meets the threshold.
+
+**daari stance (local-first):** that marketplace optimizer is not a clone
+target. What ships on-box:
+
+- **Ordered** `routing.virtual_models` failover — list order is the default
+  candidate walk (breaker-open hops skipped).
+- **Performance-aware** selection — opt-in
+  `routing.virtual_model_selection: performance` reorders candidates by
+  in-process EWMA of latency and error rate across local tiers and estate
+  OpenAI-compatible backends (#2052). No catalog telemetry leaves the machine.
+
+daari does **not** claim OpenRouter Private Endpoints or CSAM in-flight
+screening parity here — those trust boundaries stay in the sections below
+(#2038). Soft throughput/latency *caller* knobs like OpenRouter's
+`preferred_*` thresholds are a marketplace feature; daari's counter is the
+virtual-model selection modes above, not a hosted percentile router.
 
 ## Private Endpoints vs local tiers
 

@@ -8559,6 +8559,16 @@ gauges emit `kind="tpd"`. Doctor tips when tpd is set (estimator honesty;
 zero-token never debits). Docs: auth-and-keys, metrics-prometheus,
 compare-litellm watch note. Covered by `tests/unit/test_tpd.py`.
 
+### Docs: OpenRouter rebuilt performance-router honesty ([#2057](https://github.com/naveenreddyalka/daari/issues/2057))
+
+<!-- tracking:#2057 -->
+**Status:** Done (2026-11-02). `compare-openrouter.md` subsection for the
+2026-10-28 rebuilt default routing (price/TTFT/throughput/errors, published
+deltas, `preferred_*` soft knobs) with daari stance: ordered virtual-models
+failover plus shipped `routing.virtual_model_selection: performance` on-box
+EWMA (#2052); no Private Endpoints / CSAM claim. `compare.md` matrix row
+aligned. Covered by `tests/unit/test_compare_openrouter_performance_router.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
