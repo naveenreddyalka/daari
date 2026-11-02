@@ -153,6 +153,7 @@ def keys_create(
     rpm: int = typer.Option(0, "--rpm", help="Requests per minute (0=unlimited)"),
     tpm: int = typer.Option(0, "--tpm", help="Tokens per minute (0=unlimited)"),
     rpd: int = typer.Option(0, "--rpd", help="Requests per UTC day (0=unlimited)"),
+    tpd: int = typer.Option(0, "--tpd", help="Tokens per UTC day (0=unlimited)"),
     tier_cap: str | None = typer.Option(None, "--tier-cap", help="L3|L4|L5"),
     client_id: str | None = typer.Option(None, "--client-id", help="Ledger attribution id"),
     team: str | None = typer.Option(None, "--team", help="Team that inherits and tightens caps"),
@@ -210,6 +211,11 @@ def keys_create(
         0,
         "--user-rpd",
         help="Per end-user requests per UTC day on this shared key (0=unlimited)",
+    ),
+    user_tpd: int = typer.Option(
+        0,
+        "--user-tpd",
+        help="Per end-user tokens per UTC day on this shared key (0=unlimited)",
     ),
     region_pin: str | None = typer.Option(
         None,
@@ -311,6 +317,7 @@ def keys_create(
         rpm=rpm,
         tpm=tpm,
         rpd=rpd,
+        tpd=tpd,
         tier_cap=tier_cap,
         client_id=client_id,
         team=team,
@@ -319,6 +326,7 @@ def keys_create(
         expires_at=expires_at,
         user_daily_usd_cap=user_daily_cap,
         user_rpd=user_rpd,
+        user_tpd=user_tpd,
         region_pin=region_pin,
         allowed_models=allowed_model or None,
         model_groups=model_group or None,
@@ -384,6 +392,14 @@ def keys_update(
         "--user-rpd",
         help="Per end-user requests/UTC day (0=unlimited). Omit to leave unchanged.",
     ),
+    tpd: int | None = typer.Option(
+        None, "--tpd", help="Tokens per UTC day (0=unlimited). Omit to leave unchanged."
+    ),
+    user_tpd: int | None = typer.Option(
+        None,
+        "--user-tpd",
+        help="Per end-user tokens/UTC day (0=unlimited). Omit to leave unchanged.",
+    ),
     signal_override: list[str] = typer.Option(
         [],
         "--signal-override",
@@ -393,7 +409,7 @@ def keys_update(
         ),
     ),
 ) -> None:
-    """Update a virtual key's model allowlist (#708) or daily request cap (#717)."""
+    """Update a virtual key's model allowlist (#708) or daily request/token caps."""
     import json
     import os
 
@@ -404,12 +420,15 @@ def keys_update(
     if (
         rpd is None
         and user_rpd is None
+        and tpd is None
+        and user_tpd is None
         and not allowed_model
         and not model_group
         and not signal_override
     ):
         typer.echo(
-            "pass --rpd, --user-rpd, --allowed-model, --model-group, and/or --signal-override",
+            "pass --rpd, --user-rpd, --tpd, --user-tpd, --allowed-model,"
+            " --model-group, and/or --signal-override",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -419,6 +438,12 @@ def keys_update(
         typer.echo(f"No active key {key_id}", err=True)
         raise typer.Exit(code=1)
     if user_rpd is not None and not store.update_user_rpd(key_id, user_rpd):
+        typer.echo(f"No active key {key_id}", err=True)
+        raise typer.Exit(code=1)
+    if tpd is not None and not store.update_tpd(key_id, tpd):
+        typer.echo(f"No active key {key_id}", err=True)
+        raise typer.Exit(code=1)
+    if user_tpd is not None and not store.update_user_tpd(key_id, user_tpd):
         typer.echo(f"No active key {key_id}", err=True)
         raise typer.Exit(code=1)
     if allowed_model or model_group:
@@ -448,6 +473,10 @@ def keys_update(
         typer.echo(f"rpd:    {key.rpd}")
     if key is not None and user_rpd is not None:
         typer.echo(f"user_rpd: {key.user_rpd}")
+    if key is not None and tpd is not None:
+        typer.echo(f"tpd:    {key.tpd}")
+    if key is not None and user_tpd is not None:
+        typer.echo(f"user_tpd: {key.user_tpd}")
     if key is not None and key.allowed_models is not None:
         typer.echo(f"models: {', '.join(key.allowed_models)}")
     if key is not None and key.model_groups is not None:
@@ -904,6 +933,7 @@ def keys_team_create(
     rpm: int = typer.Option(0, "--rpm", help="Team aggregate requests/min (0=unlimited)"),
     tpm: int = typer.Option(0, "--tpm", help="Team aggregate tokens/min (0=unlimited)"),
     rpd: int = typer.Option(0, "--rpd", help="Team aggregate requests/UTC day (0=unlimited)"),
+    tpd: int = typer.Option(0, "--tpd", help="Team aggregate tokens/UTC day (0=unlimited)"),
     allowed_model: list[str] = typer.Option(
         [],
         "--allowed-model",
@@ -981,6 +1011,7 @@ def keys_team_create(
         rpm=rpm,
         tpm=tpm,
         rpd=rpd,
+        tpd=tpd,
         allowed_models=allowed_model or None,
         model_groups=model_group or None,
         cache_scope=scope,
@@ -1001,6 +1032,8 @@ def keys_team_create(
         typer.echo(f"tpm:     {team.tpm}")
     if team.rpd:
         typer.echo(f"rpd:     {team.rpd}")
+    if team.tpd:
+        typer.echo(f"tpd:     {team.tpd}")
     typer.echo(f"cache_scope: {team.cache_scope}")
     typer.echo(f"priority: {team.priority}")
     typer.echo(f"max_in_flight: {team.max_in_flight}")
@@ -1026,6 +1059,7 @@ def keys_team_create(
                 "rpm": team.rpm,
                 "tpm": team.tpm,
                 "rpd": team.rpd,
+                "tpd": team.tpd,
                 "signal_overrides": encode_signal_overrides(team.signal_overrides)
                 if team.signal_overrides
                 else None,
@@ -1054,6 +1088,9 @@ def keys_team_update(
     rpd: int | None = typer.Option(
         None, "--rpd", help="Team aggregate requests/UTC day (0=unlimited)"
     ),
+    tpd: int | None = typer.Option(
+        None, "--tpd", help="Team aggregate tokens/UTC day (0=unlimited)"
+    ),
     allowed_model: list[str] = typer.Option(
         [],
         "--allowed-model",
@@ -1072,7 +1109,7 @@ def keys_team_update(
         ),
     ),
 ) -> None:
-    """Update a team's budget windows (#464) and optional rpm/tpm (#546)."""
+    """Update a team's budget windows (#464) and optional rpm/tpm/rpd/tpd."""
     import json
     import os
 
@@ -1109,6 +1146,7 @@ def keys_team_update(
             rpm=rpm,
             tpm=tpm,
             rpd=rpd,
+            tpd=tpd,
             allowed_models=allowed_model if allowed_model else _UNSET,
             model_groups=model_group if model_group else _UNSET,
             signal_overrides=team_rules,
@@ -1126,6 +1164,8 @@ def keys_team_update(
         typer.echo(f"tpm:     {team.tpm}")
     if team.rpd:
         typer.echo(f"rpd:     {team.rpd}")
+    if team.tpd:
+        typer.echo(f"tpd:     {team.tpd}")
     if team.signal_overrides:
         typer.echo(f"signal_overrides: {len(team.signal_overrides)}")
     for item in team.budget_windows:

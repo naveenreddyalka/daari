@@ -500,9 +500,12 @@ def _enforce_batch_item_rate_limits(
     rpm = int(getattr(key, "rpm", 0) or 0) or None
     tpm = int(getattr(key, "tpm", 0) or 0) or None
     rpd = int(getattr(key, "rpd", 0) or 0) or None
+    tpd = int(getattr(key, "tpd", 0) or 0) or None
+    user_tpd = int(getattr(key, "user_tpd", 0) or 0) or None
     team_rpm = int(getattr(team, "rpm", 0) or 0) or None if team is not None else None
     team_tpm = int(getattr(team, "tpm", 0) or 0) or None if team is not None else None
     team_rpd = int(getattr(team, "rpd", 0) or 0) or None if team is not None else None
+    team_tpd = int(getattr(team, "tpd", 0) or 0) or None if team is not None else None
     decision = limiter.check(
         key_id=governance.key_id or key.key_id,
         model=request_model(body_dict),
@@ -514,6 +517,9 @@ def _enforce_batch_item_rate_limits(
         team_tpm=team_tpm,
         rpd=rpd,
         team_rpd=team_rpd,
+        tpd=tpd,
+        team_tpd=team_tpd,
+        user_tpd=user_tpd,
     )
     if decision.allowed:
         return

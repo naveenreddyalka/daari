@@ -161,6 +161,7 @@ def run_doctor(
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
     results.append(_check_user_rpd(cfg))
+    results.append(_check_tpd(cfg))
     results.append(_check_key_expiry(cfg))
     results.append(_check_anthropic_enforcement(cfg))
     results.append(_check_key_lockout(cfg))
@@ -2400,6 +2401,58 @@ def _check_user_rpd(settings: Settings) -> CheckResult:
         name="user_rpd",
         ok=True,
         detail=f"end-user RPD set on {shown}{extra}",
+        optional=True,
+    )
+
+
+def _tpd_names(settings: Settings) -> list[str]:
+    """Keys/teams with TPD set; ops need the debit-estimator honesty tip (#2056)."""
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return []
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception:
+        return []
+    names: list[str] = []
+    for key in store.list():
+        tpd = int(getattr(key, "tpd", 0) or 0)
+        user_tpd = int(getattr(key, "user_tpd", 0) or 0)
+        if tpd > 0:
+            names.append(f"key {key.name} tpd={tpd}")
+        if user_tpd > 0:
+            names.append(f"key {key.name} user_tpd={user_tpd}")
+    try:
+        teams = store.list_teams() if hasattr(store, "list_teams") else []
+    except Exception:
+        teams = []
+    for team in teams:
+        tpd = int(getattr(team, "tpd", 0) or 0)
+        if tpd > 0:
+            names.append(f"team {team.name} tpd={tpd}")
+    return names
+
+
+def _check_tpd(settings: Settings) -> CheckResult:
+    """Tip when TPD is set: debits estimated request tokens; zero-token never debits."""
+    names = _tpd_names(settings)
+    if not names:
+        return CheckResult(
+            name="tpd",
+            ok=True,
+            detail="no key or team sets tokens-per-day (tpd)",
+            optional=True,
+        )
+    shown = ", ".join(names[:8])
+    extra = f" (+{len(names) - 8} more)" if len(names) > 8 else ""
+    return CheckResult(
+        name="tpd",
+        ok=True,
+        detail=(
+            f"tpd set on {shown}{extra}; debits estimated request tokens at admission "
+            "(same estimator as TPM). GET/HEAD and other zero-token requests never debit"
+        ),
         optional=True,
     )
 

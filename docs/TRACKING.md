@@ -8547,6 +8547,18 @@ honesty line. Covered by `tests/unit/test_virtual_models.py`.
 `deprecated_speed_degraded` (standard billing). Doctor tip on config or recent
 fast spend. Covered by `tests/unit/test_anthropic_speed_lifecycle.py`.
 
+### Tokens-per-day (TPD) quota for keys and teams ([#2056](https://github.com/naveenreddyalka/daari/issues/2056))
+
+<!-- tracking:#2056 -->
+**Status:** Done (2026-11-02). `VirtualKey`/`Team` persist optional `tpd` /
+`user_tpd` (0 = unlimited) with CLI + admin inventory parity to RPD.
+`RateLimiter.check` enforces UTC-day token ceilings from estimated request
+tokens; tightest of key/team/user wins; 429 + headers use `kind`/`scope`
+`tpd`. Soft-band reuses existing rate-limit soft warnings. Prometheus key/team
+gauges emit `kind="tpd"`. Doctor tips when tpd is set (estimator honesty;
+zero-token never debits). Docs: auth-and-keys, metrics-prometheus,
+compare-litellm watch note. Covered by `tests/unit/test_tpd.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

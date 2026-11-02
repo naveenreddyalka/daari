@@ -5,9 +5,9 @@
 ## Steps
 
 ```bash
-daari keys team-create eng --daily-budget 5 --rpm 120 --tpm 80000 --rpd 5000
-daari keys create ci --daily-budget 2 --rpm 60 --tpm 40000 --rpd 2000 --team eng --window 7d=10
-daari keys create shared-agent --user-daily-cap 2 --user-rpd 200
+daari keys team-create eng --daily-budget 5 --rpm 120 --tpm 80000 --rpd 5000 --tpd 2000000
+daari keys create ci --daily-budget 2 --rpm 60 --tpm 40000 --rpd 2000 --tpd 500000 --team eng --window 7d=10
+daari keys create shared-agent --user-daily-cap 2 --user-rpd 200 --user-tpd 50000
 daari keys list
 daari keys list --status active
 daari keys list --idle-days 90
@@ -15,7 +15,7 @@ daari report --by-team
 daari usage --by-user
 ```
 
-`--rpd` is requests per UTC day on the key or team. `0`, or omitting the flag, means unlimited. `--user-rpd` is the same day window for each attributed end user on a shared key (`0` = unlimited); it does not replace key/team `rpd`. Attribution uses the OpenAI top-level `user` field, or Anthropic `metadata.user_id` on `/v1/messages` when `user` is absent (top-level `user` wins if both are present). `--user-daily-cap` applies the same identity for frontier USD/day. Admin `GET /v1/daari/keys` and the web-ui inventory expose `user_rpd` and `user_daily_usd_cap`.
+`--rpd` is requests per UTC day on the key or team. `0`, or omitting the flag, means unlimited. `--user-rpd` is the same day window for each attributed end user on a shared key (`0` = unlimited); it does not replace key/team `rpd`. `--tpd` / `--user-tpd` are the token-budget twins (estimated request tokens at admission; independent of RPD). Attribution uses the OpenAI top-level `user` field, or Anthropic `metadata.user_id` on `/v1/messages` when `user` is absent (top-level `user` wins if both are present). `--user-daily-cap` applies the same identity for frontier USD/day. Admin `GET /v1/daari/keys` and the web-ui inventory expose `user_rpd`, `tpd`, `user_tpd`, and `user_daily_usd_cap`.
 `daari keys list --status` filters `active` / `expired` / `revoked`. `--idle-days N`
 returns keys whose `last_used_at` is older than N days (or never used). Successful
 auth updates `last_used_at` (throttled to once per 60s per key).

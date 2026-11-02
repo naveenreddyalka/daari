@@ -134,5 +134,10 @@ comparison remains **1.106.6 GA**). Watchables and daari's stance:
   `pricing.models` (no catalog fetch required).
 - **Admin Chat UI / model hub** — cloud control-plane surface; non-goal for
   daari (no Lens / hosted hub parity).
+- **Tokens-per-day (TPD) quotas** —
+  [v1.109.0-dev.2](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.2)
+  adds deployment request/token-per-day limits. daari enforces on-box key/team
+  `--tpd` / `--user-tpd` next to RPD (UTC day, estimated tokens at admission);
+  no cloud quota plane. Full 1.109 compare refresh stays on its own issue.
 
 Measured on the same Ollama corpus: [benchmark vs LiteLLM](benchmark-vs-litellm.md). Short matrix: [compare](compare.md).
