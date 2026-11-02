@@ -11,28 +11,29 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-01 pm)
+## Where daari stands (verified in-tree, 2026-11-02)
 
-**Loop velocity.** Morning board (276–280) still Filed and open; no new
-feature merges since #2074. Overnight wave 258–264 remains Shipped.
+**Loop velocity.** Overnight wave 266–269 Shipped (#2081–#2084: tenant
+signal binding, virtual_models PATCH, performance selection, Opus 4.8 fast
+shield). Boards 270–285 stay Filed and open.
 
-**Outward.** LiteLLM GA floor still **1.106.6**; newest tags
-1.109.0-dev.2 / 1.108.0-rc.1. Fresh delta: LiteLLM's
-[LTS pilot on 1.108](https://docs.litellm.ai/docs/enterprise/lts_pilot) and
-Tuesday RC/stable cadence (week of 2026-11-02) — compare-litellm does not
-name it yet. OpenRouter Batch docs emphasize workspace **Default batch
-webhook URL** beside per-batch `callback_url` (daari has Responses org
-default; batches do not). LiteLLM 1.109 action notes still push **tag
-routing**. Ollama 0.40.13, vLLM **0.32.0** (no GA 0.33 on releases), Kong
-3.9.4, Portkey floor v2.31.0 (docs cache still flakes to v2.20.0). Anthropic
-`between_tools` stays Sonnet-5.5-only — watch, do not file. Claude Fable
-5.1 already priced/catalogued in-tree.
+**Outward.** **vLLM 0.33.0 went GA 11-02** — CUDA 13.0-only artifacts
+(cu129 images gone), PyTorch 2.14, new `vllm/vllm` image alias; daari's
+vLLM guide stops at the 0.32 floor. **Portkey floor moves to v2.32.0**
+(10-29): upstream-MCP OAuth client-credentials config, guardrail
+`soft_deny_200`, OTel spans now carry `portkey.usage.cost` +
+`portkey.metadata.*`, Codex PAT routing. LiteLLM GA floor still
+**1.106.6** (newest tags 1.109.0-dev.2 / 1.108.0-rc.1; Tuesday cadence
+means watch 11-03). OpenAI changelog ends 10-30 (gpt-6-rosalind),
+Anthropic 10-30 (Opus 4.8 fast = shipped shield), OpenRouter blog-only
+since 10-28, Ollama 0.40.13, Kong 3.9.4.
 
-**Inward theme: air-gap operability + jobs that finish without repeating
-URLs + tag levers + compare honesty.** Offline mode shipped but is not
-live-editable and doctor does not warn when frontier creds stay hot;
-batches lack the Responses-style org default webhook; signal_overrides
-cannot match request tags; compare-litellm lags the LTS story.
+**Inward theme: prove parity, close the trace-visibility gap.** Guardrail
+blocks already return 200 + denial content (Portkey's `soft_deny_200` is
+daari's default) and MCP client-credentials upstream auth exists via
+`secret://oauth` token refs — but it is undocumented; OTel spans export
+tokens yet no cost or key/team identity; performance selection has no
+latency objective; vLLM 0.33 upgrade notes missing.
 
 ---
 
@@ -40,6 +41,11 @@ cannot match request tags; compare-litellm lags the LTS story.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 286 | Cost + key/team attributes on OTel GenAI spans | 3 | 2 | Portkey v2.32.0 Complete Logs export | Per-tenant cost traces in operator-owned OTel backend, no log pipeline | Filed [#2085](https://github.com/naveenreddyalka/daari/issues/2085) |
+| 287 | Latency SLO bucketing for performance virtual-model selection | 3 | 2 | OpenRouter rebuilt provider routing | SLO sees local-tier latencies no cloud router can | Filed [#2086](https://github.com/naveenreddyalka/daari/issues/2086) |
+| 288 | vLLM 0.33.0 GA upgrade notes (CUDA 13-only, image alias) | 2 | 1 | vLLM release notes | Honest local-tier upgrade story before operators hit it | Filed [#2087](https://github.com/naveenreddyalka/daari/issues/2087) |
+| 289 | Document MCP client-credentials upstream via `secret://oauth` | 2 | 1 | Portkey v2.32.0 MCP OAuth config | Capability exists on-box; the recipe is the gap | Filed [#2088](https://github.com/naveenreddyalka/daari/issues/2088) |
+| 290 | Integration fence for the 11-01/11-02 overnight wave | 2 | 2 | — (testability) | Hermetic proof: signals binding, PATCH, perf mode, fast shield | Filed [#2089](https://github.com/naveenreddyalka/daari/issues/2089) |
 | 281 | compare-litellm: LTS 1.108 pilot + Tuesday cadence honesty | 2 | 1 | LiteLLM LTS / release-cycle docs | Name the support window; keep GA floor 1.106.6 | Filed [#2075](https://github.com/naveenreddyalka/daari/issues/2075) |
 | 282 | Config ownership + PATCH for `security.offline_mode` | 3 | 1 | LiteLLM / Portkey control planes | Flip the air gap live, no restart, no cloud plane | Filed [#2076](https://github.com/naveenreddyalka/daari/issues/2076) |
 | 283 | Org-default completion webhook for `/v1/batches` | 3 | 2 | OpenRouter Default batch webhook URL | Mirror Responses org default on-box | Filed [#2077](https://github.com/naveenreddyalka/daari/issues/2077) |
@@ -55,10 +61,7 @@ cannot match request tags; compare-litellm lags the LTS story.
 | 273 | compare-litellm: 1.109.0-dev.2 watch + mid-stream honesty | 2 | 1 | LiteLLM release notes | Kill stale "next gap"; keep GA floor 1.106.6 | Filed [#2058](https://github.com/naveenreddyalka/daari/issues/2058) |
 | 274 | Grafana panels for `daari_virtual_model_failover_total` | 2 | 1 | Portkey analytics / hand-rolled Prom | Failover pressure on the same-box overview | Filed [#2059](https://github.com/naveenreddyalka/daari/issues/2059) |
 | 275 | Optional `X-Daari-Priority` request admission header | 3 | 2 | LiteLLM `x-litellm-priority` | Per-turn queue steer without minting keys | Filed [#2060](https://github.com/naveenreddyalka/daari/issues/2060) |
-| 266 | Per-key/team binding for `signal_overrides` rules | 3 | 2 | Portkey workspace Signals / LiteLLM team settings | Tenant-scoped routing levers next to budgets, on-box | Filed [#2050](https://github.com/naveenreddyalka/daari/issues/2050) |
-| 267 | Config ownership + PATCH for `routing.virtual_models` | 3 | 1 | LiteLLM / Portkey control planes | Edit failover lists live, no restart, no cloud plane | Filed [#2051](https://github.com/naveenreddyalka/daari/issues/2051) |
-| 268 | Performance-aware virtual-model candidate selection | 4 | 3 | OpenRouter rebuilt provider routing (10-28) | Realized latency/error EWMA on-box, incl. local tiers | Filed [#2052](https://github.com/naveenreddyalka/daari/issues/2052) |
-| 269 | Speed-scoped lifecycle: Opus 4.8 fast removal 11-30 shield | 3 | 2 | Anthropic release notes / client errors | Gateway warns then shields tenants before the hard 400 | Filed [#2053](https://github.com/naveenreddyalka/daari/issues/2053) |
+| 266–269 | Tenant signal binding; virtual_models PATCH; performance selection; Opus 4.8 fast shield | 3–4 | 1–3 | Portkey / LiteLLM / OpenRouter / Anthropic | Tenant levers + realized perf + deprecation shield on-box | Shipped (#2081–#2084) |
 | 270 | Integration fence for the 10-30/31 overnight wave | 2 | 2 | — (testability) | Hermetic proof: virtual models, hour bucket, PATCHes | Filed [#2054](https://github.com/naveenreddyalka/daari/issues/2054) |
 | 261 | `lfm3-omni` recipe + audio capability routing matrix | 4 | 2 | Ollama lfm3-omni / cloud multimodal | One on-box model replaces ASR+VLM+LLM+TTS hops | Shipped (#2065) |
 | 258–260 | safeguard recipe; Anthropic Analytics reconcile; offline_mode | 3–4 | 2–3 | OpenRouter / Anthropic / LiteLLM | On-box guardrails, FinOps proof, air-gap switch | Shipped (#2062–#2064) |
@@ -85,9 +88,11 @@ cannot match request tags; compare-litellm lags the LTS story.
 
 Watch rows (do not file yet): minute-grain spend buckets (**deliberately
 scoped out in the hour-bucket work — row-blowup; only on an explicit FinOps
-ask**); weighted/latency SLO knobs on virtual-model selection (after row
-268); MCP SEP-3398 six-month release cycle (next spec late March 2027 —
-docs date-pins only); OpenAI org
+ask**); fleet-shared (Redis) EWMA state for performance selection (per-pod
+in-process today by #2083 design — file on a multi-pod routing-skew ask);
+LiteLLM Tuesday RC/stable (11-03) — compare refresh when it lands; Portkey
+Codex PAT (`at-`) backend routing (niche); MCP SEP-3398 six-month release
+cycle (next spec late March 2027 — docs date-pins only); OpenAI org
 **external key management** (SDK 10-31 — pair with the at-rest EKM analog
 when the Management API shape stabilizes beyond feature-flag); Anthropic
 Compliance API user-preferences export (Enterprise Instructions/Cowork —
@@ -107,40 +112,51 @@ Claude Tag beta (non-goal); Open Responses WS; Anthropic OTel export beta;
 Prometheus exemplars + `gen_ai.agent.*`; LiteLLM ID-JAG / OAuth-delegate;
 Portkey WIF; SCIM + multi-issuer SSO; Kong Skills/A2A; OpenRouter Private
 Endpoints L6 recipe; certifi emSign drop (still ships 2026.10.23); Ollama
-d1 Linux/Windows GA; rumored vLLM 0.33 tags without a releases GA note.
+d1 Linux/Windows GA.
 
-Verified fine this run — don't re-audit: **Claude Code pooled group
-budgets (10-31) are parity** — key+team budget windows already merge
-(`daari/auth/budgets.py` `effective_caps`); **Decisions facade already at
-GA parity**; **ultrafast tier priced** at 6× (#1519);
-**anthropic-version 2026-10-21 sampling/citations removal handled**;
-`list_amount` vs discounted `amount` reconciled (#2063); Portkey changelog
-cache flake — v2.31.0 stays the floor; LiteLLM GA floor 1.106.6; IdP
-claim → team mapping exists; minute spend buckets stay scoped out;
-**between_tools** not widened beyond Sonnet 5.5; Claude Fable 5.1 already
-in pricing/catalog.
+Verified fine this run — don't re-audit: **guardrail blocks already return
+HTTP 200 with the denial as content** (`blocked_response`,
+`daari/gateway/guardrails.py` — Portkey v2.32.0 `soft_deny_200` is daari's
+default; never file); **MCP upstream client-credentials works today** via
+`secret://oauth` token refs (`resolve_settings_secrets` walks
+`mcp_servers[].token`; docs gap only = row 289); **stream-failure fallback
+emits an error frame then a non-stream re-emit** (Portkey's
+missing-terminal-event fix is covered); Claude Code pooled group budgets =
+parity (`effective_caps`); Decisions facade at GA parity; ultrafast priced
+6× (#1519); `list_amount` reconciled (#2063); LiteLLM GA floor 1.106.6;
+IdP claim → team mapping exists; minute spend buckets stay scoped out;
+**between_tools** not widened beyond Sonnet 5.5.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Air-gap that operators can run** — offline switch (260 Shipped);
-   live ownership (282); doctor foot-gun tip (285); Prom counter (279).
-2. **Answer OpenRouter's performance router on-box** — virtual models
-   (255 Shipped); performance-aware selection (268), live edit (267);
-   performance-router compare copy (272).
-3. **Tenant governance dials** — signals binding (266); request tags
+1. **Answer OpenRouter's performance router on-box** — selection shipped
+   (268); latency SLO bucketing (287); compare copy (272); failover
+   Grafana (274); fence it (290).
+2. **Tenant-true observability** — span cost + key/team attrs (286);
+   request tags (284) then tag attrs; team panels (rows 2020/2015 tail).
+3. **Tenant governance dials** — signals binding shipped (266); tags
    (284); service-tier allowlist (277); priority header (275); TPD
    (271); then rows 62–67.
-4. **Jobs that finish loudly** — per-batch webhooks (276) + org default
-   (283) beside Responses; fence the wave (280).
-5. **Deprecation shield + honesty/ops tail** — Opus 4.8 fast removal
-   shield (269); LiteLLM LTS/cadence honesty (281) + 1.109 refresh
-   (273); virtual-model Grafana (274); hot-reload (6); P3 tail.
+4. **Air-gap + jobs that finish loudly** — live offline ownership (282);
+   doctor tip (285); Prom counter (279); batch webhooks (276) + org
+   default (283); fences (270/280).
+5. **Honesty/ops tail** — vLLM 0.33 notes (288); MCP client-credentials
+   recipe (289); LiteLLM LTS (281) + 1.109 refresh (273); hot-reload (6).
 
 ---
 
 ## Changelog
+
+- **2026-11-02 (trace cost; latency SLO; vLLM 0.33; MCP cc recipe)** —
+  Marked rows 266–269 Shipped (#2081–#2084). Outward: vLLM 0.33.0 GA
+  (CUDA 13-only artifacts, `vllm/vllm` alias); Portkey floor v2.32.0
+  (MCP client-credentials, soft_deny_200, OTel cost/metadata attrs);
+  LiteLLM/OpenAI/Anthropic/OpenRouter flat. Filed rows 286–290: OTel
+  cost+tenant span attrs, latency SLO bucketing, vLLM 0.33 notes, MCP
+  `secret://oauth` recipe, 11-01/02 wave fence. Verified parity: guardrail
+  soft-deny-200 default; MCP cc capability; stream-fallback error frame.
 
 - **2026-11-01 pm (LTS honesty; air-gap ops; batch default; request tags)** —
   Outward: LiteLLM LTS 1.108 pilot + Tuesday cadence (week of 11-02);
