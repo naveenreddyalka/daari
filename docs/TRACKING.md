@@ -8580,6 +8580,18 @@ RPD/TPD, `x-litellm-priority`, cosign rotation under `e82a3c6`, and Anthropic
 Chat UI parity; 1.107.0 remains do-not-install. Covered by
 `tests/unit/test_compare_litellm_1104.py`.
 
+### Optional X-Daari-Priority request admission header ([#2060](https://github.com/naveenreddyalka/daari/issues/2060))
+
+<!-- tracking:#2060 -->
+**Status:** Done (2026-11-03). Honor `X-Daari-Priority: high|normal|low` on the
+in-flight gate (same path as key/team `--priority`). Lowering is free; boost
+above the key/team ceiling requires
+`server.virtual_keys.allow_request_priority_boost` (default false). Invalid
+values soft-warn via `x-daari-warning: invalid_x_daari_priority`; changes log
+`admission_priority`. Docs: headers, auth-and-keys, config, virtual-keys,
+compare-litellm watch pointer. Covered by
+`tests/unit/test_request_priority_header.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -41,6 +41,15 @@ class VirtualKeysSettings(BaseModel):
             "Default false. Env: DAARI_SERVER__VIRTUAL_KEYS__AGENT_ACCESS_DEFAULT_DENY."
         ),
     )
+    allow_request_priority_boost: bool = Field(
+        default=False,
+        description=(
+            "When true, X-Daari-Priority may raise admission above the key/team "
+            "configured priority. Default false: the header may only lower "
+            "(or match) the ceiling. Env: "
+            "DAARI_SERVER__VIRTUAL_KEYS__ALLOW_REQUEST_PRIORITY_BOOST."
+        ),
+    )
 
 
 class ModelRateLimitSettings(BaseModel):

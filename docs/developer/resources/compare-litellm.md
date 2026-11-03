@@ -131,8 +131,9 @@ stance:
   `--user-tpd` on-box (UTC day, estimated tokens at admission); no cloud
   quota plane.
 - **`x-litellm-priority`** — request-header priority into LiteLLM admission.
-  daari steers admission via key/team budgets and rate caps today; a
-  per-request priority header is a separate follow-on (not claimed here).
+  daari ships the on-box twin as optional `X-Daari-Priority: high|normal|low`
+  on the same in-flight gate as key/team `--priority` (boost capped unless
+  `server.virtual_keys.allow_request_priority_boost`).
 - **Cosign key rotation** — 1.109.0-dev.2 images continue under the rotated
   `cosign.pub` introduced in 1.106.3 (commit
   [`e82a3c6`](https://github.com/BerriAI/litellm/commit/e82a3c6)). Buyers still
