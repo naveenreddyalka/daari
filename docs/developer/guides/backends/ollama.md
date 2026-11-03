@@ -30,6 +30,12 @@ Optional **LFM3-VL** L4 vision recipe (Ollama ≥ 0.40.12):
 Linux/Windows/macOS with Ollama ≥ 0.40.13 (Apple from 0.40.12). Pull later with
 `ollama pull lfm3-vl`.
 
+Optional **LFM3-Audio** speech-only recipe (Ollama ≥ 0.40.12):
+`daari setup models --lfm3-audio` wires `tts`/`asr` to `ollama.base_url/v1` with
+`model: lfm3-audio` (no weight pull). Does **not** set `models.l4` or declare
+chat audio/vision capabilities — `lfm3-audio` is speech-only. Pull later with
+`ollama pull lfm3-audio`.
+
 Optional **LFM3-Omni** speech recipe (Ollama ≥ 0.40.13):
 `daari setup models --lfm3-omni` wires `tts`/`asr` to `ollama.base_url/v1` with
 `model: lfm3-omni` (no weight pull). Optional chat path: also set
@@ -42,7 +48,7 @@ Optional **LFM3-Omni** speech recipe (Ollama ≥ 0.40.13):
 |-----|----------|--------|
 | `lfm3` | text / long-context agent | `daari setup models --lfm3` → `models.l3` |
 | `lfm3-vl` | vision | `daari setup models --lfm3-vl` → `models.l4` |
-| `lfm3-audio` | speech (ASR/TTS) | configure `tts`/`asr` toward Ollama `/v1` |
+| `lfm3-audio` | speech (ASR/TTS) | `daari setup models --lfm3-audio` (speech-only; no L4) |
 | `lfm3-omni` | text + vision + audio (+ speech) | `daari setup models --lfm3-omni` (speech primary; optional L4) |
 
 Optional **gpt-oss-safeguard** decision-guardrail recipe:

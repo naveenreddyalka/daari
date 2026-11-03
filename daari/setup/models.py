@@ -47,6 +47,20 @@ LFM3_VL_RECIPE_NOTE = (
     f"Pull with: ollama pull {LFM3_VL_MODEL}"
 )
 
+# Liquid AI LFM3-Audio — speech-only TTS/ASR via Ollama /v1 (#2071).
+# Wires tts+asr only. Does NOT set models.l4 or chat audio/vision capabilities —
+# lfm3-audio is not a chat tier (contrast lfm3-omni).
+LFM3_AUDIO_MODEL = "lfm3-audio"
+LFM3_AUDIO_OLLAMA_FLOOR = (0, 40, 12)
+LFM3_AUDIO_RECIPE_NOTE = (
+    "Optional LFM3-Audio speech-only recipe: sets tts/asr base_url to "
+    f"ollama.base_url/v1 and tts/asr.model={LFM3_AUDIO_MODEL} without pulling "
+    "weights. Requires Ollama ≥ 0.40.12 (Linux/Windows GA from 0.40.13). "
+    "Does not set models.l4 or declare chat audio/vision capabilities — "
+    f"{LFM3_AUDIO_MODEL} is speech-only (use --lfm3-omni for omni chat+speech). "
+    f"Pull with: ollama pull {LFM3_AUDIO_MODEL}"
+)
+
 # Liquid AI LFM3-Omni — optional local speech (TTS/ASR) via Ollama /v1 (#2037).
 # Primary path: wire tts+asr to ollama.base_url/v1 with model=lfm3-omni.
 # Optional: also set models.l4=lfm3-omni for native chat audio/vision routing.
@@ -321,7 +335,7 @@ def _ollama_v1_base(config: dict[str, Any]) -> str:
     return f"{raw}/v1"
 
 
-def _speech_already_omni(config: dict[str, Any]) -> bool:
+def _speech_already_model(config: dict[str, Any], model_name: str) -> bool:
     tip_url = _ollama_v1_base(config)
     for key in ("tts", "asr"):
         block = config.get(key)
@@ -331,9 +345,68 @@ def _speech_already_omni(config: dict[str, Any]) -> bool:
         model = str(block.get("model") or "").strip()
         if base != tip_url.rstrip("/"):
             return False
-        if model != LFM3_OMNI_MODEL and not model.startswith(f"{LFM3_OMNI_MODEL}:"):
+        if model != model_name and not model.startswith(f"{model_name}:"):
             return False
     return True
+
+
+def _speech_already_omni(config: dict[str, Any]) -> bool:
+    return _speech_already_model(config, LFM3_OMNI_MODEL)
+
+
+def _speech_already_audio(config: dict[str, Any]) -> bool:
+    return _speech_already_model(config, LFM3_AUDIO_MODEL)
+
+
+def apply_lfm3_audio_speech_recipe(
+    *,
+    config_path: Path | None = None,
+    dry_run: bool = False,
+) -> ModelSetupResult:
+    """Wire tts/asr to Ollama ``/v1`` + ``lfm3-audio`` without pulling weights (#2071).
+
+    Speech-only: does **not** set ``models.l4`` or declare chat audio/vision
+    capabilities. ``lfm3-audio`` is not a chat tier — use
+    ``apply_lfm3_omni_speech_recipe`` when omni vision+chat weights are wanted.
+    """
+    path = config_path or Path.home() / ".daari" / "config.yaml"
+    current: dict[str, Any] = {}
+    if path.is_file():
+        with path.open(encoding="utf-8") as handle:
+            loaded = yaml.safe_load(handle) or {}
+        if isinstance(loaded, dict):
+            current = loaded
+
+    already = _speech_already_audio(current)
+    if dry_run or already:
+        return ModelSetupResult(
+            tier=None,
+            model=LFM3_AUDIO_MODEL,
+            config_path=path,
+            changed=not already,
+        )
+
+    tip_url = _ollama_v1_base(current)
+    for key in ("tts", "asr"):
+        block = current.get(key)
+        if not isinstance(block, dict):
+            block = {}
+            current[key] = block
+        block["base_url"] = tip_url
+        block["model"] = LFM3_AUDIO_MODEL
+
+    # Intentionally leave models.l4 / capabilities alone — speech-only tag.
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(current, handle, default_flow_style=False, sort_keys=False)
+
+    return ModelSetupResult(
+        tier=None,
+        model=LFM3_AUDIO_MODEL,
+        config_path=path,
+        changed=True,
+    )
 
 
 def apply_lfm3_omni_speech_recipe(
@@ -539,6 +612,7 @@ def setup_models_interactive(
     nemotron_bolt: bool = False,
     lfm3: bool = False,
     lfm3_vl: bool = False,
+    lfm3_audio: bool = False,
     lfm3_omni: bool = False,
     safeguard: bool = False,
     dry_run: bool = False,
@@ -596,6 +670,23 @@ def setup_models_interactive(
             typer.echo(f"Dry-run: would set models.l4 = {LFM3_VL_MODEL} in {path}")
         else:
             typer.echo(f"Set models.l4 = {LFM3_VL_MODEL} in {path}")
+        return result
+
+    if lfm3_audio:
+        typer.echo(LFM3_AUDIO_RECIPE_NOTE)
+        result = apply_lfm3_audio_speech_recipe(config_path=path, dry_run=dry_run)
+        tip = _ollama_v1_base({})
+        if path.is_file():
+            with path.open(encoding="utf-8") as handle:
+                loaded = yaml.safe_load(handle) or {}
+            if isinstance(loaded, dict):
+                tip = _ollama_v1_base(loaded)
+        if dry_run:
+            typer.echo(
+                f"Dry-run: would set tts/asr base_url={tip} model={LFM3_AUDIO_MODEL} in {path}"
+            )
+        else:
+            typer.echo(f"Set tts/asr base_url={tip} model={LFM3_AUDIO_MODEL} in {path}")
         return result
 
     if lfm3_omni:

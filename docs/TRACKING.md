@@ -8616,6 +8616,15 @@ Anthropic `speed` → 403 `service_tier_not_allowed`, or opt-in degrade via
 `log_gateway_event("service_tier_not_allowed")`. Covered by
 `tests/unit/test_service_tier_allowlist.py`.
 
+### lfm3-audio speech-only setup recipe ([#2071](https://github.com/naveenreddyalka/daari/issues/2071))
+
+<!-- tracking:#2071 -->
+**Status:** Done (2026-11-03). `daari setup models --lfm3-audio` wires tts/asr
+to Ollama `/v1` + `lfm3-audio` without pulling weights; does not set
+`models.l4` or chat audio/vision capabilities (speech-only vs omni). Wizard
+offers audio before omni. Docs: ollama modality matrix + TTS guide. Covered by
+`tests/unit/test_lfm3_audio_speech_recipe.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
