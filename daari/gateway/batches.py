@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable
 
 from daari.gateway.request_log import log_gateway_event
+from daari.observability.batch_webhooks import schedule_batch_completion_webhook
 from daari.security.at_rest import AtRestDecryptError, loads_json_maybe_sealed, seal_text
 
 STATUS_VALIDATING = "validating"
@@ -28,6 +29,10 @@ STATUS_COMPLETED = "completed"
 STATUS_CANCELLING = "cancelling"
 STATUS_CANCELLED = "cancelled"
 STATUS_EXPIRED = "expired"
+
+_TERMINAL_STATUSES = frozenset(
+    {STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED, STATUS_EXPIRED}
+)
 
 ITEM_PENDING = "pending"
 ITEM_COMPLETED = "completed"
@@ -120,6 +125,7 @@ class BatchJob:
     expired_at: int | None = None
     expires_at: int | None = None
     metadata: dict[str, Any] | None = None
+    callback_url: str | None = None
     governance: BatchGovernance | None = None
     items: list[BatchItem] = field(default_factory=list)
     errors: dict[str, Any] | None = None
@@ -168,6 +174,7 @@ def _job_to_payload(job: BatchJob) -> dict[str, Any]:
         "expired_at": job.expired_at,
         "expires_at": job.expires_at,
         "metadata": job.metadata,
+        "callback_url": job.callback_url,
         "governance": gov,
         "items": [asdict(item) for item in job.items],
         "errors": job.errors,
@@ -207,6 +214,7 @@ def _job_from_payload(payload: dict[str, Any]) -> BatchJob:
         expired_at=payload.get("expired_at"),
         expires_at=payload.get("expires_at"),
         metadata=payload.get("metadata"),
+        callback_url=payload.get("callback_url"),
         governance=governance,
         items=items,
         errors=payload.get("errors"),
@@ -237,6 +245,12 @@ class BatchStore:
         self.idle_probe = idle_probe
         self.yield_to_interactive = yield_to_interactive
         self.idle_poll_seconds = max(0.01, float(idle_poll_seconds))
+        self.completion_webhook_url = ""
+        self.completion_webhook_secret = ""
+        self.completion_webhook_secret_previous = ""
+        self.completion_webhook_redis_url = ""
+        self.completion_webhook_metrics: Any | None = None
+        self._webhook_notified: set[str] = set()
         self.path = Path(path).expanduser() if path else None
         if self.path is not None:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -309,6 +323,7 @@ class BatchStore:
         input_file_id: str | None = None,
         requests: list[Any] | None = None,
         metadata: dict[str, Any] | None = None,
+        callback_url: str | None = None,
         governance: BatchGovernance | None = None,
     ) -> BatchJob:
         if not input_file_id and not requests:
@@ -321,6 +336,7 @@ class BatchStore:
 
         items = _normalize_requests(resolved_requests) if resolved_requests else []
         now = int(time.time())
+        cb = (callback_url or "").strip() or None
         job = BatchJob(
             id=f"batch_{uuid.uuid4().hex}",
             endpoint=endpoint or "/v1/chat/completions",
@@ -329,6 +345,7 @@ class BatchStore:
             created_at=now,
             expires_at=now + 24 * 3600,
             metadata=metadata,
+            callback_url=cb,
             governance=governance,
             items=items,
             status=STATUS_VALIDATING,
@@ -379,7 +396,37 @@ class BatchStore:
         self._batches[job.id] = job
         self._order.append(job.id)
         self._persist(job)
+        if job.status in _TERMINAL_STATUSES:
+            self._notify_terminal(job)
         return job
+
+    def _notify_terminal(self, job: BatchJob) -> None:
+        """Best-effort signed completion webhook off the event loop (#2069)."""
+        if job.status not in _TERMINAL_STATUSES:
+            return
+        if job.id in self._webhook_notified:
+            return
+        self._webhook_notified.add(job.id)
+        url = (job.callback_url or self.completion_webhook_url or "").strip()
+        # Always schedule so empty-URL soft-fail lives in one place.
+        try:
+            schedule_batch_completion_webhook(
+                url=url,
+                secret=self.completion_webhook_secret or "",
+                previous_secret=self.completion_webhook_secret_previous or "",
+                body=self.as_public(job),
+                redis_url=self.completion_webhook_redis_url or "",
+                metrics=self.completion_webhook_metrics,
+            )
+        except Exception as exc:  # noqa: BLE001 — finalizer must not crash
+            log_gateway_event(
+                "batch.completion_webhook_failed",
+                {
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "id": job.id,
+                    "status": job.status,
+                },
+            )
 
     def _load_input_file(
         self, input_file_id: str
@@ -414,6 +461,7 @@ class BatchStore:
             return None
         if self._maybe_expire(job):
             self._persist(job)
+            self._notify_terminal(job)
         return job
 
     def list_batches(
@@ -508,16 +556,20 @@ class BatchStore:
             return job
         now = int(time.time())
         job.cancel_requested = True
+        became_terminal = False
         if job.status == STATUS_VALIDATING or batch_id not in self._running:
             self._mark_remaining_skipped(job)
             job.status = STATUS_CANCELLED
             job.cancelling_at = now
             job.cancelled_at = now
+            became_terminal = True
         else:
             job.status = STATUS_CANCELLING
             job.cancelling_at = now
         log_gateway_event("batch.cancel_requested", {"batch_id": job.id})
         self._persist(job)
+        if became_terminal:
+            self._notify_terminal(job)
         return job
 
     def as_public(self, job: BatchJob) -> dict[str, Any]:
@@ -626,6 +678,7 @@ class BatchStore:
                 job.cancelled_at = job.cancelled_at or now
                 job.cancelling_at = job.cancelling_at or now
                 self._persist(job)
+                self._notify_terminal(job)
                 return
             if not job.items or job.status == STATUS_FAILED:
                 return
@@ -723,12 +776,14 @@ class BatchStore:
                 now = int(time.time())
                 if job.status == STATUS_EXPIRED:
                     self._persist(job)
+                    self._notify_terminal(job)
                 elif job.cancel_requested:
                     self._mark_remaining_skipped(job)
                     job.status = STATUS_CANCELLED
                     job.cancelled_at = now
                     self._persist(job)
                     log_gateway_event("batch.cancelled", {"batch_id": job.id})
+                    self._notify_terminal(job)
                 else:
                     job.status = STATUS_COMPLETED
                     job.completed_at = now
@@ -748,6 +803,7 @@ class BatchStore:
                             "error_file_id": job.error_file_id,
                         },
                     )
+                    self._notify_terminal(job)
             finally:
                 self._running.discard(batch_id)
 

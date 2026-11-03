@@ -420,6 +420,53 @@ def admission_priority_for(key: VirtualKey | None = None, team: Team | None = No
     return "normal"
 
 
+def parse_priority_header(raw: str | None) -> tuple[str | None, bool]:
+    """Parse ``X-Daari-Priority``.
+
+    Returns ``(value, invalid)`` where ``value`` is ``high``/``normal``/``low``
+    or ``None`` when absent/blank. ``invalid`` is True when a non-empty value
+    is not one of those three (#2060).
+    """
+    from daari.auth.rate_limit import PRIORITY_RANK
+
+    text = str(raw or "").strip().lower()
+    if not text:
+        return None, False
+    if text in PRIORITY_RANK:
+        return text, False
+    return None, True
+
+
+def resolve_request_admission_priority(
+    key: VirtualKey | None = None,
+    team: Team | None = None,
+    *,
+    header: str | None = None,
+    allow_boost: bool = False,
+) -> tuple[str, str | None, bool]:
+    """Combine key/team baseline with optional ``X-Daari-Priority`` (#2060).
+
+    Request priority may lower freely. Raising above the key/team ceiling
+    requires ``allow_boost`` (or the baseline already matching the request).
+    Invalid header values are ignored with soft warning ``invalid_x_daari_priority``.
+
+    Returns ``(effective, soft_warning_or_None, changed_from_baseline)``.
+    """
+    from daari.auth.rate_limit import PRIORITY_RANK
+
+    baseline = admission_priority_for(key, team)
+    requested, invalid = parse_priority_header(header)
+    if invalid:
+        return baseline, "invalid_x_daari_priority", False
+    if requested is None:
+        return baseline, None, False
+    if PRIORITY_RANK[requested] >= PRIORITY_RANK[baseline]:
+        return requested, None, requested != baseline
+    if allow_boost:
+        return requested, None, True
+    return baseline, None, False
+
+
 @dataclass(frozen=True)
 class CreatedKey:
     key: VirtualKey

@@ -136,18 +136,29 @@ def test_compare_litellm_pins_1107_compromise_advisory() -> None:
 
 
 def test_compare_litellm_pins_1109_dev_watch_keep_ga_floor() -> None:
-    """1.109.0-dev.1 is prerelease watch; GA floor stays 1.106.6 (#2002, #2019)."""
+    """1.109.0-dev.2 is prerelease watch; GA floor stays 1.106.6 (#2002, #2019, #2058)."""
     text = DOC.read_text(encoding="utf-8")
     section = _markdown_section(text, "## LiteLLM 1.109")
     lower = section.lower()
-    assert "v1.109.0-dev.1" in section or "1.109.0-dev.1" in section
+    assert "v1.109.0-dev.2" in section or "1.109.0-dev.2" in section
+    assert "releases/tag/v1.109.0-dev.2" in section
     assert "prerelease" in lower
     assert "do not promote" in lower
     assert "mid-stream" in lower or "midstream" in lower
+    assert "shipped" in lower or "on-box" in lower or "on box" in lower
+    assert "next gap" not in lower
+    assert "stream_fallback_continue" in section or "stream fallback" in lower
+    assert "rpd" in lower or "requests-per-day" in lower or "request/token" in lower
+    assert "tpd" in lower or "tokens-per-day" in lower or "token-per-day" in lower
+    assert "x-litellm-priority" in lower
+    assert "cosign" in lower
+    assert "e82a3c6" in section or "rotated" in lower
+    assert "drop_params" in lower or "speed" in lower
     assert "offline" in lower
     assert "agent_access_default_deny" in section
     assert "pricing_provider" in section
     assert "chat ui" in lower or "admin chat" in lower or "model hub" in lower
+    assert "lens parity" not in lower
     # Stable floor remains 1.106.6 GA — do not claim 1.109 is GA.
     assert "1.106.6" in section
     floor = _markdown_section(text, "## LiteLLM 1.106")

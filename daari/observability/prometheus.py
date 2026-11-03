@@ -605,6 +605,18 @@ def render_prometheus(
                 f"daari_responses_webhooks_total{_labels(result=result)} {int(count)}"
             )
 
+    batch_webhooks = snap.get("batch_webhooks") or {}
+    if batch_webhooks:
+        lines.append(
+            "# HELP daari_batch_webhooks_total /v1/batches completion webhook "
+            "deliveries, by result (ok, error, skipped, deduped)."
+        )
+        lines.append("# TYPE daari_batch_webhooks_total counter")
+        for result, count in sorted(batch_webhooks.items()):
+            lines.append(
+                f"daari_batch_webhooks_total{_labels(result=result)} {int(count)}"
+            )
+
     org_enforcement_webhooks = snap.get("org_enforcement_webhooks") or {}
     if org_enforcement_webhooks:
         lines.append(

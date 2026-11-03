@@ -263,6 +263,7 @@ class Metrics:
     tier_shadow: dict[str, int] = field(default_factory=dict)
     budget_alerts: dict[str, int] = field(default_factory=dict)
     responses_webhooks: dict[str, int] = field(default_factory=dict)
+    batch_webhooks: dict[str, int] = field(default_factory=dict)
     org_enforcement_webhooks: dict[str, int] = field(default_factory=dict)
     soft_warnings: dict[str, int] = field(default_factory=dict)
     # requested:served → count when Phonon coerces response_format (#1961).
@@ -433,6 +434,12 @@ class Metrics:
         label = (result or "").strip().lower() or "error"
         with self._lock:
             self.responses_webhooks[label] = self.responses_webhooks.get(label, 0) + 1
+
+    def record_batch_webhook(self, result: str) -> None:
+        """Batch completion webhook delivery outcome (#2069)."""
+        label = (result or "").strip().lower() or "error"
+        with self._lock:
+            self.batch_webhooks[label] = self.batch_webhooks.get(label, 0) + 1
 
     def record_org_enforcement_webhook(self, result: str) -> None:
         """Anthropic org enforcement webhook ingest outcome (#1914)."""
@@ -688,6 +695,7 @@ class Metrics:
                 "tier_shadow": dict(self.tier_shadow),
                 "budget_alerts": dict(self.budget_alerts),
                 "responses_webhooks": dict(self.responses_webhooks),
+                "batch_webhooks": dict(self.batch_webhooks),
                 "org_enforcement_webhooks": dict(self.org_enforcement_webhooks),
                 "soft_warnings": dict(self.soft_warnings),
                 "tts_phonon_format_coerced": dict(self.tts_phonon_format_coerced),

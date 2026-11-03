@@ -1111,9 +1111,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if rate_soft:
             request.state.rate_limit_soft = True
 
-        from daari.auth.virtual_keys import admission_priority_for
+        from daari.auth.virtual_keys import resolve_request_admission_priority
+        from daari.gateway.request_log import log_gateway_event
 
-        slot = await limiter.acquire(priority=admission_priority_for(virtual, team))
+        vk_settings = getattr(getattr(settings, "server", None), "virtual_keys", None)
+        allow_boost = bool(
+            getattr(vk_settings, "allow_request_priority_boost", False) if vk_settings else False
+        )
+        header_priority = request.headers.get("x-daari-priority") or request.headers.get(
+            "X-Daari-Priority"
+        )
+        baseline_team = team
+        effective_priority, priority_warning, priority_changed = (
+            resolve_request_admission_priority(
+                virtual,
+                baseline_team,
+                header=header_priority,
+                allow_boost=allow_boost,
+            )
+        )
+        if priority_warning:
+            request.state.admission_priority_warning = priority_warning
+        if priority_changed:
+            from daari.auth.virtual_keys import admission_priority_for
+
+            log_gateway_event(
+                "admission_priority",
+                {
+                    "from": admission_priority_for(virtual, baseline_team),
+                    "to": effective_priority,
+                    "header": (header_priority or "").strip().lower() or None,
+                    "key_id": str(key_id) if key_id else None,
+                },
+            )
+
+        slot = await limiter.acquire(priority=effective_priority)
         if not slot.allowed:
             metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
             if metrics is not None and hasattr(metrics, "record_reject"):
@@ -1226,6 +1258,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
             if metrics is not None and hasattr(metrics, "record_soft_warning"):
                 metrics.record_soft_warning("rate_limit")
+        priority_warning = getattr(request.state, "admission_priority_warning", None)
+        if priority_warning:
+            from daari.gateway.cost_headers import WARNING_HEADER
+
+            existing = response.headers.get(WARNING_HEADER) or ""
+            if priority_warning not in existing:
+                response.headers[WARNING_HEADER] = (
+                    f"{existing}; {priority_warning}" if existing else priority_warning
+                )
         return response
 
     app.include_router(create_gateway_router())

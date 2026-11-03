@@ -8569,6 +8569,41 @@ failover plus shipped `routing.virtual_model_selection: performance` on-box
 EWMA (#2052); no Private Endpoints / CSAM claim. `compare.md` matrix row
 aligned. Covered by `tests/unit/test_compare_openrouter_performance_router.py`.
 
+### Docs: LiteLLM 1.109.0-dev.2 watch refresh ([#2058](https://github.com/naveenreddyalka/daari/issues/2058))
+
+<!-- tracking:#2058 -->
+**Status:** Done (2026-11-03). `compare-litellm.md` 1.109-dev section cites
+**v1.109.0-dev.2**; GA floor stays **1.106.6**; mid-stream
+`routing.stream_fallback_continue` marked shipped on-box; watch bullets for
+RPD/TPD, `x-litellm-priority`, cosign rotation under `e82a3c6`, and Anthropic
+`drop_params`/`speed` vs `models.degrade_deprecated_speed`. No Lens / Admin
+Chat UI parity; 1.107.0 remains do-not-install. Covered by
+`tests/unit/test_compare_litellm_1104.py`.
+
+### Optional X-Daari-Priority request admission header ([#2060](https://github.com/naveenreddyalka/daari/issues/2060))
+
+<!-- tracking:#2060 -->
+**Status:** Done (2026-11-03). Honor `X-Daari-Priority: high|normal|low` on the
+in-flight gate (same path as key/team `--priority`). Lowering is free; boost
+above the key/team ceiling requires
+`server.virtual_keys.allow_request_priority_boost` (default false). Invalid
+values soft-warn via `x-daari-warning: invalid_x_daari_priority`; changes log
+`admission_priority`. Docs: headers, auth-and-keys, config, virtual-keys,
+compare-litellm watch pointer. Covered by
+`tests/unit/test_request_priority_header.py`.
+
+### Signed completion webhooks for /v1/batches ([#2069](https://github.com/naveenreddyalka/daari/issues/2069))
+
+<!-- tracking:#2069 -->
+**Status:** Done (2026-11-03). Settings-driven batch completion webhooks
+(`alerts.batch_completion_webhook_*`) mirror Responses webhooks; optional
+per-request `callback_url` on `POST /v1/batches`. Terminal states
+(completed/failed/cancelled/expired) POST a signed payload (id, status,
+request_counts) via `sign_webhook` / `X-Daari-Signature`, honor
+`assert_offline_url_allowed(..., surface="webhook")`, Redis SET NX dedupe
+(fail-open), and `log_gateway_event`. Covered by
+`tests/unit/test_batch_completion_webhook.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

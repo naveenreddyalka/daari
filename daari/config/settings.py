@@ -41,6 +41,15 @@ class VirtualKeysSettings(BaseModel):
             "Default false. Env: DAARI_SERVER__VIRTUAL_KEYS__AGENT_ACCESS_DEFAULT_DENY."
         ),
     )
+    allow_request_priority_boost: bool = Field(
+        default=False,
+        description=(
+            "When true, X-Daari-Priority may raise admission above the key/team "
+            "configured priority. Default false: the header may only lower "
+            "(or match) the ceiling. Env: "
+            "DAARI_SERVER__VIRTUAL_KEYS__ALLOW_REQUEST_PRIORITY_BOOST."
+        ),
+    )
 
 
 class ModelRateLimitSettings(BaseModel):
@@ -2697,6 +2706,36 @@ class AlertSettings(BaseModel):
         description=(
             "ISO-8601 timestamp when responses_completion_webhook_secret_previous "
             "was last set by rotation (#1913)."
+        ),
+    )
+    batch_completion_webhook_url: str = Field(
+        default="",
+        description=(
+            "Opt-in webhook when a /v1/batches job reaches a terminal status "
+            "(#2069). Empty disables (no network call). Per-request "
+            "`callback_url` on POST /v1/batches overrides this URL for that job."
+        ),
+    )
+    batch_completion_webhook_secret: str = Field(
+        default="",
+        description=(
+            "HMAC secret for batch completion webhooks (X-Daari-Signature). "
+            "Supports secret:// refs (#2069)."
+        ),
+    )
+    batch_completion_webhook_secret_previous: str = Field(
+        default="",
+        description=(
+            "Previous batch completion webhook HMAC secret during rotation "
+            "grace (#2069). Signing uses batch_completion_webhook_secret; "
+            "receivers verify against either."
+        ),
+    )
+    batch_completion_webhook_secret_rotated_at: str = Field(
+        default="",
+        description=(
+            "ISO-8601 timestamp when batch_completion_webhook_secret_previous "
+            "was last set by rotation (#2069)."
         ),
     )
 

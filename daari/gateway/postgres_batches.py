@@ -250,6 +250,7 @@ class PostgresBatchStore(BatchStore):
             return None
         if self._maybe_expire(job):
             self._persist(job)
+            self._notify_terminal(job)
         return job
 
     def _fetch(self, batch_id: str) -> Any | None:
@@ -418,6 +419,7 @@ class PostgresBatchStore(BatchStore):
                     job.cancelled_at = job.cancelled_at or now
                     job.cancelling_at = job.cancelling_at or now
                     self._persist(job)
+                    self._notify_terminal(job)
                     return
                 if not job.items or job.status == STATUS_FAILED:
                     return
@@ -519,6 +521,7 @@ class PostgresBatchStore(BatchStore):
                         "batch.finished",
                         {"batch_id": job.id, "status": job.status},
                     )
+                    self._notify_terminal(job)
                 finally:
                     self._running.discard(batch_id)
             finally:
