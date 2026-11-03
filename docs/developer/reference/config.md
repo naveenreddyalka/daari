@@ -399,6 +399,10 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `alerts.responses_completion_webhook_secret` | str | `''` | HMAC secret for Responses completion webhooks (X-Daari-Signature). Supports secret:// refs (#1892). |
 | `alerts.responses_completion_webhook_secret_previous` | str | `''` | Previous Responses completion webhook HMAC secret during rotation grace (#1913). Signing uses responses_completion_webhook_secret; receivers verify against either. Set via `daari alerts rotate-secret responses`. |
 | `alerts.responses_completion_webhook_secret_rotated_at` | str | `''` | ISO-8601 timestamp when responses_completion_webhook_secret_previous was last set by rotation (#1913). |
+| `alerts.batch_completion_webhook_url` | str | `''` | Opt-in webhook when a /v1/batches job reaches a terminal status (#2069). Empty disables (no network call). Per-request `callback_url` on POST /v1/batches overrides this URL for that job. |
+| `alerts.batch_completion_webhook_secret` | str | `''` | HMAC secret for batch completion webhooks (X-Daari-Signature). Supports secret:// refs (#2069). |
+| `alerts.batch_completion_webhook_secret_previous` | str | `''` | Previous batch completion webhook HMAC secret during rotation grace (#2069). Signing uses batch_completion_webhook_secret; receivers verify against either. |
+| `alerts.batch_completion_webhook_secret_rotated_at` | str | `''` | ISO-8601 timestamp when batch_completion_webhook_secret_previous was last set by rotation (#2069). |
 | `skills_system_prefix` | str | `''` | Runtime-only: markdown loaded from ~/.daari/skills/ and prepended as a system prefix. Supports flat *.md files and AAIF Agent Skills packages (~/.daari/skills/<name>/SKILL.md, directory name = skill title). Nested depth beyond one level is ignored; empty/unreadable SKILL.md is skipped. |
 | `model_groups` | dict | `{}` | Named model groups (exact names or globs such as claude-*). Keys and teams reference them by name; enforcement is the union of allowed_models and the referenced groups, intersected across team and key. |
 

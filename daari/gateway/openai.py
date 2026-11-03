@@ -315,6 +315,8 @@ class BatchCreateRequest(BaseModel):
     # Inline chat-completion bodies or OpenAI JSONL-line objects (tests / local).
     requests: list[dict[str, Any]] | None = None
     metadata: dict[str, Any] | None = None
+    # Optional per-job override of alerts.batch_completion_webhook_url (#2069).
+    callback_url: str | None = None
 
 
 async def _execute_batch_chat_body(
@@ -3620,6 +3622,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ctx.batch_store = store
             elif store.file_store is None and ctx.file_store is not None:
                 store.file_store = ctx.file_store
+            from daari.observability.batch_webhooks import apply_batch_webhook_settings
+
+            apply_batch_webhook_settings(
+                store, ctx.settings, metrics=getattr(ctx, "metrics", None)
+            )
             try:
                 job = store.create(
                     endpoint=body.endpoint,
@@ -3627,6 +3634,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     input_file_id=body.input_file_id,
                     requests=body.requests,
                     metadata=body.metadata,
+                    callback_url=body.callback_url,
                     governance=_governance_from_batch_request(request, body),
                 )
             except ValueError as exc:

@@ -8592,6 +8592,18 @@ values soft-warn via `x-daari-warning: invalid_x_daari_priority`; changes log
 compare-litellm watch pointer. Covered by
 `tests/unit/test_request_priority_header.py`.
 
+### Signed completion webhooks for /v1/batches ([#2069](https://github.com/naveenreddyalka/daari/issues/2069))
+
+<!-- tracking:#2069 -->
+**Status:** Done (2026-11-03). Settings-driven batch completion webhooks
+(`alerts.batch_completion_webhook_*`) mirror Responses webhooks; optional
+per-request `callback_url` on `POST /v1/batches`. Terminal states
+(completed/failed/cancelled/expired) POST a signed payload (id, status,
+request_counts) via `sign_webhook` / `X-Daari-Signature`, honor
+`assert_offline_url_allowed(..., surface="webhook")`, Redis SET NX dedupe
+(fail-open), and `log_gateway_event`. Covered by
+`tests/unit/test_batch_completion_webhook.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
