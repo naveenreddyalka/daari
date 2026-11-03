@@ -7244,6 +7244,9 @@ class AppContext:
                 yield_to_interactive=settings.batches.yield_to_interactive,
                 idle_poll_seconds=settings.batches.idle_poll_seconds,
             )
+        from daari.observability.batch_webhooks import apply_batch_webhook_settings
+
+        apply_batch_webhook_settings(batch_store, settings, metrics=metrics)
         context = cls(
             settings=settings,
             cache=cache,
