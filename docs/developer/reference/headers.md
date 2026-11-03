@@ -10,6 +10,7 @@
 | `X-Daari-No-Frontier` | Forbid L6 |
 | `X-Daari-Latency-Budget` | Max local latency (ms) |
 | `X-Daari-Deadline-Ms` | Wall-clock budget for the whole request (ms). Wins over `upstream.request_deadline_seconds`. Honored on chat (`/v1/chat/completions`, Anthropic, Responses), Ollama facade (`/api/chat`, `/api/generate`), audio (`/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/audio/speech`), embeddings (`/v1/embeddings`), and MCP `tools/call`. When spent, the gateway returns **504** with `request_deadline_exceeded` and does not escalate further. On streaming responses the budget applies to time-to-first-token only. |
+| `X-Daari-Priority` | Optional per-request admission class for the in-flight gate: `high`, `normal`, or `low` (same limiter path as key/team `--priority`). May **lower** freely relative to the key/team ceiling; raising above that ceiling requires `server.virtual_keys.allow_request_priority_boost` (default false) or a key already configured at that class. Invalid values are ignored with soft `x-daari-warning: invalid_x_daari_priority` (no 400). |
 | `X-Daari-Client-Id` | Ledger attribution |
 | `X-Daari-Project` | Path for `.daari.yaml` discovery |
 | `X-Daari-Boundary-Profile` | Named `boundaries.profiles` overlay for this request (browser extension site profiles) |

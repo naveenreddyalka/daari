@@ -79,6 +79,16 @@ daari keys create ide --priority high --team eng
 daari keys list   # prio column
 ```
 
+Per-request override: send `X-Daari-Priority: high|normal|low` on chat /
+Anthropic Messages / Responses (and other rate-limited routes). The header may
+**lower** admission relative to the key/team ceiling without config; raising
+above that ceiling needs
+`server.virtual_keys.allow_request_priority_boost: true` (default false) or a
+key already minted at that class. Invalid values are ignored with soft
+`x-daari-warning: invalid_x_daari_priority`. See
+[headers](../../reference/headers.md) and
+[auth-and-keys](../configuration/auth-and-keys.md).
+
 ## Concurrency caps
 
 `--max-in-flight N` on `keys create` / `keys team-create` sets a per-key or

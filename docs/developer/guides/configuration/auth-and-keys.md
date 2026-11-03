@@ -138,6 +138,24 @@ key monopolization from fleet-wide admission pressure. Scrapes expose
 `daari_in_flight{scope,id}` / `daari_in_flight_max{scope,id}` for keys, teams,
 and named `rate_limit.models` with active caps.
 
+### Request admission priority header
+
+`X-Daari-Priority: high|normal|low` steers the same in-flight admission class
+as key/team `--priority` for a single turn (chat, Anthropic Messages,
+Responses, and other rate-limited routes). Rules:
+
+- Lowering relative to the key/team ceiling is always allowed.
+- Raising above that ceiling requires the key (or team) to already be at that
+  class, or `server.virtual_keys.allow_request_priority_boost: true` (default
+  **false** — a `normal` key cannot self-promote to `high`).
+- Invalid values are ignored; the response carries soft
+  `x-daari-warning: invalid_x_daari_priority` (no HTTP 400).
+- When the header changes the effective priority, the gateway logs
+  `admission_priority` via `log_gateway_event`.
+
+Unauthenticated / master-key paths still default to `normal` and may lower via
+the header. See [headers](../../reference/headers.md).
+
 ### Named per-model map
 
 `rate_limit.models` maps a model id (or prefix) to `rpm` / `tpm` /
