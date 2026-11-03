@@ -1073,7 +1073,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     },
                 )
             from daari.gateway.model_access import (
+                apply_service_tier_allowlist_degrade,
                 reject_disallowed_model,
+                reject_disallowed_service_tier,
                 reject_model_group_budget,
                 reject_model_max_budget,
                 reject_retired_model,
@@ -1091,6 +1093,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             model_denied = reject_model_max_budget(request, body.model, ctx.settings)
             if model_denied is not None:
                 return model_denied
+            tier_denied = reject_disallowed_service_tier(
+                request, service_tier=getattr(body, "service_tier", None)
+            )
+            if tier_denied is not None:
+                return tier_denied
+            apply_service_tier_allowlist_degrade(body, request)
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             # Per-end-user daily cap on shared virtual keys (#410). Checked here
@@ -1128,6 +1136,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 tools_mode=x_daari_tools,
                 meta=meta,
             )
+            apply_service_tier_allowlist_degrade(body, request, internal)
             from daari.gateway.transcriptions import inject_inline_audio_transcripts
 
             internal = await inject_inline_audio_transcripts(internal, ctx.settings)

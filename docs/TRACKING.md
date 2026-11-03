@@ -8604,6 +8604,18 @@ request_counts) via `sign_webhook` / `X-Daari-Signature`, honor
 (fail-open), and `log_gateway_event`. Covered by
 `tests/unit/test_batch_completion_webhook.py`.
 
+### Per-key / per-team service-tier allowlist ([#2070](https://github.com/naveenreddyalka/daari/issues/2070))
+
+<!-- tracking:#2070 -->
+**Status:** Done (2026-11-03). `VirtualKey` / `Team.allowed_service_tiers`
+(persisted in `metadata_json` on sqlite + postgres) intersect
+key∩team (most restrictive). Disallowed OpenAI/Responses `service_tier` or
+Anthropic `speed` → 403 `service_tier_not_allowed`, or opt-in degrade via
+`degrade_disallowed_service_tier` with
+`daari_meta.warning=service_tier_not_allowed_degraded`. Denials log
+`log_gateway_event("service_tier_not_allowed")`. Covered by
+`tests/unit/test_service_tier_allowlist.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

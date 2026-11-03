@@ -440,8 +440,10 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                     },
                 )
             from daari.gateway.model_access import (
+                apply_service_tier_allowlist_degrade,
                 reject_deprecated_anthropic_speed,
                 reject_disallowed_model,
+                reject_disallowed_service_tier,
                 reject_retired_model,
             )
 
@@ -456,6 +458,14 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             )
             if speed_gone is not None:
                 return speed_gone
+            tier_denied = reject_disallowed_service_tier(
+                request,
+                service_tier=getattr(body, "service_tier", None),
+                speed=getattr(body, "speed", None),
+            )
+            if tier_denied is not None:
+                return tier_denied
+            apply_service_tier_allowlist_degrade(body, request)
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             # Per-end-user daily cap on shared virtual keys (#1933). metadata.user_id
@@ -536,6 +546,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 sampling=SamplingParams.from_anthropic_body(body.model_dump()),
                 provider=parse_provider(body.provider),
             )
+            apply_service_tier_allowlist_degrade(body, request, internal)
             if (
                 internal.provider
                 and internal.provider.zdr

@@ -427,6 +427,10 @@ restrictions (400 with `error.param=service_tier`), L6 retries once without
 the tier, stamps `service_tier_degraded`, and bills from the response's
 `service_tier` field.
 
+Virtual keys and teams may also set `allowed_service_tiers` (intersected,
+most restrictive) so expensive tiers cannot be requested without governance;
+see [virtual keys](../features/virtual-keys.md#service-tier-allowlists).
+
 OpenAI regional processing (data residency) adds a further **1.10×** uplift on
 models released on or after 2026-03-05 when a key/team `region_pin` is `us` or
 `eu`; unset pin bills the standard (or Fast/Ultrafast) rate with no residency

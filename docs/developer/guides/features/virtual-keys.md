@@ -65,6 +65,22 @@ Master key and unrestricted virtual keys still see the full catalog.
 query filters compose with the allowlist (retired models stay omitted by
 default).
 
+## Service-tier allowlists
+
+Restrict which OpenAI/Responses `service_tier` values (and Anthropic Messages
+`speed` values) a key or team may request. Persist
+`metadata.allowed_service_tiers` (list of lowercase names such as `default`,
+`flex`, `priority`, `ultrafast`, `fast`, `standard`). Absent means all tiers
+are allowed. Key and team lists **intersect** (most restrictive), same as
+model allowlists.
+
+A disallowed request is HTTP 403 `service_tier_not_allowed` and logs
+`service_tier_not_allowed` via the gateway event log. Set
+`metadata.degrade_disallowed_service_tier: true` on the key or team to clear
+the tier/speed instead (opt-in degrade) and continue with
+`daari_meta.warning=service_tier_not_allowed_degraded`, mirroring the
+`ultrafast_unsupported_model` convention.
+
 ## Admission priority
 
 The global in-flight gate admits waiters by priority class, then FIFO:

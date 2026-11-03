@@ -247,6 +247,8 @@ class PostgresVirtualKeyStore:
         model_max_budget: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         signal_overrides: list[Any] | tuple[Any, ...] | None = None,
+        allowed_service_tiers: list[str] | tuple[str, ...] | None = None,
+        degrade_disallowed_service_tier: bool = False,
     ) -> Team:
         if self._inner is not None:
             return self._inner.create_team(
@@ -268,6 +270,8 @@ class PostgresVirtualKeyStore:
                 model_max_budget=model_max_budget,
                 metadata=metadata,
                 signal_overrides=signal_overrides,
+                allowed_service_tiers=allowed_service_tiers,
+                degrade_disallowed_service_tier=degrade_disallowed_service_tier,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -276,6 +280,12 @@ class PostgresVirtualKeyStore:
             encode_model_group_budgets,
             encode_model_max_budget,
             windows_from_flat,
+        )
+        from daari.auth.service_tier_access import (
+            coerce_tiers,
+            degrade_from_meta,
+            tiers_from_meta,
+            write_tiers_to_meta,
         )
         from daari.router.signals import encode_signal_overrides
 
@@ -305,6 +315,12 @@ class PostgresVirtualKeyStore:
                 meta["signal_overrides"] = encoded
             else:
                 meta.pop("signal_overrides", None)
+        tiers = coerce_tiers(allowed_service_tiers)
+        meta = write_tiers_to_meta(
+            meta,
+            allowed_service_tiers=tiers,
+            degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
+        )
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
@@ -336,6 +352,8 @@ class PostgresVirtualKeyStore:
                         else "global",
                         priority=coerce_priority(existing[9]) if len(existing) > 9 else "normal",
                         max_in_flight=_max_in_flight_from_meta(existing_meta),
+                        allowed_service_tiers=tiers_from_meta(existing_meta),
+                        degrade_disallowed_service_tier=degrade_from_meta(existing_meta),
                         metadata=existing_meta,
                     )
                 cur.execute(
@@ -373,6 +391,8 @@ class PostgresVirtualKeyStore:
             cache_scope=scope,
             priority=prio,
             max_in_flight=team_mif,
+            allowed_service_tiers=tiers,
+            degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
             metadata=meta,
         )
 
@@ -505,6 +525,8 @@ class PostgresVirtualKeyStore:
                 row = cur.fetchone()
         if row is None:
             return None
+        from daari.auth.service_tier_access import degrade_from_meta, tiers_from_meta
+
         team_meta = _parse_metadata(row[11]) if len(row) > 11 else {}
         return Team(
             team_id=row[0],
@@ -519,6 +541,8 @@ class PostgresVirtualKeyStore:
             cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
             priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
             max_in_flight=_max_in_flight_from_meta(team_meta),
+            allowed_service_tiers=tiers_from_meta(team_meta),
+            degrade_disallowed_service_tier=degrade_from_meta(team_meta),
             metadata=team_meta,
         )
 
@@ -527,6 +551,8 @@ class PostgresVirtualKeyStore:
             return self._inner.list_teams()
         if not self.enabled:
             return []
+        from daari.auth.service_tier_access import degrade_from_meta, tiers_from_meta
+
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -552,6 +578,8 @@ class PostgresVirtualKeyStore:
                     cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
                     priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
                     max_in_flight=_max_in_flight_from_meta(team_meta),
+                    allowed_service_tiers=tiers_from_meta(team_meta),
+                    degrade_disallowed_service_tier=degrade_from_meta(team_meta),
                     metadata=team_meta,
                 )
             )
@@ -673,6 +701,8 @@ class PostgresVirtualKeyStore:
         model_max_budget: dict[str, Any] | None = None,
         signal_overrides: list[Any] | tuple[Any, ...] | None = None,
         max_in_flight: int = 0,
+        allowed_service_tiers: list[str] | tuple[str, ...] | None = None,
+        degrade_disallowed_service_tier: bool = False,
     ) -> CreatedKey:
         if self._inner is not None:
             return self._inner.create(
@@ -701,6 +731,8 @@ class PostgresVirtualKeyStore:
                 model_max_budget=model_max_budget,
                 signal_overrides=signal_overrides,
                 max_in_flight=max_in_flight,
+                allowed_service_tiers=allowed_service_tiers,
+                degrade_disallowed_service_tier=degrade_disallowed_service_tier,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -710,6 +742,7 @@ class PostgresVirtualKeyStore:
             encode_model_max_budget,
             windows_from_flat,
         )
+        from daari.auth.service_tier_access import coerce_tiers, write_tiers_to_meta
         from daari.router.signals import encode_signal_overrides
 
         expires_at = expiry_from(expires_at)
@@ -742,6 +775,12 @@ class PostgresVirtualKeyStore:
                 meta["signal_overrides"] = encoded
             else:
                 meta.pop("signal_overrides", None)
+        tiers = coerce_tiers(allowed_service_tiers)
+        meta = write_tiers_to_meta(
+            meta,
+            allowed_service_tiers=tiers,
+            degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
+        )
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
         scope = normalize_cache_scope(cache_scope)
@@ -805,6 +844,9 @@ class PostgresVirtualKeyStore:
                 model_groups=groups,
                 cache_scope=scope,
                 priority=prio,
+                max_in_flight=key_mif,
+                allowed_service_tiers=tiers,
+                degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
             ),
             plaintext=plaintext,
         )
@@ -1166,6 +1208,48 @@ class PostgresVirtualKeyStore:
                     "UPDATE virtual_keys SET allowed_models_json = %s, model_groups_json = %s"
                     " WHERE key_id = %s AND revoked_at IS NULL",
                     (encode_names(models), encode_names(groups), key_id),
+                )
+                updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+
+    def update_service_tier_access(
+        self,
+        key_id: str,
+        *,
+        allowed_service_tiers: list[str] | tuple[str, ...] | None | object = _UNSET,
+        degrade_disallowed_service_tier: bool | None = None,
+    ) -> bool:
+        if self._inner is not None:
+            return self._inner.update_service_tier_access(
+                key_id,
+                allowed_service_tiers=allowed_service_tiers,
+                degrade_disallowed_service_tier=degrade_disallowed_service_tier,
+            )
+        if not self.enabled:
+            return False
+        from daari.auth.service_tier_access import write_tiers_to_meta
+
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata_json FROM virtual_keys"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (key_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return False
+                meta = write_tiers_to_meta(
+                    _parse_metadata(row[0]),
+                    allowed_service_tiers=allowed_service_tiers,
+                    degrade_disallowed_service_tier=degrade_disallowed_service_tier,
+                    unset_sentinel=_UNSET,
+                )
+                cur.execute(
+                    "UPDATE virtual_keys SET metadata_json = %s"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (json.dumps(meta), key_id),
                 )
                 updated = cur.rowcount > 0
             conn.commit()
