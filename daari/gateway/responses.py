@@ -802,10 +802,14 @@ def _reject_responses_model(
     ctx: AppContext,
     model: str,
     meta: RequestMeta,
+    *,
+    service_tier: str | None = None,
 ) -> JSONResponse | None:
     """Allowlist + model_max_budget (same 402 as chat) for Responses surfaces (#1169)."""
     from daari.gateway.model_access import (
+        apply_service_tier_allowlist_degrade,
         reject_disallowed_model,
+        reject_disallowed_service_tier,
         reject_model_max_budget,
         reject_retired_model,
     )
@@ -816,7 +820,17 @@ def _reject_responses_model(
     retired = reject_retired_model(request, model, ctx.settings)
     if retired is not None:
         return retired
-    return reject_model_max_budget(request, model, ctx.settings)
+    budget = reject_model_max_budget(request, model, ctx.settings)
+    if budget is not None:
+        return budget
+    tier_denied = reject_disallowed_service_tier(request, service_tier=service_tier)
+    if tier_denied is not None:
+        return tier_denied
+    # Clear body.service_tier when the caller passes the request body via state.
+    body = getattr(request.state, "responses_body", None)
+    if body is not None:
+        apply_service_tier_allowlist_degrade(body, request)
+    return None
 
 
 class ResponsesGatewayAdapter(GatewayAdapter):
@@ -1186,7 +1200,14 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             )
             apply_cost_tier(body, meta)
             model = body.model or ctx.settings.models.l3
-            denied = _reject_responses_model(request, ctx, model, meta)
+            request.state.responses_body = body
+            denied = _reject_responses_model(
+                request,
+                ctx,
+                model,
+                meta,
+                service_tier=getattr(body, "service_tier", None),
+            )
             if denied is not None:
                 return denied
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
@@ -1217,6 +1238,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 meta=meta,
                 sampling=SamplingParams.from_responses_body(body.model_dump()),
             )
+            from daari.gateway.model_access import apply_service_tier_allowlist_degrade
+
+            apply_service_tier_allowlist_degrade(body, request, internal)
             from daari.gateway.transcriptions import inject_inline_audio_transcripts
 
             internal = await inject_inline_audio_transcripts(internal, ctx.settings)

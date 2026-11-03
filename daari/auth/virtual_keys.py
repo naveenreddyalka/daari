@@ -332,6 +332,11 @@ class Team:
     priority: str = "normal"
     # Per-team concurrent request cap (0 = unlimited) (#1592). Mirrored in metadata.
     max_in_flight: int = 0
+    # Service-tier / Anthropic speed allowlist (#2070). None = unrestricted.
+    # Mirrored in metadata["allowed_service_tiers"].
+    allowed_service_tiers: tuple[str, ...] | None = None
+    # Opt-in: clear disallowed tier instead of 403 (#2070). Mirrored in metadata.
+    degrade_disallowed_service_tier: bool = False
     # Temporary budget boosts and other team-scoped extras (#936).
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -386,6 +391,11 @@ class VirtualKey:
     last_used_at: str | None = None
     # Per-key concurrent request cap (0 = unlimited) (#1592). Mirrored in metadata.
     max_in_flight: int = 0
+    # Service-tier / Anthropic speed allowlist (#2070). None = unrestricted.
+    # Mirrored in metadata["allowed_service_tiers"].
+    allowed_service_tiers: tuple[str, ...] | None = None
+    # Opt-in: clear disallowed tier instead of 403 (#2070). Mirrored in metadata.
+    degrade_disallowed_service_tier: bool = False
 
     @property
     def signal_overrides(self) -> tuple[Any, ...]:
@@ -662,6 +672,8 @@ class VirtualKeyStore:
         model_max_budget: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         signal_overrides: list[Any] | tuple[Any, ...] | None = None,
+        allowed_service_tiers: list[str] | tuple[str, ...] | None = None,
+        degrade_disallowed_service_tier: bool = False,
     ) -> Team:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -670,6 +682,12 @@ class VirtualKeyStore:
             encode_model_group_budgets,
             encode_model_max_budget,
             windows_from_flat,
+        )
+        from daari.auth.service_tier_access import (
+            coerce_tiers,
+            degrade_from_meta,
+            tiers_from_meta,
+            write_tiers_to_meta,
         )
         from daari.router.signals import encode_signal_overrides
 
@@ -700,6 +718,12 @@ class VirtualKeyStore:
                 meta["signal_overrides"] = encoded
             else:
                 meta.pop("signal_overrides", None)
+        tiers = coerce_tiers(allowed_service_tiers)
+        meta = write_tiers_to_meta(
+            meta,
+            allowed_service_tiers=tiers,
+            degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
+        )
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
@@ -725,6 +749,8 @@ class VirtualKeyStore:
                     cache_scope=coerce_cache_scope(existing[8]) if len(existing) > 8 else "global",
                     priority=coerce_priority(existing[9]) if len(existing) > 9 else "normal",
                     max_in_flight=_max_in_flight_from_meta(existing_meta),
+                    allowed_service_tiers=tiers_from_meta(existing_meta),
+                    degrade_disallowed_service_tier=degrade_from_meta(existing_meta),
                     metadata=existing_meta,
                     tpd=int(existing[11] or 0) if len(existing) > 11 else 0,
                 )
@@ -764,6 +790,8 @@ class VirtualKeyStore:
             cache_scope=scope,
             priority=prio,
             max_in_flight=team_mif,
+            allowed_service_tiers=tiers,
+            degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
             metadata=meta,
         )
 
@@ -885,6 +913,8 @@ class VirtualKeyStore:
                 ).fetchone()
         if row is None:
             return None
+        from daari.auth.service_tier_access import degrade_from_meta, tiers_from_meta
+
         team_meta = _parse_metadata(row[11]) if len(row) > 11 else {}
         return Team(
             team_id=row[0],
@@ -899,6 +929,8 @@ class VirtualKeyStore:
             cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
             priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
             max_in_flight=_max_in_flight_from_meta(team_meta),
+            allowed_service_tiers=tiers_from_meta(team_meta),
+            degrade_disallowed_service_tier=degrade_from_meta(team_meta),
             metadata=team_meta,
             tpd=int(row[12] or 0) if len(row) > 12 else 0,
         )
@@ -907,6 +939,8 @@ class VirtualKeyStore:
         """All teams with budget/rate metadata (#616)."""
         if not self.enabled:
             return []
+        from daari.auth.service_tier_access import degrade_from_meta, tiers_from_meta
+
         with self._lock, self._connect() as conn:
             rows = conn.execute(
                 "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
@@ -931,6 +965,8 @@ class VirtualKeyStore:
                     cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
                     priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
                     max_in_flight=_max_in_flight_from_meta(team_meta),
+                    allowed_service_tiers=tiers_from_meta(team_meta),
+                    degrade_disallowed_service_tier=degrade_from_meta(team_meta),
                     metadata=team_meta,
                     tpd=int(row[12] or 0) if len(row) > 12 else 0,
                 )
@@ -1032,6 +1068,8 @@ class VirtualKeyStore:
         model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
         model_max_budget: dict[str, Any] | None = None,
         signal_overrides: list[Any] | tuple[Any, ...] | None = None,
+        allowed_service_tiers: list[str] | tuple[str, ...] | None = None,
+        degrade_disallowed_service_tier: bool = False,
     ) -> CreatedKey:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -1040,6 +1078,7 @@ class VirtualKeyStore:
             encode_model_max_budget,
             windows_from_flat,
         )
+        from daari.auth.service_tier_access import coerce_tiers, write_tiers_to_meta
         from daari.router.signals import encode_signal_overrides
 
         # Normalise whatever the caller passed (relative or ISO) once, here.
@@ -1075,6 +1114,12 @@ class VirtualKeyStore:
                 meta["signal_overrides"] = encoded
             else:
                 meta.pop("signal_overrides", None)
+        tiers = coerce_tiers(allowed_service_tiers)
+        meta = write_tiers_to_meta(
+            meta,
+            allowed_service_tiers=tiers,
+            degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
+        )
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
         scope = normalize_cache_scope(cache_scope)
@@ -1141,6 +1186,8 @@ class VirtualKeyStore:
                 cache_scope=scope,
                 priority=prio,
                 max_in_flight=key_mif,
+                allowed_service_tiers=tiers,
+                degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
             ),
             plaintext=plaintext,
         )
@@ -1375,6 +1422,37 @@ class VirtualKeyStore:
             )
             return cur.rowcount > 0
 
+    def update_service_tier_access(
+        self,
+        key_id: str,
+        *,
+        allowed_service_tiers: list[str] | tuple[str, ...] | None | object = _UNSET,
+        degrade_disallowed_service_tier: bool | None = None,
+    ) -> bool:
+        """Replace a key's service-tier allowlist. Omitted sides stay unchanged (#2070)."""
+        if not self.enabled:
+            return False
+        from daari.auth.service_tier_access import write_tiers_to_meta
+
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT metadata_json FROM virtual_keys WHERE key_id = ? AND revoked_at IS NULL",
+                (key_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            meta = write_tiers_to_meta(
+                _parse_metadata(row[0]),
+                allowed_service_tiers=allowed_service_tiers,
+                degrade_disallowed_service_tier=degrade_disallowed_service_tier,
+                unset_sentinel=_UNSET,
+            )
+            cur = conn.execute(
+                "UPDATE virtual_keys SET metadata_json = ? WHERE key_id = ? AND revoked_at IS NULL",
+                (json.dumps(meta), key_id),
+            )
+            return cur.rowcount > 0
+
     def update_signal_overrides(
         self,
         key_id: str,
@@ -1570,6 +1648,8 @@ class VirtualKeyStore:
         prio = priority
         if prio is None and isinstance(parsed, dict):
             prio = parsed.get("priority")
+        from daari.auth.service_tier_access import degrade_from_meta, tiers_from_meta
+
         mif = (
             max(0, int(max_in_flight))
             if max_in_flight is not None
@@ -1604,6 +1684,8 @@ class VirtualKeyStore:
             priority=coerce_priority(prio),
             last_used_at=last_used_at,
             max_in_flight=mif,
+            allowed_service_tiers=tiers_from_meta(parsed),
+            degrade_disallowed_service_tier=degrade_from_meta(parsed),
         )
 
     def list(self) -> list[VirtualKey]:

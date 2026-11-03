@@ -422,3 +422,123 @@ def reject_model_max_budget(
         merged = {**existing, **budget_headers(tightest, soft=True)}
         request.state.budget_response_headers = merged
     return None
+
+
+def _team_for_claims(request: Any, claims: Any) -> Any:
+    vk = getattr(claims, "virtual_key", None) if claims is not None else None
+    team_id = getattr(claims, "selected_team_id", None) if claims is not None else None
+    if not team_id and vk is not None:
+        team_id = getattr(vk, "team_id", None)
+    if not team_id:
+        return None
+    store = getattr(getattr(request, "app", None), "state", None)
+    store = getattr(store, "virtual_key_store", None) if store is not None else None
+    if store is None or not getattr(store, "enabled", False):
+        return None
+    return store.get_team(team_id)
+
+
+def reject_disallowed_service_tier(
+    request: Any,
+    *,
+    service_tier: str | None = None,
+    speed: str | None = None,
+) -> JSONResponse | None:
+    """403 when service_tier/speed is outside the key∩team allowlist (#2070).
+
+    Opt-in degrade (key or team ``degrade_disallowed_service_tier``) clears the
+    disallowed field(s) on ``request.state`` for the caller to apply, sets
+    ``request.state.service_tier_allowlist_warning``, and returns None.
+    """
+    from daari.auth.service_tier_access import (
+        denial_body,
+        effective_allowed_service_tiers,
+        effective_degrade,
+        normalize_tier_name,
+        service_tier_permitted,
+    )
+
+    claims = getattr(getattr(request, "state", None), "auth_claims", None)
+    vk = getattr(claims, "virtual_key", None) if claims is not None else None
+    if vk is None:
+        return None
+    team = _team_for_claims(request, claims)
+    allowed = effective_allowed_service_tiers(
+        getattr(vk, "allowed_service_tiers", None),
+        getattr(team, "allowed_service_tiers", None) if team is not None else None,
+    )
+    if allowed is None:
+        return None
+    degrade = effective_degrade(
+        bool(getattr(vk, "degrade_disallowed_service_tier", False)),
+        bool(getattr(team, "degrade_disallowed_service_tier", False)) if team is not None else False,
+    )
+    tier_name = normalize_tier_name(service_tier)
+    speed_name = normalize_tier_name(speed)
+    violations: list[tuple[str, str]] = []
+    if tier_name and not service_tier_permitted(tier_name, allowed=allowed):
+        violations.append(("service_tier", tier_name))
+    if speed_name and not service_tier_permitted(speed_name, allowed=allowed):
+        violations.append(("speed", speed_name))
+    if not violations:
+        return None
+    field, value = violations[0]
+    key_id = getattr(claims, "key_id", None)
+    path = getattr(getattr(request, "url", None), "path", "") or ""
+    if degrade:
+        clear_tier = any(item[0] == "service_tier" for item in violations)
+        clear_speed = any(item[0] == "speed" for item in violations)
+        request.state.service_tier_allowlist_clear_tier = clear_tier
+        request.state.service_tier_allowlist_clear_speed = clear_speed
+        request.state.service_tier_allowlist_warning = "service_tier_not_allowed_degraded"
+        log_gateway_event(
+            "service_tier_not_allowed",
+            {
+                "field": field,
+                "value": value,
+                "key_id": key_id,
+                "path": path,
+                "action": "degrade",
+            },
+        )
+        return None
+    log_gateway_event(
+        "service_tier_not_allowed",
+        {
+            "field": field,
+            "value": value,
+            "key_id": key_id,
+            "path": path,
+            "action": "deny",
+        },
+    )
+    return JSONResponse(
+        status_code=403,
+        content=denial_body(requested=value, field=field),
+    )
+
+
+def apply_service_tier_allowlist_degrade(body: Any, request: Any, internal: Any = None) -> None:
+    """Apply opt-in clear + gate_warning after a degrade decision (#2070)."""
+    warning = getattr(getattr(request, "state", None), "service_tier_allowlist_warning", None)
+    if not warning:
+        return
+    if getattr(request.state, "service_tier_allowlist_clear_tier", False) and hasattr(
+        body, "service_tier"
+    ):
+        body.service_tier = None
+    if getattr(request.state, "service_tier_allowlist_clear_speed", False) and hasattr(
+        body, "speed"
+    ):
+        body.speed = None
+    if internal is not None:
+        sampling = getattr(internal, "sampling", None)
+        if sampling is not None:
+            if getattr(request.state, "service_tier_allowlist_clear_tier", False):
+                sampling.service_tier = None
+            if getattr(request.state, "service_tier_allowlist_clear_speed", False):
+                sampling.speed = None
+            existing = getattr(sampling, "gate_warning", None)
+            if existing and warning in existing:
+                return
+            sampling.gate_warning = f"{existing}; {warning}" if existing else warning
