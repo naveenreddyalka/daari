@@ -3609,6 +3609,15 @@ def setup_models(
             "Linux/Windows/macOS ≥ 0.40.13, Apple from 0.40.12)."
         ),
     ),
+    lfm3_audio: bool = typer.Option(
+        False,
+        "--lfm3-audio",
+        help=(
+            "Apply optional LFM3-Audio speech-only recipe "
+            "(tts/asr → ollama.base_url/v1 + model=lfm3-audio; "
+            "Ollama ≥ 0.40.12; does not set models.l4)."
+        ),
+    ),
     lfm3_omni: bool = typer.Option(
         False,
         "--lfm3-omni",
@@ -3643,6 +3652,7 @@ def setup_models(
         nemotron_bolt=nemotron_bolt,
         lfm3=lfm3,
         lfm3_vl=lfm3_vl,
+        lfm3_audio=lfm3_audio,
         lfm3_omni=lfm3_omni,
         safeguard=safeguard,
         dry_run=dry_run,
