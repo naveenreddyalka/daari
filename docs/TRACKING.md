@@ -8569,6 +8569,17 @@ failover plus shipped `routing.virtual_model_selection: performance` on-box
 EWMA (#2052); no Private Endpoints / CSAM claim. `compare.md` matrix row
 aligned. Covered by `tests/unit/test_compare_openrouter_performance_router.py`.
 
+### Docs: LiteLLM 1.109.0-dev.2 watch refresh ([#2058](https://github.com/naveenreddyalka/daari/issues/2058))
+
+<!-- tracking:#2058 -->
+**Status:** Done (2026-11-03). `compare-litellm.md` 1.109-dev section cites
+**v1.109.0-dev.2**; GA floor stays **1.106.6**; mid-stream
+`routing.stream_fallback_continue` marked shipped on-box; watch bullets for
+RPD/TPD, `x-litellm-priority`, cosign rotation under `e82a3c6`, and Anthropic
+`drop_params`/`speed` vs `models.degrade_deprecated_speed`. No Lens / Admin
+Chat UI parity; 1.107.0 remains do-not-install. Covered by
+`tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
