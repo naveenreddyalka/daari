@@ -112,14 +112,36 @@ cut. Stable comparison remains **1.106.6 GA**.
 ## LiteLLM 1.109-dev watch
 
 LiteLLM
+[v1.109.0-dev.2](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.2)
+(30 Oct 2026; continues
 [v1.109.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.1)
-(28 Oct 2026) is a **prerelease** — do not promote it to the GA floor (stable
-comparison remains **1.106.6 GA**). Watchables and daari's stance:
+from 28 Oct 2026) is a **prerelease** — do not promote it (or 1.108 RC) to the
+GA floor (stable comparison remains **1.106.6 GA**). Watchables and daari's
+stance:
 
 - **Mid-stream fallback continuation** — LiteLLM can keep a streaming chat
-  going on a configured fallback mid-answer; daari already emits stream
-  partials on the active hop, but mid-stream hop continuation after upstream
-  death is a next gap (not claimed here).
+  going on a configured fallback mid-answer. daari ships the same on-box via
+  opt-in `routing.stream_fallback_continue` (default off): after ≥1 content
+  token, a dead local/L6 hop continues on the next tier/slot with the partial
+  replayed into the transcript (see
+  [routing tiers](../concepts/routing-tiers.md#mid-stream-fallback-continuation)).
+- **Daily request + token limits** — 1.109.0-dev.2 adds deployment RPD/TPD
+  (with `daily_reset_time`) and per-provider/model RPM/TPM on project quotas.
+  daari already fences key/team/user `--rpd` / `--user-rpd` and `--tpd` /
+  `--user-tpd` on-box (UTC day, estimated tokens at admission); no cloud
+  quota plane.
+- **`x-litellm-priority`** — request-header priority into LiteLLM admission.
+  daari steers admission via key/team budgets and rate caps today; a
+  per-request priority header is a separate follow-on (not claimed here).
+- **Cosign key rotation** — 1.109.0-dev.2 images continue under the rotated
+  `cosign.pub` introduced in 1.106.3 (commit
+  [`e82a3c6`](https://github.com/BerriAI/litellm/commit/e82a3c6)). Buyers still
+  verifying with the old key will fail; daari does not ship LiteLLM images.
+- **Anthropic `drop_params` / `speed` hygiene** — 1.109.0-dev.2 lets
+  `drop_params` drop `speed` after Anthropic removed fast mode on older
+  Claudes. Related on-box path: opt-in `models.degrade_deprecated_speed`
+  strips deprecated `speed` with soft_warning `deprecated_speed_degraded`
+  instead of hard-failing after the removal date.
 - **`LITELLM_OFFLINE_MODE`** — one switch to disable outbound fetches; daari is
   already local-first by default, so this is a naming/ergonomics watch rather
   than a missing trust floor.
@@ -133,11 +155,6 @@ comparison remains **1.106.6 GA**). Watchables and daari's stance:
   provider's catalog; daari keeps spend math on-box via local
   `pricing.models` (no catalog fetch required).
 - **Admin Chat UI / model hub** — cloud control-plane surface; non-goal for
-  daari (no Lens / hosted hub parity).
-- **Tokens-per-day (TPD) quotas** —
-  [v1.109.0-dev.2](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.2)
-  adds deployment request/token-per-day limits. daari enforces on-box key/team
-  `--tpd` / `--user-tpd` next to RPD (UTC day, estimated tokens at admission);
-  no cloud quota plane. Full 1.109 compare refresh stays on its own issue.
+  daari (no Lens / hosted hub parity claimed).
 
 Measured on the same Ollama corpus: [benchmark vs LiteLLM](benchmark-vs-litellm.md). Short matrix: [compare](compare.md).
