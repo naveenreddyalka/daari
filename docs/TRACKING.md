@@ -8672,6 +8672,15 @@ event. Docs: routing-tiers. Covered by
 anonymous requests omit the attrs. Docs: otel-genai attribute table. Covered
 by `tests/unit/test_otel_genai.py`.
 
+### Latency SLO bucketing for performance virtual models ([#2086](https://github.com/naveenreddyalka/daari/issues/2086))
+
+<!-- tracking:#2086 -->
+**Status:** Done (2026-11-04). Opt-in `routing.virtual_model_latency_slo_ms`
+buckets performance-mode candidates into within-SLO vs over-SLO (cold starts
+count as within); ordered mode ignores the map. Snapshot marks demoted
+candidates with `slo_demoted`. Docs: routing-tiers + config. Covered by
+`tests/unit/test_virtual_models.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -383,6 +383,104 @@ def test_performance_tracker_snapshot_shape():
     assert snap["chat"]["L4"]["error_rate"] > 0
 
 
+def test_latency_slo_prefers_within_bucket_over_lower_error():
+    """Within-SLO candidates rank before over-SLO even with lower error (#2086)."""
+    from daari.router.virtual_models import (
+        VirtualModelPerformanceTracker,
+        order_virtual_candidates,
+    )
+
+    tracker = VirtualModelPerformanceTracker(alpha=0.5)
+    # fast: within SLO, one error → higher error_rate than slow
+    for _ in range(3):
+        tracker.observe_success("chat", "fast", latency_ms=400.0)
+    tracker.observe_error("chat", "fast")
+    # slow: always succeeds but far over SLO; lower error_rate
+    for _ in range(10):
+        tracker.observe_success("chat", "slow", latency_ms=9000.0)
+
+    without = order_virtual_candidates(
+        ["slow", "fast"],
+        mode="performance",
+        virtual_model="chat",
+        tracker=tracker,
+    )
+    assert without[0] == "slow"  # lower error wins without SLO
+
+    ranked = order_virtual_candidates(
+        ["slow", "fast"],
+        mode="performance",
+        virtual_model="chat",
+        tracker=tracker,
+        latency_slo_ms=1000.0,
+    )
+    assert ranked[0] == "fast"
+    assert ranked[1] == "slow"
+    assert tracker.snapshot()["chat"]["slow"].get("slo_demoted") is True
+
+
+def test_latency_slo_cold_start_counts_within():
+    from daari.router.virtual_models import (
+        VirtualModelPerformanceTracker,
+        order_virtual_candidates,
+    )
+
+    tracker = VirtualModelPerformanceTracker()
+    for _ in range(5):
+        tracker.observe_success("chat", "hot", latency_ms=5000.0)
+    ranked = order_virtual_candidates(
+        ["hot", "cold"],
+        mode="performance",
+        virtual_model="chat",
+        tracker=tracker,
+        latency_slo_ms=1000.0,
+    )
+    assert ranked[0] == "cold"
+    assert ranked[1] == "hot"
+
+
+def test_latency_slo_ignored_in_ordered_mode():
+    from daari.router.virtual_models import (
+        VirtualModelPerformanceTracker,
+        order_virtual_candidates,
+    )
+
+    tracker = VirtualModelPerformanceTracker()
+    for _ in range(5):
+        tracker.observe_success("chat", "L4", latency_ms=50.0)
+        tracker.observe_success("chat", "L3", latency_ms=9000.0)
+    assert order_virtual_candidates(
+        ["L3", "L4"],
+        mode="ordered",
+        virtual_model="chat",
+        tracker=tracker,
+        latency_slo_ms=1000.0,
+    ) == ["L3", "L4"]
+
+
+def test_virtual_model_latency_slo_validator():
+    with pytest.raises(ValidationError):
+        RoutingSettings(
+            virtual_models={"chat": ["L3", "L4"]},
+            virtual_model_latency_slo_ms={"unknown": 500.0},
+        )
+    with pytest.raises(ValidationError):
+        RoutingSettings(
+            virtual_models={"chat": ["L3"]},
+            virtual_model_latency_slo_ms={"chat": 0},
+        )
+    with pytest.raises(ValidationError):
+        RoutingSettings(
+            virtual_models={"chat": ["L3"]},
+            virtual_model_latency_slo_ms={"chat": -10},
+        )
+    ok = RoutingSettings(
+        virtual_models={"chat": ["L3", "L4"]},
+        virtual_model_latency_slo_ms={"chat": 500.0},
+    )
+    assert ok.virtual_model_latency_slo_ms == {"chat": 500.0}
+
+
 @pytest.mark.asyncio
 async def test_performance_mode_prefers_healthy_candidate(settings, monkeypatch):
     settings.routing.virtual_models = {"chat-default": ["L3", "L4"]}
