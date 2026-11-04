@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from daari.config.settings import SignalOverrideRule
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
-from daari.router.profile import PromptProfile, build_prompt_profile
+from daari.router.profile import build_prompt_profile
 from daari.router.signals import (
     extract_signals,
     match_signal_override,
