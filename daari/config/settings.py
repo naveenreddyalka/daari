@@ -2858,15 +2858,19 @@ class SecuritySettings(BaseModel):
             "TTS, webhooks, enforcement sync, OTel) refuse connections to "
             "non-loopback / non-private hosts unless the hostname is listed in "
             "offline_allow_hosts (#2034). Local Ollama / RFC1918 backends stay "
-            "open. Env: DAARI_SECURITY__OFFLINE_MODE."
+            "open. Editable via GET/PATCH /v1/daari/config ownership (config "
+            "editor; live without restart) (#2076). Env: "
+            "DAARI_SECURITY__OFFLINE_MODE."
         ),
     )
     offline_allow_hosts: list[str] = Field(
         default_factory=list,
         description=(
             "Hostnames permitted for egress while offline_mode is on (on-estate "
-            "DNS names). Loopback and RFC1918 targets need no entry. Env: "
-            "DAARI_SECURITY__OFFLINE_ALLOW_HOSTS (JSON list)."
+            "DNS names). Loopback and RFC1918 targets need no entry. Editable "
+            "via GET/PATCH /v1/daari/config ownership (config editor; live "
+            "without restart) (#2076). Env: DAARI_SECURITY__OFFLINE_ALLOW_HOSTS "
+            "(JSON list)."
         ),
     )
 

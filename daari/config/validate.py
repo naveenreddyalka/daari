@@ -230,6 +230,34 @@ def validated_observability(patch: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def validated_security(patch: dict[str, Any]) -> dict[str, Any]:
+    """Safe air-gap knobs only — at_rest keys stay file/restart (#2076)."""
+    if not isinstance(patch, dict):
+        raise ConfigValidationError("security must be an object")
+    allowed = {"offline_mode", "offline_allow_hosts"}
+    unknown = sorted(set(patch) - allowed)
+    if unknown:
+        raise ConfigValidationError(f"unknown security keys: {unknown}")
+    out: dict[str, Any] = {}
+    if "offline_mode" in patch:
+        out["offline_mode"] = _bool(patch["offline_mode"], "security.offline_mode")
+    if "offline_allow_hosts" in patch:
+        raw = patch["offline_allow_hosts"]
+        if not isinstance(raw, list):
+            raise ConfigValidationError(
+                "security.offline_allow_hosts must be a list of hostnames"
+            )
+        hosts: list[str] = []
+        for idx, item in enumerate(raw):
+            if not isinstance(item, str) or not item.strip():
+                raise ConfigValidationError(
+                    f"security.offline_allow_hosts[{idx}] must be a non-empty string"
+                )
+            hosts.append(item.strip().lower())
+        out["offline_allow_hosts"] = hosts
+    return out
+
+
 def validated_systemone(patch: dict[str, Any]) -> dict[str, Any]:
     """Safe systemone upstream override (#1778). Empty clears back to Ollama."""
     if not isinstance(patch, dict):

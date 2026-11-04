@@ -43,6 +43,8 @@ _MCP_LEAVES = (
 )
 _OBS_JSON_LOGS = "observability.structured_json_logs"
 _OBS_TEAM_METRICS = "observability.team_metrics"
+_SEC_OFFLINE_MODE = "security.offline_mode"
+_SEC_OFFLINE_ALLOW_HOSTS = "security.offline_allow_hosts"
 
 
 def _base_live() -> dict:
@@ -103,6 +105,10 @@ def _base_live() -> dict:
         "observability": {
             "structured_json_logs": False,
             "team_metrics": False,
+        },
+        "security": {
+            "offline_mode": False,
+            "offline_allow_hosts": [],
         },
     }
 
@@ -432,6 +438,28 @@ def test_ownership_fields_include_team_metrics():
     assert meta[_OBS_TEAM_METRICS]["file_value"] is False
 
 
+def test_ownership_fields_include_offline_mode():
+    """security.offline_mode / offline_allow_hosts are ownership leaves (#2076)."""
+    live = _base_live()
+    live["security"]["offline_mode"] = True
+    live["security"]["offline_allow_hosts"] = ["corp.example"]
+    file_doc = {
+        "security": {"offline_mode": False, "offline_allow_hosts": []},
+    }
+    meta = ownership_fields(
+        live,
+        file_doc=file_doc,
+        runtime_overrides={_SEC_OFFLINE_MODE},
+    )
+    assert _SEC_OFFLINE_MODE in meta
+    assert meta[_SEC_OFFLINE_MODE]["editable"] is True
+    assert meta[_SEC_OFFLINE_MODE]["source"] == "runtime"
+    assert meta[_SEC_OFFLINE_MODE]["file_value"] is False
+    assert _SEC_OFFLINE_ALLOW_HOSTS in meta
+    assert meta[_SEC_OFFLINE_ALLOW_HOSTS]["editable"] is True
+    assert "at_rest_key" not in ".".join(meta)
+
+
 def test_live_config_payload_matches_editor_shape(settings):
     payload = live_config_payload(settings)
     assert set(payload) >= {
@@ -441,6 +469,7 @@ def test_live_config_payload_matches_editor_shape(settings):
         "boundaries",
         "integrations",
         "observability",
+        "security",
     }
     assert "confidence_threshold" in payload["routing"]
     assert set(payload["routing"]["decision_classifier"]) == {
@@ -469,6 +498,10 @@ def test_live_config_payload_matches_editor_shape(settings):
     }
     assert payload["observability"]["structured_json_logs"] is False
     assert payload["observability"]["team_metrics"] is False
+    assert set(payload["security"]) == {"offline_mode", "offline_allow_hosts"}
+    assert payload["security"]["offline_mode"] is False
+    assert payload["security"]["offline_allow_hosts"] == []
+    assert "at_rest_key" not in payload["security"]
 
 
 def test_live_config_payload_mcp_servers_ceilings_omit_secrets(settings):
@@ -664,6 +697,96 @@ async def test_patch_team_metrics_round_trip_and_metrics_label(
 
 
 @pytest.mark.asyncio
+async def test_patch_offline_mode_round_trip_and_egress_refusal(
+    settings, tmp_path, monkeypatch
+):
+    """PATCH security.offline_mode arms air gap without restart (#2076)."""
+    from daari.security.offline_mode import (
+        OfflineEgressBlocked,
+        assert_offline_url_allowed,
+        configure_offline_mode,
+        offline_mode_enabled,
+    )
+
+    settings.observability.config_editor = True
+    assert settings.security.offline_mode is False
+    configure_offline_mode(enabled=False, allow_hosts=())
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump(
+            {"security": {"offline_mode": False, "offline_allow_hosts": []}}
+        ),
+        encoding="utf-8",
+    )
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        got = await client.get("/v1/daari/config")
+        assert got.status_code == 200
+        body = got.json()
+        assert _SEC_OFFLINE_MODE in body["ownership"]
+        assert body["ownership"][_SEC_OFFLINE_MODE]["editable"] is True
+        assert _SEC_OFFLINE_ALLOW_HOSTS in body["ownership"]
+        assert body["security"]["offline_mode"] is False
+        assert "at_rest_key" not in body["security"]
+
+        bad = await client.patch(
+            "/v1/daari/config",
+            json={"security": {"offline_mode": "yes"}},
+        )
+        assert bad.status_code == 400
+        assert settings.security.offline_mode is False
+        assert offline_mode_enabled() is False
+
+        on = await client.patch(
+            "/v1/daari/config",
+            json={
+                "security": {
+                    "offline_mode": True,
+                    "offline_allow_hosts": ["corp.example"],
+                },
+                "persist": True,
+            },
+        )
+        assert on.status_code == 200
+        payload = on.json()
+        assert payload["security"]["offline_mode"] is True
+        assert payload["security"]["offline_allow_hosts"] == ["corp.example"]
+        assert payload["ownership"][_SEC_OFFLINE_MODE]["source"] == "file"
+        written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert written["security"]["offline_mode"] is True
+        assert written["security"]["offline_allow_hosts"] == ["corp.example"]
+        assert settings.security.offline_mode is True
+        assert settings.security.offline_allow_hosts == ["corp.example"]
+        assert offline_mode_enabled() is True
+        with pytest.raises(OfflineEgressBlocked, match="offline_mode"):
+            assert_offline_url_allowed(
+                "https://api.openai.com/v1",
+                resolver=lambda _h: ["93.184.216.34"],
+            )
+        assert_offline_url_allowed(
+            "https://corp.example/v1",
+            resolver=lambda _h: ["93.184.216.34"],
+        )
+
+        off = await client.patch(
+            "/v1/daari/config",
+            json={"security": {"offline_mode": False}},
+        )
+        assert off.status_code == 200
+        assert settings.security.offline_mode is False
+        assert offline_mode_enabled() is False
+        assert_offline_url_allowed(
+            "https://api.openai.com/v1",
+            resolver=lambda _h: ["93.184.216.34"],
+        )
+
+
+@pytest.mark.asyncio
 async def test_patch_mcp_server_ceilings_round_trip(settings, tmp_path, monkeypatch):
     from daari.config.settings import McpServerSettings
 
@@ -761,6 +884,8 @@ def test_docs_pin_classifier_mcp_config_ownership():
         _OBS_JSON_LOGS,
         _OBS_TEAM_METRICS,
         _SIGNAL_OVERRIDES,
+        _SEC_OFFLINE_MODE,
+        _SEC_OFFLINE_ALLOW_HOSTS,
     ):
         assert key in config
     assert "config editor" in config.lower() or "/v1/daari/config" in config
@@ -773,6 +898,8 @@ def test_docs_pin_classifier_mcp_config_ownership():
     assert "require_key_access_defined" in http_api or "mcp_policy" in http_api
     assert "structured_json_logs" in http_api
     assert "team_metrics" in http_api
+    assert "offline_mode" in http_api
+    assert "offline_allow_hosts" in http_api
     assert "mcp_servers" in http_api
 
 

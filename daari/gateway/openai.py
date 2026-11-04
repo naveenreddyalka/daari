@@ -2862,6 +2862,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 validated_integrations,
                 validated_observability,
                 validated_routing,
+                validated_security,
                 validated_systemone,
             )
 
@@ -2875,6 +2876,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 observability = validated_observability(body.get("observability") or {})
                 decisions = validated_decisions(body.get("decisions") or {})
                 systemone = validated_systemone(body.get("systemone") or {})
+                security = validated_security(body.get("security") or {})
                 raw_boundaries = body.get("boundaries") or {}
                 new_boundaries = (
                     merged_boundaries(ctx.settings.boundaries, raw_boundaries)
@@ -3018,6 +3020,18 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if "base_url" in systemone:
                 ctx.settings.systemone.base_url = systemone["base_url"]
                 ctx.router.systemone_base_url = systemone["base_url"]
+            if security:
+                if "offline_mode" in security:
+                    ctx.settings.security.offline_mode = security["offline_mode"]
+                if "offline_allow_hosts" in security:
+                    ctx.settings.security.offline_allow_hosts = list(
+                        security["offline_allow_hosts"]
+                    )
+                from daari.security.offline_mode import (
+                    configure_offline_mode_from_settings,
+                )
+
+                configure_offline_mode_from_settings(ctx.settings)
             if new_boundaries is not None:
                 from daari.gateway.boundaries import (
                     copy_runtime_hooks,
@@ -3046,6 +3060,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "observability": observability,
                     "decisions": decisions,
                     "systemone": systemone,
+                    "security": security,
                 }
             )
             overrides = getattr(request.app.state, "config_runtime_overrides", None)
@@ -3067,6 +3082,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                             "observability": observability,
                             "decisions": decisions,
                             "systemone": systemone,
+                            "security": security,
                         }
                     )
                 )

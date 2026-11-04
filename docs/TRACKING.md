@@ -8634,6 +8634,15 @@ LTS pilot** (week of 2026-11-02) and Tuesday RC/stable cadence, and states
 daari's local-first / no LiteLLM runtime stance. Covered by
 `tests/unit/test_compare_litellm_1104.py`.
 
+### Config ownership + PATCH for security.offline_mode ([#2076](https://github.com/naveenreddyalka/daari/issues/2076))
+
+<!-- tracking:#2076 -->
+**Status:** Done (2026-11-04). `GET/PATCH /v1/daari/config` ownership exposes
+`security.offline_mode` and `security.offline_allow_hosts` (secrets omitted);
+PATCH updates live Settings and re-invokes
+`configure_offline_mode_from_settings` so refusals apply without restart. Docs:
+config, http-api, security. Covered by `tests/unit/test_config_ownership.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

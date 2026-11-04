@@ -27,9 +27,10 @@ cache) can also be AES-GCM encrypted with a customer-held
 Set `security.offline_mode: true` to fail-closed on off-box egress from shared
 httpx clients (frontier, MCP, TTS, webhooks, enforcement sync, OTel). Loopback
 and RFC1918 hosts keep working; on-estate DNS names go in
-`security.offline_allow_hosts`. `daari validate` warns on each configured
-off-box surface; `daari doctor` reports mode state; refused attempts emit
-`security.offline_egress_refused` via the request log (#2034).
+`security.offline_allow_hosts`. Both knobs are live-editable via GET/PATCH
+`/v1/daari/config` ownership (no restart) (#2076). `daari validate` warns on
+each configured off-box surface; `daari doctor` reports mode state; refused
+attempts emit `security.offline_egress_refused` via the request log (#2034).
 
 ## Report vulnerabilities
 

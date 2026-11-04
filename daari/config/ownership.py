@@ -16,6 +16,7 @@ _SAFE_SECTIONS = (
     "observability",
     "decisions",
     "systemone",
+    "security",
 )
 
 # Flat leaf paths exposed by the config editor GET payload.
@@ -65,6 +66,8 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("observability", "team_metrics"),
     ("decisions", "local_models"),
     ("systemone", "base_url"),
+    ("security", "offline_mode"),
+    ("security", "offline_allow_hosts"),
 )
 
 
@@ -253,6 +256,12 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
         },
         "systemone": {
             "base_url": str(getattr(s.systemone, "base_url", "") or ""),
+        },
+        "security": {
+            "offline_mode": bool(getattr(s.security, "offline_mode", False)),
+            "offline_allow_hosts": list(
+                getattr(s.security, "offline_allow_hosts", None) or []
+            ),
         },
     }
 
