@@ -8663,6 +8663,15 @@ intersection. Tags appear on `daari_meta.signals` / the `signals` request-log
 event. Docs: routing-tiers. Covered by
 `tests/unit/test_request_tags_signal_overrides.py`.
 
+### OTel cost and tenant span attributes ([#2085](https://github.com/naveenreddyalka/daari/issues/2085))
+
+<!-- tracking:#2085 -->
+**Status:** Done (2026-11-04). GenAI root spans export `daari.cost.usd` when
+`daari_meta.cost_usd` is set (L6 / Ollama `:cloud`), plus `daari.key_id` /
+`daari.team_id` for authenticated requests (ids only). Unpriced local and
+anonymous requests omit the attrs. Docs: otel-genai attribute table. Covered
+by `tests/unit/test_otel_genai.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

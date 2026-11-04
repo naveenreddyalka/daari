@@ -495,6 +495,16 @@ def export_trace(
         if session_id:
             # Spec: only when a stable id is readily available — never synthesize (#1175).
             root_attrs["gen_ai.conversation.id"] = session_id
+        if req_meta is not None:
+            # Chargeback ids only — never key material (#2085). Request tags
+            # (#2078) can ride the same exporter hook when operators want them
+            # on spans (req_meta.tags); omitted until an issue opts them in.
+            key_id = str(getattr(req_meta, "key_id", None) or "").strip()
+            team_id = str(getattr(req_meta, "team_id", None) or "").strip()
+            if key_id:
+                root_attrs["daari.key_id"] = key_id
+            if team_id:
+                root_attrs["daari.team_id"] = team_id
         if request_model:
             from daari.observability.metrics import genai_operation_name, infer_modality
 
@@ -559,6 +569,12 @@ def export_trace(
                     value = getattr(meta, fact, None)
                     if value is not None:
                         root_attrs[f"daari.{fact}"] = _attr_value(value)
+                # Known USD spend only (L6 / Ollama :cloud set cost_usd);
+                # unpriced local stays omitted. Estimated token paths keep
+                # daari.usage_estimated — no separate currency attr (#2085).
+                cost = getattr(meta, "cost_usd", None)
+                if cost is not None:
+                    root_attrs["daari.cost.usd"] = float(cost)
         else:
             span_name = f"daari.request.{getattr(trace, 'trace_id', '')}"
         if error_type:
