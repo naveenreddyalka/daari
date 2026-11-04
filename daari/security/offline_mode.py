@@ -236,6 +236,7 @@ def offline_mode_findings(settings: Any) -> list[str]:
             "budget_webhook_url",
             "key_expiry_webhook_url",
             "responses_completion_webhook_url",
+            "batches_completion_webhook_url",
         ):
             _note(f"alerts.{field}", str(getattr(alerts, field, "") or ""))
 

@@ -2708,36 +2708,64 @@ class AlertSettings(BaseModel):
             "was last set by rotation (#1913)."
         ),
     )
-    batch_completion_webhook_url: str = Field(
+    batches_completion_webhook_url: str = Field(
         default="",
         description=(
-            "Opt-in webhook when a /v1/batches job reaches a terminal status "
-            "(#2069). Empty disables (no network call). Per-request "
-            "`callback_url` on POST /v1/batches overrides this URL for that job."
+            "Org-default webhook when a /v1/batches job reaches a terminal "
+            "status (#2069, #2077). Empty disables (no network call). "
+            "Per-request `callback_url` on POST /v1/batches overrides this URL "
+            "for that job. Doctor tips `batches_completion_webhook_secret` when "
+            "this URL is set without a signing secret. Legacy YAML key "
+            "`batch_completion_webhook_url` is accepted."
         ),
     )
-    batch_completion_webhook_secret: str = Field(
+    batches_completion_webhook_secret: str = Field(
         default="",
         description=(
-            "HMAC secret for batch completion webhooks (X-Daari-Signature). "
-            "Supports secret:// refs (#2069)."
+            "HMAC secret for batches completion webhooks "
+            "(X-Daari-Signature). Supports secret:// refs (#2069, #2077)."
         ),
     )
-    batch_completion_webhook_secret_previous: str = Field(
+    batches_completion_webhook_secret_previous: str = Field(
         default="",
         description=(
-            "Previous batch completion webhook HMAC secret during rotation "
-            "grace (#2069). Signing uses batch_completion_webhook_secret; "
-            "receivers verify against either."
+            "Previous batches completion webhook HMAC secret during rotation "
+            "grace (#2069, #2077). Signing uses "
+            "batches_completion_webhook_secret; receivers verify against either. "
+            "Set via `daari alerts rotate-secret batches`."
         ),
     )
-    batch_completion_webhook_secret_rotated_at: str = Field(
+    batches_completion_webhook_secret_rotated_at: str = Field(
         default="",
         description=(
-            "ISO-8601 timestamp when batch_completion_webhook_secret_previous "
-            "was last set by rotation (#2069)."
+            "ISO-8601 timestamp when batches_completion_webhook_secret_previous "
+            "was last set by rotation (#2069, #2077)."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _alias_legacy_batch_completion_webhook(cls, data: object) -> object:
+        """Map singular batch_* keys from #2069 onto batches_* (#2077)."""
+        if not isinstance(data, dict):
+            return data
+        pairs = (
+            ("batches_completion_webhook_url", "batch_completion_webhook_url"),
+            ("batches_completion_webhook_secret", "batch_completion_webhook_secret"),
+            (
+                "batches_completion_webhook_secret_previous",
+                "batch_completion_webhook_secret_previous",
+            ),
+            (
+                "batches_completion_webhook_secret_rotated_at",
+                "batch_completion_webhook_secret_rotated_at",
+            ),
+        )
+        out = dict(data)
+        for new_key, old_key in pairs:
+            if not str(out.get(new_key) or "").strip() and str(out.get(old_key) or "").strip():
+                out[new_key] = out[old_key]
+        return out
 
     @field_validator("budget_thresholds")
     @classmethod

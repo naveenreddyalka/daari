@@ -315,7 +315,7 @@ class BatchCreateRequest(BaseModel):
     # Inline chat-completion bodies or OpenAI JSONL-line objects (tests / local).
     requests: list[dict[str, Any]] | None = None
     metadata: dict[str, Any] | None = None
-    # Optional per-job override of alerts.batch_completion_webhook_url (#2069).
+    # Optional per-job override of alerts.batches_completion_webhook_url (#2069/#2077).
     callback_url: str | None = None
 
 

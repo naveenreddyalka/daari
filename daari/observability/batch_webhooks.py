@@ -250,13 +250,19 @@ def apply_batch_webhook_settings(store: Any, settings: Any, metrics: Any = None)
         store.completion_webhook_secret_previous = ""
     else:
         store.completion_webhook_url = (
-            getattr(alerts, "batch_completion_webhook_url", "") or ""
+            getattr(alerts, "batches_completion_webhook_url", "")
+            or getattr(alerts, "batch_completion_webhook_url", "")
+            or ""
         )
         store.completion_webhook_secret = (
-            getattr(alerts, "batch_completion_webhook_secret", "") or ""
+            getattr(alerts, "batches_completion_webhook_secret", "")
+            or getattr(alerts, "batch_completion_webhook_secret", "")
+            or ""
         )
         store.completion_webhook_secret_previous = (
-            getattr(alerts, "batch_completion_webhook_secret_previous", "") or ""
+            getattr(alerts, "batches_completion_webhook_secret_previous", "")
+            or getattr(alerts, "batch_completion_webhook_secret_previous", "")
+            or ""
         )
     redis_url = ""
     cache = getattr(settings, "cache", None)
