@@ -314,6 +314,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
             x_daari_session: str | None = Header(default=None, alias="X-Daari-Session"),
             x_daari_project: str | None = Header(default=None, alias="X-Daari-Project"),
+            x_daari_tags: str | None = Header(default=None, alias="X-Daari-Tags"),
         ) -> Any:
             confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
             confirm_tool = confirm_value in {"1", "true", "yes"}
@@ -394,6 +395,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             from daari.auth.end_user import end_user_from_metadata
 
             body_user = end_user_from_metadata(body.metadata) or None
+            from daari.router.signals import parse_request_tags
+
             meta = RequestMeta(
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
@@ -410,6 +413,10 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 anthropic_version=(request.headers.get("anthropic-version") or "").strip()
                 or None,
                 request_id=request_id,
+                tags=parse_request_tags(
+                    header=x_daari_tags,
+                    metadata=getattr(body, "metadata", None),
+                ),
             )
             apply_cost_tier(body, meta)
             from daari.providers.mcp_token_exchange import bearer_from_authorization

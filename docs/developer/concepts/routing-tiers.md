@@ -70,6 +70,7 @@ of data the router already has — no model calls:
 | `category` | prompt profile category |
 | `complexity` | `trivial` / `standard` / `complex` |
 | `phase` | tool-history phase when phase routing is on, else null |
+| `tags` | sorted unique strings from `X-Daari-Tags` (comma-separated) union `metadata.tags` (list or comma string); case-sensitive (#2078) |
 
 Opt-in `routing.signal_overrides` (empty by default) matches on those facts
 with equality / bucket match (first match wins) and applies an existing lever:
@@ -78,15 +79,18 @@ with equality / bucket match (first match wins) and applies an existing lever:
 known signal keys, match values of `str | bool | int | None`
 (`approx_context_tokens` must be one of the four bucket strings), and at least
 one lever set — otherwise load / `daari config validate` fails naming the rule
-`id`. Virtual keys and teams may bind the same rule shape via
-`signal_overrides` on the key/team record (CLI `--signal-override` JSON;
-validated at write time). Precedence is **key → team → global**; first match
-wins across the merged list. Unauthenticated / admin-less traffic still sees
-only the global list. Matches are traced (`signal_override` step with
-`scope`), logged, counted on `/v1/daari/stats` (`signal_override`), and
-exported as `daari_signal_override_total{rule="...",scope="key|team|global"}`.
-Global rules are editable via GET/PATCH `/v1/daari/config` ownership (full
-list replacement) or set in `config.yaml`.
+`id`. For `tags` / `tag`, the match value is a string or list of strings and
+the rule fires when the request tag set **intersects** the configured list
+(empty tags on the request never match). Virtual keys and teams may bind the
+same rule shape via `signal_overrides` on the key/team record (CLI
+`--signal-override` JSON; validated at write time). Precedence is **key → team
+→ global**; first match wins across the merged list. Unauthenticated /
+admin-less traffic still sees only the global list. Matches are traced
+(`signal_override` step with `scope`), logged, counted on `/v1/daari/stats`
+(`signal_override`), and exported as
+`daari_signal_override_total{rule="...",scope="key|team|global"}`. Global
+rules are editable via GET/PATCH `/v1/daari/config` ownership (full list
+replacement) or set in `config.yaml`.
 
 ```yaml
 routing:
@@ -98,6 +102,9 @@ routing:
     - id: cursor-cap
       match: { client_agent: cursor }
       max_tier: L4
+    - id: eval-cap
+      match: { tags: [eval, canary] }
+      max_tier: L3
 ```
 
 ## Shadow evals for tier decisions

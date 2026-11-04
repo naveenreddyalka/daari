@@ -984,6 +984,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             x_daari_boundary_profile: str | None = Header(
                 default=None, alias="X-Daari-Boundary-Profile"
             ),
+            x_daari_tags: str | None = Header(default=None, alias="X-Daari-Tags"),
         ) -> Any:
             confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
             confirm_tool = confirm_value in {"1", "true", "yes"}
@@ -1026,6 +1027,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             )
 
             ctx: AppContext = request.app.state.ctx
+            from daari.router.signals import parse_request_tags
+
             meta = RequestMeta(
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
@@ -1042,6 +1045,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 stream_include_usage=include_usage,
                 boundary_profile=boundary_profile,
                 request_id=request_id,
+                tags=parse_request_tags(
+                    header=x_daari_tags,
+                    metadata=getattr(body, "metadata", None),
+                ),
             )
             apply_cost_tier(body, meta)
             # Virtual-key defaults (issue #111); headers keep precedence.
