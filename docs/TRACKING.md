@@ -8643,6 +8643,17 @@ PATCH updates live Settings and re-invokes
 `configure_offline_mode_from_settings` so refusals apply without restart. Docs:
 config, http-api, security. Covered by `tests/unit/test_config_ownership.py`.
 
+### Org-default batches completion webhook ([#2077](https://github.com/naveenreddyalka/daari/issues/2077))
+
+<!-- tracking:#2077 -->
+**Status:** Done (2026-11-04). Canonical
+`alerts.batches_completion_webhook_*` (legacy `batch_*` keys still load)
+plus doctor tip when URL is set without a secret, offline_mode findings /
+allow-hosts parity with Responses, and `daari alerts rotate-secret batches`.
+Delivery + per-request `callback_url` override from #2069 unchanged. Covered by
+`tests/unit/test_batches_completion_webhook.py` and
+`tests/unit/test_batch_completion_webhook.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

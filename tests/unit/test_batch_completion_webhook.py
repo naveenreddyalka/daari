@@ -60,10 +60,10 @@ def _reset_offline_mode():
 
 def test_alert_settings_default_batch_completion_webhook_off():
     alerts = AlertSettings()
-    assert alerts.batch_completion_webhook_url == ""
-    assert alerts.batch_completion_webhook_secret == ""
-    assert alerts.batch_completion_webhook_secret_previous == ""
-    assert alerts.batch_completion_webhook_secret_rotated_at == ""
+    assert alerts.batches_completion_webhook_url == ""
+    assert alerts.batches_completion_webhook_secret == ""
+    assert alerts.batches_completion_webhook_secret_previous == ""
+    assert alerts.batches_completion_webhook_secret_rotated_at == ""
 
 
 def test_payload_includes_id_status_request_counts():
@@ -378,8 +378,8 @@ def test_apply_settings_wires_store():
     from daari.observability.batch_webhooks import apply_batch_webhook_settings
 
     settings = Settings()
-    settings.alerts.batch_completion_webhook_url = "https://hooks.example/b"
-    settings.alerts.batch_completion_webhook_secret = "sec"
+    settings.alerts.batches_completion_webhook_url = "https://hooks.example/b"
+    settings.alerts.batches_completion_webhook_secret = "sec"
     settings.cache.backend = "redis"
     settings.cache.redis_url = "redis://localhost:6379/0"
     store = BatchStore()

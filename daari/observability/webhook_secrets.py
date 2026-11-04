@@ -24,6 +24,11 @@ _FAMILY_KEYS = {
         "previous": "responses_completion_webhook_secret_previous",
         "rotated_at": "responses_completion_webhook_secret_rotated_at",
     },
+    "batches": {
+        "current": "batches_completion_webhook_secret",
+        "previous": "batches_completion_webhook_secret_previous",
+        "rotated_at": "batches_completion_webhook_secret_rotated_at",
+    },
 }
 
 

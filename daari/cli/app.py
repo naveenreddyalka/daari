@@ -857,7 +857,7 @@ def keys_rotate(
 def alerts_rotate_secret(
     family: str = typer.Argument(
         ...,
-        help="Webhook family: budget, key-expiry, or responses.",
+        help="Webhook family: budget, key-expiry, responses, or batches.",
     ),
     secret: str = typer.Option(
         ...,
@@ -870,14 +870,17 @@ def alerts_rotate_secret(
         help="Config path (default ~/.daari/config.yaml).",
     ),
 ) -> None:
-    """Rotate a webhook HMAC secret with dual-secret grace (#1680, #1913)."""
+    """Rotate a webhook HMAC secret with dual-secret grace (#1680, #1913, #2077)."""
     import os
 
     from daari.observability.webhook_secrets import rotate_webhook_secret_in_config
 
     normalized = family.strip().lower().replace("_", "-")
-    if normalized not in {"budget", "key-expiry", "responses"}:
-        typer.echo("family must be 'budget', 'key-expiry', or 'responses'", err=True)
+    if normalized not in {"budget", "key-expiry", "responses", "batches"}:
+        typer.echo(
+            "family must be 'budget', 'key-expiry', 'responses', or 'batches'",
+            err=True,
+        )
         raise typer.Exit(code=1)
     new_secret = (secret or "").strip()
     if not new_secret:

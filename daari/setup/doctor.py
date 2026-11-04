@@ -169,6 +169,7 @@ def run_doctor(
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_key_expiry_webhook_secret(cfg))
     results.append(_check_responses_completion_webhook_secret(cfg))
+    results.append(_check_batches_completion_webhook_secret(cfg))
     stale_tip = _check_webhook_secret_previous_stale(cfg)
     if stale_tip is not None:
         results.append(stale_tip)
@@ -3025,6 +3026,33 @@ def _check_responses_completion_webhook_secret(settings: Settings) -> CheckResul
     )
 
 
+def _check_batches_completion_webhook_secret(settings: Settings) -> CheckResult:
+    """Warn when batches completion webhook URL lacks a signing secret (#2077)."""
+    url = (settings.alerts.batches_completion_webhook_url or "").strip()
+    secret = (settings.alerts.batches_completion_webhook_secret or "").strip()
+    if url and not secret:
+        return CheckResult(
+            name="batches_completion_webhook_secret",
+            ok=False,
+            detail=(
+                "alerts.batches_completion_webhook_url is set but "
+                "alerts.batches_completion_webhook_secret is empty — receivers "
+                "cannot verify origin; set a secret (secret:// ok) or clear the URL"
+            ),
+            optional=True,
+        )
+    if url:
+        detail = "batches completion webhook URL + secret configured"
+    else:
+        detail = "batches completion webhook disabled (empty URL)"
+    return CheckResult(
+        name="batches_completion_webhook_secret",
+        ok=True,
+        detail=detail,
+        optional=True,
+    )
+
+
 _WEBHOOK_PREVIOUS_STALE_DAYS = 7
 
 
@@ -3048,6 +3076,11 @@ def _check_webhook_secret_previous_stale(settings: Settings) -> CheckResult | No
             "responses",
             getattr(alerts, "responses_completion_webhook_secret_previous", "") or "",
             getattr(alerts, "responses_completion_webhook_secret_rotated_at", "") or "",
+        ),
+        (
+            "batches",
+            getattr(alerts, "batches_completion_webhook_secret_previous", "") or "",
+            getattr(alerts, "batches_completion_webhook_secret_rotated_at", "") or "",
         ),
     ):
         if not str(previous).strip():

@@ -72,6 +72,9 @@ batches:
   path: ~/.daari/batches/jobs.sqlite3
   yield_to_interactive: true
   idle_poll_seconds: 0.25
+alerts:
+  batches_completion_webhook_url: ""       # org default; empty disables
+  batches_completion_webhook_secret: ""    # HMAC (X-Daari-Signature); doctor tips if URL set without this
 files:
   enabled: true
   path: ~/.daari/files
@@ -81,6 +84,17 @@ responses:
   backend: sqlite            # or postgres with observability.postgres_url
   retention_days: 0          # 0 = forever; prune via daari prune / daily sweep
 ```
+
+### Completion webhooks
+
+When a batch reaches a terminal status (`completed` / `failed` / `expired` /
+`cancelled`), daari POSTs a signed payload (`id`, `status`, `request_counts`)
+to `alerts.batches_completion_webhook_url` unless empty. A per-request
+`callback_url` on `POST /v1/batches` overrides the org default for that job.
+Signing reuses the Responses/budget webhook headers (`X-Daari-Signature`,
+`X-Daari-Timestamp`). Rotate with `daari alerts rotate-secret batches`. In
+`security.offline_mode`, the default URL must be local or listed in
+`security.offline_allow_hosts`.
 
 Stored Responses (`store: true`) keep `created_at` at first write. When
 `responses.retention_days` is greater than zero, `daari prune` and the daily
