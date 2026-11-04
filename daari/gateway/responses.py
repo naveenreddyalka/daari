@@ -1067,6 +1067,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
             x_daari_meta: str | None = Header(default=None, alias="X-Daari-Meta"),
             x_daari_project: str | None = Header(default=None, alias="X-Daari-Project"),
+            x_daari_tags: str | None = Header(default=None, alias="X-Daari-Tags"),
         ) -> Any:
             from daari.gateway.response_store import response_visible_to_caller
 
@@ -1197,6 +1198,12 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 client_id=x_daari_client_id,
                 no_frontier=x_daari_no_frontier == "true",
                 user=body.user,
+            )
+            from daari.router.signals import parse_request_tags
+
+            meta.tags = parse_request_tags(
+                header=x_daari_tags,
+                metadata=getattr(body, "metadata", None),
             )
             apply_cost_tier(body, meta)
             model = body.model or ctx.settings.models.l3

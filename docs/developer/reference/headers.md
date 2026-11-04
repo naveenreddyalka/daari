@@ -7,6 +7,7 @@
 | `X-Daari-No-Cache` | Skip L0/L1 |
 | `X-Daari-Tier-Override` | Force a tier |
 | `X-Daari-Tier-Cap` | Cap local tier (e.g. `L3`). Beats body `cost_tier`. |
+| `X-Daari-Tags` | Comma-separated request tags (union with body `metadata.tags`). Matchable by `routing.signal_overrides` via `match.tags` / `match.tag` (set intersection). Case-sensitive. Honored on chat, Anthropic Messages, and Responses. |
 | `X-Daari-No-Frontier` | Forbid L6 |
 | `X-Daari-Latency-Budget` | Max local latency (ms) |
 | `X-Daari-Deadline-Ms` | Wall-clock budget for the whole request (ms). Wins over `upstream.request_deadline_seconds`. Honored on chat (`/v1/chat/completions`, Anthropic, Responses), Ollama facade (`/api/chat`, `/api/generate`), audio (`/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/audio/speech`), embeddings (`/v1/embeddings`), and MCP `tools/call`. When spent, the gateway returns **504** with `request_deadline_exceeded` and does not escalate further. On streaming responses the budget applies to time-to-first-token only. |

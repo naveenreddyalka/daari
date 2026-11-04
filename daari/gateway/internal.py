@@ -109,6 +109,8 @@ class RequestMeta(BaseModel):
     # Key / team scoped routing.signal_overrides (#2050). None = none bound.
     key_signal_overrides: list[Any] | None = None
     team_signal_overrides: list[Any] | None = None
+    # Request tags from X-Daari-Tags and/or metadata.tags (#2078).
+    tags: list[str] = Field(default_factory=list)
     # Effective isolation: global (default) | team | key. Set from the virtual
     # key and team; unauthenticated requests stay global.
     cache_scope: str = "global"

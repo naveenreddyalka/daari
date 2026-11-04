@@ -781,9 +781,12 @@ class SignalOverrideRule(BaseModel):
     match: dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "Equality match on signal keys (has_images, has_tools, tool_count, "
+            "Match on signal keys (has_images, has_tools, tool_count, "
             "approx_context_tokens bucket, client_agent, category, complexity, "
-            "phase). All listed keys must match; first winning rule applies."
+            "phase, tags/tag). Equality for scalar keys; tags/tag uses set "
+            "intersection against request tags (X-Daari-Tags and/or "
+            "metadata.tags). All listed keys must match; first winning rule "
+            "applies (#1996, #2078)."
         ),
     )
     category: str | None = Field(
@@ -814,12 +817,35 @@ class SignalOverrideRule(BaseModel):
                 f"signal_overrides rule {rule_id!r} sets no lever "
                 "(set category, max_tier, and/or tier_pin)"
             )
+        from daari.router.signals import TAG_MATCH_KEYS
+
         for key, value in self.match.items():
             if key not in SIGNAL_KEYS:
                 raise ValueError(
                     f"signal_overrides rule {rule_id!r} has unknown match key "
                     f"{key!r} (allowed: {sorted(SIGNAL_KEYS)})"
                 )
+            if key in TAG_MATCH_KEYS:
+                if isinstance(value, str):
+                    tags = [value.strip()] if value.strip() else []
+                elif isinstance(value, list):
+                    if not all(isinstance(item, str) for item in value):
+                        raise ValueError(
+                            f"signal_overrides rule {rule_id!r} match[{key!r}] "
+                            "must be a string or list of strings"
+                        )
+                    tags = [item.strip() for item in value if item.strip()]
+                else:
+                    raise ValueError(
+                        f"signal_overrides rule {rule_id!r} match[{key!r}] "
+                        "must be a string or list of strings"
+                    )
+                if not tags:
+                    raise ValueError(
+                        f"signal_overrides rule {rule_id!r} match[{key!r}] "
+                        "must list at least one non-empty tag"
+                    )
+                continue
             if value is not None and not isinstance(value, (str, bool, int)):
                 raise ValueError(
                     f"signal_overrides rule {rule_id!r} match[{key!r}] has "

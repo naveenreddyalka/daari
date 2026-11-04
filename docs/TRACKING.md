@@ -8654,6 +8654,15 @@ Delivery + per-request `callback_url` override from #2069 unchanged. Covered by
 `tests/unit/test_batches_completion_webhook.py` and
 `tests/unit/test_batch_completion_webhook.py`.
 
+### Request tags for signal_overrides ([#2078](https://github.com/naveenreddyalka/daari/issues/2078))
+
+<!-- tracking:#2078 -->
+**Status:** Done (2026-11-04). `X-Daari-Tags` and/or `metadata.tags` stamp
+request tags (union); `signal_overrides` match on `tags`/`tag` via set
+intersection. Tags appear on `daari_meta.signals` / the `signals` request-log
+event. Docs: routing-tiers. Covered by
+`tests/unit/test_request_tags_signal_overrides.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

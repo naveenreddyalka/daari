@@ -44,7 +44,9 @@ def test_extract_signals_defaults():
         "category",
         "complexity",
         "phase",
+        "tags",
     }
+    assert signals["tags"] == []
 
 
 def test_extract_signals_images_tools_agent():

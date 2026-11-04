@@ -21,8 +21,13 @@ SIGNAL_KEYS = frozenset(
         "category",
         "complexity",
         "phase",
+        "tags",
+        "tag",
     }
 )
+
+# Match keys that use set intersection (not equality) against request tags (#2078).
+TAG_MATCH_KEYS = frozenset({"tags", "tag"})
 
 # Single source with ``context_token_bucket`` — config validation uses the same set.
 CONTEXT_TOKEN_BUCKETS = frozenset({"lt_1k", "1k_4k", "4k_16k", "gte_16k"})
@@ -55,6 +60,40 @@ def _client_agent_family(request: InternalRequest) -> str:
     return "none"
 
 
+def parse_request_tags(
+    *,
+    header: str | None = None,
+    metadata: Any = None,
+) -> list[str]:
+    """Union of ``X-Daari-Tags`` and ``metadata.tags``; sorted unique, empties dropped.
+
+    Header values are comma-separated. Body may be a list of strings or a
+    comma-separated string. Case-sensitive exact strings (#2078).
+    """
+    found: set[str] = set()
+
+    def _add(raw: Any) -> None:
+        if raw is None:
+            return
+        if isinstance(raw, str):
+            parts = raw.split(",")
+        elif isinstance(raw, (list, tuple, set)):
+            parts = list(raw)
+        else:
+            return
+        for part in parts:
+            if not isinstance(part, str):
+                continue
+            tag = part.strip()
+            if tag:
+                found.add(tag)
+
+    _add(header)
+    if isinstance(metadata, dict):
+        _add(metadata.get("tags"))
+    return sorted(found)
+
+
 def extract_signals(
     request: InternalRequest,
     profile: PromptProfile,
@@ -65,6 +104,7 @@ def extract_signals(
     has_images = any(bool(getattr(m, "images", None)) for m in request.messages)
     tools = list(request.tools or [])
     tool_count = len(tools)
+    tags = list(getattr(request.meta, "tags", None) or [])
     return {
         "has_images": has_images,
         "has_tools": tool_count > 0 or bool(request.has_tool_calls_in_history),
@@ -74,10 +114,35 @@ def extract_signals(
         "category": profile.category,
         "complexity": profile.complexity,
         "phase": phase,
+        "tags": sorted({str(t).strip() for t in tags if str(t).strip()}),
     }
 
 
-def _match_value(actual: Any, expected: Any) -> bool:
+def _normalize_tag_set(value: Any) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        parts: list[Any] = [value]
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        parts = list(value)
+    else:
+        return set()
+    out: set[str] = set()
+    for part in parts:
+        if isinstance(part, str):
+            tag = part.strip()
+            if tag:
+                out.add(tag)
+    return out
+
+
+def _match_value(actual: Any, expected: Any, *, key: str = "") -> bool:
+    if key in TAG_MATCH_KEYS:
+        want = _normalize_tag_set(expected)
+        have = _normalize_tag_set(actual)
+        if not want:
+            return False
+        return bool(want & have)
     if expected is None:
         return actual is None
     if isinstance(expected, bool):
@@ -93,7 +158,10 @@ def match_signal_override(signals: dict[str, Any], rules: list[Any]) -> Any | No
             match = rule.get("match")
         if not isinstance(match, dict) or not match:
             continue
-        if all(_match_value(signals.get(key), expected) for key, expected in match.items()):
+        if all(
+            _match_value(signals.get("tags" if key in TAG_MATCH_KEYS else key), expected, key=key)
+            for key, expected in match.items()
+        ):
             return rule
     return None
 
