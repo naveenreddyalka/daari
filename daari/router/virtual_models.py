@@ -1,4 +1,4 @@
-"""Named virtual models → ordered local/L6 candidate lists (#2023, #2052)."""
+"""Named virtual models → ordered local/L6 candidate lists (#2023, #2052, #2086)."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ class VirtualModelPerformanceTracker:
 
     alpha: float = DEFAULT_EWMA_ALPHA
     _stats: dict[str, dict[str, CandidateEwma]] = field(default_factory=dict)
+    _slo_demoted: dict[str, set[str]] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def _update(
@@ -83,18 +84,28 @@ class VirtualModelPerformanceTracker:
                 samples=row.samples,
             )
 
-    def snapshot(self) -> dict[str, dict[str, dict[str, float | int]]]:
+    def note_slo_demotions(self, virtual_model: str, demoted: list[str]) -> None:
+        vm = (virtual_model or "").strip()
+        if not vm:
+            return
         with self._lock:
-            out: dict[str, dict[str, dict[str, float | int]]] = {}
+            self._slo_demoted[vm] = {str(c).strip() for c in demoted if str(c).strip()}
+
+    def snapshot(self) -> dict[str, dict[str, dict[str, float | int | bool]]]:
+        with self._lock:
+            out: dict[str, dict[str, dict[str, float | int | bool]]] = {}
             for vm, by_cand in self._stats.items():
-                out[vm] = {
-                    cand: {
+                demoted = self._slo_demoted.get(vm) or set()
+                out[vm] = {}
+                for cand, row in by_cand.items():
+                    entry: dict[str, float | int | bool] = {
                         "latency_ms": round(row.latency_ms, 3),
                         "error_rate": round(row.error_rate, 6),
                         "samples": int(row.samples),
                     }
-                    for cand, row in by_cand.items()
-                }
+                    if cand in demoted:
+                        entry["slo_demoted"] = True
+                    out[vm][cand] = entry
             return out
 
 
@@ -105,12 +116,15 @@ def order_virtual_candidates(
     virtual_model: str = "",
     tracker: VirtualModelPerformanceTracker | None = None,
     breaker_open: Callable[[str], bool] | None = None,
+    latency_slo_ms: float | None = None,
 ) -> list[str]:
-    """Return try-order for virtual-model candidates (#2052).
+    """Return try-order for virtual-model candidates (#2052, #2086).
 
     ``ordered`` (default): config order, minus breaker-open ids.
     ``performance``: lowest EWMA error_rate, then latency, then config index;
-    breaker-open candidates are omitted (skipped).
+    breaker-open candidates are omitted (skipped). When ``latency_slo_ms`` is
+    set, within-SLO candidates (EWMA latency ≤ SLO, or no samples) rank before
+    over-SLO ones; within each bucket the error/latency/index sort is unchanged.
     """
     cleaned = [str(c).strip() for c in candidates if str(c).strip()]
     if breaker_open is not None:
@@ -121,16 +135,43 @@ def order_virtual_candidates(
     if sel != "performance" or tracker is None:
         return cleaned
 
+    slo: float | None = None
+    if latency_slo_ms is not None:
+        try:
+            slo_val = float(latency_slo_ms)
+        except (TypeError, ValueError):
+            slo_val = 0.0
+        if slo_val > 0:
+            slo = slo_val
+
     indexed = list(enumerate(cleaned))
 
-    def _key(item: tuple[int, str]) -> tuple[float, float, int]:
+    def _within_slo(cand: str) -> bool:
+        if slo is None:
+            return True
+        row = tracker.stats_for(virtual_model, cand)
+        # Cold start must not starve new backends (#2086).
+        if row.samples <= 0:
+            return True
+        return float(row.latency_ms) <= slo
+
+    def _key(item: tuple[int, str]) -> tuple[int, float, float, int]:
         idx, cand = item
         row = tracker.stats_for(virtual_model, cand)
         # Round so EWMA residuals after a recovery window do not permanently
         # lose to a never-errored sibling (acceptance: recovers after decay).
-        return (round(row.error_rate, 4), round(row.latency_ms, 1), idx)
+        over = 0 if _within_slo(cand) else 1
+        return (over, round(row.error_rate, 4), round(row.latency_ms, 1), idx)
 
-    return [cand for _, cand in sorted(indexed, key=_key)]
+    ranked = [cand for _, cand in sorted(indexed, key=_key)]
+    if slo is not None:
+        demoted = [c for c in ranked if not _within_slo(c)]
+        # Only note demotion when a within-SLO peer actually took priority.
+        if demoted and any(_within_slo(c) for c in ranked):
+            tracker.note_slo_demotions(virtual_model, demoted)
+        else:
+            tracker.note_slo_demotions(virtual_model, [])
+    return ranked
 
 
 def resolve_virtual_candidates(

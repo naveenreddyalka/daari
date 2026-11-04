@@ -517,6 +517,7 @@ class Router:
         local_pool_frontier_fallback: bool = False,
         virtual_models: dict[str, list[str]] | None = None,
         virtual_model_selection: str = "ordered",
+        virtual_model_latency_slo_ms: dict[str, float] | None = None,
         virtual_classify_settings: Any | None = None,
         reasoning_effort_escalation: bool = False,
         stall_escalation: bool = False,
@@ -695,6 +696,11 @@ class Router:
         self.virtual_model_selection = (
             sel if sel in {"ordered", "performance"} else "ordered"
         )
+        self.virtual_model_latency_slo_ms = {
+            str(k).strip(): float(v)
+            for k, v in dict(virtual_model_latency_slo_ms or {}).items()
+            if str(k).strip() and float(v) > 0
+        }
         from daari.router.virtual_models import VirtualModelPerformanceTracker
 
         self.virtual_model_perf = VirtualModelPerformanceTracker()
@@ -5796,12 +5802,16 @@ class Router:
         settings = self.virtual_classify_settings
         mode = getattr(self, "virtual_model_selection", "ordered") or "ordered"
         tracker = getattr(self, "virtual_model_perf", None)
+        slo_map = getattr(self, "virtual_model_latency_slo_ms", None) or {}
+        slo_raw = slo_map.get(virtual_name)
+        latency_slo_ms = float(slo_raw) if slo_raw is not None else None
         candidates = order_virtual_candidates(
             configured,
             mode=mode,
             virtual_model=virtual_name,
             tracker=tracker,
             breaker_open=lambda c: candidate_breaker_open(self, c, settings),
+            latency_slo_ms=latency_slo_ms,
         )
         if hasattr(self.metrics, "record_virtual_model_selection"):
             self.metrics.record_virtual_model_selection(mode)
@@ -7141,6 +7151,9 @@ class AppContext:
             virtual_models=dict(getattr(settings.routing, "virtual_models", None) or {}),
             virtual_model_selection=str(
                 getattr(settings.routing, "virtual_model_selection", "ordered") or "ordered"
+            ),
+            virtual_model_latency_slo_ms=dict(
+                getattr(settings.routing, "virtual_model_latency_slo_ms", None) or {}
             ),
             virtual_classify_settings=settings,
             reasoning_effort_escalation=settings.routing.reasoning_effort_escalation,

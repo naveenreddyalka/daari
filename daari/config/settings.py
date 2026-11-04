@@ -1238,6 +1238,17 @@ class RoutingSettings(RuntimeSettings):
             "out of scope for v1."
         ),
     )
+    virtual_model_latency_slo_ms: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Opt-in latency SLO (ms) per virtual-model name for performance "
+            "selection (#2086). When set, within-SLO EWMA candidates (or cold "
+            "starts with no samples) rank before over-SLO ones; within each "
+            "bucket the existing error/latency/index sort is unchanged. "
+            "Ignored in ordered mode. Keys must name an entry in "
+            "routing.virtual_models; values must be positive."
+        ),
+    )
 
     @field_validator("shadow_compare_tier", mode="before")
     @classmethod
@@ -1268,6 +1279,50 @@ class RoutingSettings(RuntimeSettings):
                 )
             cleaned[key] = items
         return cleaned
+
+    @field_validator("virtual_model_latency_slo_ms", mode="before")
+    @classmethod
+    def _virtual_model_latency_slo_clean(cls, value: Any) -> Any:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError(
+                "routing.virtual_model_latency_slo_ms must be a mapping of "
+                "virtual-model name → positive ms"
+            )
+        cleaned: dict[str, float] = {}
+        for name, raw in value.items():
+            key = str(name).strip()
+            if not key:
+                raise ValueError(
+                    "routing.virtual_model_latency_slo_ms keys must be non-empty names"
+                )
+            try:
+                ms = float(raw)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"routing.virtual_model_latency_slo_ms[{key!r}] must be a positive number"
+                ) from exc
+            if ms <= 0:
+                raise ValueError(
+                    f"routing.virtual_model_latency_slo_ms[{key!r}] must be positive"
+                )
+            cleaned[key] = ms
+        return cleaned
+
+    @model_validator(mode="after")
+    def _virtual_model_latency_slo_names(self) -> RoutingSettings:
+        slo = self.virtual_model_latency_slo_ms or {}
+        if not slo:
+            return self
+        known = set(self.virtual_models or {})
+        for name in slo:
+            if name not in known:
+                raise ValueError(
+                    f"routing.virtual_model_latency_slo_ms[{name!r}] has no matching "
+                    "entry in routing.virtual_models"
+                )
+        return self
 
 
 class ToolsSettings(BaseModel):
