@@ -104,10 +104,22 @@ never pulled the poisoned artifact.
 
 LiteLLM
 [v1.108.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.108.0-rc.1)
-(29 Oct 2026) is a **prerelease** — do not promote it to the GA floor. It only
-brings the 1.106.x patch line (gzip scoping / off-loop compression) onto the
-1.108 RC train: a **parity** patch onto those 1.106.x fixes, **not a feature**
-cut. Stable comparison remains **1.106.6 GA**.
+(29 Oct 2026) is a **prerelease** — do not promote it to the GA floor until
+LiteLLM ships a stable 1.108. It only brings the 1.106.x patch line (gzip
+scoping / off-loop compression) onto the 1.108 RC train: a **parity** patch
+onto those 1.106.x fixes, **not a feature** cut. Stable comparison remains
+**1.106.6 GA**.
+
+**1.108 LTS pilot and Tuesday cadence** (week of 2026-11-02): LiteLLM is
+piloting a one-month [LTS line on 1.108](https://docs.litellm.ai/docs/enterprise/lts_pilot)
+while pausing the usual four-most-recent-stable-lines patch window
+([version support](https://docs.litellm.ai/docs/enterprise/version_support);
+[blog](https://docs.litellm.ai/blog/release-cadence-and-lts-pilot)). RC and
+stable cuts move from Saturday to **Tuesday** mornings
+([release cycle](https://docs.litellm.ai/docs/proxy/release_cycle)). That is
+competitor ops context, not a daari upgrade path: daari is local-first with
+**no LiteLLM runtime** dependency and no weekly proxy release train to pin
+against.
 
 ## LiteLLM 1.109-dev watch
 
