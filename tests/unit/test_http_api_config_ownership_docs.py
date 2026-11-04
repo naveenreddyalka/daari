@@ -42,3 +42,12 @@ def test_http_api_pins_config_ownership_structured_json_logs() -> None:
     assert "/v1/daari/config" in text
     assert "ownership" in text.lower()
     assert "structured_json_logs" in text
+
+
+def test_http_api_pins_config_ownership_offline_mode() -> None:
+    """http-api names security.offline_mode ownership leaves (#2076)."""
+    text = HTTP_API.read_text(encoding="utf-8")
+    assert "/v1/daari/config" in text
+    assert "ownership" in text.lower()
+    assert "offline_mode" in text
+    assert "offline_allow_hosts" in text
