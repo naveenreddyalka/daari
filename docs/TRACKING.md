@@ -8625,6 +8625,15 @@ to Ollama `/v1` + `lfm3-audio` without pulling weights; does not set
 offers audio before omni. Docs: ollama modality matrix + TTS guide. Covered by
 `tests/unit/test_lfm3_audio_speech_recipe.py`.
 
+### Docs: LiteLLM LTS 1.108 pilot and Tuesday cadence ([#2075](https://github.com/naveenreddyalka/daari/issues/2075))
+
+<!-- tracking:#2075 -->
+**Status:** Done (2026-11-04). `compare-litellm.md` 1.108 section keeps GA floor
+**1.106.6**, notes 1.108.0-rc.1 remains prerelease, names the one-month **1.108
+LTS pilot** (week of 2026-11-02) and Tuesday RC/stable cadence, and states
+daari's local-first / no LiteLLM runtime stance. Covered by
+`tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

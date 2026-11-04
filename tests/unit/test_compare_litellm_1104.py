@@ -104,6 +104,36 @@ def test_compare_litellm_pins_1108_rc_parity_not_ga() -> None:
     assert "1.108" not in floor
 
 
+def test_compare_litellm_pins_1108_lts_pilot_and_tuesday_cadence() -> None:
+    """1.108 LTS pilot + Tuesday RC/stable cadence honesty; GA floor stays 1.106.6 (#2075)."""
+    text = DOC.read_text(encoding="utf-8")
+    section = _markdown_section(text, "## LiteLLM 1.108")
+    lower = section.lower()
+    assert "1.106.6" in section
+    assert "1.108.0-rc.1" in section
+    assert "prerelease" in lower
+    assert "lts" in lower
+    assert "1.108" in section
+    assert "tuesday" in lower
+    assert "2026-11-02" in section or "november 2, 2026" in lower or "week of 2026-11-02" in lower
+    assert "one month" in lower or "one-month" in lower
+    assert (
+        "no litellm runtime" in lower
+        or "does **not** depend" in lower
+        or "does not depend" in lower
+        or "not a daari upgrade" in lower
+        or "competitor ops" in lower
+        or "local-first" in lower
+    )
+    # Do not promote 1.107.x / 1.108 RC to the GA floor.
+    floor = _markdown_section(text, "## LiteLLM 1.106")
+    assert "1.106.6" in floor
+    assert "1.108" not in floor
+    assert "1.107" not in floor
+    compromise = _markdown_section(text, "## LiteLLM 1.107")
+    assert "compromis" in compromise.lower()
+
+
 def test_compare_litellm_pins_1105_ga_decisions_parity() -> None:
     """1.105.0 GA Decisions routes vs on-box /v1/decisions + /v1/systemone (#1584, #1640)."""
     text = DOC.read_text(encoding="utf-8")
