@@ -60,10 +60,20 @@ def _clear_spans():
     reset_inbound_context(extract_inbound_context({}))
 
 
-def _request(model: str = "llama3.2:3b", *, session_id: str | None = None) -> InternalRequest:
+def _request(
+    model: str = "llama3.2:3b",
+    *,
+    session_id: str | None = None,
+    key_id: str | None = None,
+    team_id: str | None = None,
+) -> InternalRequest:
     from daari.gateway.internal import RequestMeta
 
-    meta = RequestMeta(session_id=session_id) if session_id else RequestMeta()
+    meta = RequestMeta(
+        session_id=session_id,
+        key_id=key_id,
+        team_id=team_id,
+    )
     return InternalRequest(
         messages=[Message(role="user", content="hi")], model=model, meta=meta
     )
@@ -80,13 +90,15 @@ def _response(
     provider_id: str | None = "ollama:l3",
     latency_ms: int = 250,
     agent_turn: bool | None = None,
+    tier: str = "L3",
+    cost_usd: float | None = None,
 ) -> InternalResponse:
     return InternalResponse(
         content="hello",
         model=model,
         finish_reason=finish_reason,
         daari_meta=DaariMeta(
-            tier="L3",
+            tier=tier,
             executor=executor,
             provider_id=provider_id,
             model=model,
@@ -95,6 +107,7 @@ def _response(
             output_tokens=output_tokens,
             usage_estimated=usage_estimated,
             agent_turn=agent_turn,
+            cost_usd=cost_usd,
         ),
     )
 
@@ -235,6 +248,60 @@ def test_token_usage_and_duration_metrics():
     duration_points = _metric_points("gen_ai.client.operation.duration")
     assert duration_points, "expected an operation duration histogram point"
     assert any(p.sum >= 0.25 for p in duration_points)
+
+
+def test_cost_usd_on_root_span_when_priced():
+    """L6 / :cloud spend lands as daari.cost.usd; unpriced local omits it (#2085)."""
+    # After token-usage metrics assertions: InMemoryMetricReader accumulates
+    # across the module, and a non-ollama provider would poison them.
+    trace = RequestTrace()
+    export_trace(
+        trace,
+        request=_request(model="gpt-4o-mini"),
+        response=_response(
+            model="gpt-4o-mini",
+            tier="L6",
+            executor="frontier",
+            provider_id="openai",
+            cost_usd=0.0042,
+        ),
+    )
+    attrs = dict(_root_span().attributes)
+    assert attrs["daari.cost.usd"] == pytest.approx(0.0042)
+    assert isinstance(attrs["daari.cost.usd"], float)
+
+    _EXPORTER.clear()
+    export_trace(trace, request=_request(), response=_response())
+    assert "daari.cost.usd" not in dict(_root_span().attributes)
+
+
+def test_key_and_team_id_on_root_span_when_authenticated():
+    """Authenticated requests stamp key/team ids; blanks and anon omit (#2085)."""
+    trace = RequestTrace()
+    export_trace(
+        trace,
+        request=_request(key_id="vk_abc", team_id="team_xyz"),
+        response=_response(),
+    )
+    attrs = dict(_root_span().attributes)
+    assert attrs["daari.key_id"] == "vk_abc"
+    assert attrs["daari.team_id"] == "team_xyz"
+
+    _EXPORTER.clear()
+    export_trace(trace, request=_request(), response=_response())
+    attrs = dict(_root_span().attributes)
+    assert "daari.key_id" not in attrs
+    assert "daari.team_id" not in attrs
+
+    _EXPORTER.clear()
+    export_trace(
+        trace,
+        request=_request(key_id="", team_id=""),
+        response=_response(),
+    )
+    attrs = dict(_root_span().attributes)
+    assert "daari.key_id" not in attrs
+    assert "daari.team_id" not in attrs
 
 
 def test_cache_read_and_creation_token_dims():

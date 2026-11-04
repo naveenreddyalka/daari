@@ -30,3 +30,12 @@ def test_otel_genai_documents_traceresponse() -> None:
     )
     assert "traceresponse" in text
     assert "traceparent" in text
+
+
+def test_otel_genai_documents_cost_and_tenant_attrs() -> None:
+    text = (ROOT / "docs/developer/guides/observability/otel-genai.md").read_text(
+        encoding="utf-8"
+    )
+    assert "daari.cost.usd" in text
+    assert "daari.key_id" in text
+    assert "daari.team_id" in text
