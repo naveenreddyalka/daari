@@ -8717,6 +8717,13 @@ guide notes L6 passthrough. Covered by
 teams table shows `tpd` next to `rpd`. Rate-limit card copy mentions tpd
 alongside rpd. Covered by `packages/web-ui/test/dashboard.test.js`.
 
+### Grafana: virtual-model selection by mode ([#2095](https://github.com/naveenreddyalka/daari/issues/2095))
+
+<!-- tracking:#2095 -->
+**Status:** Done (2026-11-05). Overview dashboard charts
+`daari_virtual_model_selection_total` by `mode`; metrics guide lists the panel.
+Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

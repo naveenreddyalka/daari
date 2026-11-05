@@ -41,10 +41,12 @@ a **Concurrency gate** panel on `daari_rate_limit_in_flight` vs
 panel on `daari_decision_classifier_latency_ms`, a **Virtual keys by status** panel on
 `daari_virtual_keys{status}`, a **Retired model rejects** panel on
 `daari_rejects_total{kind="retired"}`, a **Schema ok** stat on `daari_schema_ok`, a
-**Systemone breaker events** panel on `daari_systemone_breaker_total`, and an
+**Systemone breaker events** panel on `daari_systemone_breaker_total`, a
+**Virtual-model selection by mode** panel on `daari_virtual_model_selection_total`
+(next to virtual-model failover pressure) for `ordered` vs `performance` picks, and an
 **Escalations & errors** panel on `daari_escalations_total` / `daari_errors_total` so
 operators see flake / false-hit / budget / MCP deny / key-lifecycle / retired-model /
-routing-shadow / compact-to-fit / schema-lag / judge-breaker pressure without raw PromQL).
+routing-shadow / compact-to-fit / schema-lag / judge-breaker / selection-mode pressure without raw PromQL).
 
 Useful series: request latency histograms by tier (`daari_request_latency_ms`),
 stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path
