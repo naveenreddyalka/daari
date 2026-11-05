@@ -451,7 +451,9 @@ clients before each call — picks up a fresh token, with concurrent readers
 sharing one token request. A refresh that fails (non-2xx, malformed body,
 network error) raises with the endpoint in the message — never the secret or
 token — and the L6 attempt fails over to the next provider rather than sending
-an expired credential.
+an expired credential. The same `secret://oauth` ref works on
+`integrations.mcp_servers[].token` for machine-to-machine MCP egress (see
+[MCP client credentials](../clients/mcp.md#machine-to-machine-upstream-auth-client-credentials)).
 
 ## Header policy (pre-auth)
 
