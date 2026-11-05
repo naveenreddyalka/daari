@@ -19,6 +19,10 @@ from daari.router.anthropic_messages import (
     thread_cache_token,
     to_anthropic_payload,
 )
+from daari.router.frontier import FrontierExecutor
+from daari.router.router import AppContext
+from daari.server.app import create_app
+from tests.conftest import META_HEADERS
 
 
 @pytest.fixture(autouse=True)
@@ -26,10 +30,6 @@ def _reset_thread_registry() -> None:
     clear_anthropic_thread_creates()
     yield
     clear_anthropic_thread_creates()
-from daari.router.frontier import FrontierExecutor
-from daari.router.router import AppContext
-from daari.server.app import create_app
-from tests.conftest import META_HEADERS
 
 
 def test_anthropic_request_accepts_create_and_continue_thread() -> None:
