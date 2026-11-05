@@ -8710,6 +8710,13 @@ include thread material; gateway event `anthropic_message_thread`. Claude Code
 guide notes L6 passthrough. Covered by
 `tests/unit/test_anthropic_message_threads.py`.
 
+### Web UI: TPD / user_tpd on admin inventory ([#2094](https://github.com/naveenreddyalka/daari/issues/2094))
+
+<!-- tracking:#2094 -->
+**Status:** Done (2026-11-05). Admin keys table shows `tpd` and `user_tpd`;
+teams table shows `tpd` next to `rpd`. Rate-limit card copy mentions tpd
+alongside rpd. Covered by `packages/web-ui/test/dashboard.test.js`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

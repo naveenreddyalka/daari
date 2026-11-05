@@ -90,6 +90,8 @@ const ADMIN_KEYS = {
       cache_scope: "team",
       max_in_flight: 3,
       user_rpd: 200,
+      tpd: 10000,
+      user_tpd: 5000,
       user_daily_usd_cap: 2.5,
       spend: [{ window: "day", quota: "usd", spend: 0.25, limit: 1.0 }],
     },
@@ -104,6 +106,7 @@ const ADMIN_TEAMS = {
       key_count: 1,
       rpm: 60,
       rpd: 500,
+      tpd: 80000,
       priority: "normal",
       cache_scope: "key",
       max_in_flight: 5,
@@ -274,6 +277,13 @@ test("team rate limits table includes rpd remaining", async (t) => {
   assert.match(text, /rpd/);
   assert.match(text, /100/);
   assert.match(text, /40/);
+  const teamRateCopy = [...doc.querySelectorAll("section.card")].find(
+    (s) => s.querySelector("h2")?.textContent === "Team rate limits",
+  )?.querySelector("p.subtle")?.textContent;
+  assert.match(teamRateCopy || "", /rpm/);
+  assert.match(teamRateCopy || "", /tpm/);
+  assert.match(teamRateCopy || "", /rpd/);
+  assert.match(teamRateCopy || "", /tpd/);
 });
 
 test("key rate limits table includes rpd remaining", async (t) => {
@@ -290,6 +300,11 @@ test("key rate limits table includes rpd remaining", async (t) => {
   assert.match(text, /rpd/);
   assert.match(text, /5/);
   assert.match(text, /4/);
+  const keyRateCopy = [...doc.querySelectorAll("section.card")].find(
+    (s) => s.querySelector("h2")?.textContent === "Key rate limits",
+  )?.querySelector("p.subtle")?.textContent;
+  assert.match(keyRateCopy || "", /rpd/);
+  assert.match(keyRateCopy || "", /tpd/);
 });
 
 test("tier table renders p50/p95 from stats payload", async (t) => {
@@ -663,6 +678,8 @@ test("admin keys and teams tables render from inventory endpoints", async (t) =>
   const keyCells = [...keyRows[0].querySelectorAll("td")].map((td) => td.textContent);
   assert.ok(keyCells.includes("3"), `expected max_in_flight 3 in ${keyCells.join("|")}`);
   assert.ok(keyCells.includes("200"), `expected user_rpd 200 in ${keyCells.join("|")}`);
+  assert.ok(keyCells.includes("10,000"), `expected tpd 10000 in ${keyCells.join("|")}`);
+  assert.ok(keyCells.includes("5,000"), `expected user_tpd 5000 in ${keyCells.join("|")}`);
   assert.ok(keyCells.includes("2.5"), `expected user_daily_usd_cap 2.5 in ${keyCells.join("|")}`);
   assert.match(doc.getElementById("admin-keys-status").textContent, /1 key/);
 
@@ -673,6 +690,8 @@ test("admin keys and teams tables render from inventory endpoints", async (t) =>
   assert.match(teamRows[0].textContent, /normal/);
   assert.match(teamRows[0].textContent, /key/);
   const teamCells = [...teamRows[0].querySelectorAll("td")].map((td) => td.textContent);
+  assert.ok(teamCells.includes("500"), `expected rpd 500 in ${teamCells.join("|")}`);
+  assert.ok(teamCells.includes("80,000"), `expected tpd 80000 in ${teamCells.join("|")}`);
   assert.ok(teamCells.includes("5"), `expected max_in_flight 5 in ${teamCells.join("|")}`);
   assert.match(doc.getElementById("admin-teams-status").textContent, /1 team/);
 });
