@@ -117,6 +117,10 @@ class RequestMeta(BaseModel):
     # Client anthropic-beta / anthropic-version forwarded on the L6 Anthropic leg (#455).
     anthropic_beta: str | None = None
     anthropic_version: str | None = None
+    # Anthropic message-threads create/continue body (#2093). None when omitted.
+    anthropic_thread: dict | None = None
+    # Soft-ignored continue on local tiers (anthropic.thread_continue_soft) (#2093).
+    anthropic_thread_soft_ignored: bool = False
     # Anthropic user profile id for end-customer safety isolation (#1844).
     anthropic_user_profile_id: str | None = None
     # Sanitized X-Request-ID (or generated) for spend/log correlation (#965).

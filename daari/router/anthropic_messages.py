@@ -14,6 +14,65 @@ ANTHROPIC_VERSION_NO_SAMPLING = "2026-10-21"
 _ANTHROPIC_SAMPLING_KEYS = ("temperature", "top_p", "top_k")
 DEFAULT_MAX_TOKENS = 4096
 EFFORT_BETA = "effort-2025-11-24"
+THREAD_BETA = "message-threads-2026-08-12"
+_THREAD_CREATE_IDS: set[str] = set()
+
+
+def normalize_anthropic_thread(raw: Any) -> dict[str, Any] | None:
+    """Validate Anthropic message-threads create/continue shapes (#2093).
+
+    Returns a normalized dict, ``None`` when absent, or raises ``ValueError``
+    for unknown types / malformed continue.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("thread must be an object with type create|continue")
+    kind = raw.get("type")
+    if kind == "create":
+        return {"type": "create"}
+    if kind == "continue":
+        prev = raw.get("previous_message_id")
+        if not isinstance(prev, str) or not prev.strip():
+            raise ValueError(
+                "thread.type=continue requires a non-empty previous_message_id"
+            )
+        return {"type": "continue", "previous_message_id": prev.strip()}
+    raise ValueError(
+        f"unsupported thread.type {kind!r}; expected create or continue"
+    )
+
+
+def thread_cache_token(thread: dict[str, Any] | None) -> str:
+    """Stable cache-key fragment for create vs continue (#2093)."""
+    if not thread or not isinstance(thread, dict):
+        return ""
+    kind = thread.get("type")
+    if kind == "create":
+        return "thread:create"
+    if kind == "continue":
+        prev = str(thread.get("previous_message_id") or "").strip()
+        return f"thread:continue:{prev}" if prev else "thread:continue"
+    return ""
+
+
+def note_anthropic_thread_create(message_id: str | None = None) -> None:
+    """Record that a create (or continue) hop established a thread on this gateway."""
+    token = (message_id or "").strip() or "*"
+    _THREAD_CREATE_IDS.add(token)
+
+
+def anthropic_thread_create_seen(previous_message_id: str | None = None) -> bool:
+    """True when this process saw a create/continue that can back a continue."""
+    if "*" in _THREAD_CREATE_IDS:
+        return True
+    prev = (previous_message_id or "").strip()
+    return bool(prev) and prev in _THREAD_CREATE_IDS
+
+
+def clear_anthropic_thread_creates() -> None:
+    """Test helper: reset the in-process create registry."""
+    _THREAD_CREATE_IDS.clear()
 
 
 def effective_anthropic_version(version: str | None) -> str:
@@ -428,6 +487,9 @@ def to_anthropic_payload(
             "type": "json_schema",
             "schema": request.sampling.json_schema,
         }
+    thread = getattr(request.meta, "anthropic_thread", None)
+    if isinstance(thread, dict) and thread.get("type") in {"create", "continue"}:
+        payload["thread"] = dict(thread)
     return payload
 
 

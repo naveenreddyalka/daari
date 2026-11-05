@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.client_errors import backend_unavailable_message, request_deadline_response, routing_failure_detail, safe_detail
@@ -273,6 +273,18 @@ class AnthropicRequest(BaseModel):
     output_config: Any | None = None
     # Anthropic MCP connector (#1261); resolved against configured mcp_servers.
     mcp_servers: list[Any] | None = None
+    # Anthropic message-threads public beta create/continue (#2093).
+    thread: dict[str, Any] | None = None
+
+    @field_validator("thread", mode="before")
+    @classmethod
+    def _validate_thread(cls, value: Any) -> dict[str, Any] | None:
+        from daari.router.anthropic_messages import normalize_anthropic_thread
+
+        try:
+            return normalize_anthropic_thread(value)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class AnthropicTextBlock(BaseModel):
@@ -397,6 +409,26 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             body_user = end_user_from_metadata(body.metadata) or None
             from daari.router.signals import parse_request_tags
 
+            from daari.router.anthropic_messages import (
+                anthropic_thread_create_seen,
+                note_anthropic_thread_create,
+                normalize_anthropic_thread,
+            )
+
+            try:
+                thread = normalize_anthropic_thread(body.thread)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if thread is not None:
+                log_gateway_event(
+                    "anthropic_message_thread",
+                    {
+                        "type": thread.get("type"),
+                        "previous_message_id": thread.get("previous_message_id"),
+                        "request_id": request_id,
+                    },
+                )
+
             meta = RequestMeta(
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
@@ -412,12 +444,49 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 anthropic_beta=(request.headers.get("anthropic-beta") or "").strip() or None,
                 anthropic_version=(request.headers.get("anthropic-version") or "").strip()
                 or None,
+                anthropic_thread=thread,
                 request_id=request_id,
                 tags=parse_request_tags(
                     header=x_daari_tags,
                     metadata=getattr(body, "metadata", None),
                 ),
             )
+            # Local / non-Anthropic: continue fail-closed unless soft-ignore (#2093).
+            if thread and thread.get("type") == "continue":
+                localish = meta.no_frontier or not bool(
+                    getattr(ctx.settings.frontier, "enabled", False)
+                )
+                frontier_kind = "openai"
+                if not localish:
+                    from daari.router.anthropic_messages import infer_frontier_kind
+
+                    frontier_kind = infer_frontier_kind(
+                        getattr(ctx.settings.frontier, "provider", "") or "",
+                        getattr(ctx.settings.frontier, "base_url", "") or "",
+                    )
+                if localish or frontier_kind != "anthropic":
+                    soft = bool(
+                        getattr(ctx.settings.anthropic, "thread_continue_soft", False)
+                    )
+                    seen = anthropic_thread_create_seen(
+                        thread.get("previous_message_id")
+                        if isinstance(thread.get("previous_message_id"), str)
+                        else None
+                    )
+                    if not seen:
+                        if soft:
+                            meta.anthropic_thread = None
+                            meta.anthropic_thread_soft_ignored = True
+                        else:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=(
+                                    "thread.type=continue requires a prior "
+                                    "message-threads create on this gateway "
+                                    "(Anthropic L6); local/non-Anthropic tiers "
+                                    "cannot continue server-side threads"
+                                ),
+                            )
             apply_cost_tier(body, meta)
             from daari.providers.mcp_token_exchange import bearer_from_authorization
             from daari.router.anthropic_messages import apply_anthropic_user_profile
@@ -731,6 +800,24 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 result.daari_meta.warning = "budget_warning"
             elif getattr(request.state, "rate_limit_soft", False):
                 result.daari_meta.warning = "rate_limit_warning"
+            # Message-threads are Anthropic-server-side only (#2093).
+            served_anthropic_l6 = (
+                result.daari_meta.tier == "L6"
+                and result.daari_meta.executor == "frontier"
+            )
+            if not served_anthropic_l6:
+                if thread and thread.get("type") == "create":
+                    warn = "anthropic_message_thread_create_ignored"
+                    existing = result.daari_meta.warning
+                    result.daari_meta.warning = (
+                        f"{existing}; {warn}" if existing else warn
+                    )
+                elif meta.anthropic_thread_soft_ignored:
+                    warn = "anthropic_message_thread_continue_ignored"
+                    existing = result.daari_meta.warning
+                    result.daari_meta.warning = (
+                        f"{existing}; {warn}" if existing else warn
+                    )
             usage: dict[str, Any] = {
                 "input_tokens": int(result.daari_meta.input_tokens or 0),
                 "output_tokens": int(result.daari_meta.output_tokens or 0),
@@ -738,13 +825,20 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             reported_speed = getattr(result.daari_meta, "usage_speed", None)
             if isinstance(reported_speed, str) and reported_speed.strip():
                 usage["speed"] = reported_speed.strip().lower()
+            message_id = f"msg_{uuid.uuid4().hex[:12]}"
             payload = AnthropicMessageResponse(
-                id=f"msg_{uuid.uuid4().hex[:12]}",
+                id=message_id,
                 model=result.model,
                 content=[AnthropicTextBlock(text=result.content)],
                 usage=usage,
                 daari_meta=result.daari_meta.model_dump(exclude_none=True),
             ).model_dump(exclude_none=True)
+            if served_anthropic_l6 and thread and thread.get("type") in {
+                "create",
+                "continue",
+            }:
+                note_anthropic_thread_create(message_id)
+                note_anthropic_thread_create("*")
             prompt_chars = sum(len(message.content or "") for message in internal.messages)
             return JSONResponse(
                 payload,

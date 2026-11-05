@@ -93,6 +93,12 @@ def cache_key(request: InternalRequest) -> str:
     segment = cache_scope_segment(request)
     if segment:
         parts.append(segment)
+    # Message-threads create vs continue must not share L0 entries (#2093).
+    from daari.router.anthropic_messages import thread_cache_token
+
+    thread_tok = thread_cache_token(getattr(request.meta, "anthropic_thread", None))
+    if thread_tok:
+        parts.append(thread_tok)
     payload = "|".join(parts)
     return hashlib.sha256(payload.encode()).hexdigest()
 

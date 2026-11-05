@@ -92,6 +92,12 @@ def semantic_context_key(
     speed = str(getattr(request.sampling, "speed", None) or "").strip()
     if speed:
         parts.append(f"speed:{speed}")
+    # Message-threads create vs continue must not share L1 namespaces (#2093).
+    from daari.router.anthropic_messages import thread_cache_token
+
+    thread_tok = thread_cache_token(getattr(request.meta, "anthropic_thread", None))
+    if thread_tok:
+        parts.append(thread_tok)
     return "|".join(parts)
 
 
