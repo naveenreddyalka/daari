@@ -8681,6 +8681,15 @@ count as within); ordered mode ignores the map. Snapshot marks demoted
 candidates with `slo_demoted`. Docs: routing-tiers + config. Covered by
 `tests/unit/test_virtual_models.py`.
 
+### Docs: vLLM 0.33.0 GA upgrade notes ([#2087](https://github.com/naveenreddyalka/daari/issues/2087))
+
+<!-- tracking:#2087 -->
+**Status:** Done (2026-11-05). `vllm-local-tier.md` keeps the ≥0.32.0 security
+floor and adds a **0.33.0 upgrade notes** subsection (CUDA 13.0-only /
+cu129 gone, PyTorch 2.14, `vllm/vllm` image alias, ROCm 10.0 default) with
+the GA release link. `systemone.base_url` 0.32+ wording unchanged. Covered by
+`tests/unit/test_vllm_local_tier_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
