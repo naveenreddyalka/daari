@@ -8690,6 +8690,15 @@ cu129 gone, PyTorch 2.14, `vllm/vllm` image alias, ROCm 10.0 default) with
 the GA release link. `systemone.base_url` 0.32+ wording unchanged. Covered by
 `tests/unit/test_vllm_local_tier_docs.py`.
 
+### Docs: MCP client-credentials upstream auth ([#2088](https://github.com/naveenreddyalka/daari/issues/2088))
+
+<!-- tracking:#2088 -->
+**Status:** Done (2026-11-05). `mcp.md` documents machine-to-machine upstream
+auth via `token: secret://oauth:…` (auto-refresh, nested client-secret ref),
+cross-links OBO vs fixed service identity; `config.md` `integrations.mcp_servers`
+notes `secret://` / `secret://oauth`; auth-and-keys cross-link. Covered by
+`tests/unit/test_mcp_client_credentials_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

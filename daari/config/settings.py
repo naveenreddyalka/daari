@@ -2599,7 +2599,10 @@ class IntegrationsSettings(BaseModel):
         default_factory=list,
         description=(
             "External MCP servers daari can call. Each entry: id, url, optional "
-            "token/triggers; optional rpm/tpm (0=unlimited) per-server egress "
+            "token/triggers; `token` accepts `secret://` refs including "
+            "`secret://oauth` client-credentials (auto-refresh near expiry; "
+            "nested `client_secret` must be env-file/exec/keychain) (#2088); "
+            "optional rpm/tpm (0=unlimited) per-server egress "
             "ceilings on tools/call and tools/list (429 + Retry-After + "
             "X-RateLimit-Scope mcp_server:<id>; independent of key-family mcp; "
             "both apply) (#1620). Optional timeout_seconds (0=default) sets the "

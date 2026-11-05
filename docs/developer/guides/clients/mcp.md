@@ -64,7 +64,10 @@ uses the inbound `Authorization` bearer as `subject_token`, posts to
 `token_exchange_endpoint` with `client_id` / `client_secret` (optional
 `audience`, `scopes`, `subject_token_type`), caches the exchanged access
 token until expiry, and sends **only** that token upstream (never the inbound
-subject). The exchange endpoint is SSRF-checked like other egress URLs.
+subject). Use this path to **exchange the caller's identity** into an upstream
+token. For a **fixed service identity** (machine-to-machine, no inbound
+subject), use [`secret://oauth` on `token`](#machine-to-machine-upstream-auth-client-credentials)
+instead. The exchange endpoint is SSRF-checked like other egress URLs.
 Missing subject → **401**; exchange error or blocked endpoint → **502**
 (`log_gateway_event`; secrets never logged).
 
@@ -79,6 +82,26 @@ integrations:
       client_secret: secret://keychain/daari-mcp/client-secret
       audience: api://mcp-corp
       scopes: [mcp.read, mcp.call]
+```
+
+### Machine-to-machine upstream auth (client credentials)
+
+When the upstream MCP server expects a **fixed service identity** (RFC 6749
+client-credentials grant) rather than the caller's OBO token, set `token` to a
+`secret://oauth` ref. daari mints an access token at startup (and
+auto-refreshes near expiry) and sends it as the upstream Bearer — the IdP
+client secret never leaves the box as plaintext. The nested `client_secret`
+**must** be another `secret://` ref (`env-file`, `exec`, or `keychain`); inline
+secrets are rejected. Full knobs (`scope`, `audience`, `resource`, `auth`,
+`refresh_margin`): [OAuth client credentials](../configuration/auth-and-keys.md#oauth-client-credentials-secretoauth).
+Prefer this over OBO when there is no inbound subject to exchange.
+
+```yaml
+integrations:
+  mcp_servers:
+    - id: inventory
+      url: https://mcp.inventory.example/rpc
+      token: secret://oauth/https://idp.corp.example.com/oauth2/token?client_id=daari-mcp&client_secret=secret://keychain/daari-mcp/client-secret&scope=mcp.invoke
 ```
 
 Opt-in local authorization server (`integrations.mcp_oauth.local_as: true`)
