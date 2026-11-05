@@ -8699,6 +8699,17 @@ cross-links OBO vs fixed service identity; `config.md` `integrations.mcp_servers
 notes `secret://` / `secret://oauth`; auth-and-keys cross-link. Covered by
 `tests/unit/test_mcp_client_credentials_docs.py`.
 
+### Anthropic message-threads create/continue passthrough ([#2093](https://github.com/naveenreddyalka/daari/issues/2093))
+
+<!-- tracking:#2093 -->
+**Status:** Done (2026-11-05). `/v1/messages` accepts `thread` create/continue;
+L6 Anthropic egress forwards it and preserves client `anthropic-beta` (no
+invented betas). Local/non-Anthropic: create ignored with warning; continue
+fail-closed (400) unless `anthropic.thread_continue_soft`. L0/L1 cache keys
+include thread material; gateway event `anthropic_message_thread`. Claude Code
+guide notes L6 passthrough. Covered by
+`tests/unit/test_anthropic_message_threads.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

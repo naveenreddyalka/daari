@@ -659,6 +659,13 @@ class AnthropicSettings(BaseModel):
             "Anthropic hop when the client did not send one."
         ),
     )
+    thread_continue_soft: bool = Field(
+        default=False,
+        description=(
+            "When true, thread.type=continue on local / non-Anthropic tiers is "
+            "ignored with daari_meta.warning instead of HTTP 400 (#2093)."
+        ),
+    )
     analytics_api_key: str = Field(
         default="",
         description=(
