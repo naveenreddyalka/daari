@@ -83,6 +83,15 @@ that schema for local L3–L5 JSON enforcement and still accepts legacy
 `output_format` alone; when both are present, `output_config.format` wins. L6
 replays the full `output_config` object (effort + format) unchanged.
 
+## Message threads
+
+Anthropic [message threads](https://platform.claude.com/docs/en/build-with-claude/message-threads)
+(`thread: {type: create|continue}` plus `anthropic-beta: message-threads-2026-08-12`)
+pass through on L6 Anthropic hops. daari does not invent the beta header — it
+forwards whatever the client sent. Local / non-Anthropic tiers ignore `create`
+(with `daari_meta.warning`) and reject `continue` with HTTP 400 unless
+`anthropic.thread_continue_soft` is enabled.
+
 ## Troubleshoot
 
 | Problem | Fix |
