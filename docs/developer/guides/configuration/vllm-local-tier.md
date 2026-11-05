@@ -15,6 +15,23 @@ operators who treat this guide as current should not stay below that floor.
 The same **0.32+** floor appears for vLLM `/v1/systemone` in the
 [config reference](../../reference/config.md) (`systemone.base_url`).
 
+### 0.33.0 upgrade notes
+
+[vLLM 0.33.0](https://github.com/vllm-project/vllm/releases/tag/v0.33.0rc3)
+(GA 2026-11-02; GitHub tag `v0.33.0rc3`) is a breaking operator bump if you
+pull release wheels or images on a CUDA 12.x host:
+
+- **CUDA 13.0 only** — CUDA 12.9 wheels and `-cu129` / `-cu129-ubuntu2404`
+  images are no longer published; use the default CUDA 13.0 artifacts.
+- **PyTorch 2.14** — wheels/images ship with PyTorch 2.14.0.
+- **`vllm/vllm` image alias** — every release image is also published under
+  the shorter name (e.g. `vllm/vllm:v0.33.0`).
+- **ROCm 10.0 default** — the default ROCm image/wheels move to ROCm 10.0
+  (`-rocm72` still published for ROCm 7.2).
+
+The ≥0.32.0 security floor above is unchanged; 0.33.0 is an optional upgrade
+path with these artifact constraints.
+
 ## Config
 
 `routing.local_pool.backends[].kind: openai` talks OpenAI chat-completions
