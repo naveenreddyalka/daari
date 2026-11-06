@@ -8742,6 +8742,15 @@ explicit values still forward. Cache keys distinguish omitted vs `0.7`.
 `ollama.md` notes ≥0.40.14 sampler-default parity. Covered by
 `tests/unit/test_temperature_omit_default.py`.
 
+### Alerts: batches webhook family in rotation CLI and doctor ([#2103](https://github.com/naveenreddyalka/daari/issues/2103))
+
+<!-- tracking:#2103 -->
+**Status:** Done (2026-11-06). `daari alerts rotate-secret batches` round-trip
+tests (current→previous + audit), CLI unknown-family rejection lists
+`batches`, doctor stale-previous tip covers the batches family, and
+budgets/doctor-health docs list the family alongside budget / key-expiry /
+responses. Covered by `tests/unit/test_batches_completion_webhook.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

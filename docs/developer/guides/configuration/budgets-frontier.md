@@ -181,7 +181,7 @@ Unset keeps the previous unsigned POST (no new headers). Reject timestamps
 older than ~5 minutes to block replays.
 
 Rotate without a hard cutover via `daari alerts rotate-secret budget --secret NEW`
-(or `key-expiry`). That moves the current secret to
+(or `key-expiry` / `responses` / `batches`). That moves the current secret to
 `budget_webhook_secret_previous` (and stamps
 `budget_webhook_secret_rotated_at`). Signing always uses the new current;
 during grace the header lists both digests comma-separated
