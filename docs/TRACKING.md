@@ -8770,6 +8770,15 @@ multi-turn Responses replays keep the refusal wording across tier hops
 `daari_meta.warning=dropped_content_parts:…` instead of silence. Covered by
 `tests/unit/test_responses_refusal_parts.py`.
 
+### Observability: service_tier_not_allowed deny/degrade counters ([#2110](https://github.com/naveenreddyalka/daari/issues/2110))
+
+<!-- tracking:#2110 -->
+**Status:** Done (2026-11-06). Hard 403 bumps
+`daari_rejects_total{kind="service_tier_not_allowed"}`; opt-in degrade bumps
+`daari_soft_warnings_total{kind="service_tier_not_allowed_degraded"}` (also
+`/v1/daari/stats`). Metrics guide kind table updated. Covered by
+`tests/unit/test_service_tier_metrics.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
