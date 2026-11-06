@@ -2,6 +2,11 @@
 
 **Outcome:** Local L3–L5 inference via Ollama.
 
+daari matches Ollama ≥0.40.14 sampler-default semantics on OpenAI-compatible
+ingress: when a client omits `temperature` (and other sampling knobs), daari
+forwards them as absent so Ollama uses the model's packaged Modelfile defaults
+instead of injecting a global `0.7`.
+
 ## Steps
 
 ```bash
