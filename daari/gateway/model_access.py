@@ -485,12 +485,16 @@ def reject_disallowed_service_tier(
     field, value = violations[0]
     key_id = getattr(claims, "key_id", None)
     path = getattr(getattr(request, "url", None), "path", "") or ""
+    app_state = getattr(getattr(request, "app", None), "state", None)
+    metrics = getattr(getattr(app_state, "ctx", None), "metrics", None) if app_state else None
     if degrade:
         clear_tier = any(item[0] == "service_tier" for item in violations)
         clear_speed = any(item[0] == "speed" for item in violations)
         request.state.service_tier_allowlist_clear_tier = clear_tier
         request.state.service_tier_allowlist_clear_speed = clear_speed
         request.state.service_tier_allowlist_warning = "service_tier_not_allowed_degraded"
+        if metrics is not None and hasattr(metrics, "record_soft_warning"):
+            metrics.record_soft_warning("service_tier_not_allowed_degraded")
         log_gateway_event(
             "service_tier_not_allowed",
             {
@@ -502,6 +506,8 @@ def reject_disallowed_service_tier(
             },
         )
         return None
+    if metrics is not None and hasattr(metrics, "record_reject"):
+        metrics.record_reject("service_tier_not_allowed")
     log_gateway_event(
         "service_tier_not_allowed",
         {
