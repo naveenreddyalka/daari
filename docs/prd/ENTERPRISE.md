@@ -73,7 +73,7 @@ SaaS console dial.
 | 304 | Prometheus counter for `X-Daari-Priority` admission overrides | 2 | 1 | LiteLLM / Portkey priority dashboards | Queue-steer pressure without a SaaS log plane | Filed [#2113](https://github.com/naveenreddyalka/daari/issues/2113) |
 | 305 | Integration fence for the 11-03 afternoon governance/speech wave | 2 | 2 | — (testability) | Hermetic proof: allowlist 403/degrade + lfm3-audio | Filed [#2114](https://github.com/naveenreddyalka/daari/issues/2114) |
 | 294, 296–298 | Rate-limit kind split; temperature omit; batches rotation; `/api/show` limits | 3–4 | 1–2 | LiteLLM / Ollama 0.40.14 | Byte-equivalence + signed push channels | Shipped (#2139–#2140, #2142–#2143) |
-| 299 | Preserve assistant refusal parts in Responses input | 2 | 1 | Ollama 0.40.14 `/v1/responses` fix | Refusals survive tier hops | Filed [#2105](https://github.com/naveenreddyalka/daari/issues/2105) |
+| 299 | Preserve assistant refusal parts in Responses input | 2 | 1 | Ollama 0.40.14 `/v1/responses` fix | Refusals survive tier hops | Shipped [#2105](https://github.com/naveenreddyalka/daari/issues/2105) |
 | 300 | Integration fence for the 11-02/11-03 overnight wave | 2 | 2 | — (testability) | Hermetic proof: priority header, signed batch webhooks | Filed [#2106](https://github.com/naveenreddyalka/daari/issues/2106) |
 | 291–293 | Message-threads; TPD web-ui; selection Grafana | 2–4 | 1–3 | Anthropic / LiteLLM / OpenRouter | TTFT parity + same-box console | Shipped (#2130–#2132) |
 | 286–289 | OTel cost attrs; latency SLO; vLLM 0.33 notes; MCP oauth recipe | 2–3 | 1–2 | Portkey / OpenRouter / vLLM | Operator-owned traces + honest local tiers | Shipped (#2120–#2121, #2128–#2129) |

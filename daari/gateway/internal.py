@@ -121,6 +121,9 @@ class RequestMeta(BaseModel):
     anthropic_thread: dict | None = None
     # Soft-ignored continue on local tiers (anthropic.thread_continue_soft) (#2093).
     anthropic_thread_soft_ignored: bool = False
+    # Readable Responses content parts flattened away (e.g. input_file) (#2105).
+    # Not part of L0/L1 cache keys; surfaces as daari_meta.warning.
+    dropped_content_parts: list[str] = Field(default_factory=list)
     # Anthropic user profile id for end-customer safety isolation (#1844).
     anthropic_user_profile_id: str | None = None
     # Sanitized X-Request-ID (or generated) for spend/log correlation (#965).

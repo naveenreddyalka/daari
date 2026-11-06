@@ -8761,6 +8761,15 @@ output via `daari-router.max_output_tokens`, top-level `max_output_tokens`,
 and `num_predict`. Unknown limits omitted. Docs: ollama.md facade section.
 Covered by `tests/unit/test_ollama_show_limits.py`.
 
+### Responses: preserve prior assistant refusal parts ([#2105](https://github.com/naveenreddyalka/daari/issues/2105))
+
+<!-- tracking:#2105 -->
+**Status:** Done (2026-11-06). `_content_to_text` inlines `refusal` parts so
+multi-turn Responses replays keep the refusal wording across tier hops
+(Ollama 0.40.14 parity). Dropped readable parts (`input_file`) surface as
+`daari_meta.warning=dropped_content_parts:…` instead of silence. Covered by
+`tests/unit/test_responses_refusal_parts.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

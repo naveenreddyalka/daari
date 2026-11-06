@@ -172,20 +172,59 @@ _COMPACT_PROMPT = (
 )
 
 
-def _content_to_text(content: Any) -> str:
-    """Responses items carry content as a string or typed part list."""
+# Media parts handled by extract_images / extract_audio — not text drops.
+_HANDLED_MEDIA_PART_TYPES = frozenset(
+    {"input_image", "image_url", "image", "input_audio"}
+)
+# Readable Responses content types we still cannot map into Message.content.
+_READABLE_DROPPED_PART_TYPES = frozenset({"input_file"})
+
+
+def _part_readable_text(part: dict[str, Any]) -> str | None:
+    """Text a content part contributes to the mapped chat message (#2105)."""
+    if isinstance(part.get("text"), str):
+        return part["text"]
+    # Prior assistant refusals use `refusal`, not `text` (Ollama 0.40.14 parity).
+    if part.get("type") == "refusal" and isinstance(part.get("refusal"), str):
+        return part["refusal"]
+    return None
+
+
+def _content_to_text(content: Any, *, dropped: list[str] | None = None) -> str:
+    """Responses items carry content as a string or typed part list.
+
+    Refusal parts are inlined so multi-turn replays keep the refusal wording.
+    Readable schema parts that are still dropped (e.g. ``input_file``) are
+    recorded on ``dropped`` for a ``daari_meta.warning`` instead of silence.
+    """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts = []
+        parts: list[str] = []
         for part in content:
-            if isinstance(part, dict) and isinstance(part.get("text"), str):
-                parts.append(part["text"])
+            if not isinstance(part, dict):
+                continue
+            text = _part_readable_text(part)
+            if text is not None:
+                parts.append(text)
+                continue
+            ptype = part.get("type")
+            if not isinstance(ptype, str):
+                continue
+            if ptype in _HANDLED_MEDIA_PART_TYPES:
+                continue
+            if dropped is not None and ptype in _READABLE_DROPPED_PART_TYPES:
+                if ptype not in dropped:
+                    dropped.append(ptype)
         return "".join(parts)
     return ""
 
 
-def responses_input_to_messages(body: ResponsesRequest) -> list[Message]:
+def responses_input_to_messages(
+    body: ResponsesRequest,
+    *,
+    dropped_parts: list[str] | None = None,
+) -> list[Message]:
     messages: list[Message] = []
     if body.instructions:
         messages.append(Message(role="system", content=body.instructions))
@@ -241,12 +280,26 @@ def responses_input_to_messages(body: ResponsesRequest) -> list[Message]:
         messages.append(
             Message(
                 role=role,
-                content=_content_to_text(content),
+                content=_content_to_text(content, dropped=dropped_parts),
                 images=extract_images(content),
                 audio=extract_audio(content),
             )
         )
     return messages
+
+
+def _dropped_content_parts_warning(dropped_parts: list[str]) -> str | None:
+    if not dropped_parts:
+        return None
+    return f"dropped_content_parts:{','.join(dropped_parts)}"
+
+
+def _apply_dropped_content_warning(result: InternalResponse, dropped_parts: list[str]) -> None:
+    note = _dropped_content_parts_warning(dropped_parts)
+    if not note:
+        return
+    existing = result.daari_meta.warning
+    result.daari_meta.warning = f"{existing}; {note}" if existing else note
 
 
 def responses_tools_to_openai(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1162,7 +1215,10 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             store = _store_for(ctx)
             owner_key_id = _owner_key_id_from_request(request)
             claims = getattr(request.state, "auth_claims", None)
-            messages = responses_input_to_messages(body)
+            dropped_content_parts: list[str] = []
+            messages = responses_input_to_messages(
+                body, dropped_parts=dropped_content_parts
+            )
             if body.previous_response_id:
                 from daari.enterprise.audit import maybe_audit_tenancy_denied
 
@@ -1206,6 +1262,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 metadata=getattr(body, "metadata", None),
             )
             apply_cost_tier(body, meta)
+            meta.dropped_content_parts = list(dropped_content_parts)
             model = body.model or ctx.settings.models.l3
             request.state.responses_body = body
             denied = _reject_responses_model(
@@ -1450,6 +1507,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 result.daari_meta.warning = "budget_warning"
             elif getattr(request.state, "rate_limit_soft", False):
                 result.daari_meta.warning = "rate_limit_warning"
+            _apply_dropped_content_warning(result, meta.dropped_content_parts)
             payload = _response_body(
                 response_id,
                 result,
@@ -1553,6 +1611,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 or is_cancel_requested(response_id)
             ):
                 return
+            _apply_dropped_content_warning(result, internal.meta.dropped_content_parts)
             payload = _response_body(
                 response_id,
                 result,
