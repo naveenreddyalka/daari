@@ -8710,6 +8710,57 @@ include thread material; gateway event `anthropic_message_thread`. Claude Code
 guide notes L6 passthrough. Covered by
 `tests/unit/test_anthropic_message_threads.py`.
 
+### Web UI: TPD / user_tpd on admin inventory ([#2094](https://github.com/naveenreddyalka/daari/issues/2094))
+
+<!-- tracking:#2094 -->
+**Status:** Done (2026-11-05). Admin keys table shows `tpd` and `user_tpd`;
+teams table shows `tpd` next to `rpd`. Rate-limit card copy mentions tpd
+alongside rpd. Covered by `packages/web-ui/test/dashboard.test.js`.
+
+### Grafana: virtual-model selection by mode ([#2095](https://github.com/naveenreddyalka/daari/issues/2095))
+
+<!-- tracking:#2095 -->
+**Status:** Done (2026-11-05). Overview dashboard charts
+`daari_virtual_model_selection_total` by `mode`; metrics guide lists the panel.
+Covered by `tests/unit/test_grafana_dashboard.py`.
+
+### Observability: rate_limit soft/reject kinds by scope ([#2096](https://github.com/naveenreddyalka/daari/issues/2096))
+
+<!-- tracking:#2096 -->
+**Status:** Done (2026-11-06). Soft warnings and hard rejects for limiter
+cliffs use `rate_limit_rpm` / `tpm` / `rpd` / `tpd` instead of rolled-up
+`rate_limit`; concurrency kinds unchanged. Metrics guide migration note;
+Grafana soft/reject panel descriptions. Covered by
+`tests/unit/test_tpd.py`, `test_soft_warning_metrics.py`, `test_reject_metrics.py`.
+
+### Gateway: omit temperature default (Ollama 0.40.14 parity) ([#2102](https://github.com/naveenreddyalka/daari/issues/2102))
+
+<!-- tracking:#2102 -->
+**Status:** Done (2026-11-06). Chat completions / InternalRequest /
+Responses no longer inject `temperature=0.7` when the client omitted it;
+explicit values still forward. Cache keys distinguish omitted vs `0.7`.
+`ollama.md` notes ≥0.40.14 sampler-default parity. Covered by
+`tests/unit/test_temperature_omit_default.py`.
+
+### Alerts: batches webhook family in rotation CLI and doctor ([#2103](https://github.com/naveenreddyalka/daari/issues/2103))
+
+<!-- tracking:#2103 -->
+**Status:** Done (2026-11-06). `daari alerts rotate-secret batches` round-trip
+tests (current→previous + audit), CLI unknown-family rejection lists
+`batches`, doctor stale-previous tip covers the batches family, and
+budgets/doctor-health docs list the family alongside budget / key-expiry /
+responses. Covered by `tests/unit/test_batches_completion_webhook.py`.
+
+### Facade: report context and output-token limits on /api/show ([#2104](https://github.com/naveenreddyalka/daari/issues/2104))
+
+<!-- tracking:#2104 -->
+**Status:** Done (2026-11-06). Ollama-compat `POST /api/show` populates
+`daari-router.context_length` / `details.context_length` / `num_ctx` from
+`routing.context_windows` (and virtual-model targets); catalog-known max
+output via `daari-router.max_output_tokens`, top-level `max_output_tokens`,
+and `num_predict`. Unknown limits omitted. Docs: ollama.md facade section.
+Covered by `tests/unit/test_ollama_show_limits.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

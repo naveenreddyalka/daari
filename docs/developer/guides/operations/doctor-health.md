@@ -61,7 +61,9 @@ package `version` for upgrade/rollback discovery.
 | doctor `vk_empty_allowlist` | Optional tip: active virtual key `allowed_models` / `model_groups` match zero cards in the effective `/v1/models` catalog (typo or stale pattern) |
 | doctor `budget_webhook_secret` | Optional: `alerts.budget_webhook_url` set without `alerts.budget_webhook_secret` — spoofable pages |
 | doctor `key_expiry_webhook_secret` | Optional: `alerts.key_expiry_webhook_url` set without `alerts.key_expiry_webhook_secret` — spoofable pages |
-| doctor `webhook_secret_previous` | Optional tip: `*_webhook_secret_previous` still set after ~7 days (or missing `*_rotated_at`) — clear previous after receivers accept the new secret (`daari alerts rotate-secret`) |
+| doctor `responses_completion_webhook_secret` | Optional: `alerts.responses_completion_webhook_url` set without `alerts.responses_completion_webhook_secret` — spoofable pages |
+| doctor `batches_completion_webhook_secret` | Optional: `alerts.batches_completion_webhook_url` set without `alerts.batches_completion_webhook_secret` — spoofable pages |
+| doctor `webhook_secret_previous` | Optional tip: `*_webhook_secret_previous` still set after ~7 days (or missing `*_rotated_at`) — clear previous after receivers accept the new secret (`daari alerts rotate-secret` for `budget` / `key-expiry` / `responses` / `batches`) |
 | doctor `helm_image_tag` | Optional: checkout `deploy/helm/daari/values.yaml` `image.tag` behind the running package version |
 | doctor `backup` | Optional: no recent archive under `~/.daari/backups` (tip includes `--consistent`), recent backups are all **plaintext** — tip suggests `daari backup create … --encrypt openssl` (or `age`) and `--consistent`, or a Postgres-backed config's newest archive lacks the `--consistent` marker; see [backup-restore.md](backup-restore.md) |
 | doctor `header_policy` | Optional: `server.header_policy.enabled` is true but `required` / `deny` / `allow` are empty — enable at least one rule or set `enabled: false`; see [auth-and-keys.md](../configuration/auth-and-keys.md#header-policy-pre-auth) |

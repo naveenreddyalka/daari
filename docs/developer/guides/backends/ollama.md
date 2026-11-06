@@ -2,6 +2,29 @@
 
 **Outcome:** Local L3–L5 inference via Ollama.
 
+daari matches Ollama ≥0.40.14 sampler-default semantics on OpenAI-compatible
+ingress: when a client omits `temperature` (and other sampling knobs), daari
+forwards them as absent so Ollama uses the model's packaged Modelfile defaults
+instead of injecting a global `0.7`.
+
+### Facade `/api/show` limits
+
+The Ollama-compat facade's `POST /api/show` sets `general.architecture` to
+`daari-router`. When daari knows a context window for that name
+(`routing.context_windows` for L3–L5 / `daari`, a `routing.virtual_models`
+target, or a published catalog limit), it reports:
+
+- `model_info["daari-router.context_length"]` — the conventional
+  `<architecture>.context_length` key Ollama ≥0.40.14 clients scan (any
+  `*.context_length` suffix)
+- `details.context_length` and a `num_ctx` line in `parameters`
+
+When the catalog publishes a max output-token limit for the routed model
+(for example Anthropic Haiku 5.5's 128k), show also sets
+`model_info["daari-router.max_output_tokens"]`, top-level `max_output_tokens`
+(same JSON field as Ollama model recommendations), and `num_predict` in
+`parameters`. Unknown windows/caps are omitted — never fabricated.
+
 ## Steps
 
 ```bash

@@ -1239,7 +1239,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             internal = InternalRequest(
                 messages=messages,
                 model=model,
-                temperature=body.temperature if body.temperature is not None else 0.7,
+                temperature=body.temperature,
                 tools=responses_tools_to_openai(route_tools) if route_tools else None,
                 stream=body.stream and not body.background,
                 meta=meta,

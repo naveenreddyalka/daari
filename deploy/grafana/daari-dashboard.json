@@ -198,6 +198,7 @@
     {
       "id": 10,
       "title": "Soft warnings by kind (before hard 402/429)",
+      "description": "Soft-band pressure by kind. Rate-limit softs are scope-qualified (`rate_limit_rpm` / `tpm` / `rpd` / `tpd`); legend shows each dial (#2096).",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -216,6 +217,7 @@
     {
       "id": 11,
       "title": "Hard rejects by kind (402/429)",
+      "description": "Hard denials by kind. Limiter 429s are scope-qualified (`rate_limit_rpm` / `tpm` / `rpd` / `tpd`); concurrency stays separate (#2096).",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -1134,6 +1136,25 @@
         {
           "expr": "sum by (result) (rate(daari_org_enforcement_webhooks_total[5m]))",
           "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 56,
+      "title": "Virtual-model selection by mode",
+      "description": "Candidate ordering mode for named virtual models (`ordered` sticky list vs `performance` on-box TTFT EWMA). Empty scrape exports unlabeled 0.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 224
+      },
+      "targets": [
+        {
+          "expr": "sum by (mode) (rate(daari_virtual_model_selection_total[5m])) or vector(0)",
+          "legendFormat": "{{mode}}",
           "refId": "A"
         }
       ]

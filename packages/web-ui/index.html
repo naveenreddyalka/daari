@@ -160,7 +160,7 @@
 
       <section class="card">
         <h2>Team rate limits</h2>
-        <p class="subtle">Remaining rpm, tpm, and rpd from <code>stats.team_rate_limits</code>.</p>
+        <p class="subtle">Remaining rpm, tpm, rpd, and tpd from <code>stats.team_rate_limits</code>.</p>
         <table>
           <thead>
             <tr>
@@ -176,7 +176,7 @@
 
       <section class="card">
         <h2>Key rate limits</h2>
-        <p class="subtle">Remaining rpd from <code>stats.key_rate_limits</code>. The label is the key name, never the secret.</p>
+        <p class="subtle">Remaining rpd and tpd from <code>stats.key_rate_limits</code>. The label is the key name, never the secret.</p>
         <table>
           <thead>
             <tr>
@@ -443,6 +443,8 @@
               <th>Cache scope</th>
               <th>Max in-flight</th>
               <th>User RPD</th>
+              <th>TPD</th>
+              <th>User TPD</th>
               <th>User $/day</th>
               <th>Status</th>
               <th>Spend</th>
@@ -513,6 +515,7 @@
               <th>Keys</th>
               <th>RPM</th>
               <th>RPD</th>
+              <th>TPD</th>
               <th>Priority</th>
               <th>Cache scope</th>
               <th>Max in-flight</th>

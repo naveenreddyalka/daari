@@ -519,7 +519,7 @@ function renderAdminKeys(keys) {
   }
   const list = Array.isArray(keys) ? keys : [];
   if (list.length === 0) {
-    setEmptyRow(adminKeysTableNode, 13, "No virtual keys.");
+    setEmptyRow(adminKeysTableNode, 15, "No virtual keys.");
     return;
   }
   clearNode(adminKeysTableNode);
@@ -536,6 +536,8 @@ function renderAdminKeys(keys) {
       key.cache_scope || "global",
       formatNumber(key.max_in_flight),
       formatNumber(key.user_rpd),
+      formatNumber(key.tpd),
+      formatNumber(key.user_tpd),
       formatNumber(key.user_daily_usd_cap),
       key.status || "-",
       formatSpendSummary(key.spend),
@@ -550,7 +552,7 @@ function renderAdminTeams(teams) {
   }
   const list = Array.isArray(teams) ? teams : [];
   if (list.length === 0) {
-    setEmptyRow(adminTeamsTableNode, 9, "No teams.");
+    setEmptyRow(adminTeamsTableNode, 10, "No teams.");
     return;
   }
   clearNode(adminTeamsTableNode);
@@ -562,6 +564,7 @@ function renderAdminTeams(teams) {
       formatNumber(team.key_count),
       formatNumber(team.rpm),
       formatNumber(team.rpd),
+      formatNumber(team.tpd),
       team.priority || "normal",
       team.cache_scope || "global",
       formatNumber(team.max_in_flight),

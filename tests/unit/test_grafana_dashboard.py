@@ -749,3 +749,24 @@ def test_grafana_dashboard_includes_org_enforcement_webhooks_panel():
     assert any("daari_org_enforcement_webhooks_total" in expr for expr in exprs)
     assert any("by (result)" in expr or "by(result)" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_virtual_model_selection_panel():
+    """Virtual-model selection by mode should chart on the overview (#2095)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "virtual" in p.get("title", "").lower()
+            and "selection" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a virtual-model selection panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    legends = [t.get("legendFormat", "") for t in panel.get("targets", [])]
+    assert any("daari_virtual_model_selection_total" in expr for expr in exprs)
+    assert any("mode" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+    assert any("{{mode}}" in legend for legend in legends)

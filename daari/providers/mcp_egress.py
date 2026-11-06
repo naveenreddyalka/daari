@@ -67,7 +67,11 @@ def record_mcp_server_rate_limit_reject(
     """Bump ``daari_rejects_total`` + ``rate_limit.exceeded`` audit (#1654)."""
     if metrics is not None and hasattr(metrics, "record_reject"):
         try:
-            metrics.record_reject("rate_limit")
+            from daari.auth.rate_limit import rate_limit_metric_kind
+
+            metrics.record_reject(
+                rate_limit_metric_kind(getattr(exc.decision, "scope", None))
+            )
         except Exception:  # noqa: BLE001 — metrics must never break a request
             pass
     if settings is None:

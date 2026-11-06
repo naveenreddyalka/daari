@@ -1,10 +1,21 @@
-"""Org-default batches completion webhook (#2077): naming, doctor, offline."""
+"""Org-default batches completion webhook (#2077/#2103): naming, doctor, rotation."""
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import yaml
+from typer.testing import CliRunner
+
+from daari.cli.app import app as cli_app
 from daari.config.settings import AlertSettings, Settings
+from daari.observability.webhook_secrets import rotate_webhook_secret_in_config
 from daari.security.offline_mode import offline_mode_findings
-from daari.setup.doctor import _check_batches_completion_webhook_secret
+from daari.setup.doctor import _check_batches_completion_webhook_secret, _check_webhook_secret_previous_stale
+
+BUDGETS_DOC = Path("docs/developer/guides/configuration/budgets-frontier.md")
+DOCTOR_HEALTH = Path("docs/developer/guides/operations/doctor-health.md")
 
 
 def test_alert_settings_default_batches_completion_webhook_off():
@@ -81,3 +92,78 @@ def test_apply_settings_reads_batches_fields():
     assert store.completion_webhook_url == "https://hooks.example/b"
     assert store.completion_webhook_secret == "sec"
     assert store.completion_webhook_secret_previous == "prev"
+
+
+def test_rotate_batches_family(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "alerts:\n  batches_completion_webhook_secret: old-secret\n",
+        encoding="utf-8",
+    )
+    moment = datetime(2026, 11, 6, 12, 0, tzinfo=timezone.utc)
+    result = rotate_webhook_secret_in_config(
+        path, family="batches", new_secret="new-secret", now=moment
+    )
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert loaded["alerts"]["batches_completion_webhook_secret"] == "new-secret"
+    assert loaded["alerts"]["batches_completion_webhook_secret_previous"] == "old-secret"
+    assert (
+        loaded["alerts"]["batches_completion_webhook_secret_rotated_at"]
+        == moment.isoformat()
+    )
+    assert result["had_previous"] is True
+    assert result["family"] == "batches"
+
+
+def test_cli_rotate_secret_batches(tmp_path, monkeypatch):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "alerts:\n  batches_completion_webhook_secret: old\n",
+        encoding="utf-8",
+    )
+    settings = Settings()
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+    runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "120"})
+    result = runner.invoke(
+        cli_app,
+        ["alerts", "rotate-secret", "batches", "--secret", "new", "--config", str(path)],
+    )
+    assert result.exit_code == 0, result.output
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert loaded["alerts"]["batches_completion_webhook_secret"] == "new"
+    assert loaded["alerts"]["batches_completion_webhook_secret_previous"] == "old"
+
+
+def test_cli_rejects_unknown_webhook_family(tmp_path, monkeypatch):
+    path = tmp_path / "config.yaml"
+    path.write_text("alerts: {}\n", encoding="utf-8")
+    settings = Settings()
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+    runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "120"})
+    result = runner.invoke(
+        cli_app,
+        ["alerts", "rotate-secret", "not-a-family", "--secret", "x", "--config", str(path)],
+    )
+    assert result.exit_code == 1
+    assert "family must be" in result.output
+    assert "batches" in result.output
+
+
+def test_doctor_tips_stale_batches_previous(settings: Settings):
+    settings.alerts.batches_completion_webhook_secret_previous = "old"
+    settings.alerts.batches_completion_webhook_secret_rotated_at = (
+        datetime.now(timezone.utc) - timedelta(days=10)
+    ).isoformat()
+    tip = _check_webhook_secret_previous_stale(settings)
+    assert tip is not None
+    assert "batches" in tip.detail
+
+
+def test_docs_list_batches_webhook_family():
+    budgets = BUDGETS_DOC.read_text()
+    assert "rotate-secret" in budgets
+    assert "batches" in budgets
+    health = DOCTOR_HEALTH.read_text()
+    assert "batches_completion_webhook_secret" in health

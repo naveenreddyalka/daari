@@ -1066,7 +1066,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not decision.allowed:
             metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
             if metrics is not None and hasattr(metrics, "record_reject"):
-                metrics.record_reject("rate_limit")
+                from daari.auth.rate_limit import rate_limit_metric_kind
+
+                metrics.record_reject(rate_limit_metric_kind(decision.scope))
             scope = decision.scope or "rate"
             bucket = decision.bucket or ""
             if bucket.startswith("family:"):
@@ -1257,7 +1259,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if soft_headers.get(RATELIMIT_WARNING_HEADER) == "soft":
             metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
             if metrics is not None and hasattr(metrics, "record_soft_warning"):
-                metrics.record_soft_warning("rate_limit")
+                from daari.auth.rate_limit import rate_limit_metric_kind
+
+                # Attribute to the limiter dial that crossed soft, not the
+                # tighter concurrency gauge that may win remaining headers (#2096).
+                metrics.record_soft_warning(rate_limit_metric_kind(decision.scope))
         priority_warning = getattr(request.state, "admission_priority_warning", None)
         if priority_warning:
             from daari.gateway.cost_headers import WARNING_HEADER
