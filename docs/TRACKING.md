@@ -8751,6 +8751,16 @@ tests (current→previous + audit), CLI unknown-family rejection lists
 budgets/doctor-health docs list the family alongside budget / key-expiry /
 responses. Covered by `tests/unit/test_batches_completion_webhook.py`.
 
+### Facade: report context and output-token limits on /api/show ([#2104](https://github.com/naveenreddyalka/daari/issues/2104))
+
+<!-- tracking:#2104 -->
+**Status:** Done (2026-11-06). Ollama-compat `POST /api/show` populates
+`daari-router.context_length` / `details.context_length` / `num_ctx` from
+`routing.context_windows` (and virtual-model targets); catalog-known max
+output via `daari-router.max_output_tokens`, top-level `max_output_tokens`,
+and `num_predict`. Unknown limits omitted. Docs: ollama.md facade section.
+Covered by `tests/unit/test_ollama_show_limits.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

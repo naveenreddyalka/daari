@@ -285,25 +285,52 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
         @router.post("/api/show")
         async def show(request: Request, body: dict[str, Any]) -> dict[str, Any]:
             from daari.gateway.sampling import ollama_thinking_controls
-            from daari.router.capabilities import ollama_facade_capabilities_for_name
+            from daari.router.capabilities import (
+                ollama_facade_capabilities_for_name,
+                ollama_facade_limits_for_name,
+            )
 
             ctx: AppContext = request.app.state.ctx
             name = str(body.get("model") or body.get("name") or "daari")
             caps = ollama_facade_capabilities_for_name(name, ctx.settings)
             entry = _model_entry(name, capabilities=caps)
+            limits = ollama_facade_limits_for_name(name, ctx.settings)
+            model_info: dict[str, Any] = {"general.architecture": "daari-router"}
+            param_lines: list[str] = []
+            details = dict(entry["details"])
+            # Ollama ≥0.40.14 clients read any model_info key ending in
+            # `.context_length` (cmd/launch modelInfoContextLength). Architecture
+            # is `daari-router`, so `daari-router.context_length` is the
+            # conventional `<arch>.context_length` shape (#2104).
+            ctx_len = limits.get("context_length")
+            if ctx_len is not None and int(ctx_len) > 0:
+                model_info["daari-router.context_length"] = int(ctx_len)
+                details["context_length"] = int(ctx_len)
+                param_lines.append(f"num_ctx                        {int(ctx_len)}")
+            # Max output: catalog-known only. Exposed as model_info
+            # `daari-router.max_output_tokens` (forward-compatible with Ollama's
+            # TODO to read output caps from model info) plus top-level
+            # `max_output_tokens` matching ModelRecommendation JSON, and
+            # `num_predict` in parameters (Modelfile PARAMETER shape).
+            max_out = limits.get("max_output_tokens")
+            if max_out is not None and int(max_out) > 0:
+                model_info["daari-router.max_output_tokens"] = int(max_out)
+                param_lines.append(f"num_predict                    {int(max_out)}")
             payload: dict[str, Any] = {
                 "modelfile": f"# daari virtual model: {name}",
-                "parameters": "",
+                "parameters": "\n".join(param_lines),
                 "template": "",
                 # Ollama ≥0.40.7 show fields (#1846); empty renderer/parser +
                 # template_source "model" match a templateless native model.
                 "renderer": "",
                 "parser": "",
                 "template_source": "model",
-                "details": entry["details"],
-                "model_info": {"general.architecture": "daari-router"},
+                "details": details,
+                "model_info": model_info,
                 "capabilities": entry.get("capabilities", caps),
             }
+            if max_out is not None and int(max_out) > 0:
+                payload["max_output_tokens"] = int(max_out)
             # Ollama ≥0.34.3 advertises think levels only on show (#789).
             if "thinking" in caps:
                 payload["thinking"] = ollama_thinking_controls()

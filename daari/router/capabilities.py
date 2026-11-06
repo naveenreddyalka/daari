@@ -723,6 +723,61 @@ def ollama_facade_capabilities_for_name(name: str, settings: Any) -> list[str]:
     return ollama_facade_capabilities(name, catalog)
 
 
+def _context_length_for_model_id(model_id: str, settings: Any) -> int | None:
+    """Known context window for a concrete model id; None when unknown (#2104)."""
+    if not model_id:
+        return None
+    windows = _context_windows(settings)
+    models = getattr(settings, "models", None)
+    for tier, attr in (("L3", "l3"), ("L4", "l4"), ("L5", "l5")):
+        if model_id == getattr(models, attr, None) and tier in windows:
+            return int(windows[tier])
+    # Catalog / Anthropic published limits (never invent).
+    limits = anthropic_model_limits(model_id)
+    ctx = limits.get("context_window")
+    if ctx is not None and int(ctx) > 0:
+        return int(ctx)
+    return None
+
+
+def ollama_facade_limits_for_name(name: str, settings: Any) -> dict[str, int]:
+    """Context / max-output limits for Ollama ``/api/show`` model_info (#2104).
+
+    Resolves ``routing.virtual_models`` to the first candidate with a known
+    window. Omits keys when unknown — never fabricates a number. Max output is
+    only set when the catalog publishes one (e.g. Anthropic model cards).
+    """
+    targets: list[str] = [name]
+    virtual = getattr(getattr(settings, "routing", None), "virtual_models", None) or {}
+    if name in virtual:
+        targets = [str(t) for t in virtual[name] if t] or [name]
+    elif name == "daari":
+        windows = _context_windows(settings)
+        out: dict[str, int] = {}
+        if windows:
+            out["context_length"] = max(windows.values())
+        return out
+
+    context_length: int | None = None
+    max_output: int | None = None
+    for model_id in targets:
+        if context_length is None:
+            context_length = _context_length_for_model_id(model_id, settings)
+        if max_output is None:
+            limits = anthropic_model_limits(model_id)
+            raw = limits.get("max_output_tokens")
+            if raw is not None and int(raw) > 0:
+                max_output = int(raw)
+        if context_length is not None and max_output is not None:
+            break
+    out = {}
+    if context_length is not None and context_length > 0:
+        out["context_length"] = context_length
+    if max_output is not None and max_output > 0:
+        out["max_output_tokens"] = max_output
+    return out
+
+
 def suggest_models_for_vram(total_ram_gb: float) -> dict[str, str]:
     """VRAM/RAM-aware stack advisor for `daari doctor --suggest-models`."""
     if total_ram_gb >= 64:
