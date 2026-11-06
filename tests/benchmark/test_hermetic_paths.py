@@ -590,11 +590,11 @@ async def test_hard_rate_limit_reject_burst_under_ceiling(settings, monkeypatch)
         r.status_code for r in responses
     ]
     text_out = metrics.text
-    assert 'daari_rejects_total{kind="rate_limit"}' in text_out
+    assert 'daari_rejects_total{kind="rate_limit_rpm"}' in text_out
     line = next(
         ln
         for ln in text_out.splitlines()
-        if ln.startswith('daari_rejects_total{kind="rate_limit"}')
+        if ln.startswith('daari_rejects_total{kind="rate_limit_rpm"}')
     )
     count = float(line.rsplit(" ", 1)[-1])
     assert count >= HARD_REJECT_CONCURRENCY

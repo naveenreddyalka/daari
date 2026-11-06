@@ -22,13 +22,13 @@ def test_rejects_prometheus_kinds():
     metrics = Metrics()
     metrics.record_reject("budget")
     metrics.record_reject("request_quota")
-    metrics.record_reject("rate_limit")
-    metrics.record_reject("rate_limit")
+    metrics.record_reject("rate_limit_rpm")
+    metrics.record_reject("rate_limit_rpm")
     text = render_prometheus(metrics)
     assert "# TYPE daari_rejects_total counter" in text
     assert 'daari_rejects_total{kind="budget"} 1' in text
     assert 'daari_rejects_total{kind="request_quota"} 1' in text
-    assert 'daari_rejects_total{kind="rate_limit"} 2' in text
+    assert 'daari_rejects_total{kind="rate_limit_rpm"} 2' in text
 
 
 def _mock_execute(app):
@@ -174,5 +174,7 @@ async def test_hard_429_bumps_rate_limit_reject(settings, monkeypatch):
         assert hard.status_code == 429
 
         metrics = await client.get("/metrics")
-    assert 'daari_rejects_total{kind="rate_limit"} 1' in metrics.text
+    assert 'daari_rejects_total{kind="rate_limit_rpm"} 1' in metrics.text
+    assert 'daari_rejects_total{kind="rate_limit"}' not in metrics.text
+    assert 'daari_soft_warnings_total{kind="rate_limit_rpm"}' not in metrics.text
     assert 'daari_soft_warnings_total{kind="rate_limit"}' not in metrics.text

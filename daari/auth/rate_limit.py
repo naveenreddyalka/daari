@@ -22,6 +22,16 @@ WINDOW_SECONDS = 60
 DAY_SECONDS = 86400
 DEFAULT_PROBE_INTERVAL_SECONDS = 5.0
 RATELIMIT_WARNING_HEADER = "x-daari-ratelimit-warning"
+# Soft-warning / hard-reject metric kinds for limiter cliffs (#2096).
+RATE_LIMIT_METRIC_SCOPES = frozenset({"rpm", "tpm", "rpd", "tpd"})
+
+
+def rate_limit_metric_kind(scope: str | None) -> str:
+    """Map limiter ``decision.scope`` to a Prometheus/stats kind label."""
+    text = str(scope or "").strip().lower()
+    if text in RATE_LIMIT_METRIC_SCOPES:
+        return f"rate_limit_{text}"
+    return "rate_limit"
 
 
 def _wall_time() -> float:

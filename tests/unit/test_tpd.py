@@ -310,3 +310,76 @@ def test_auth_and_keys_docs_mention_tpd() -> None:
     assert "user_tpd" in auth or "--user-tpd" in auth
     assert 'kind="tpd"' in metrics or "tpd" in metrics
     assert "tpd" in compare.lower() or "tokens-per-day" in compare.lower()
+
+
+@pytest.mark.asyncio
+async def test_gateway_tpd_429_bumps_rate_limit_tpd_reject(settings, tmp_path, monkeypatch):
+    """Hard TPD 429 increments scope-qualified reject kind (#2096)."""
+    _freeze(monkeypatch, {"now": FROZEN})
+    settings.observability.prometheus = True
+    settings.frontier.soft_budget_ratio = 0.0
+    app, store = _app_with_keys(settings, tmp_path, limiter=RateLimiter(MemoryCounterBackend()))
+    created = store.create("capped", tpd=1)
+    headers = {
+        "Authorization": f"Bearer {created.plaintext}",
+        "X-Daari-No-Cache": "true",
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        assert (
+            await client.post("/v1/chat/completions", json=CHAT, headers=headers)
+        ).status_code == 200
+        denied = await client.post("/v1/chat/completions", json=CHAT, headers=headers)
+        assert denied.status_code == 429
+        metrics = await client.get("/metrics", headers={"Authorization": "Bearer master"})
+    assert 'daari_rejects_total{kind="rate_limit_tpd"} 1' in metrics.text
+    assert 'daari_rejects_total{kind="rate_limit"}' not in metrics.text
+    assert 'daari_rejects_total{kind="concurrency"}' not in metrics.text
+
+
+@pytest.mark.asyncio
+async def test_gateway_rpd_429_bumps_rate_limit_rpd_reject(settings, tmp_path, monkeypatch):
+    """Hard RPD 429 increments scope-qualified reject kind (#2096)."""
+    _freeze(monkeypatch, {"now": FROZEN})
+    settings.observability.prometheus = True
+    settings.frontier.soft_budget_ratio = 0.0
+    app, store = _app_with_keys(settings, tmp_path, limiter=RateLimiter(MemoryCounterBackend()))
+    created = store.create("capped", rpd=1)
+    headers = {
+        "Authorization": f"Bearer {created.plaintext}",
+        "X-Daari-No-Cache": "true",
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        assert (
+            await client.post("/v1/chat/completions", json=CHAT, headers=headers)
+        ).status_code == 200
+        denied = await client.post("/v1/chat/completions", json=CHAT, headers=headers)
+        assert denied.status_code == 429
+        metrics = await client.get("/metrics", headers={"Authorization": "Bearer master"})
+    assert 'daari_rejects_total{kind="rate_limit_rpd"} 1' in metrics.text
+    assert 'daari_rejects_total{kind="rate_limit"}' not in metrics.text
+
+
+@pytest.mark.asyncio
+async def test_gateway_tpd_soft_bumps_rate_limit_tpd_warning(settings, tmp_path, monkeypatch):
+    """TPD soft-band increments scope-qualified soft_warning kind (#2096)."""
+    from daari.auth.rate_limit import RATELIMIT_WARNING_HEADER
+
+    _freeze(monkeypatch, {"now": FROZEN})
+    settings.observability.prometheus = True
+    settings.frontier.soft_budget_ratio = 0.8
+    # estimate_request_tokens("hi") = 1; soft at 80% of 2 → after 2nd allowed request.
+    app, store = _app_with_keys(settings, tmp_path, limiter=RateLimiter(MemoryCounterBackend()))
+    created = store.create("soft", tpd=2)
+    headers = {
+        "Authorization": f"Bearer {created.plaintext}",
+        "X-Daari-No-Cache": "true",
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post("/v1/chat/completions", json=CHAT, headers=headers)
+        second = await client.post("/v1/chat/completions", json=CHAT, headers=headers)
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert second.headers.get(RATELIMIT_WARNING_HEADER) == "soft"
+        metrics = await client.get("/metrics", headers={"Authorization": "Bearer master"})
+    assert 'daari_soft_warnings_total{kind="rate_limit_tpd"} 1' in metrics.text
+    assert 'daari_soft_warnings_total{kind="rate_limit"}' not in metrics.text

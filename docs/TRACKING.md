@@ -8724,6 +8724,15 @@ alongside rpd. Covered by `packages/web-ui/test/dashboard.test.js`.
 `daari_virtual_model_selection_total` by `mode`; metrics guide lists the panel.
 Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Observability: rate_limit soft/reject kinds by scope ([#2096](https://github.com/naveenreddyalka/daari/issues/2096))
+
+<!-- tracking:#2096 -->
+**Status:** Done (2026-11-06). Soft warnings and hard rejects for limiter
+cliffs use `rate_limit_rpm` / `tpm` / `rpd` / `tpd` instead of rolled-up
+`rate_limit`; concurrency kinds unchanged. Metrics guide migration note;
+Grafana soft/reject panel descriptions. Covered by
+`tests/unit/test_tpd.py`, `test_soft_warning_metrics.py`, `test_reject_metrics.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

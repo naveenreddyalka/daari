@@ -264,7 +264,7 @@ async def test_per_server_429_records_reject_metric_and_audit(
     assert second.headers.get("X-RateLimit-Scope") == "mcp_server:demo"
 
     text = render_prometheus(app.state.ctx.metrics)
-    assert 'daari_rejects_total{kind="rate_limit"} 1' in text
+    assert 'daari_rejects_total{kind="rate_limit_rpm"} 1' in text
 
     rows = AuditLog(settings.enterprise.audit_path).list(action="rate_limit.exceeded")
     assert len(rows) == 1
@@ -320,7 +320,7 @@ async def test_chat_path_soft_rate_limit_records_reject(settings, monkeypatch, t
     assert second.daari_meta.warning == "mcp_server_rate_limited"
 
     text = render_prometheus(provider.metrics)
-    assert 'daari_rejects_total{kind="rate_limit"} 1' in text
+    assert 'daari_rejects_total{kind="rate_limit_rpm"} 1' in text
     rows = AuditLog(settings.enterprise.audit_path).list(action="rate_limit.exceeded")
     assert len(rows) == 1
     assert rows[0]["detail"]["bucket"] == "mcp_server:demo"
