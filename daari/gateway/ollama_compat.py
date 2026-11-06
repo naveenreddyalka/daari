@@ -212,10 +212,10 @@ def _extract_content_deltas(sse_chunk: str) -> tuple[list[str], bool, tuple[int,
     return deltas, done, usage
 
 
-def _temperature_from_options(options: dict[str, Any] | None) -> float:
+def _temperature_from_options(options: dict[str, Any] | None) -> float | None:
     if options and isinstance(options.get("temperature"), (int, float)):
         return float(options["temperature"])
-    return 0.7
+    return None
 
 
 def _resolve_model(client_model: str, ctx: AppContext) -> str:

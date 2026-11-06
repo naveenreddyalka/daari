@@ -135,7 +135,7 @@ class ChatCompletionRequest(BaseModel):
 
     model: str
     messages: list[ChatMessage]
-    temperature: float = 0.7
+    temperature: float | None = None
     tools: list[Any] | None = None
     stream: bool = False
     stream_options: dict[str, Any] | None = None

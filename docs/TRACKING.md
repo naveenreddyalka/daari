@@ -8733,6 +8733,15 @@ cliffs use `rate_limit_rpm` / `tpm` / `rpd` / `tpd` instead of rolled-up
 Grafana soft/reject panel descriptions. Covered by
 `tests/unit/test_tpd.py`, `test_soft_warning_metrics.py`, `test_reject_metrics.py`.
 
+### Gateway: omit temperature default (Ollama 0.40.14 parity) ([#2102](https://github.com/naveenreddyalka/daari/issues/2102))
+
+<!-- tracking:#2102 -->
+**Status:** Done (2026-11-06). Chat completions / InternalRequest /
+Responses no longer inject `temperature=0.7` when the client omitted it;
+explicit values still forward. Cache keys distinguish omitted vs `0.7`.
+`ollama.md` notes ≥0.40.14 sampler-default parity. Covered by
+`tests/unit/test_temperature_omit_default.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

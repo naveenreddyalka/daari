@@ -138,8 +138,8 @@ class RequestMeta(BaseModel):
 class InternalRequest(BaseModel):
     messages: list[Message]
     model: str
-    # None when the client omitted temperature (Anthropic Messages) (#1849).
-    temperature: float | None = 0.7
+    # None when the client omitted temperature (#1849 chat/Anthropic; #2102 OpenAI).
+    temperature: float | None = None
     tools: list[Any] | None = None
     stream: bool = False
     # Generation controls the client asked for; previously dropped (#161).
