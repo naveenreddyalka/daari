@@ -11,30 +11,40 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-05)
+## Where daari stands (verified in-tree, 2026-11-06)
 
-**Loop velocity.** Since the 11-03 pm PRD: TTFT / console dials landed —
-message-threads (#2130), TPD web-ui (#2131), selection Grafana (#2132),
-latency SLO (#2121), OTel cost/tenant (#2120), request tags (#2119), batches
-org webhook (#2118), offline_mode PATCH (#2117), LiteLLM LTS compare
-(#2116), vLLM 0.33 notes (#2128), MCP `secret://oauth` recipe (#2129).
-Nov-4 refill (#2122–#2126) was filed without an ENTERPRISE merge — adopted
-below as rows 306–310. Governance Prom / allowlist console / Codex PAT /
-Ollama 0.40.14 parity rows 296–305 remain open.
+**Loop velocity.** Overnight since the 11-05 PRD: rate-limit kind split by
+scope (#2139), omitted-`temperature` ingress fix (#2140), batches webhook
+rotation family (#2142), facade `/api/show` context/output limits (#2143) —
+rows 294, 296–298 Shipped. The 11-04 Actions PRD PR #2127 is dead
+(DIRTY + failed `test` check; its rows were adopted as 306–310 by #2138) —
+stall flagged by issue #2141; drained via take-main this run.
 
-**Outward.** **LiteLLM v1.108.0** LTS GA (2026-11-04) + **1.106.7** patch +
-**1.109.0-rc.1** watch (floor promote already filed row 306). **Portkey
-Enterprise v2.33.0** (2026-11-04): Anthropic `auto_caching`, OTel
-`user_agent.original` + workspace name, MCP access policies GA (Prisma AIRS),
-Bedrock metadata map — UA export pulled into a filed gap; auto_caching /
-MCP policies stay Watch (daari already has `frontier.prompt_cache`).
-**Ollama 0.40.15-rc1** only (MiMo V2.6 + mlx Linux CUDA libs) — not GA.
-**vLLM** still `v0.33.0rc3` on GitHub tags (docs already cover 0.33 GA notes).
-OpenRouter / Kong / MCP spec unchanged this run.
+**Outward.** **Ollama 0.40.15 GA** (2026-11-03 22:52 UTC — the 11-05 "rc1
+only" read was stale): MiMo V2.6 9B code/agent model, **AutoTrust
+(`autotrust-jev`) decision models** (9b/35b/27b-vl, vision on the big two,
+Apple-silicon-only this release), Kimi Code CLI launch, Qwen3/3.5 YaRN
+long-context, concurrent recurrent/vision GGUF. **LiteLLM v1.108.1**
+(2026-11-05): LTS backports only, incl. a passthrough credential-selection
+fix — floor row 306 (#2122, open) should land as 1.108.1. **Portkey
+v2.33.1** (2026-11-06): fixes only (analytics Redis pub/sub retries, OTel
+double-send on retried jobs, `NODE_EXTRA_CA_CERTS` in log uploads) — floor
+v2.33.1. **Anthropic 11-05 (both beta):** org **IP allowlisting** (Console,
+≤1,000 IPv4/IPv6 CIDRs) and Admin API **sign-out-everywhere** — the two
+governance hooks this run converts. 11-03: text watermark on Mythos
+5 / Opus 4.7 / Sonnet 4.6 (metric-only — Watch). **OpenAI:** gpt-6-cyber
+(11-05, Daybreak restricted), gpt-image-2.6 sunburst/flare (11-04, SVG +
+GIF + markup-guided edits), gpt-live-1 outbound SIP (11-02), Agents API
+`auto_review` (10-30) — all Watch. vLLM still `v0.33.0rc3`-named-0.33.0;
+Kong 3.9.4; MCP spec churn without a new revision. OpenRouter pages
+unreachable this run (3 fetch timeouts) — recheck next run.
 
-**Inward theme: observe and console what just shipped.** Threads, SLO ms, and
-Portkey's new OTel UA attribute are live dials with no scrape/console/privacy
-tail; LiteLLM's requester-IP omit dial has no daari twin on enterprise audit.
+**Inward theme: leaked-credential blast radius.** Anthropic's two Nov-5
+betas both contain stolen credentials at the org edge; daari has neither
+twin — no IP binding on virtual keys/teams (auth only special-cases
+loopback) and no revoke-by-subject offboarding path (per-`key_id` CLI
+only). Both convert per-key/team and on-box, tighter than any org-wide
+SaaS console dial.
 
 ---
 
@@ -42,6 +52,11 @@ tail; LiteLLM's requester-IP omit dial has no daari twin on enterprise audit.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 316 | Per-key/team client IP allowlist (CIDR) on virtual-key auth | 4 | 2 | Anthropic Console org IP allowlist (11-05 beta) | Per-key/team blast-radius control on-box, local tiers included | Filed [#2144](https://github.com/naveenreddyalka/daari/issues/2144) |
+| 317 | Revoke every SSO-minted key for a subject (offboarding kill switch) | 4 | 2 | Anthropic Admin API sign-out-everywhere (11-05 beta) | One on-box call kills keys + team grants, no IdP webhook lag | Filed [#2145](https://github.com/naveenreddyalka/daari/issues/2145) |
+| 318 | AutoTrust (`autotrust-jev`) local decision-model family | 3 | 2 | Ollama 0.40.15 / Portkey Clef decisions | Decisions stay on-box with budgets, guardrails, audit | Filed [#2146](https://github.com/naveenreddyalka/daari/issues/2146) |
+| 319 | MiMo V2.6 L4 code/agent recipe | 3 | 1 | Ollama 0.40.15 | Agent loops on a 9B local tier, frontier only on escalation | Filed [#2147](https://github.com/naveenreddyalka/daari/issues/2147) |
+| 320 | Integration fence for the 11-05/11-06 overnight wave | 2 | 2 | — (testability) | Hermetic proof: temp omit, rate kinds, show limits, rotation | Filed [#2148](https://github.com/naveenreddyalka/daari/issues/2148) |
 | 311 | Stats/Prom for Anthropic message-threads create/continue/soft-ignore | 3 | 1 | Anthropic Claude Platform / Claude Code | Chart L6 thread pressure vs local fail-closed on-box | Filed [#2133](https://github.com/naveenreddyalka/daari/issues/2133) |
 | 312 | Opt-in `user_agent` on OTel GenAI spans | 3 | 1 | Portkey v2.33.0 Complete Logs | IDE/agent attribution in operator-owned OTel | Filed [#2134](https://github.com/naveenreddyalka/daari/issues/2134) |
 | 313 | Admin + web-ui surface for `virtual_model_latency_slo_ms` | 3 | 1 | OpenRouter performance analytics / LiteLLM Admin | Same-box console for the SLO dial selection already uses | Filed [#2135](https://github.com/naveenreddyalka/daari/issues/2135) |
@@ -57,15 +72,12 @@ tail; LiteLLM's requester-IP omit dial has no daari twin on enterprise audit.
 | 303 | Route Codex PATs (`at-`) to the Codex backend on L6 | 3 | 2 | Portkey v2.32.0 OpenAI integration | Local tiers still win before Codex egress | Filed [#2112](https://github.com/naveenreddyalka/daari/issues/2112) |
 | 304 | Prometheus counter for `X-Daari-Priority` admission overrides | 2 | 1 | LiteLLM / Portkey priority dashboards | Queue-steer pressure without a SaaS log plane | Filed [#2113](https://github.com/naveenreddyalka/daari/issues/2113) |
 | 305 | Integration fence for the 11-03 afternoon governance/speech wave | 2 | 2 | — (testability) | Hermetic proof: allowlist 403/degrade + lfm3-audio | Filed [#2114](https://github.com/naveenreddyalka/daari/issues/2114) |
-| 296 | Omitted `temperature` must inherit backend sampler defaults | 4 | 2 | Ollama 0.40.14 OpenAI-compat fix | Keep daari-in-front-of-Ollama byte-equivalent | Filed [#2102](https://github.com/naveenreddyalka/daari/issues/2102) |
-| 297 | Batches webhook family in rotation CLI + doctor | 3 | 1 | — (finish batch webhooks) | Every push channel signed and rotatable on-box | Filed [#2103](https://github.com/naveenreddyalka/daari/issues/2103) |
-| 298 | Facade `/api/show` context + output-token limits | 3 | 2 | Ollama 0.40.14 `launch claude` | Report the routed tier's real limits | Filed [#2104](https://github.com/naveenreddyalka/daari/issues/2104) |
+| 294, 296–298 | Rate-limit kind split; temperature omit; batches rotation; `/api/show` limits | 3–4 | 1–2 | LiteLLM / Ollama 0.40.14 | Byte-equivalence + signed push channels | Shipped (#2139–#2140, #2142–#2143) |
 | 299 | Preserve assistant refusal parts in Responses input | 2 | 1 | Ollama 0.40.14 `/v1/responses` fix | Refusals survive tier hops | Filed [#2105](https://github.com/naveenreddyalka/daari/issues/2105) |
 | 300 | Integration fence for the 11-02/11-03 overnight wave | 2 | 2 | — (testability) | Hermetic proof: priority header, signed batch webhooks | Filed [#2106](https://github.com/naveenreddyalka/daari/issues/2106) |
 | 291–293 | Message-threads; TPD web-ui; selection Grafana | 2–4 | 1–3 | Anthropic / LiteLLM / OpenRouter | TTFT parity + same-box console | Shipped (#2130–#2132) |
 | 286–289 | OTel cost attrs; latency SLO; vLLM 0.33 notes; MCP oauth recipe | 2–3 | 1–2 | Portkey / OpenRouter / vLLM | Operator-owned traces + honest local tiers | Shipped (#2120–#2121, #2128–#2129) |
 | 281–284 | LiteLLM LTS compare; offline PATCH; batch org webhook; request tags | 2–3 | 1–2 | LiteLLM / OpenRouter / Portkey | Honesty + air-gap + jobs + Signals on-box | Shipped (#2116–#2119) |
-| 294 | Split rate_limit soft_warnings/rejects by rpm/tpm/rpd/tpd | 3 | 2 | LiteLLM spend / rate dashboards | Name the dial that cliffed | Filed [#2096](https://github.com/naveenreddyalka/daari/issues/2096) |
 | 295 | Integration fence for the 11-02 afternoon wave | 2 | 2 | — (testability) | Hermetic proof: TPD + OpenRouter compare pin | Filed [#2097](https://github.com/naveenreddyalka/daari/issues/2097) |
 | 19 | Config ownership for `routing.compact_to_fit.*` | 3 | 2 | LiteLLM config ownership | Shipped | Shipped |
 | 20 | Doctor tip when compact_to_fit is enabled | 2 | 1 | — (ops honesty) | Shipped | Shipped |
@@ -92,8 +104,13 @@ Watch rows (do not file yet): Portkey v2.33 Anthropic `auto_caching` (daari
 top-level `cache_control` shape diverges in client traffic); Portkey MCP
 access policies (Prisma AIRS-only); Portkey OTel workspace name; Bedrock
 metadata map; LiteLLM OpenAI Live `/v1/live/sessions` + Azure PTU split +
-M365 Copilot provider (Realtime/WS family); LiteLLM 1.109.0 stable cut;
-Ollama 0.40.15 GA / MiMo V2.6 recipe; minute-grain spend buckets; fleet
+M365 Copilot provider + `gpt-live-1` outbound SIP (Realtime/WS family);
+LiteLLM 1.109.0 stable cut; AutoTrust beyond Apple silicon (Linux/Windows
+GA → revisit recipe caveat); `gpt-6-cyber` (Daybreak restricted access);
+gpt-image-2.6 sunburst/flare catalog + markup-guided edits (images are
+frontier passthrough today); Agents API `auto_review`; Anthropic text
+watermark (Sonnet 4.6 non-default sampling caveat — metric-only);
+minute-grain spend buckets; fleet
 Redis EWMA; MCP SEP-3398 (~March 2027); OpenAI org external key management;
 Anthropic Compliance API; Models API `between_tools` Sonnet-5.5-only;
 `gpt-6-rosalind` catalog; Claude Code `groups` / `guardrail_trace`;
@@ -107,36 +124,51 @@ Kong Skills/A2A; OpenRouter Private Endpoints L6 recipe; certifi emSign;
 Ollama d1 Linux/Windows GA; local message-thread analogue (prefix store on
 L3–L5 — only after explicit agent-loop ask).
 
-Verified fine this run — don't re-audit: message-threads create/continue +
-soft-ignore + beta header live (gap = counters, row 311); TPD/user_tpd on
-admin inventory + web-ui; selection Grafana `mode` panel live; latency SLO
-map ranks EWMA (gaps = demotion Prom 307, PATCH 309, console 313); OTel
-exports cost + key/team (gaps = tags 308, UA 312); `frontier.prompt_cache`
-marks Anthropic system `cache_control`; audit persists `client_ip` with no
-omit dial (row 314); LiteLLM floor still 1.106.6 in compare until row 306
-lands; Ollama top stable **0.40.14** (0.40.15 still rc1); Portkey floor
-**v2.33.0**.
+Verified fine this run — don't re-audit: auth has zero IP binding —
+`key_lockout` / `invalid_key_throttle` only exempt loopback and
+`client_ip_from_request` prefers the direct peer (row 316 rides it);
+`keys revoke` is per-`key_id` only, SSO keys carry `client_id =
+sso:<subject>` and `set_team_memberships` exists (row 317 wires them);
+decisions already flatten `input_image` parts (#1886) and carry the d3/d1
+catalog pattern (row 318); Flint L4 recipe is the one-command template
+(row 319); all executors still None-guard `temperature` (#2140 was
+ingress-only, as predicted); Ollama `launch` Kimi Code / Pi model list /
+Claude Desktop naming = launcher surface, not daari; LiteLLM 1.108.1 is
+backports-only; Portkey v2.33.1 is fixes-only; Ollama top stable
+**0.40.15**; Portkey floor **v2.33.1**; LiteLLM compare floor promote
+(row 306, #2122 open) should land as **1.108.1**.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Observe the TTFT / SLO dials** — thread counters (311); SLO demotion
+1. **Contain the leaked key** — per-key/team IP allowlist (316);
+   revoke-subject offboarding (317); audit IP omit (314) — the Anthropic
+   Nov-5 governance pair, done per-tenant and on-box.
+2. **Observe the TTFT / SLO dials** — thread counters (311); SLO demotion
    Prom (307) + PATCH (309) + console (313); selection Grafana shipped.
-2. **Governance console tail** — service-tier Prom (301) + admin/web-ui
-   (302); rate-limit kind split (294); then rows 62–67.
-3. **OTel / privacy parity with Portkey 2.33 + LiteLLM 1.108** — UA spans
-   (312); request-tag spans (308); audit IP omit (314).
-4. **Byte-equivalence with Ollama 0.40.14** — sampler defaults (296);
-   facade limits (298); Responses refusals (299); fences (300, 305, 310,
-   315); watch 0.40.15 GA.
+3. **Governance console tail** — service-tier Prom (301) + admin/web-ui
+   (302); then rows 62–67.
+4. **Local runtime at the Ollama 0.40.15 bar** — Responses refusals (299);
+   AutoTrust decisions (318); MiMo recipe (319); fences (300, 305, 310,
+   315, 320); UA spans (312) + request-tag spans (308).
 5. **Air-gap + jobs + honesty** — Codex PAT L6 host (303); offline Prom
-   (279) + doctor (285); batches rotation (297); admission Prom (304);
-   LiteLLM 1.108 floor (306) + 1.109 watch; hot-reload (6).
+   (279) + doctor (285); admission Prom (304); LiteLLM 1.108.1 floor
+   (306) + 1.109 watch; hot-reload (6).
 
 ---
 
 ## Changelog
+
+- **2026-11-06 (leaked-key blast radius; Ollama 0.40.15 GA)** — Marked rows
+  294, 296–298 Shipped (#2139–#2140, #2142–#2143). Outward: Ollama 0.40.15
+  GA (MiMo V2.6, AutoTrust decisions, Kimi Code launch); LiteLLM 1.108.1
+  backports; Portkey v2.33.1 fixes; Anthropic 11-05 IP-allowlist +
+  sign-out-everywhere betas; OpenAI gpt-6-cyber / gpt-image-2.6 /
+  gpt-live-1 SIP → Watch; OpenRouter unreachable. Filed rows 316–320: IP
+  allowlist, revoke-subject, AutoTrust, MiMo recipe, 11-05/06 fence.
+  Drained dead Actions PRD PR #2127 (stall flagged by issue #2141 — issue
+  needs human close).
 
 - **2026-11-05 (TTFT/SLO observe tail; Portkey 2.33 UA; LiteLLM IP omit; catch-up)** —
   Marked rows 281–284, 286–289, 291–293 Shipped. Adopted Nov-4 filings as
