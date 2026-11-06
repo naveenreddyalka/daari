@@ -25,13 +25,13 @@ CHAT = {"model": "daari", "messages": [{"role": "user", "content": "hi"}]}
 def test_soft_warnings_prometheus_kinds():
     metrics = Metrics()
     metrics.record_soft_warning("request_quota")
-    metrics.record_soft_warning("rate_limit")
-    metrics.record_soft_warning("rate_limit")
+    metrics.record_soft_warning("rate_limit_rpm")
+    metrics.record_soft_warning("rate_limit_rpm")
     metrics.record_soft_warning("budget")
     text = render_prometheus(metrics)
     assert "# TYPE daari_soft_warnings_total counter" in text
     assert 'daari_soft_warnings_total{kind="request_quota"} 1' in text
-    assert 'daari_soft_warnings_total{kind="rate_limit"} 2' in text
+    assert 'daari_soft_warnings_total{kind="rate_limit_rpm"} 2' in text
     assert 'daari_soft_warnings_total{kind="budget"} 1' in text
 
 
@@ -160,12 +160,13 @@ async def test_request_quota_soft_increments_counter_hard_402_does_not(settings,
 
         after = await client.get("/metrics", headers={"Authorization": "Bearer master"})
     assert 'daari_soft_warnings_total{kind="request_quota"} 1' in after.text
+    assert 'daari_soft_warnings_total{kind="rate_limit_rpm"}' not in after.text
     assert 'daari_soft_warnings_total{kind="rate_limit"}' not in after.text
 
 
 @pytest.mark.asyncio
 async def test_rate_limit_soft_increments_counter_hard_429_does_not(settings, monkeypatch):
-    """Freeze time mid-window so RPM soft-band counts stay stable (#526)."""
+    """Freeze time mid-window so RPM soft-band counts stay stable (#526/#2096)."""
     import time
 
     monkeypatch.setattr(time, "time", lambda: 1_700_000_030.0)
@@ -189,15 +190,17 @@ async def test_rate_limit_soft_increments_counter_hard_429_does_not(settings, mo
                 assert response.headers[RATELIMIT_WARNING_HEADER] == "soft"
 
         metrics = await client.get("/metrics")
-        assert 'daari_soft_warnings_total{kind="rate_limit"} 2' in metrics.text
+        assert 'daari_soft_warnings_total{kind="rate_limit_rpm"} 2' in metrics.text
 
         hard = await client.post("/v1/chat/completions", json=CHAT)
         assert hard.status_code == 429
         assert RATELIMIT_WARNING_HEADER not in hard.headers
 
         after = await client.get("/metrics")
-    assert 'daari_soft_warnings_total{kind="rate_limit"} 2' in after.text
+    assert 'daari_soft_warnings_total{kind="rate_limit_rpm"} 2' in after.text
+    assert 'daari_rejects_total{kind="rate_limit_rpm"} 1' in after.text
     assert 'daari_soft_warnings_total{kind="request_quota"}' not in after.text
+    assert 'daari_soft_warnings_total{kind="rate_limit"}' not in after.text
 
 
 @pytest.mark.asyncio
@@ -244,4 +247,5 @@ async def test_rate_limit_soft_survives_tighter_concurrency_gauge(
 
         metrics = await client.get("/metrics", headers={"Authorization": "Bearer master"})
         assert metrics.status_code == 200
-        assert 'daari_soft_warnings_total{kind="rate_limit"} 1' in metrics.text
+        assert 'daari_soft_warnings_total{kind="rate_limit_rpm"} 1' in metrics.text
+        assert 'daari_soft_warnings_total{kind="rate_limit"}' not in metrics.text

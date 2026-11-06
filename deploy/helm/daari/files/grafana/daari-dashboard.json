@@ -198,6 +198,7 @@
     {
       "id": 10,
       "title": "Soft warnings by kind (before hard 402/429)",
+      "description": "Soft-band pressure by kind. Rate-limit softs are scope-qualified (`rate_limit_rpm` / `tpm` / `rpd` / `tpd`); legend shows each dial (#2096).",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -216,6 +217,7 @@
     {
       "id": 11,
       "title": "Hard rejects by kind (402/429)",
+      "description": "Hard denials by kind. Limiter 429s are scope-qualified (`rate_limit_rpm` / `tpm` / `rpd` / `tpd`); concurrency stays separate (#2096).",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
