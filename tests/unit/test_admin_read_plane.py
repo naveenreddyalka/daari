@@ -387,3 +387,33 @@ async def test_teams_list_emits_audit_entry(settings, tmp_path):
     row = rows[0]
     assert row["actor"] == "ops-bob"
     assert row["role"] == "admin"
+
+
+def test_redact_key_and_team_include_service_tier_fields(tmp_path):
+    from daari.gateway.admin_read import redact_key, redact_team
+
+    store = VirtualKeyStore(tmp_path / "vk-tiers.sqlite3")
+    team = store.create_team(
+        "tier-team",
+        allowed_service_tiers=["default", "flex"],
+        degrade_disallowed_service_tier=True,
+    )
+    restricted = store.create(
+        "locked",
+        team="tier-team",
+        allowed_service_tiers=["default", "priority"],
+        degrade_disallowed_service_tier=True,
+    )
+    open_key = store.create("open")
+
+    key_row = redact_key(restricted.key)
+    assert key_row["allowed_service_tiers"] == ["default", "priority"]
+    assert key_row["degrade_disallowed_service_tier"] is True
+
+    open_row = redact_key(open_key.key)
+    assert open_row["allowed_service_tiers"] is None
+    assert open_row["degrade_disallowed_service_tier"] is False
+
+    team_row = redact_team(team)
+    assert team_row["allowed_service_tiers"] == ["default", "flex"]
+    assert team_row["degrade_disallowed_service_tier"] is True
