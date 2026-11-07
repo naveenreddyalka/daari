@@ -52,15 +52,17 @@ this GA cut. daari does **not** ship those.
 ## LiteLLM 1.106.0 GA
 
 LiteLLM [v1.106.0](https://github.com/BerriAI/litellm/releases/tag/v1.106.0)
-(18 Oct 2026) is **GA**. After trust, image-scan hygiene, and gzip off-loop
-compression backports, the stable comparison floor is
-**[1.106.6 GA](https://github.com/BerriAI/litellm/releases/tag/v1.106.6)**
-(28 Oct 2026; prior floors
+(18 Oct 2026) is **GA**. The 1.106.x line closed with
+**[1.106.7](https://github.com/BerriAI/litellm/releases/tag/v1.106.7)**
+(final 1.106.x patch after
+[1.106.6](https://github.com/BerriAI/litellm/releases/tag/v1.106.6) on
+28 Oct 2026; prior floors
 [1.106.5](https://github.com/BerriAI/litellm/releases/tag/v1.106.5) on
 27 Oct 2026 and
 [1.106.4](https://github.com/BerriAI/litellm/releases/tag/v1.106.4) on
-25 Oct 2026; also backported as 1.103.9 / 1.104.7 / 1.105.5). The 1.106 cut
-includes a native
+25 Oct 2026; also backported as 1.103.9 / 1.104.7 / 1.105.5). The **current
+stable comparison floor** is **[1.108.0 GA / LTS pilot](https://github.com/BerriAI/litellm/releases/tag/v1.108.0)**
+(2026-11-04) — see below. The 1.106 cut includes a native
 [decision-model guardrail](https://docs.litellm.ai/docs/proxy/guardrails/decision_model)
 (`guardrail: decision_model`): yes/no questions against any `/v1/decisions`
 model, blocking or logging at a probability threshold.
@@ -93,43 +95,47 @@ PyPI quarantined the version; the Docker image was removed from Docker Hub /
 GHCR. Indicators include `/tmp/.pc_once_*` and `/tmp/remote_code_loader.lock`.
 
 **Do not** `pip install litellm==1.107.0` or pull `litellm/litellm:1.107.0`.
-Stay on LiteLLM **1.106.6** (or skip LiteLLM entirely). Treat 1.107.0 as
+Stay on LiteLLM **1.108.0** (or skip LiteLLM entirely). Treat 1.107.0 as
 unsafe / do-not-install — not a feature comparison bar. Do **not** advertise
 compromised 1.107 watchables as safe.
 
 daari does **not** depend on LiteLLM at runtime; the local-first install path
 never pulled the poisoned artifact.
 
-## LiteLLM 1.108.0-rc.1 (parity RC, not GA)
+## LiteLLM 1.108.0 GA (LTS pilot)
 
 LiteLLM
-[v1.108.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.108.0-rc.1)
-(29 Oct 2026) is a **prerelease** — do not promote it to the GA floor until
-LiteLLM ships a stable 1.108. It only brings the 1.106.x patch line (gzip
-scoping / off-loop compression) onto the 1.108 RC train: a **parity** patch
-onto those 1.106.x fixes, **not a feature** cut. Stable comparison remains
-**1.106.6 GA**.
-
-**1.108 LTS pilot and Tuesday cadence** (week of 2026-11-02): LiteLLM is
-piloting a one-month [LTS line on 1.108](https://docs.litellm.ai/docs/enterprise/lts_pilot)
-while pausing the usual four-most-recent-stable-lines patch window
+**[v1.108.0](https://github.com/BerriAI/litellm/releases/tag/v1.108.0)**
+stable published **2026-11-04** (03:35 UTC) is **GA** and the current
+**stable comparison floor**. It is also the one-month
+[LTS pilot](https://docs.litellm.ai/docs/enterprise/lts_pilot) line
 ([version support](https://docs.litellm.ai/docs/enterprise/version_support);
-[blog](https://docs.litellm.ai/blog/release-cadence-and-lts-pilot)). RC and
-stable cuts move from Saturday to **Tuesday** mornings
+[blog](https://docs.litellm.ai/blog/release-cadence-and-lts-pilot)). The prior
+RC
+[v1.108.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.108.0-rc.1)
+(29 Oct 2026) was a **parity** cut of the 1.106.x gzip / off-loop compression
+fixes onto the 1.108 train — not a feature ship — and is superseded by the
+stable tag. **1.106.7** remains the final 1.106.x patch; do **not** treat
+compromised **1.107.0** as a support window.
+
+**LTS pilot and Tuesday cadence are live** (not pending): LiteLLM pauses the
+usual four-most-recent-stable-lines patch window on this 1.108 LTS line, and
+RC / stable cuts publish on **Tuesday** mornings instead of Saturday
 ([release cycle](https://docs.litellm.ai/docs/proxy/release_cycle)). That is
 competitor ops context, not a daari upgrade path: daari is local-first with
 **no LiteLLM runtime** dependency and no weekly proxy release train to pin
 against.
 
-## LiteLLM 1.109-dev watch
+## LiteLLM 1.109.0-rc.1 watch
 
 LiteLLM
+[v1.109.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-rc.1)
+is the current **prerelease** watch — do **not** promote 1.109 to the GA floor
+(stable comparison remains **1.108.0 GA / LTS**). Earlier
 [v1.109.0-dev.2](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.2)
-(30 Oct 2026; continues
+/
 [v1.109.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.1)
-from 28 Oct 2026) is a **prerelease** — do not promote it (or 1.108 RC) to the
-GA floor (stable comparison remains **1.106.6 GA**). Watchables and daari's
-stance:
+builds are superseded by the RC. Watchables and daari's stance:
 
 - **Mid-stream fallback continuation** — LiteLLM can keep a streaming chat
   going on a configured fallback mid-answer. daari ships the same on-box via
@@ -137,7 +143,7 @@ stance:
   token, a dead local/L6 hop continues on the next tier/slot with the partial
   replayed into the transcript (see
   [routing tiers](../concepts/routing-tiers.md#mid-stream-fallback-continuation)).
-- **Daily request + token limits** — 1.109.0-dev.2 adds deployment RPD/TPD
+- **Daily request + token limits** — 1.109 adds deployment RPD/TPD
   (with `daily_reset_time`) and per-provider/model RPM/TPM on project quotas.
   daari already fences key/team/user `--rpd` / `--user-rpd` and `--tpd` /
   `--user-tpd` on-box (UTC day, estimated tokens at admission); no cloud
@@ -146,11 +152,11 @@ stance:
   daari ships the on-box twin as optional `X-Daari-Priority: high|normal|low`
   on the same in-flight gate as key/team `--priority` (boost capped unless
   `server.virtual_keys.allow_request_priority_boost`).
-- **Cosign key rotation** — 1.109.0-dev.2 images continue under the rotated
+- **Cosign key rotation** — 1.109 images continue under the rotated
   `cosign.pub` introduced in 1.106.3 (commit
   [`e82a3c6`](https://github.com/BerriAI/litellm/commit/e82a3c6)). Buyers still
   verifying with the old key will fail; daari does not ship LiteLLM images.
-- **Anthropic `drop_params` / `speed` hygiene** — 1.109.0-dev.2 lets
+- **Anthropic `drop_params` / `speed` hygiene** — 1.109 lets
   `drop_params` drop `speed` after Anthropic removed fast mode on older
   Claudes. Related on-box path: opt-in `models.degrade_deprecated_speed`
   strips deprecated `speed` with soft_warning `deprecated_speed_degraded`

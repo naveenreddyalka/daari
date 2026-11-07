@@ -639,6 +639,18 @@ def render_prometheus(
         for kind, count in soft_warnings.items():
             lines.append(f"daari_soft_warnings_total{_labels(kind=kind)} {int(count)}")
 
+    admission_priority = snap.get("admission_priority") or {}
+    if admission_priority:
+        lines.append(
+            "# HELP daari_admission_priority_total X-Daari-Priority admission "
+            "outcomes (raised|lowered|ignored|baseline)."
+        )
+        lines.append("# TYPE daari_admission_priority_total counter")
+        for outcome, count in admission_priority.items():
+            lines.append(
+                f"daari_admission_priority_total{_labels(outcome=str(outcome))} {int(count)}"
+            )
+
     phonon_coerced = snap.get("tts_phonon_format_coerced") or {}
     if phonon_coerced:
         lines.append(

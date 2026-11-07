@@ -1158,6 +1158,25 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 57,
+      "title": "Admission priority by outcome",
+      "description": "X-Daari-Priority request admission outcomes (`raised`|`lowered`|`ignored`|`baseline`) next to concurrency gate pressure (#2113).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 224
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(daari_admission_priority_total[5m])) or vector(0)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

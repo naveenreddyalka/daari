@@ -477,6 +477,38 @@ def resolve_request_admission_priority(
     return baseline, None, False
 
 
+def admission_priority_outcome(
+    *,
+    header: str | None,
+    baseline: str,
+    effective: str,
+    warning: str | None,
+    changed: bool,
+) -> str:
+    """Classify admission resolution for ``daari_admission_priority_total`` (#2113).
+
+    Outcomes: ``raised`` (successful boost), ``lowered`` (successful demotion),
+    ``ignored`` (invalid header or disallowed raise), ``baseline`` (no header /
+    header matches ceiling / no override applied that is not a denied raise).
+    """
+    from daari.auth.rate_limit import PRIORITY_RANK
+
+    requested, invalid = parse_priority_header(header)
+    if invalid or warning == "invalid_x_daari_priority":
+        return "ignored"
+    if requested is None:
+        return "baseline"
+    if changed:
+        if PRIORITY_RANK[effective] < PRIORITY_RANK[baseline]:
+            return "raised"
+        if PRIORITY_RANK[effective] > PRIORITY_RANK[baseline]:
+            return "lowered"
+        return "baseline"
+    if PRIORITY_RANK[requested] < PRIORITY_RANK[baseline]:
+        return "ignored"
+    return "baseline"
+
+
 @dataclass(frozen=True)
 class CreatedKey:
     key: VirtualKey
