@@ -37,6 +37,37 @@ from daari.router.retry import RetryPolicy, provider_request_id, run_upstream
 # Stream events: plain str for text, or a dict tagged for tool-call relay (#934).
 FrontierStreamEvent = str | dict[str, Any]
 
+# OpenAI Codex PAT (`at-…`) inference host (openai/codex CHATGPT_CODEX_BASE_URL).
+DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
+CODEX_PAT_PREFIX = "at-"
+
+
+def is_codex_pat(api_key: str | None) -> bool:
+    """True when the credential is a Codex personal access token (`at-…`)."""
+    return bool(api_key) and str(api_key).startswith(CODEX_PAT_PREFIX)
+
+
+def resolve_frontier_base_url(
+    api_key: str | None,
+    *,
+    base_url: str,
+    codex_base_url: str | None = None,
+) -> str:
+    """Pick L6 host: Codex PATs use ``codex_base_url``, others keep ``base_url``.
+
+    Empty ``codex_base_url`` opts out of the rewrite (Portkey-parity routing
+    disabled). ``None`` uses :data:`DEFAULT_CODEX_BASE_URL`.
+    """
+    configured = (base_url or "").rstrip("/")
+    if not is_codex_pat(api_key):
+        return configured
+    if codex_base_url is None:
+        return DEFAULT_CODEX_BASE_URL.rstrip("/")
+    override = str(codex_base_url).strip().rstrip("/")
+    if not override:
+        return configured
+    return override
+
 # Dedicated fast-mode bucket headers (Anthropic, 2026-10-15). Nothing else is copied.
 ANTHROPIC_FAST_RATE_HEADERS = (
     "anthropic-fast-input-tokens-limit",
@@ -226,6 +257,8 @@ class FrontierExecutor:
     # caching. Anthropic needs explicit cache_control; OpenAI caches stable
     # prefixes automatically, so no payload change is needed there.
     prompt_cache: bool = True
+    # Codex PAT (`at-…`) override host; empty string disables rewrite (#2112).
+    codex_base_url: str | None = None
     transport: httpx.AsyncBaseTransport | None = None
     retry: RetryPolicy | None = None
     metrics: Any = None
@@ -233,6 +266,7 @@ class FrontierExecutor:
     # Effective table (builtin ∪ frontier.param_compat); None → builtin only.
     param_compat_table: dict[str, FrontierParamCompat] | None = None
     _http: httpx.AsyncClient | None = field(default=None, init=False, repr=False)
+    _http_base_url: str | None = field(default=None, init=False, repr=False)
     last_param_compat: FrontierParamCompatResult | None = field(
         default=None, init=False, repr=False
     )
@@ -243,6 +277,13 @@ class FrontierExecutor:
     last_service_tier_degraded: bool = field(default=False, init=False, repr=False)
     last_stream_service_tier: str | None = field(default=None, init=False, repr=False)
 
+    def effective_base_url(self) -> str:
+        return resolve_frontier_base_url(
+            self.api_key,
+            base_url=self.base_url,
+            codex_base_url=self.codex_base_url,
+        )
+
     def _remember_fast_rate_headers(self, response: Any) -> None:
         headers = getattr(response, "headers", None)
         if not self._is_anthropic() or headers is None:
@@ -251,21 +292,28 @@ class FrontierExecutor:
         self.last_fast_rate_headers = anthropic_fast_rate_headers(headers)
 
     def _client(self) -> httpx.AsyncClient:
-        if self._http is None or getattr(self._http, "is_closed", False):
+        target = self.effective_base_url()
+        if (
+            self._http is None
+            or getattr(self._http, "is_closed", False)
+            or self._http_base_url != target
+        ):
             from daari.router.http_pool import PoolLimits, build_async_client
 
             self._http = build_async_client(
                 httpx,
-                base_url=self.base_url,
+                base_url=target,
                 limits=self.pool_limits or PoolLimits(),
                 transport=self.transport,
             )
+            self._http_base_url = target
         return self._http
 
     async def aclose(self) -> None:
         if self._http is not None and not getattr(self._http, "is_closed", True):
             await self._http.aclose()
         self._http = None
+        self._http_base_url = None
 
     def _build_messages(self, request: InternalRequest) -> list[dict[str, Any]]:
         messages: list[dict[str, Any]] = []

@@ -8787,6 +8787,15 @@ multi-turn Responses replays keep the refusal wording across tier hops
 tables render allowlist (`*` when unrestricted) and degrade flag. Covered by
 `tests/unit/test_admin_read_plane.py` and `packages/web-ui/test/dashboard.test.js`.
 
+### Frontier: route Codex PATs (`at-`) to Codex backend ([#2112](https://github.com/naveenreddyalka/daari/issues/2112))
+
+<!-- tracking:#2112 -->
+**Status:** Done (2026-11-07). L6 uses `frontier.codex_base_url` (default
+`https://chatgpt.com/backend-api/codex`) when the frontier API key starts with
+`at-`; `sk-` keys keep `frontier.base_url`. Empty `codex_base_url` opts out.
+Docs: config.md + Codex client guide. Covered by
+`tests/unit/test_codex_pat_routing.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

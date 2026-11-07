@@ -76,6 +76,8 @@ frontier:
   model: gpt-4o-mini
   confidence_threshold: 0.7
   base_url: https://api.openai.com/v1
+  # Codex PAT (`at-…`) host; empty disables rewrite (#2112).
+  codex_base_url: https://chatgpt.com/backend-api/codex
 
 tools:
   unknown: deny
