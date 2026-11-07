@@ -11,35 +11,27 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-07)
+## Where daari stands (verified in-tree, 2026-11-07 pm)
 
-**Loop velocity.** Since the 11-06 morning PRD: service-tier deny/degrade
-counters (#2151), Responses refusal preservation (#2150), `allowed_service_tiers`
-on the admin/web-ui inventory (#2158), Codex PAT (`at-`) L6 routing (#2159),
-`daari_admission_priority_total` (#2160), compare-litellm floor at 1.108.0 LTS
-(#2161) — rows 299, 301–304, 306 Shipped. The 11-06 pm Actions PRD PR #2157
-is dead (failed `test` check — it pruned pinned rows 19–28, the eighth
-sibling to die this way); its rows were adopted here as 321–325 and the
-branch drained via take-main this run.
+**Loop velocity.** Since the 11-07 morning PRD: virtual-model SLO demotion
+counters (#2166 / row 307) and opt-in OTel request tags (#2168 / row 308)
+Shipped. Morning Auto Router / PG-blip filings (#2162–#2165 / rows 326–329)
+remain open. The dead 11-06 pm Actions PRD (#2157) already drained via
+take-main earlier today.
 
-**Outward.** **OpenRouter is reachable again** and shipped the run's
-headline hook: **rebuilt Auto Router + new Auto Code router** (11-06) — both
-weigh eleven factors per request (live pricing, provider health, benchmarks,
-cache state) and pick **a model and a reasoning effort** from the
-governance-allowed pool. daari picks tiers but never picks effort, never
-weighs price (converted as rows 326/328). **LiteLLM v1.108.2 LTS** (11-06):
-fixes-only, incl. valid keys 401-ing while Postgres restarts — daari's
-fail-closed analog converts as row 327; `v1.110.0-dev.1` (11-07) is
-dev-channel only — hold. **Portkey v2.33.1** floor holds (changelog fresh,
-nothing newer). Ollama **0.40.15**, vLLM `v0.33.0rc3`-named-0.33.0, Kong
-3.9.4, MCP spec rev 2026-07-28 — all flat. OpenAI changelog ends 11-05
-(gpt-6-cyber), Anthropic ends 11-05 (IP allowlist + sign-out-everywhere,
-both already converted as rows 316/317).
+**Outward.** Landscape mostly flat vs the morning scan. **LiteLLM v1.108.2
+LTS** (11-06) is still the live patch floor while compare copy pins
+**1.108.0** — convert the docs promote as row 331; **1.110.0-dev.1**
+(11-07) stays Watch (provider-reported `usage.cost`, tenant session
+affinity, Lens-split Helm). **OpenRouter Auto + Auto Code** (11-06) were
+already converted for effort/cost levers; compare-openrouter still never
+names them — row 332. Portkey v2.33.1, Ollama **0.40.15**, vLLM
+`v0.33.0rc3`-named-0.33.0, Kong 3.9.4, MCP rev 2026-07-28, OpenAI /
+Anthropic changelogs — all flat since morning.
 
-**Inward theme: route like the new Auto Router, survive the control-plane
-blip.** Effort and price are routing inputs daari already has on-box
-(classifier signals, pricing table) but never uses; and a Postgres restart
-currently takes the whole gateway's auth down with it.
+**Inward theme: observe and compare what just shipped.** SLO demotion and
+request-tag OTel need same-box Grafana / config ownership; hermetic fence
+for the afternoon wave; honest LiteLLM LTS + OpenRouter Auto compare copy.
 
 ---
 
@@ -47,6 +39,11 @@ currently takes the whole gateway's auth down with it.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 330 | Grafana panels for `daari_virtual_model_slo_demotion_total` | 2 | 1 | OpenRouter performance analytics / LiteLLM Admin | Same-box scrape for the SLO dial just shipped | Filed [#2169](https://github.com/naveenreddyalka/daari/issues/2169) |
+| 331 | Promote compare-litellm floor to LiteLLM 1.108.2 LTS; watch 1.110-dev | 2 | 1 | LiteLLM release notes | Honest LTS patch floor without a runtime dep | Filed [#2170](https://github.com/naveenreddyalka/daari/issues/2170) |
+| 332 | compare-openrouter: Auto + Auto Code local-first positioning | 3 | 1 | OpenRouter Auto / Auto Code (11-06) | On-box virtual-models + signal_overrides vs hosted pick | Filed [#2171](https://github.com/naveenreddyalka/daari/issues/2171) |
+| 333 | Config ownership + PATCH for `observability.otel_include_request_tags` | 3 | 1 | Portkey Complete Logs / LiteLLM tag dashboards | Hot-edit tag export on operator-owned OTel | Filed [#2172](https://github.com/naveenreddyalka/daari/issues/2172) |
+| 334 | Integration fence for the 11-07 afternoon wave | 2 | 2 | — (testability) | Hermetic proof: SLO demotion Prom + OTel request tags | Filed [#2173](https://github.com/naveenreddyalka/daari/issues/2173) |
 | 326 | `reasoning_effort` lever on signal_overrides (auto effort pick) | 4 | 2 | OpenRouter Auto/Auto Code (11-06) | Effort picked by on-box signals; payload never leaves the box | Filed [#2162](https://github.com/naveenreddyalka/daari/issues/2162) |
 | 327 | Serve last-known-good virtual keys across Postgres blips | 4 | 2 | LiteLLM 1.108.2 LTS auth fix | Local tiers keep serving through a control-plane restart | Filed [#2163](https://github.com/naveenreddyalka/daari/issues/2163) |
 | 328 | Cost-aware virtual-model selection mode | 3 | 2 | OpenRouter Auto Router live-pricing factor | Zero-cost local tiers sort first from the arithmetic | Filed [#2164](https://github.com/naveenreddyalka/daari/issues/2164) |
@@ -66,8 +63,7 @@ currently takes the whole gateway's auth down with it.
 | 313 | Admin + web-ui surface for `virtual_model_latency_slo_ms` | 3 | 1 | OpenRouter performance analytics / LiteLLM Admin | Same-box console for the SLO dial selection already uses | Filed [#2135](https://github.com/naveenreddyalka/daari/issues/2135) |
 | 314 | Opt-in omit requester `client_ip` from enterprise audit | 3 | 2 | LiteLLM 1.108.0 `disable_requester_ip_address_logging` | Privacy dial on operator-owned audit disk | Filed [#2136](https://github.com/naveenreddyalka/daari/issues/2136) |
 | 315 | Integration fence for the 11-04 / 11-05 morning wave | 2 | 2 | — (testability) | Hermetic proof: threads, tags, SLO, OTel cost, TPD UI | Filed [#2137](https://github.com/naveenreddyalka/daari/issues/2137) |
-| 307 | Prom/stats counters for virtual-model latency SLO demotions | 3 | 1 | OpenRouter performance router analytics | SLO pressure from on-box EWMA | Filed [#2123](https://github.com/naveenreddyalka/daari/issues/2123) |
-| 308 | Opt-in request tags on OTel GenAI spans | 3 | 1 | Portkey Complete Logs / LiteLLM tag dashboards | Workload tags next to local-tier cost attrs | Filed [#2124](https://github.com/naveenreddyalka/daari/issues/2124) |
+| 307, 308 | SLO demotion Prom/stats; opt-in request tags on OTel GenAI spans | 3 | 1 | OpenRouter / Portkey Complete Logs | Operator-owned traces next to local-tier cost attrs | Shipped (#2166, #2168) |
 | 309 | Config ownership + PATCH for `routing.virtual_model_latency_slo_ms` | 3 | 1 | LiteLLM / OpenRouter control planes | Hot-edit SLO ms without restart | Filed [#2125](https://github.com/naveenreddyalka/daari/issues/2125) |
 | 310 | Integration fence for the 11-03 overnight / 11-04 morning wave | 2 | 2 | — (testability) | Hermetic proof: prior overnight dials | Filed [#2126](https://github.com/naveenreddyalka/daari/issues/2126) |
 | 299, 301–304, 306 | Refusal parts; service-tier Prom + console; Codex PAT L6; priority Prom; 1.108.0 LTS floor | 2–3 | 1–2 | Ollama / OpenAI / Portkey / LiteLLM | Governance + honesty on the same-box scrape and console | Shipped (#2150–#2151, #2158–#2161) |
@@ -96,9 +92,8 @@ currently takes the whole gateway's auth down with it.
 
 Watch rows (do not file yet): coding-router recipe — an Auto Code twin
 combining virtual_models + `category=code` signal rules + SLO + the effort
-lever (file after rows 326/328 land); compare-litellm patch-promote
-1.108.0 → 1.108.2 (fold into the next compare touch, not its own issue);
-LiteLLM `1.110.0-dev` channel (provider-reported `usage.cost` billing,
+lever (file after rows 326/328 land); LiteLLM `1.110.0-dev` feature
+backlog beyond the compare watch (provider-reported `usage.cost` billing,
 tenant-scoped session affinity, Lens-split Helm — hold for a stable cut);
 Portkey v2.33 Anthropic `auto_caching` (revisit only if top-level
 `cache_control` diverges); Portkey MCP access policies (Prisma AIRS-only);
@@ -121,18 +116,14 @@ emSign; Ollama d1 Linux/Windows GA; local message-thread analogue (prefix
 store on L3–L5 — only after explicit agent-loop ask); OpenAI CA/SG/KR/UAE/UK
 residency labels beyond au/in/jp (expand only when operators ask).
 
-Verified fine this run — don't re-audit: `signal_overrides` validates
-exactly three levers (category / max_tier / tier_pin — row 326 adds the
-fourth); `reasoning_effort_escalation` only reads a client-sent `high`
-(router.py ~L5602); `virtual_model_selection` ∈ {ordered, performance}
-only, price never participates (router.py ~L695, selection ~L5781 — row
-328); no resolve cache anywhere in `daari/auth/` — `resolve_auth` fails
-closed on `PostgresBackendUnavailable` (#1652, row 327 adds bounded
-grace); the `daari_admission_priority_total` Grafana panel already exists
-(dashboard L1175 — no panel row needed); per-key/team `signal_overrides`
-binding shipped (#2050, `update_signal_overrides` both stores); LiteLLM
-1.108.2 is LTS-fixes-only; Portkey v2.33.1 floor holds; Ollama top stable
-**0.40.15**; MCP spec rev 2026-07-28 unchanged.
+Verified fine this run — don't re-audit: rows 307/308 counters and OTel
+flag are on main (`daari_virtual_model_slo_demotion_total`,
+`observability.otel_include_request_tags`); Grafana still has **no** SLO
+demotion panel (dashboard search clean); compare-litellm still asserts
+**1.108.0** floor; compare-openrouter never mentions Auto / Auto Code;
+`otel_include_request_tags` absent from config ownership; Portkey v2.33.1
+floor holds; Ollama top stable **0.40.15**; MCP spec rev 2026-07-28
+unchanged; LiteLLM 1.110.0-dev.1 is pre-release only.
 
 ---
 
@@ -141,13 +132,14 @@ binding shipped (#2050, `update_signal_overrides` both stores); LiteLLM
 1. **Contain the leaked key** — per-key/team IP allowlist (316) + console
    (323); revoke-subject offboarding (317); audit IP omit (314).
 2. **Route like the new Auto Router** — effort lever (326); cost-aware
-   selection (328); then the coding-router recipe (watch); SLO demotion
-   Prom (307) + PATCH (309) + console (313).
+   selection (328); then the coding-router recipe (watch); SLO PATCH
+   (309) + console (313); Grafana for SLO demotions (330).
 3. **Survive the control-plane blip** — last-known-good auth grace (327);
    offline Prom (279) + doctor (285); hot-reload (6).
-4. **Observe + console what shipped** — service-tier Grafana (321); thread
-   counters (311); UA spans (312) + request-tag spans (308); failover
-   panels (274); then rows 62–67.
+4. **Observe + compare what shipped** — service-tier Grafana (321); SLO
+   demotion Grafana (330); OTel tags PATCH (333); thread counters (311);
+   UA spans (312); failover panels (274); LiteLLM 1.108.2 + OpenRouter
+   Auto compare (331–332); afternoon fence (334); then rows 62–67.
 5. **Residency + local runtime at the current bar** — AU/IN/JP pins (324);
    baggage→tags (322); AutoTrust (318); MiMo (319); fences (300, 305, 310,
    315, 320, 325, 329).
@@ -156,31 +148,28 @@ binding shipped (#2050, `update_signal_overrides` both stores); LiteLLM
 
 ## Changelog
 
+- **2026-11-07 pm (observe + compare the afternoon wave)** — Marked rows
+  307–308 Shipped (SLO demotion Prom/stats; OTel request tags). Outward:
+  LiteLLM 1.108.2 still ahead of compare floor; 1.110.0-dev.1 → Watch;
+  OpenRouter Auto/Auto Code still missing from compare-openrouter;
+  Portkey/Ollama/vLLM/Kong/MCP/OpenAI/Anthropic flat. Filed rows 330–334:
+  SLO demotion Grafana, compare 1.108.2 + 1.110-dev watch, OpenRouter Auto
+  compare, OTel tags config ownership, afternoon fence. Kept pinned
+  shipped rows 19–28. Issue #2141 still needs human close.
+
 - **2026-11-07 (route like Auto Router; survive the PG blip)** — Marked
   rows 299, 301–304, 306 Shipped (#2150–#2151, #2158–#2161). Adopted the
-  dead 11-06 pm Actions PR's rows as 321–325 (its PR pruned pinned rows
-  19–28 and failed the pin test; drained via take-main). Outward:
-  OpenRouter reachable again — rebuilt Auto Router + Auto Code (11-06,
-  model + reasoning-effort pick, live-pricing factor) converted as rows
-  326/328; LiteLLM 1.108.2 LTS auth-outage fix converted as row 327;
-  1.110.0-dev.1 → Watch; Portkey/Ollama/vLLM/Kong/MCP/OpenAI/Anthropic
-  flat. Filed rows 326–329: effort lever, auth grace, cost-aware
-  selection, overnight fence. Issue #2141 still needs human close.
+  dead 11-06 pm Actions PR's rows as 321–325. Outward: OpenRouter Auto +
+  Auto Code → rows 326/328; LiteLLM 1.108.2 auth-outage fix → row 327.
+  Filed rows 326–329.
 
 - **2026-11-06 + 11-06 pm (leaked-key blast radius; Ollama 0.40.15 GA;
-  observe/residency tail)** — Marked rows 294, 296–298 Shipped. Outward:
-  Ollama 0.40.15 GA (MiMo V2.6, AutoTrust); LiteLLM 1.108.1; Portkey
-  v2.33.1; Anthropic 11-05 IP-allowlist + sign-out-everywhere betas;
-  OpenAI AU/IN/JP residency + gpt-6-cyber / gpt-image-2.6 / gpt-live-1
-  SIP. Filed rows 316–320 (IP allowlist, revoke-subject, AutoTrust, MiMo,
-  fence) and 321–325 (service-tier Grafana, baggage→tags, allowed_ips
-  console, residency billing, afternoon fence). Drained dead Actions PRD
-  PR #2127 (stall issue #2141 needs human close).
+  observe/residency tail)** — Marked rows 294, 296–298 Shipped. Filed
+  rows 316–320 and 321–325. Drained dead Actions PRD PR #2127 (stall
+  issue #2141 needs human close).
 
 - **2026-11-05 (TTFT/SLO observe tail; Portkey 2.33 UA; LiteLLM IP omit)** —
-  Marked rows 281–284, 286–289, 291–293 Shipped. Adopted Nov-4 filings as
-  rows 306–310. Filed rows 311–315: thread stats/Prom, OTel user_agent,
-  latency_slo console, audit client_ip omit, 11-04/11-05 fence.
+  Marked rows 281–284, 286–289, 291–293 Shipped. Filed rows 311–315.
 
 - **2026-11-03 pm → 10-28** — Condensed: governance console / Codex PAT /
   admission Prom; Ollama 0.40.14 parity; message-threads / TPD / selection
