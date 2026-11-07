@@ -469,6 +469,7 @@ def export_trace(
     error_type: str | None = None,
     time_to_first_chunk: float | None = None,
     time_per_output_chunk: float | None = None,
+    include_request_tags: bool = False,
 ) -> bool:
     """Best-effort export. Returns True if a span was exported.
 
@@ -496,15 +497,20 @@ def export_trace(
             # Spec: only when a stable id is readily available — never synthesize (#1175).
             root_attrs["gen_ai.conversation.id"] = session_id
         if req_meta is not None:
-            # Chargeback ids only — never key material (#2085). Request tags
-            # (#2078) can ride the same exporter hook when operators want them
-            # on spans (req_meta.tags); omitted until an issue opts them in.
+            # Chargeback ids only — never key material (#2085).
             key_id = str(getattr(req_meta, "key_id", None) or "").strip()
             team_id = str(getattr(req_meta, "team_id", None) or "").strip()
             if key_id:
                 root_attrs["daari.key_id"] = key_id
             if team_id:
                 root_attrs["daari.team_id"] = team_id
+            # Opt-in request tags as a string array (#2124). Never invent tags;
+            # empty / missing → omit (privacy default off via settings).
+            if include_request_tags:
+                raw_tags = getattr(req_meta, "tags", None) or []
+                tags = [str(t).strip() for t in raw_tags if str(t).strip()]
+                if tags:
+                    root_attrs["daari.request.tags"] = tags
         if request_model:
             from daari.observability.metrics import genai_operation_name, infer_modality
 

@@ -512,6 +512,7 @@ class Router:
         boundaries: Any | None = None,
         capability_catalog: Any | None = None,
         otel_enabled: bool = False,
+        otel_include_request_tags: bool = False,
         org_pool: OllamaExecutor | MLXExecutor | None = None,
         local_pool: Any | None = None,
         local_pool_frontier_fallback: bool = False,
@@ -645,6 +646,7 @@ class Router:
         self.boundaries = boundaries
         self.capability_catalog = capability_catalog
         self.otel_enabled = otel_enabled
+        self.otel_include_request_tags = bool(otel_include_request_tags)
         self.org_pool = org_pool
         self.reasoning_effort_escalation = reasoning_effort_escalation
         self.stall_escalation = bool(stall_escalation)
@@ -1282,7 +1284,14 @@ class Router:
             if getattr(self, "otel_enabled", False):
                 from daari.observability.otel import export_trace
 
-                export_trace(trace, request=request, response=response)
+                export_trace(
+                    trace,
+                    request=request,
+                    response=response,
+                    include_request_tags=bool(
+                        getattr(self, "otel_include_request_tags", False)
+                    ),
+                )
         end_trace()
         self._note_cloud_billing(response)
         self._ledger_record(request, response)
@@ -3102,7 +3111,14 @@ class Router:
                             if getattr(self, "otel_enabled", False) and trace is not None:
                                 from daari.observability.otel import export_trace
 
-                                export_trace(trace, request=request, error_type=type(exc).__name__)
+                                export_trace(
+                                    trace,
+                                    request=request,
+                                    error_type=type(exc).__name__,
+                                    include_request_tags=bool(
+                                        getattr(self, "otel_include_request_tags", False)
+                                    ),
+                                )
                             finish_trace(None)
                             return
                         else:
@@ -3112,7 +3128,14 @@ class Router:
                             if getattr(self, "otel_enabled", False) and trace is not None:
                                 from daari.observability.otel import export_trace
 
-                                export_trace(trace, request=request, error_type=type(exc).__name__)
+                                export_trace(
+                                    trace,
+                                    request=request,
+                                    error_type=type(exc).__name__,
+                                    include_request_tags=bool(
+                                        getattr(self, "otel_include_request_tags", False)
+                                    ),
+                                )
                             finish_trace(None)
                             return
                     finally:
@@ -3622,6 +3645,9 @@ class Router:
                         response=served,
                         time_to_first_chunk=first_chunk_s,
                         time_per_output_chunk=per_chunk_s,
+                        include_request_tags=bool(
+                            getattr(self, "otel_include_request_tags", False)
+                        ),
                     )
                 stream_flight_result = served.model_copy(deep=True)
                 finish_trace(tier)
@@ -7148,6 +7174,9 @@ class AppContext:
             boundaries=_boundaries_from_settings(settings, embedder=embedder),
             capability_catalog=_catalog_from_settings(settings),
             otel_enabled=bool(settings.observability.otel),
+            otel_include_request_tags=bool(
+                getattr(settings.observability, "otel_include_request_tags", False)
+            ),
             org_pool=org_pool_executor,
             local_pool=local_pool,
             local_pool_frontier_fallback=bool(

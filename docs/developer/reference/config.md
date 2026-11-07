@@ -229,6 +229,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `observability.metrics_port` | int | `0` |  |
 | `observability.team_metrics` | bool | `False` | Opt-in team label on daari_requests_total / daari_errors_total (#1997). Off keeps exposition byte-identical. When on, team values are bounded to the virtual-key teams store (unknown/empty → '-'). Latency histograms stay team-less as a deliberate cardinality guard. Editable via GET/PATCH /v1/daari/config ownership (config editor). |
 | `observability.otel` | bool | `False` |  |
+| `observability.otel_include_request_tags` | bool | `False` | When true (and observability.otel is on), copy non-empty req_meta.tags onto the root GenAI span as daari.request.tags (string array; never invent tags). Default false (#2124). |
 | `observability.config_editor` | bool | `False` |  |
 | `observability.backend` | Literal | `'sqlite'` |  |
 | `observability.postgres_url` | str | `''` | Shared Postgres DSN for fleet stores (ledger, virtual keys, batches/files/responses, request log, audit). Localhost/unix sockets may omit TLS; remote DSNs should include sslmode=require (or verify-ca / verify-full). Optional CA: ?sslmode=verify-full&sslrootcert=/etc/ssl/certs/ca.pem. Example: postgresql://daari:daari@db.example:5432/daari?sslmode=require. daari doctor warns on cleartext remote DSNs (postgres_tls, #1679). |

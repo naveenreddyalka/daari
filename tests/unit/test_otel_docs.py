@@ -39,3 +39,11 @@ def test_otel_genai_documents_cost_and_tenant_attrs() -> None:
     assert "daari.cost.usd" in text
     assert "daari.key_id" in text
     assert "daari.team_id" in text
+
+
+def test_otel_genai_documents_request_tags_opt_in() -> None:
+    text = (ROOT / "docs/developer/guides/observability/otel-genai.md").read_text(
+        encoding="utf-8"
+    )
+    assert "daari.request.tags" in text
+    assert "otel_include_request_tags" in text

@@ -2045,6 +2045,18 @@ class ObservabilitySettings(RuntimeSettings):
     # Optional OTel export of RequestTrace steps (issue #115). Requires
     # opentelemetry-api; no-op when the package is missing.
     otel: bool = False
+    # Opt-in: copy req_meta.tags onto the root GenAI span (#2124). Off by
+    # default so privacy-sensitive installs do not leak eval/canary labels.
+    # Sibling of ``otel`` (kept as bool) rather than nesting under
+    # ``observability.otel.*`` to avoid breaking ``otel: true`` YAML.
+    otel_include_request_tags: bool = Field(
+        default=False,
+        description=(
+            "When true (and observability.otel is on), copy non-empty "
+            "req_meta.tags onto the root GenAI span as daari.request.tags "
+            "(string array; never invent tags). Default false (#2124)."
+        ),
+    )
     # Allow authenticated PATCH of a safe config subset via the web UI.
     config_editor: bool = False
     # sqlite (default) or postgres for ledger + traces (issue #116).

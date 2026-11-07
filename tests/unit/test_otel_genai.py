@@ -66,6 +66,7 @@ def _request(
     session_id: str | None = None,
     key_id: str | None = None,
     team_id: str | None = None,
+    tags: list[str] | None = None,
 ) -> InternalRequest:
     from daari.gateway.internal import RequestMeta
 
@@ -73,6 +74,7 @@ def _request(
         session_id=session_id,
         key_id=key_id,
         team_id=team_id,
+        tags=list(tags or []),
     )
     return InternalRequest(
         messages=[Message(role="user", content="hi")], model=model, meta=meta
@@ -302,6 +304,43 @@ def test_key_and_team_id_on_root_span_when_authenticated():
     attrs = dict(_root_span().attributes)
     assert "daari.key_id" not in attrs
     assert "daari.team_id" not in attrs
+
+
+def test_request_tags_on_root_span_when_opt_in():
+    """Opt-in copies req_meta.tags as daari.request.tags string array (#2124)."""
+    trace = RequestTrace()
+    export_trace(
+        trace,
+        request=_request(tags=["canary", "eval"]),
+        response=_response(),
+        include_request_tags=True,
+    )
+    attrs = dict(_root_span().attributes)
+    assert list(attrs["daari.request.tags"]) == ["canary", "eval"]
+
+    _EXPORTER.clear()
+    export_trace(
+        trace,
+        request=_request(tags=["canary"]),
+        response=_response(),
+        include_request_tags=False,
+    )
+    assert "daari.request.tags" not in dict(_root_span().attributes)
+
+    _EXPORTER.clear()
+    export_trace(
+        trace,
+        request=_request(tags=[]),
+        response=_response(),
+        include_request_tags=True,
+    )
+    assert "daari.request.tags" not in dict(_root_span().attributes)
+
+
+def test_otel_include_request_tags_setting_default_false():
+    from daari.config.settings import ObservabilitySettings
+
+    assert ObservabilitySettings().otel_include_request_tags is False
 
 
 def test_cache_read_and_creation_token_dims():
