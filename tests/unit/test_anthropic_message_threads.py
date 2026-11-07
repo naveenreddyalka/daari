@@ -196,6 +196,8 @@ async def test_create_body_survives_to_mocked_l6_payload(settings, monkeypatch):
     assert thread_events[0][1].get("type") == "create"
     assert "content" not in thread_events[0][1]
     assert "messages" not in thread_events[0][1]
+    assert application.state.ctx.metrics.anthropic_message_thread.get("create", 0) == 1
+    assert application.state.ctx.metrics.anthropic_message_thread.get("continue", 0) == 0
 
 
 def _patch_local_executors(application, fake_local) -> None:
@@ -243,6 +245,13 @@ async def test_continue_without_create_on_local_fails_closed(settings):
     assert response.status_code == 400
     detail = response.json().get("detail") or response.json()
     assert "thread" in json.dumps(detail).lower()
+    assert (
+        application.state.ctx.metrics.anthropic_message_thread.get(
+            "continue_rejected", 0
+        )
+        == 1
+    )
+    assert application.state.ctx.metrics.anthropic_message_thread.get("continue", 0) == 0
 
 
 @pytest.mark.asyncio
@@ -327,6 +336,89 @@ async def test_continue_soft_ignore_on_local(settings):
     assert response.status_code == 200, response.text
     warning = (response.json().get("daari_meta") or {}).get("warning") or ""
     assert "thread" in warning.lower() or "message_thread" in warning.lower()
+    assert (
+        application.state.ctx.metrics.anthropic_message_thread.get(
+            "continue_soft_ignored", 0
+        )
+        == 1
+    )
+    assert application.state.ctx.metrics.anthropic_message_thread.get("continue", 0) == 0
+    assert (
+        application.state.ctx.metrics.anthropic_message_thread.get(
+            "continue_rejected", 0
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_continue_on_anthropic_l6_bumps_continue_counter(settings, monkeypatch):
+    """Successful continue on Anthropic L6 increments continue, not soft/reject (#2133)."""
+    from daari.gateway.internal import DaariMeta, InternalResponse
+    from daari.router.anthropic_messages import note_anthropic_thread_create
+
+    settings.frontier.enabled = True
+    settings.frontier.provider = "anthropic"
+    settings.frontier.base_url = "https://api.anthropic.com"
+    settings.frontier.model = "claude-sonnet-5-5"
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    note_anthropic_thread_create("msg_prior")
+    note_anthropic_thread_create("*")
+
+    async def fake_route(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="claude-sonnet-5-5",
+            daari_meta=DaariMeta(tier="L6", executor="frontier", latency_ms=1),
+        )
+
+    application.state.ctx.router.route = fake_route  # type: ignore[method-assign]
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/messages",
+            headers={
+                **META_HEADERS,
+                "anthropic-version": "2023-06-01",
+                "anthropic-beta": THREAD_BETA,
+                "x-api-key": "test",
+                "X-Daari-Tier-Override": "L6",
+            },
+            json={
+                "model": "claude-sonnet-5-5",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": "again"}],
+                "thread": {
+                    "type": "continue",
+                    "previous_message_id": "msg_prior",
+                },
+            },
+        )
+    assert response.status_code == 200, response.text
+    counts = application.state.ctx.metrics.anthropic_message_thread
+    assert counts.get("continue", 0) == 1
+    assert counts.get("create", 0) == 0
+    assert counts.get("continue_soft_ignored", 0) == 0
+    assert counts.get("continue_rejected", 0) == 0
+
+
+def test_anthropic_message_thread_prometheus_series() -> None:
+    from daari.observability.metrics import Metrics
+    from daari.observability.prometheus import render_prometheus
+
+    metrics = Metrics()
+    metrics.record_anthropic_message_thread("create")
+    metrics.record_anthropic_message_thread("continue")
+    metrics.record_anthropic_message_thread("continue_soft_ignored")
+    metrics.record_anthropic_message_thread("continue_rejected")
+    text = render_prometheus(metrics)
+    assert "# TYPE daari_anthropic_message_thread_total counter" in text
+    assert 'daari_anthropic_message_thread_total{kind="create"} 1' in text
+    assert 'daari_anthropic_message_thread_total{kind="continue"} 1' in text
+    assert 'daari_anthropic_message_thread_total{kind="continue_soft_ignored"} 1' in text
+    assert 'daari_anthropic_message_thread_total{kind="continue_rejected"} 1' in text
 
 
 def test_claude_code_docs_mention_message_threads() -> None:

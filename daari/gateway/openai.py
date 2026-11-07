@@ -2002,6 +2002,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "virtual_model_slo_demotion": dict(
                     full.get("virtual_model_slo_demotion") or {}
                 ),
+                "anthropic_message_thread": dict(
+                    full.get("anthropic_message_thread") or {}
+                ),
             }
             perf = getattr(getattr(ctx, "router", None), "virtual_model_perf", None)
             if perf is not None and hasattr(perf, "snapshot"):

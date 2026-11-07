@@ -8842,6 +8842,14 @@ virtual-model keys / non-positive ms → 400; empty map clears). Router reloads
 without restart; ordered mode may still store the map. Covered by
 `tests/unit/test_config_ownership.py`.
 
+### Stats/Prom for Anthropic message-threads create/continue ([#2133](https://github.com/naveenreddyalka/daari/issues/2133))
+
+<!-- tracking:#2133 -->
+**Status:** Done (2026-11-07). `daari_anthropic_message_thread_total{kind}` and
+`/v1/daari/stats` `anthropic_message_thread` map count create / continue /
+continue_soft_ignored / continue_rejected (fixed four-kind enum). Covered by
+`tests/unit/test_anthropic_message_threads.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
