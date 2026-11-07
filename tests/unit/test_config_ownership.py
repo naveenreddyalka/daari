@@ -33,6 +33,7 @@ _COMPACT_LEAVES = (
 )
 _SIGNAL_OVERRIDES = "routing.signal_overrides"
 _VIRTUAL_MODELS = "routing.virtual_models"
+_VIRTUAL_MODEL_LATENCY_SLO = "routing.virtual_model_latency_slo_ms"
 _MCP_LEAVES = (
     "integrations.mcp_oauth.local_as",
     "integrations.mcp_oauth.protected_resource",
@@ -67,6 +68,7 @@ def _base_live() -> dict:
             },
             "signal_overrides": [],
             "virtual_models": {},
+            "virtual_model_latency_slo_ms": {},
         },
         "frontier": {
             "daily_budget_usd": 1.0,
@@ -895,6 +897,7 @@ def test_docs_pin_classifier_mcp_config_ownership():
     assert "compact_to_fit" in http_api
     assert "signal_overrides" in http_api
     assert "virtual_models" in http_api
+    assert "virtual_model_latency_slo_ms" in http_api
     assert "require_key_access_defined" in http_api or "mcp_policy" in http_api
     assert "structured_json_logs" in http_api
     assert "team_metrics" in http_api
@@ -1094,3 +1097,124 @@ async def test_patch_virtual_models_round_trip_invalid_and_live_reload(
         assert meta.get("virtual_model") == "chat-default"
         assert meta.get("virtual_candidate") == "L4"
         assert meta.get("tier") == "L4"
+
+
+@pytest.mark.asyncio
+async def test_patch_virtual_model_latency_slo_ms_ownership_and_live_reload(
+    settings, tmp_path, monkeypatch
+):
+    """Ownership + PATCH for routing.virtual_model_latency_slo_ms (#2125)."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.enterprise.postgres_audit import audit_log_from_settings
+
+    settings.observability.config_editor = True
+    settings.server.api_key = "master-sekret"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.enterprise.sso.enabled = False
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    settings.routing.virtual_models = {"chat": ["L3", "L4"]}
+    settings.routing.virtual_model_selection = "ordered"
+    settings.routing.virtual_model_latency_slo_ms = {}
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "routing": {
+                    "virtual_models": {"chat": ["L3", "L4"]},
+                    "virtual_model_latency_slo_ms": {},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    created = store.create("agent", client_id="agent", daily_budget_usd=1.0)
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+
+    transport = ASGITransport(app=app)
+    headers_vk = {"Authorization": f"Bearer {created.plaintext}"}
+    headers_master = {"Authorization": "Bearer master-sekret"}
+    slo_map = {"chat": 500.0}
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        got = await client.get("/v1/daari/config", headers=headers_master)
+        assert got.status_code == 200
+        body = got.json()
+        assert _VIRTUAL_MODEL_LATENCY_SLO in body["ownership"]
+        assert body["ownership"][_VIRTUAL_MODEL_LATENCY_SLO]["editable"] is True
+        assert body["routing"]["virtual_model_latency_slo_ms"] == {}
+
+        denied = await client.patch(
+            "/v1/daari/config",
+            headers=headers_vk,
+            json={"routing": {"virtual_model_latency_slo_ms": slo_map}},
+        )
+        assert denied.status_code == 403
+
+        unknown = await client.patch(
+            "/v1/daari/config",
+            headers=headers_master,
+            json={"routing": {"virtual_model_latency_slo_ms": {"nope": 100.0}}},
+        )
+        assert unknown.status_code == 400
+        detail = str(unknown.json().get("detail") or unknown.text).lower()
+        assert "virtual_models" in detail or "no matching" in detail or "nope" in detail
+        assert settings.routing.virtual_model_latency_slo_ms == {}
+        assert app.state.ctx.router.virtual_model_latency_slo_ms == {}
+
+        nonpos = await client.patch(
+            "/v1/daari/config",
+            headers=headers_master,
+            json={"routing": {"virtual_model_latency_slo_ms": {"chat": 0}}},
+        )
+        assert nonpos.status_code == 400
+        assert settings.routing.virtual_model_latency_slo_ms == {}
+
+        patched = await client.patch(
+            "/v1/daari/config",
+            headers=headers_master,
+            json={"routing": {"virtual_model_latency_slo_ms": slo_map}},
+        )
+        assert patched.status_code == 200
+        payload = patched.json()
+        assert payload["routing"]["virtual_model_latency_slo_ms"] == slo_map
+        assert settings.routing.virtual_model_latency_slo_ms == slo_map
+        assert app.state.ctx.router.virtual_model_latency_slo_ms == slo_map
+        # Ordered mode still stores the map (selection ignores it).
+        assert settings.routing.virtual_model_selection == "ordered"
+
+        cleared = await client.patch(
+            "/v1/daari/config",
+            headers=headers_master,
+            json={"routing": {"virtual_model_latency_slo_ms": {}}, "persist": True},
+        )
+        assert cleared.status_code == 200
+        assert cleared.json()["routing"]["virtual_model_latency_slo_ms"] == {}
+        assert settings.routing.virtual_model_latency_slo_ms == {}
+        assert app.state.ctx.router.virtual_model_latency_slo_ms == {}
+        assert cleared.json()["ownership"][_VIRTUAL_MODEL_LATENCY_SLO]["source"] == "file"
+        written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert written["routing"]["virtual_model_latency_slo_ms"] == {}
+        audit = audit_log_from_settings(settings).list(limit=20)
+        assert any(entry.get("action") == "config.patch" for entry in audit)
+
+
+def test_ownership_fields_include_virtual_model_latency_slo_ms():
+    """routing.virtual_model_latency_slo_ms is an ownership leaf (#2125)."""
+    live = _base_live()
+    live["routing"]["virtual_model_latency_slo_ms"] = {"chat": 250.0}
+    meta = ownership_fields(
+        live,
+        file_doc={},
+        runtime_overrides=set(),
+    )
+    assert _VIRTUAL_MODEL_LATENCY_SLO in meta
+    assert meta[_VIRTUAL_MODEL_LATENCY_SLO]["editable"] is True
+    assert meta[_VIRTUAL_MODEL_LATENCY_SLO]["source"] == "default"
