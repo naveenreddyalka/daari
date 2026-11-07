@@ -477,7 +477,13 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         if soft:
                             meta.anthropic_thread = None
                             meta.anthropic_thread_soft_ignored = True
+                            ctx.metrics.record_anthropic_message_thread(
+                                "continue_soft_ignored"
+                            )
                         else:
+                            ctx.metrics.record_anthropic_message_thread(
+                                "continue_rejected"
+                            )
                             raise HTTPException(
                                 status_code=400,
                                 detail=(
@@ -839,6 +845,9 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             }:
                 note_anthropic_thread_create(message_id)
                 note_anthropic_thread_create("*")
+                kind = str(thread.get("type") or "create")
+                if kind in {"create", "continue"}:
+                    ctx.metrics.record_anthropic_message_thread(kind)
             prompt_chars = sum(len(message.content or "") for message in internal.messages)
             return JSONResponse(
                 payload,

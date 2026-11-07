@@ -295,6 +295,21 @@ def render_prometheus(
                 f"{_labels(outcome=str(outcome))} {int(count)}"
             )
     lines.append(
+        "# HELP daari_anthropic_message_thread_total Anthropic message-threads "
+        "create/continue outcomes (kind=create|continue|continue_soft_ignored|"
+        "continue_rejected). Fixed four-kind enum — no message-id labels."
+    )
+    lines.append("# TYPE daari_anthropic_message_thread_total counter")
+    thread_kinds = snap.get("anthropic_message_thread") or {}
+    if not thread_kinds:
+        lines.append("daari_anthropic_message_thread_total 0")
+    else:
+        for kind, count in sorted(thread_kinds.items()):
+            lines.append(
+                f"daari_anthropic_message_thread_total"
+                f"{_labels(kind=str(kind))} {int(count)}"
+            )
+    lines.append(
         "# HELP daari_signal_override_total routing.signal_overrides matches "
         "that applied a category / max_tier / tier_pin lever."
     )

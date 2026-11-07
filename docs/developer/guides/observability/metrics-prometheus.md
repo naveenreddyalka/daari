@@ -48,7 +48,12 @@ panel on `daari_decision_classifier_latency_ms`, a **Virtual keys by status** pa
 pressure (`demoted` when ≥1 over-SLO candidate ranks behind a within-SLO peer;
 `within` when an SLO is configured and no demotion occurred — ratio companion;
 no virtual-model name label because names are operator-defined and unbounded;
-per-candidate `slo_demoted` stays on the inventory snapshot), an
+per-candidate `slo_demoted` stays on the inventory snapshot),
+`daari_anthropic_message_thread_total{kind}` for Anthropic message-threads
+create/continue pressure (`create` / `continue` successful Anthropic L6
+passthrough; `continue_soft_ignored` when `anthropic.thread_continue_soft`
+drops a continue on local/non-Anthropic; `continue_rejected` for fail-closed
+400 — fixed four-kind enum, no message-id labels), an
 **Admission priority by outcome** panel on `daari_admission_priority_total` for
 `X-Daari-Priority` raise / lower / ignored / baseline traffic next to the concurrency
 gate, and an
