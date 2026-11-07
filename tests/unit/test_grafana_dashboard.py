@@ -770,3 +770,23 @@ def test_grafana_dashboard_includes_virtual_model_selection_panel():
     assert any("mode" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
     assert any("{{mode}}" in legend for legend in legends)
+
+
+def test_grafana_dashboard_includes_admission_priority_panel():
+    """X-Daari-Priority admission outcomes should chart on the overview (#2113)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "admission priority" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected an admission priority panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    legends = [t.get("legendFormat", "") for t in panel.get("targets", [])]
+    assert any("daari_admission_priority_total" in expr for expr in exprs)
+    assert any("outcome" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+    assert any("{{outcome}}" in legend for legend in legends)

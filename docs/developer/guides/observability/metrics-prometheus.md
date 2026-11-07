@@ -43,10 +43,14 @@ panel on `daari_decision_classifier_latency_ms`, a **Virtual keys by status** pa
 `daari_rejects_total{kind="retired"}`, a **Schema ok** stat on `daari_schema_ok`, a
 **Systemone breaker events** panel on `daari_systemone_breaker_total`, a
 **Virtual-model selection by mode** panel on `daari_virtual_model_selection_total`
-(next to virtual-model failover pressure) for `ordered` vs `performance` picks, and an
+(next to virtual-model failover pressure) for `ordered` vs `performance` picks, an
+**Admission priority by outcome** panel on `daari_admission_priority_total` for
+`X-Daari-Priority` raise / lower / ignored / baseline traffic next to the concurrency
+gate, and an
 **Escalations & errors** panel on `daari_escalations_total` / `daari_errors_total` so
 operators see flake / false-hit / budget / MCP deny / key-lifecycle / retired-model /
-routing-shadow / compact-to-fit / schema-lag / judge-breaker / selection-mode pressure without raw PromQL).
+routing-shadow / compact-to-fit / schema-lag / judge-breaker / selection-mode /
+admission-steer pressure without raw PromQL).
 
 Useful series: request latency histograms by tier (`daari_request_latency_ms`),
 stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path
@@ -99,6 +103,7 @@ prometheus-operator), same as `ServiceMonitor`.
 | `daari_rejects_total{kind}` | Hard denials only: `kind="budget"` (USD 402), `kind="request_quota"` (request-cap 402), scope-qualified limiter 429s `kind="rate_limit_rpm"` \| `rate_limit_tpm` \| `rate_limit_rpd` \| `rate_limit_tpd`, in-flight `kind="concurrency"` (and scoped `key_concurrency` / `team_concurrency` / `model_concurrency`), `kind="retired"` (retired-model 410), or `kind="service_tier_not_allowed"` (per-key/team `allowed_service_tiers` hard 403). Soft warning headers never increment this. **Migration (#2096):** rolled-up `kind="rate_limit"` is gone for gateway/MCP limiter cliffs — sum `rate_limit_*` for the former total. Rising rejects after soft warnings means caps are undersized relative to demand. Overview Grafana isolates retired blocks under **Retired model rejects**; all kinds also chart under **Hard rejects by kind**. |
 | `daari_virtual_keys{status}` | Scrape-time virtual-key lifecycle counts (`active`, `expired`, `expiring_soon`, `revoked`). Flat when no keys are stored. Rising `expired` / `expiring_soon` means credential rotation pressure. Stats counterpart: `virtual_keys` on `GET /v1/daari/stats`. Overview Grafana charts under **Virtual keys by status**. |
 | `daari_ttft_preference_total{from,to}` | When `routing.ttft_aware` rewrites the heuristic local tier (e.g. L4→L3). Flat while TTFT bias is idle; rising means the preference path is active. Off / no-op picks do not increment. |
+| `daari_admission_priority_total{outcome}` | Optional `X-Daari-Priority` admission resolution: `outcome="raised"` (successful boost above key/team ceiling), `lowered` (successful demotion), `ignored` (invalid header or disallowed raise when `allow_request_priority_boost` is false), or `baseline` (no header / header matches ceiling). No-header traffic increments `baseline`, never `raised`. Chart next to `daari_rate_limit_*` for queue-steer pressure. Overview Grafana: **Admission priority by outcome**. PromQL: `sum by (outcome) (rate(daari_admission_priority_total[5m]))`. |
 | `daari_rate_limit_degraded{mode}` | `1` while Redis rate-limit counting is degraded (`mode="sqlite_fallback"` or `mode="fail_open"`); clears to `0` when Redis answers again. Page when any pod stays at `1` — fleet RPM/TPM is no longer shared. |
 | `daari_budget_degraded{mode}` | `1` while Postgres usage-ledger spend reads failed and budget pre-checks soft-allow (`mode="soft_allow"`). Responses also carry `X-Daari-Budget-Degraded`. See [auth-and-keys](../configuration/auth-and-keys.md#postgres-outage-semantics-control-plane). |
 | `daari_mcp_tool_calls_total{tool,outcome}` | MCP ingress `tools/call` (and legacy `/v1/mcp/query`) by tool name and `outcome` (`ok`, `deny`, `error`, `guardrail`). No-op when `observability.prometheus=false`. Rising `deny` vs `ok` is policy pressure on agent traffic. |
