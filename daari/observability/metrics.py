@@ -266,6 +266,8 @@ class Metrics:
     batch_webhooks: dict[str, int] = field(default_factory=dict)
     org_enforcement_webhooks: dict[str, int] = field(default_factory=dict)
     soft_warnings: dict[str, int] = field(default_factory=dict)
+    # outcome → count for X-Daari-Priority admission resolution (#2113).
+    admission_priority: dict[str, int] = field(default_factory=dict)
     # requested:served → count when Phonon coerces response_format (#1961).
     tts_phonon_format_coerced: dict[str, int] = field(default_factory=dict)
     rejects: dict[str, int] = field(default_factory=dict)
@@ -453,6 +455,12 @@ class Metrics:
         """Soft band before hard 402/429 (request_quota or rate_limit, #526)."""
         with self._lock:
             self.soft_warnings[kind] = self.soft_warnings.get(kind, 0) + 1
+
+    def record_admission_priority(self, outcome: str) -> None:
+        """X-Daari-Priority admission resolution (raised|lowered|ignored|baseline, #2113)."""
+        label = (outcome or "").strip().lower() or "baseline"
+        with self._lock:
+            self.admission_priority[label] = self.admission_priority.get(label, 0) + 1
 
     def record_tts_phonon_format_coerced(self, *, requested: str, served: str) -> None:
         """Phonon rewrote an unsupported OpenAI TTS response_format (#1961)."""
@@ -698,6 +706,7 @@ class Metrics:
                 "batch_webhooks": dict(self.batch_webhooks),
                 "org_enforcement_webhooks": dict(self.org_enforcement_webhooks),
                 "soft_warnings": dict(self.soft_warnings),
+                "admission_priority": dict(self.admission_priority),
                 "tts_phonon_format_coerced": dict(self.tts_phonon_format_coerced),
                 "rejects": dict(self.rejects),
                 "ttft_preferences": dict(self.ttft_preferences),
