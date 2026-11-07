@@ -279,6 +279,22 @@ def render_prometheus(
                 f"daari_virtual_model_selection_total{_labels(mode=str(mode))} {int(count)}"
             )
     lines.append(
+        "# HELP daari_virtual_model_slo_demotion_total Performance-mode "
+        "latency-SLO demotions (outcome=demoted|within). No virtual-model "
+        "name label — names are operator-defined and unbounded; inventory "
+        "snapshot already carries per-candidate slo_demoted."
+    )
+    lines.append("# TYPE daari_virtual_model_slo_demotion_total counter")
+    slo_demotions = snap.get("virtual_model_slo_demotion") or {}
+    if not slo_demotions:
+        lines.append("daari_virtual_model_slo_demotion_total 0")
+    else:
+        for outcome, count in sorted(slo_demotions.items()):
+            lines.append(
+                f"daari_virtual_model_slo_demotion_total"
+                f"{_labels(outcome=str(outcome))} {int(count)}"
+            )
+    lines.append(
         "# HELP daari_signal_override_total routing.signal_overrides matches "
         "that applied a category / max_tier / tier_pin lever."
     )
