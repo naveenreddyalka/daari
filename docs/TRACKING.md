@@ -8824,6 +8824,15 @@ label (operator-defined cardinality); inventory snapshot keeps per-candidate
 `slo_demoted`. Also on `/v1/daari/stats`. Metrics guide lists the series.
 Covered by `tests/unit/test_virtual_models.py`.
 
+### Observability: opt-in request tags on OTel GenAI spans ([#2124](https://github.com/naveenreddyalka/daari/issues/2124))
+
+<!-- tracking:#2124 -->
+**Status:** Done (2026-11-07). `observability.otel_include_request_tags`
+(default false) copies non-empty `req_meta.tags` onto the root GenAI span as
+`daari.request.tags` (string array; never invented). Flag off keeps today's
+span shape. Docs: otel-genai + config. Covered by
+`tests/unit/test_otel_genai.py` and `test_otel_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
