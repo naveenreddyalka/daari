@@ -136,6 +136,12 @@ def _status_row(status: Any) -> dict[str, Any]:
     }
 
 
+def _redact_service_tiers(tiers: Any) -> list[str] | None:
+    if tiers is None:
+        return None
+    return list(tiers)
+
+
 def redact_key(key: Any, *, spend: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Public key inventory row — never secrets or hashes."""
     return {
@@ -162,6 +168,12 @@ def redact_key(key: Any, *, spend: list[dict[str, Any]] | None = None) -> dict[s
         "client_id": key.client_id,
         "cache_scope": getattr(key, "cache_scope", "global"),
         "priority": getattr(key, "priority", "normal"),
+        "allowed_service_tiers": _redact_service_tiers(
+            getattr(key, "allowed_service_tiers", None)
+        ),
+        "degrade_disallowed_service_tier": bool(
+            getattr(key, "degrade_disallowed_service_tier", False)
+        ),
         "signal_overrides": [
             rule.model_dump() if hasattr(rule, "model_dump") else dict(rule)
             for rule in (getattr(key, "signal_overrides", None) or ())
@@ -189,6 +201,12 @@ def redact_team(
         "region_pin": getattr(team, "region_pin", None),
         "cache_scope": getattr(team, "cache_scope", "global"),
         "priority": getattr(team, "priority", "normal"),
+        "allowed_service_tiers": _redact_service_tiers(
+            getattr(team, "allowed_service_tiers", None)
+        ),
+        "degrade_disallowed_service_tier": bool(
+            getattr(team, "degrade_disallowed_service_tier", False)
+        ),
         "signal_overrides": [
             rule.model_dump() if hasattr(rule, "model_dump") else dict(rule)
             for rule in (getattr(team, "signal_overrides", None) or ())
