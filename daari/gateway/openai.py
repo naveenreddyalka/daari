@@ -2879,7 +2879,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             # Validate the whole patch before touching live settings, so a bad
             # field is a 400 instead of a half-applied config.
             try:
-                routing = validated_routing(body.get("routing") or {})
+                routing = validated_routing(
+                    body.get("routing") or {},
+                    known_virtual_models=dict(
+                        getattr(ctx.settings.routing, "virtual_models", None) or {}
+                    ),
+                )
                 frontier = validated_frontier(body.get("frontier") or {})
                 cache = validated_cache(body.get("cache") or {})
                 integrations = validated_integrations(body.get("integrations") or {})
@@ -2949,6 +2954,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 }
                 ctx.settings.routing.virtual_models = mapping
                 ctx.router.virtual_models = dict(mapping)
+            if "virtual_model_latency_slo_ms" in routing:
+                slo_map = {
+                    str(name): float(ms)
+                    for name, ms in dict(
+                        routing["virtual_model_latency_slo_ms"] or {}
+                    ).items()
+                }
+                ctx.settings.routing.virtual_model_latency_slo_ms = slo_map
+                ctx.router.virtual_model_latency_slo_ms = dict(slo_map)
             for key in ("daily_budget_usd", "monthly_budget_usd", "soft_budget_ratio"):
                 if key in frontier:
                     setattr(ctx.settings.frontier, key, frontier[key])

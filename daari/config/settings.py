@@ -1262,8 +1262,10 @@ class RoutingSettings(RuntimeSettings):
             "selection (#2086). When set, within-SLO EWMA candidates (or cold "
             "starts with no samples) rank before over-SLO ones; within each "
             "bucket the existing error/latency/index sort is unchanged. "
-            "Ignored in ordered mode. Keys must name an entry in "
-            "routing.virtual_models; values must be positive."
+            "Ignored in ordered mode (map may still be stored). Keys must "
+            "name an entry in routing.virtual_models; values must be positive. "
+            "Editable via GET/PATCH /v1/daari/config ownership (full map "
+            "replacement) (#2125)."
         ),
     )
 

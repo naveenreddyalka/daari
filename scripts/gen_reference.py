@@ -173,6 +173,8 @@ def render_api_reference() -> str:
             "safe subset, including `routing.decision_classifier.*`, "
             "`routing.compact_to_fit.*`, `routing.signal_overrides` (full list "
             "replacement), `routing.virtual_models` (full map replacement), "
+            "`routing.virtual_model_latency_slo_ms` (full map replacement; keys must "
+            "exist in `virtual_models`; ignored by selection in ordered mode), "
             "`systemone.base_url`, "
             "`observability.structured_json_logs`, "
             "`observability.team_metrics`, "

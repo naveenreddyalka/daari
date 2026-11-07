@@ -8833,6 +8833,15 @@ Covered by `tests/unit/test_virtual_models.py`.
 span shape. Docs: otel-genai + config. Covered by
 `tests/unit/test_otel_genai.py` and `test_otel_docs.py`.
 
+### Config ownership + PATCH for routing.virtual_model_latency_slo_ms ([#2125](https://github.com/naveenreddyalka/daari/issues/2125))
+
+<!-- tracking:#2125 -->
+**Status:** Done (2026-11-07). `routing.virtual_model_latency_slo_ms` on the
+ownership allowlist; GET inventory + PATCH full map replacement (unknown
+virtual-model keys / non-positive ms → 400; empty map clears). Router reloads
+without restart; ordered mode may still store the map. Covered by
+`tests/unit/test_config_ownership.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

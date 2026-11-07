@@ -35,6 +35,7 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("routing", "compact_to_fit", "max_tokens"),
     ("routing", "signal_overrides"),
     ("routing", "virtual_models"),
+    ("routing", "virtual_model_latency_slo_ms"),
     ("frontier", "daily_budget_usd"),
     ("frontier", "monthly_budget_usd"),
     ("frontier", "soft_budget_ratio"),
@@ -199,6 +200,12 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
                 str(name): [str(c) for c in (candidates or [])]
                 for name, candidates in dict(
                     getattr(s.routing, "virtual_models", None) or {}
+                ).items()
+            },
+            "virtual_model_latency_slo_ms": {
+                str(name): float(ms)
+                for name, ms in dict(
+                    getattr(s.routing, "virtual_model_latency_slo_ms", None) or {}
                 ).items()
             },
         },

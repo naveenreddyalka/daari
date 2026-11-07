@@ -358,7 +358,48 @@ def validated_virtual_models(value: Any) -> dict[str, list[str]]:
     return {str(k): [str(c) for c in v] for k, v in cleaned.items()}
 
 
-def validated_routing(patch: dict[str, Any]) -> dict[str, Any]:
+def validated_virtual_model_latency_slo_ms(
+    value: Any,
+    *,
+    known_virtual_models: dict[str, list[str]] | None = None,
+) -> dict[str, float]:
+    """Full replacement map; keys must exist in virtual_models; ms must be positive (#2125)."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ConfigValidationError(
+            "virtual_model_latency_slo_ms must be an object mapping "
+            "virtual-model name → positive ms"
+        )
+    from pydantic import ValidationError
+
+    from daari.config.settings import RoutingSettings
+
+    known = dict(known_virtual_models or {})
+    try:
+        cleaned = RoutingSettings.model_validate(
+            {
+                "virtual_models": known,
+                "virtual_model_latency_slo_ms": value,
+            }
+        ).virtual_model_latency_slo_ms
+    except ValidationError as exc:
+        msgs = "; ".join(
+            f"{'.'.join(str(p) for p in err.get('loc', ()) or ('<root>',))}: "
+            f"{err.get('msg', 'invalid')}"
+            for err in exc.errors()
+        )
+        raise ConfigValidationError(f"virtual_model_latency_slo_ms: {msgs}") from exc
+    except (ValueError, TypeError) as exc:
+        raise ConfigValidationError(str(exc)) from exc
+    return {str(k): float(v) for k, v in cleaned.items()}
+
+
+def validated_routing(
+    patch: dict[str, Any],
+    *,
+    known_virtual_models: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if "confidence_threshold" in patch:
         out["confidence_threshold"] = _number(
@@ -396,6 +437,16 @@ def validated_routing(patch: dict[str, Any]) -> dict[str, Any]:
         out["signal_overrides"] = validated_signal_overrides(patch["signal_overrides"])
     if "virtual_models" in patch:
         out["virtual_models"] = validated_virtual_models(patch["virtual_models"])
+    if "virtual_model_latency_slo_ms" in patch:
+        known = (
+            out["virtual_models"]
+            if "virtual_models" in out
+            else dict(known_virtual_models or {})
+        )
+        out["virtual_model_latency_slo_ms"] = validated_virtual_model_latency_slo_ms(
+            patch["virtual_model_latency_slo_ms"],
+            known_virtual_models=known,
+        )
     return out
 
 
