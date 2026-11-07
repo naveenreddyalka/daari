@@ -1999,6 +1999,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "agent_access_denied": int(full.get("agent_access_denied") or 0),
                 "virtual_model_failover": int(full.get("virtual_model_failover") or 0),
                 "virtual_model_selection": dict(full.get("virtual_model_selection") or {}),
+                "virtual_model_slo_demotion": dict(
+                    full.get("virtual_model_slo_demotion") or {}
+                ),
             }
             perf = getattr(getattr(ctx, "router", None), "virtual_model_perf", None)
             if perf is not None and hasattr(perf, "snapshot"):

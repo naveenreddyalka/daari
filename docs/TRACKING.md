@@ -8813,6 +8813,17 @@ Grafana panel + metrics guide PromQL. Covered by
 1.106.x patch, keeps the 1.107.0 compromise advisory, and watches
 **1.109.0-rc.1** (not GA). Covered by `tests/unit/test_compare_litellm_1104.py`.
 
+### Observability: virtual-model latency SLO demotion counters ([#2123](https://github.com/naveenreddyalka/daari/issues/2123))
+
+<!-- tracking:#2123 -->
+**Status:** Done (2026-11-07). Performance-mode selections with a configured
+latency SLO bump `daari_virtual_model_slo_demotion_total{outcome}` —
+`demoted` when ≥1 over-SLO candidate ranks behind a within-SLO peer,
+`within` when no demotion occurred (ratio companion). No virtual-model name
+label (operator-defined cardinality); inventory snapshot keeps per-candidate
+`slo_demoted`. Also on `/v1/daari/stats`. Metrics guide lists the series.
+Covered by `tests/unit/test_virtual_models.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

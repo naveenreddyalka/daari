@@ -117,14 +117,19 @@ def order_virtual_candidates(
     tracker: VirtualModelPerformanceTracker | None = None,
     breaker_open: Callable[[str], bool] | None = None,
     latency_slo_ms: float | None = None,
+    slo_outcome: list[str] | None = None,
 ) -> list[str]:
-    """Return try-order for virtual-model candidates (#2052, #2086).
+    """Return try-order for virtual-model candidates (#2052, #2086, #2123).
 
     ``ordered`` (default): config order, minus breaker-open ids.
     ``performance``: lowest EWMA error_rate, then latency, then config index;
     breaker-open candidates are omitted (skipped). When ``latency_slo_ms`` is
     set, within-SLO candidates (EWMA latency ≤ SLO, or no samples) rank before
     over-SLO ones; within each bucket the error/latency/index sort is unchanged.
+
+    When ``slo_outcome`` is provided and an SLO is applied in performance mode,
+    appends ``\"demoted\"`` (over-SLO behind a within-SLO peer) or ``\"within\"``
+    (SLO configured, no demotion) for metrics (#2123).
     """
     cleaned = [str(c).strip() for c in candidates if str(c).strip()]
     if breaker_open is not None:
@@ -169,8 +174,12 @@ def order_virtual_candidates(
         # Only note demotion when a within-SLO peer actually took priority.
         if demoted and any(_within_slo(c) for c in ranked):
             tracker.note_slo_demotions(virtual_model, demoted)
+            if slo_outcome is not None:
+                slo_outcome.append("demoted")
         else:
             tracker.note_slo_demotions(virtual_model, [])
+            if slo_outcome is not None:
+                slo_outcome.append("within")
     return ranked
 
 
