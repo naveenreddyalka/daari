@@ -724,6 +724,16 @@ class FrontierSettings(RuntimeSettings):
     model: str = "gpt-6-luna"
     confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     base_url: str = "https://api.openai.com/v1"
+    # Host for Codex personal access tokens (`at-…`). Empty disables rewrite.
+    codex_base_url: str = Field(
+        default="https://chatgpt.com/backend-api/codex",
+        description=(
+            "L6 base URL used when the frontier API key starts with `at-` "
+            "(Codex PAT). Pins OpenAI Codex CHATGPT_CODEX_BASE_URL. Empty "
+            "string disables the rewrite so `at-` keys keep frontier.base_url. "
+            "Env: DAARI_FRONTIER__CODEX_BASE_URL (#2112)."
+        ),
+    )
     # Ordered failover list (issue #109). Empty → use the scalar
     # provider/base_url/model + resolve_frontier_api_key() shorthand.
     # Each entry may set timeout_s / retry_attempts / retry_backoff_s (#712).

@@ -31,6 +31,16 @@ Verify:
 curl -sS -H "Authorization: Bearer daari-local" http://127.0.0.1:11435/v1/models
 ```
 
+## Codex personal access tokens (`at-…`)
+
+When daari's frontier API key is a Codex PAT (prefix `at-`), L6 chat
+completions are sent to `frontier.codex_base_url` (default
+`https://chatgpt.com/backend-api/codex`, OpenAI Codex
+`CHATGPT_CODEX_BASE_URL`) instead of `frontier.base_url`
+(`api.openai.com`). Ordinary `sk-…` keys are unchanged. Set
+`frontier.codex_base_url: ""` to disable the rewrite. Local L0/L1/rules
+and budgets still run before any Codex egress.
+
 ## Limitations
 
 - Codex config files are not written. Preferences for the CLI are

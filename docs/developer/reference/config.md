@@ -157,6 +157,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `frontier.model` | str | `'gpt-6-luna'` |  |
 | `frontier.confidence_threshold` | float | `0.7` |  |
 | `frontier.base_url` | str | `'https://api.openai.com/v1'` |  |
+| `frontier.codex_base_url` | str | `'https://chatgpt.com/backend-api/codex'` | L6 base URL used when the frontier API key starts with `at-` (Codex PAT). Pins OpenAI Codex CHATGPT_CODEX_BASE_URL. Empty string disables the rewrite so `at-` keys keep frontier.base_url. Env: DAARI_FRONTIER__CODEX_BASE_URL (#2112). |
 | `frontier.providers` | list | `[]` | Ordered L6 failover chain. Optional per-entry `timeout_s`, `retry_attempts`, and `retry_backoff_s` fall back to `upstream.frontier_timeout_seconds` / `upstream.retry` when unset. |
 | `frontier.param_compat` | dict | `{}` | Per-model frontier parameter compatibility overrides. Merged over the builtin table (e.g. gpt-6-astra); empty keeps defaults. |
 | `frontier.daily_budget_usd` | float | `0.0` |  |
