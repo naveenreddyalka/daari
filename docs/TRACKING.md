@@ -8805,6 +8805,14 @@ Docs: config.md + Codex client guide. Covered by
 Grafana panel + metrics guide PromQL. Covered by
 `tests/unit/test_admission_priority_metrics.py`.
 
+### Docs: LiteLLM GA floor 1.108.0 LTS; note 1.109.0-rc.1 ([#2122](https://github.com/naveenreddyalka/daari/issues/2122))
+
+<!-- tracking:#2122 -->
+**Status:** Done (2026-11-07). `compare-litellm.md` promotes the stable floor to
+**1.108.0 GA / LTS pilot** (2026-11-04 tag), notes **1.106.7** as the final
+1.106.x patch, keeps the 1.107.0 compromise advisory, and watches
+**1.109.0-rc.1** (not GA). Covered by `tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
