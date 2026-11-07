@@ -5805,6 +5805,7 @@ class Router:
         slo_map = getattr(self, "virtual_model_latency_slo_ms", None) or {}
         slo_raw = slo_map.get(virtual_name)
         latency_slo_ms = float(slo_raw) if slo_raw is not None else None
+        slo_outcome: list[str] = []
         candidates = order_virtual_candidates(
             configured,
             mode=mode,
@@ -5812,9 +5813,12 @@ class Router:
             tracker=tracker,
             breaker_open=lambda c: candidate_breaker_open(self, c, settings),
             latency_slo_ms=latency_slo_ms,
+            slo_outcome=slo_outcome,
         )
         if hasattr(self.metrics, "record_virtual_model_selection"):
             self.metrics.record_virtual_model_selection(mode)
+        if slo_outcome and hasattr(self.metrics, "record_virtual_model_slo_demotion"):
+            self.metrics.record_virtual_model_slo_demotion(slo_outcome[0])
         log_gateway_event(
             "virtual_model_selection",
             {
@@ -5822,6 +5826,7 @@ class Router:
                 "mode": mode,
                 "configured": list(configured),
                 "ordered": list(candidates),
+                "slo_outcome": slo_outcome[0] if slo_outcome else None,
             },
         )
         if not candidates:

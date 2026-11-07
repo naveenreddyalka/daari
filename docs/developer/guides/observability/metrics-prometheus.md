@@ -43,14 +43,19 @@ panel on `daari_decision_classifier_latency_ms`, a **Virtual keys by status** pa
 `daari_rejects_total{kind="retired"}`, a **Schema ok** stat on `daari_schema_ok`, a
 **Systemone breaker events** panel on `daari_systemone_breaker_total`, a
 **Virtual-model selection by mode** panel on `daari_virtual_model_selection_total`
-(next to virtual-model failover pressure) for `ordered` vs `performance` picks, an
+(next to virtual-model failover pressure) for `ordered` vs `performance` picks,
+`daari_virtual_model_slo_demotion_total{outcome}` for performance-mode latency-SLO
+pressure (`demoted` when ≥1 over-SLO candidate ranks behind a within-SLO peer;
+`within` when an SLO is configured and no demotion occurred — ratio companion;
+no virtual-model name label because names are operator-defined and unbounded;
+per-candidate `slo_demoted` stays on the inventory snapshot), an
 **Admission priority by outcome** panel on `daari_admission_priority_total` for
 `X-Daari-Priority` raise / lower / ignored / baseline traffic next to the concurrency
 gate, and an
 **Escalations & errors** panel on `daari_escalations_total` / `daari_errors_total` so
 operators see flake / false-hit / budget / MCP deny / key-lifecycle / retired-model /
 routing-shadow / compact-to-fit / schema-lag / judge-breaker / selection-mode /
-admission-steer pressure without raw PromQL).
+SLO-demotion / admission-steer pressure without raw PromQL).
 
 Useful series: request latency histograms by tier (`daari_request_latency_ms`),
 stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path
