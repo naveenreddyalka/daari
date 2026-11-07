@@ -369,6 +369,86 @@ def test_metrics_record_virtual_model_selection_by_mode():
     assert "daari_virtual_model_failover_total 0" in text
 
 
+def test_metrics_record_virtual_model_slo_demotion_outcomes():
+    """SLO demotion / within counters for performance selection (#2123)."""
+    from daari.observability.prometheus import render_prometheus
+
+    metrics = Metrics()
+    metrics.record_virtual_model_slo_demotion("demoted")
+    metrics.record_virtual_model_slo_demotion("within")
+    metrics.record_virtual_model_slo_demotion("within")
+    snap = metrics.snapshot(include_histograms=True)
+    assert snap["virtual_model_slo_demotion"]["demoted"] == 1
+    assert snap["virtual_model_slo_demotion"]["within"] == 2
+    text = render_prometheus(metrics)
+    assert "# TYPE daari_virtual_model_slo_demotion_total counter" in text
+    assert 'daari_virtual_model_slo_demotion_total{outcome="demoted"} 1' in text
+    assert 'daari_virtual_model_slo_demotion_total{outcome="within"} 2' in text
+
+
+def test_slo_demotion_outcome_on_order_path():
+    """Demotion path reports demoted; ordered / no-SLO / all-within do not (#2123)."""
+    from daari.router.virtual_models import (
+        VirtualModelPerformanceTracker,
+        order_virtual_candidates,
+    )
+
+    tracker = VirtualModelPerformanceTracker(alpha=0.5)
+    for _ in range(3):
+        tracker.observe_success("chat", "fast", latency_ms=400.0)
+    tracker.observe_error("chat", "fast")
+    for _ in range(10):
+        tracker.observe_success("chat", "slow", latency_ms=9000.0)
+
+    demoted_out: list[str] = []
+    ranked = order_virtual_candidates(
+        ["slow", "fast"],
+        mode="performance",
+        virtual_model="chat",
+        tracker=tracker,
+        latency_slo_ms=1000.0,
+        slo_outcome=demoted_out,
+    )
+    assert ranked[0] == "fast"
+    assert demoted_out == ["demoted"]
+
+    no_slo: list[str] = []
+    order_virtual_candidates(
+        ["slow", "fast"],
+        mode="performance",
+        virtual_model="chat",
+        tracker=tracker,
+        slo_outcome=no_slo,
+    )
+    assert no_slo == []
+
+    ordered_out: list[str] = []
+    order_virtual_candidates(
+        ["slow", "fast"],
+        mode="ordered",
+        virtual_model="chat",
+        tracker=tracker,
+        latency_slo_ms=1000.0,
+        slo_outcome=ordered_out,
+    )
+    assert ordered_out == []
+
+    within_tracker = VirtualModelPerformanceTracker()
+    for _ in range(5):
+        within_tracker.observe_success("chat", "a", latency_ms=100.0)
+        within_tracker.observe_success("chat", "b", latency_ms=200.0)
+    within_out: list[str] = []
+    order_virtual_candidates(
+        ["a", "b"],
+        mode="performance",
+        virtual_model="chat",
+        tracker=within_tracker,
+        latency_slo_ms=1000.0,
+        slo_outcome=within_out,
+    )
+    assert within_out == ["within"]
+
+
 def test_performance_tracker_snapshot_shape():
     from daari.router.virtual_models import VirtualModelPerformanceTracker
 
