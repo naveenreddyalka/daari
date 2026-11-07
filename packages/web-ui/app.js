@@ -449,6 +449,17 @@ async function fetchJson(url, init = {}) {
   return response.json();
 }
 
+function formatServiceTiers(tiers) {
+  if (!Array.isArray(tiers) || tiers.length === 0) {
+    return "*";
+  }
+  return tiers.join(",");
+}
+
+function formatDegradeFlag(value) {
+  return value ? "yes" : "no";
+}
+
 function formatSpendSummary(spend) {
   if (!Array.isArray(spend) || spend.length === 0) {
     return "-";
@@ -519,7 +530,7 @@ function renderAdminKeys(keys) {
   }
   const list = Array.isArray(keys) ? keys : [];
   if (list.length === 0) {
-    setEmptyRow(adminKeysTableNode, 15, "No virtual keys.");
+    setEmptyRow(adminKeysTableNode, 17, "No virtual keys.");
     return;
   }
   clearNode(adminKeysTableNode);
@@ -539,6 +550,8 @@ function renderAdminKeys(keys) {
       formatNumber(key.tpd),
       formatNumber(key.user_tpd),
       formatNumber(key.user_daily_usd_cap),
+      formatServiceTiers(key.allowed_service_tiers),
+      formatDegradeFlag(key.degrade_disallowed_service_tier),
       key.status || "-",
       formatSpendSummary(key.spend),
     ]);
@@ -552,7 +565,7 @@ function renderAdminTeams(teams) {
   }
   const list = Array.isArray(teams) ? teams : [];
   if (list.length === 0) {
-    setEmptyRow(adminTeamsTableNode, 10, "No teams.");
+    setEmptyRow(adminTeamsTableNode, 12, "No teams.");
     return;
   }
   clearNode(adminTeamsTableNode);
@@ -568,6 +581,8 @@ function renderAdminTeams(teams) {
       team.priority || "normal",
       team.cache_scope || "global",
       formatNumber(team.max_in_flight),
+      formatServiceTiers(team.allowed_service_tiers),
+      formatDegradeFlag(team.degrade_disallowed_service_tier),
       formatSpendSummary(team.spend),
     ]);
     adminTeamsTableNode.appendChild(row);

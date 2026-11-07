@@ -8779,6 +8779,23 @@ multi-turn Responses replays keep the refusal wording across tier hops
 `/v1/daari/stats`). Metrics guide kind table updated. Covered by
 `tests/unit/test_service_tier_metrics.py`.
 
+### Admin + web-ui: surface allowed_service_tiers ([#2111](https://github.com/naveenreddyalka/daari/issues/2111))
+
+<!-- tracking:#2111 -->
+**Status:** Done (2026-11-07). `redact_key` / `redact_team` expose
+`allowed_service_tiers` and `degrade_disallowed_service_tier`; admin keys/teams
+tables render allowlist (`*` when unrestricted) and degrade flag. Covered by
+`tests/unit/test_admin_read_plane.py` and `packages/web-ui/test/dashboard.test.js`.
+
+### Frontier: route Codex PATs (`at-`) to Codex backend ([#2112](https://github.com/naveenreddyalka/daari/issues/2112))
+
+<!-- tracking:#2112 -->
+**Status:** Done (2026-11-07). L6 uses `frontier.codex_base_url` (default
+`https://chatgpt.com/backend-api/codex`) when the frontier API key starts with
+`at-`; `sk-` keys keep `frontier.base_url`. Empty `codex_base_url` opts out.
+Docs: config.md + Codex client guide. Covered by
+`tests/unit/test_codex_pat_routing.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
