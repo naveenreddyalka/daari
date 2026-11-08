@@ -11,29 +11,24 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-08)
+## Where daari stands (verified in-tree, 2026-11-08 pm)
 
-**Loop velocity.** The whole 11-05 filing wave shipped overnight: SLO PATCH
-ownership (#2175 / row 309), message-thread counters (#2176 / row 311),
-user_agent OTel spans (#2177 / row 312), SLO stats/web-ui surface (#2178 /
-row 313), audit client_ip omit (#2179 / row 314). The 11-06/11-07 filings
-(rows 316–329) and the 11-07 pm set (rows 330–334) remain open.
+**Loop velocity.** Morning PRD (#2185) filed rows 335–339 (MCP fidelity,
+Kong cost/forensics, overnight fence); those issues stay open. The 11-05
+wave remains Shipped (#2175–#2179). Rows 316–334 remain open.
 
-**Outward.** **Kong AI Gateway runtime 2.3.0** (11-04) is the mover: cost
-split into input/output components with multipliers (row 337), opt-in
-`log_blocked_content` on guardrails (row 338), Cedar `access-policy-engine`
-plugin + CEL `allow_when`/`deny_when` on MCP tool ACLs (Watch — dep-heavy).
-**LiteLLM 1.108.3 LTS** (11-07) fixed MCP tool results >1 MiB dying on SSE
-framing — converted inward as rows 335–336; the compare floor promote folds
-into open row 331 work. **1.110.0-dev.2** (11-08) is a fat dev dump
-(per-key/team prompt-storage off, prebuilt credential guardrail patterns,
-per-key/team deployment weights — hold for a stable cut). Portkey v2.33.1,
-Ollama **0.40.15**, vLLM 0.33.0, OpenRouter (10-29), MCP rev 2026-07-28,
-OpenAI (11-05) / Anthropic (11-05) — flat.
+**Outward.** Landscape flat since morning. LiteLLM **1.110.0-dev.2**
+(11-08) still prerelease — convert the agent-cheap local wins now
+(credential patterns, Claude `effort=none`) and hold the rest (prompt-
+storage off, deployment weights, Responses SSE framing) for a stable cut.
+Kong 2.3.0 / LiteLLM 1.108.3 LTS / Portkey v2.33.1 / Ollama 0.40.15 /
+vLLM 0.33.0 / OpenRouter Auto (11-06, already rows 326/328/332) / MCP
+2026-07-28 — no new GA movers.
 
-**Inward theme: result fidelity + guardrail forensics.** MCP egress hands
-models a `str(result)[:4000]` repr and can't parse SSE-framed replies;
-cost components computed then discarded; blocked payloads unloggable.
+**Inward theme: privacy dials + FinOps scrape.** Secret engine misses
+provider-shaped keys; Claude 5.5 adaptive thinking ignores `effort=none`;
+cost-split headers will land without Prom/stats; `log_blocked_content`
+needs config ownership once it ships.
 
 ---
 
@@ -41,6 +36,11 @@ cost components computed then discarded; blocked payloads unloggable.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 340 | Prebuilt OpenAI/Anthropic/Gemini credential guardrail patterns | 3 | 1 | LiteLLM 1.110.0-dev.2 credential patterns | On-box scrub of provider keys before any hop | Filed [#2186](https://github.com/naveenreddyalka/daari/issues/2186) |
+| 341 | Config ownership + PATCH for `guardrails.log_blocked_content` | 3 | 1 | Kong / LiteLLM control-plane toggles | Hot-edit forensics dial on the operator console | Filed [#2187](https://github.com/naveenreddyalka/daari/issues/2187) |
+| 342 | `reasoning_effort`/`output_config.effort` `none` disables Claude 5.5 adaptive thinking | 3 | 2 | LiteLLM 1.110.0-dev.2 Anthropic fix | Zero-thinking means zero thinking tokens on L6 | Filed [#2188](https://github.com/naveenreddyalka/daari/issues/2188) |
+| 343 | Prometheus + stats counters for input/output cost USD | 3 | 2 | Kong 2.3.0 analytics / LiteLLM Admin | Same-box scrape once the cost split lands | Filed [#2189](https://github.com/naveenreddyalka/daari/issues/2189) |
+| 344 | Integration fence for the 11-08 morning MCP/Kong wave | 2 | 2 | — (testability) | Hermetic proof: MCP fidelity, cost split, blocked content | Filed [#2190](https://github.com/naveenreddyalka/daari/issues/2190) |
 | 335 | Faithful MCP egress tool results (extract `content[]`, lift `str()[:4000]`) | 4 | 2 | LiteLLM 1.108.3 LTS >1 MiB fix | Byte-faithful local tool results are the product | Filed [#2180](https://github.com/naveenreddyalka/daari/issues/2180) |
 | 336 | MCP egress streamable-HTTP conformance (Accept + SSE-framed replies) | 3 | 2 | LiteLLM 1.108.3 SSE framing fix | Spec-default local MCP servers just work | Filed [#2181](https://github.com/naveenreddyalka/daari/issues/2181) |
 | 337 | Split request cost into input/output components everywhere cost shows | 3 | 2 | Kong AI Gateway 2.3.0 analytics | FinOps truth in headers + operator-owned OTel, no SaaS | Filed [#2182](https://github.com/naveenreddyalka/daari/issues/2182) |
@@ -97,12 +97,14 @@ Watch rows (do not file yet): coding-router recipe — an Auto Code twin
 combining virtual_models + `category=code` signal rules + SLO + the effort
 lever (file after rows 326/328 land); Kong 2.3.0 Cedar
 `access-policy-engine` + CEL `allow_when`/`deny_when` tool ACL conditions +
-Token Vault credential placement (expression engine = new dep, human
-sign-off); LiteLLM `1.110.0-dev` feature backlog beyond the compare watch
-(provider-reported `usage.cost` billing, tenant-scoped session affinity,
-Lens-split Helm, per-key/team prompt-storage off, prebuilt credential
-guardrail patterns, per-key/team deployment weights — hold for a stable
-cut);
+Token Vault credential placement + `http_5xx` failover_criteria expansion
+(expression engine / catalog pricing = new dep or heavy — human sign-off);
+Grafana panels for input/output cost USD (file after row 343 series land);
+LiteLLM `1.110.0-dev` remainder beyond rows 340/342 (provider-reported
+`usage.cost` billing, tenant-scoped session affinity, Lens-split Helm,
+per-key/team prompt-storage off, per-key/team deployment weights,
+Responses SSE framing preserve, empty-reply cache poison — daari already
+skips empty L0/L1 writes — hold for a stable cut);
 Portkey v2.33 Anthropic `auto_caching` (revisit only if top-level
 `cache_control` diverges); Portkey MCP access policies (Prisma AIRS-only);
 Portkey OTel workspace name; Bedrock metadata map; LiteLLM OpenAI Live
@@ -124,19 +126,14 @@ emSign; Ollama d1 Linux/Windows GA; local message-thread analogue (prefix
 store on L3–L5 — only after explicit agent-loop ask); OpenAI CA/SG/KR/UAE/UK
 residency labels beyond au/in/jp (expand only when operators ask).
 
-Verified fine this run — don't re-audit: no input/output cost split
-anywhere in-tree (grep clean) before row 337; guardrail hits log
-stage/rule/action/detail only — no payload capture — before row 338; MCP
-egress sends no `Accept` header and parses `response.json()` only
-(`_post_json` ~L241), result text is `str(result)[:4000]`
-(`_call_tool_under_span` ~L536) on both the `@mcp` tier and
-Responses/Messages `call_tool` paths; daari MCP **ingress** already emits
-SSE framing when accepted (`_rpc_response`); `check_tool_result` per-item
-guardrail helper exists but is unused by egress; LiteLLM 1.108.3 is
-fixes-only (Bedrock api_base, MCP >1 MiB, double post_call guardrails —
-daari applies output policy once); OpenRouter changelog latest 10-29;
-daari guardrails block path returns 200 + denial content (parity, never
-file).
+Verified fine this run — don't re-audit: `_SECRET_PATTERNS` still only
+`aws_key` / `private_key` / `generic_secret` (no `sk-` / `sk-ant-` /
+`AIza`); Claude 5.5 param_compat has no `none`→thinking-disabled map;
+exact/semantic L0/L1 already gate on `response.content.strip()` (empty
+cache poison not a gap); cost Prom/stats still single-total only; morning
+verified MCP/`Accept`/repr and cost-split discard still hold; OpenRouter
+API changelog flat since Auto/Auto Code (11-06); Portkey/Ollama/vLLM/Kong
+flat vs morning.
 
 ---
 
@@ -144,22 +141,31 @@ file).
 
 1. **Hand back what the tool said** — faithful MCP egress results (335);
    streamable-HTTP conformance (336); then the CEL tool-ACL watch.
-2. **Contain the leaked key** — per-key/team IP allowlist (316) + console
-   (323); revoke-subject offboarding (317); blocked-content forensics (338).
-3. **Route like the new Auto Router** — effort lever (326); cost-aware
-   selection (328); then the coding-router recipe (watch); Grafana for
-   SLO demotions (330).
+2. **Contain the leaked key** — provider credential patterns (340);
+   per-key/team IP allowlist (316) + console (323); revoke-subject
+   offboarding (317); blocked-content forensics (338) + ownership (341).
+3. **Route like the new Auto Router** — effort lever (326); Claude
+   `effort=none` honesty (342); cost-aware selection (328); then the
+   coding-router recipe (watch); Grafana for SLO demotions (330).
 4. **Survive the control-plane blip** — last-known-good auth grace (327);
    offline Prom (279) + doctor (285); hot-reload (6).
-5. **FinOps truth + honest compare** — cost input/output split (337);
-   service-tier Grafana (321); OTel tags PATCH (333); failover panels
-   (274); LiteLLM LTS + OpenRouter Auto compare (331–332); residency pins
-   (324); baggage→tags (322); AutoTrust (318); MiMo (319); fences (300,
-   305, 310, 315, 320, 325, 329, 334, 339); then rows 62–67.
+5. **FinOps truth + honest compare** — cost input/output split (337) +
+   Prom/stats (343); service-tier Grafana (321); OTel tags PATCH (333);
+   failover panels (274); LiteLLM LTS + OpenRouter Auto compare
+   (331–332); residency pins (324); baggage→tags (322); AutoTrust (318);
+   MiMo (319); fences (300, 305, 310, 315, 320, 325, 329, 334, 339, 344);
+   then rows 62–67.
 
 ---
 
 ## Changelog
+
+- **2026-11-08 pm (1.110-dev privacy/effort converts; FinOps scrape)** —
+  Outward flat vs morning; converted LiteLLM 1.110.0-dev.2 credential
+  patterns + Claude `effort=none` (rows 340, 342); filed ownership for
+  `log_blocked_content` (341), input/output cost Prom/stats (343), and
+  the morning-wave fence (344). Watch retains prompt-storage off,
+  deployment weights, Responses SSE framing, Kong Cedar/CEL/`http_5xx`.
 
 - **2026-11-08 (tool-result fidelity; Kong 2.3.0 parity)** — Marked rows
   309, 311–314 Shipped (#2175–#2179, the whole 11-05 wave overnight).
