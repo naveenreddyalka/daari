@@ -46,6 +46,7 @@ Each routed request becomes a root span named `chat {model}` carrying:
 | `daari.cost.usd` | `0.0042` when `daari_meta.cost_usd` is set (L6 / Ollama `:cloud`); omitted for unpriced local |
 | `daari.key_id` / `daari.team_id` | virtual-key / team ids when authenticated (ids only, never secrets) |
 | `daari.request.tags` | string array of `X-Daari-Tags` / `metadata.tags` when `observability.otel_include_request_tags` is true (default **false**; never invented; omitted when empty) |
+| `user_agent.original` | HTTP `User-Agent` from `req_meta.user_agent` when `observability.otel_include_user_agent` is true (default **false**; never invented; omitted when empty) |
 | `error.type` | `BackendUnavailable` (failures only) |
 
 When the client sends `X-Daari-Session`, daari stamps that stable id onto the
@@ -63,10 +64,13 @@ daari-specific facts stay under the `daari.*` namespace — `daari.tier`,
 `daari.key_id` / `daari.team_id` for authenticated chargeback, and
 (opt-in) `daari.request.tags` as a **string array** when
 `observability.otel_include_request_tags` is enabled — kept off by default
-so privacy-sensitive installs do not leak eval/canary labels. Plus one
-child span per routing step (`profile`, `tier_attempt`, `backend_pick`,
-`served`, …) with its detail fields. Absent facts are omitted (no empty
-strings).
+so privacy-sensitive installs do not leak eval/canary labels. Opt-in
+`user_agent.original` (Portkey / OTel parity) when
+`observability.otel_include_user_agent` is enabled — kept off by default
+so IDE/agent User-Agent strings stay out of operator backends unless
+requested. Plus one child span per routing step (`profile`,
+`tier_attempt`, `backend_pick`, `served`, …) with its detail fields.
+Absent facts are omitted (no empty strings).
 
 Metrics, per the conventions:
 

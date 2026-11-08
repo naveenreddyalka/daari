@@ -47,3 +47,11 @@ def test_otel_genai_documents_request_tags_opt_in() -> None:
     )
     assert "daari.request.tags" in text
     assert "otel_include_request_tags" in text
+
+
+def test_otel_genai_documents_user_agent_opt_in() -> None:
+    text = (ROOT / "docs/developer/guides/observability/otel-genai.md").read_text(
+        encoding="utf-8"
+    )
+    assert "user_agent.original" in text
+    assert "otel_include_user_agent" in text

@@ -470,6 +470,7 @@ def export_trace(
     time_to_first_chunk: float | None = None,
     time_per_output_chunk: float | None = None,
     include_request_tags: bool = False,
+    include_user_agent: bool = False,
 ) -> bool:
     """Best-effort export. Returns True if a span was exported.
 
@@ -511,6 +512,12 @@ def export_trace(
                 tags = [str(t).strip() for t in raw_tags if str(t).strip()]
                 if tags:
                     root_attrs["daari.request.tags"] = tags
+            # Opt-in User-Agent for IDE/agent attribution (#2134). Portkey/
+            # OTel parity attribute; empty / missing → omit (never invent).
+            if include_user_agent:
+                user_agent = str(getattr(req_meta, "user_agent", None) or "").strip()
+                if user_agent:
+                    root_attrs["user_agent.original"] = user_agent[:_MAX_ATTR_CHARS]
         if request_model:
             from daari.observability.metrics import genai_operation_name, infer_modality
 

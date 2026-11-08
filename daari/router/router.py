@@ -513,6 +513,7 @@ class Router:
         capability_catalog: Any | None = None,
         otel_enabled: bool = False,
         otel_include_request_tags: bool = False,
+        otel_include_user_agent: bool = False,
         org_pool: OllamaExecutor | MLXExecutor | None = None,
         local_pool: Any | None = None,
         local_pool_frontier_fallback: bool = False,
@@ -647,6 +648,7 @@ class Router:
         self.capability_catalog = capability_catalog
         self.otel_enabled = otel_enabled
         self.otel_include_request_tags = bool(otel_include_request_tags)
+        self.otel_include_user_agent = bool(otel_include_user_agent)
         self.org_pool = org_pool
         self.reasoning_effort_escalation = reasoning_effort_escalation
         self.stall_escalation = bool(stall_escalation)
@@ -1290,6 +1292,9 @@ class Router:
                     response=response,
                     include_request_tags=bool(
                         getattr(self, "otel_include_request_tags", False)
+                    ),
+                    include_user_agent=bool(
+                        getattr(self, "otel_include_user_agent", False)
                     ),
                 )
         end_trace()
@@ -3118,6 +3123,9 @@ class Router:
                                     include_request_tags=bool(
                                         getattr(self, "otel_include_request_tags", False)
                                     ),
+                                    include_user_agent=bool(
+                                        getattr(self, "otel_include_user_agent", False)
+                                    ),
                                 )
                             finish_trace(None)
                             return
@@ -3134,6 +3142,9 @@ class Router:
                                     error_type=type(exc).__name__,
                                     include_request_tags=bool(
                                         getattr(self, "otel_include_request_tags", False)
+                                    ),
+                                    include_user_agent=bool(
+                                        getattr(self, "otel_include_user_agent", False)
                                     ),
                                 )
                             finish_trace(None)
@@ -3647,6 +3658,9 @@ class Router:
                         time_per_output_chunk=per_chunk_s,
                         include_request_tags=bool(
                             getattr(self, "otel_include_request_tags", False)
+                        ),
+                        include_user_agent=bool(
+                            getattr(self, "otel_include_user_agent", False)
                         ),
                     )
                 stream_flight_result = served.model_copy(deep=True)
@@ -7176,6 +7190,9 @@ class AppContext:
             otel_enabled=bool(settings.observability.otel),
             otel_include_request_tags=bool(
                 getattr(settings.observability, "otel_include_request_tags", False)
+            ),
+            otel_include_user_agent=bool(
+                getattr(settings.observability, "otel_include_user_agent", False)
             ),
             org_pool=org_pool_executor,
             local_pool=local_pool,

@@ -8850,6 +8850,15 @@ without restart; ordered mode may still store the map. Covered by
 continue_soft_ignored / continue_rejected (fixed four-kind enum). Covered by
 `tests/unit/test_anthropic_message_threads.py`.
 
+### Observability: opt-in user_agent on OTel GenAI spans ([#2134](https://github.com/naveenreddyalka/daari/issues/2134))
+
+<!-- tracking:#2134 -->
+**Status:** Done (2026-11-08). `observability.otel_include_user_agent`
+(default false) copies a non-empty `req_meta.user_agent` onto the root GenAI
+span as `user_agent.original` (Portkey/OTel parity; never invented). Flag off
+keeps today's span shape. Docs: otel-genai + config. Covered by
+`tests/unit/test_otel_genai.py` and `test_otel_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
