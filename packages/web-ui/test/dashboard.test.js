@@ -880,6 +880,85 @@ test("config editor Load/Save include Authorization when API key set", async (t)
   assert.equal(saveCall?.init?.headers?.Authorization, "Bearer vk-token");
 });
 
+test("virtual model latency SLO table renders map from stats", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/stats": {
+        ...STATS,
+        virtual_model_latency_slo_ms: { "chat-default": 500, embed: 80.5 },
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const table = dom.window.document.getElementById("virtual-model-slo-table");
+  assert.ok(table);
+  const cells = [...table.querySelectorAll("td")].map((td) => td.textContent);
+  assert.ok(cells.includes("chat-default"), `expected chat-default in ${cells.join("|")}`);
+  assert.ok(cells.includes("500"), `expected 500 in ${cells.join("|")}`);
+  assert.ok(cells.includes("embed"), `expected embed in ${cells.join("|")}`);
+  assert.ok(cells.includes("80.5"), `expected 80.5 in ${cells.join("|")}`);
+});
+
+test("virtual model latency SLO table empty-state when map absent", async (t) => {
+  const fetch = fakeFetch(routes({ "/v1/daari/stats": { ...STATS } }));
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const table = dom.window.document.getElementById("virtual-model-slo-table");
+  assert.ok(table);
+  assert.match(table.textContent || "", /No latency SLO/i);
+});
+
+test("config editor Load renders latency SLO map and tolerates absent field", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/config": {
+        routing: {
+          confidence_threshold: 0.7,
+          prefer: "balanced",
+          virtual_model_latency_slo_ms: { chat: 250 },
+        },
+        frontier: { daily_budget_usd: 1.5 },
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  doc.getElementById("cfg-load").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await settle();
+
+  const cfgSlo = doc.getElementById("cfg-virtual-model-slo");
+  assert.ok(cfgSlo);
+  assert.match(cfgSlo.textContent || "", /chat/);
+  assert.match(cfgSlo.textContent || "", /250/);
+
+  const fetchAbsent = fakeFetch(
+    routes({
+      "/v1/daari/config": {
+        routing: { confidence_threshold: 0.7, prefer: "balanced" },
+        frontier: { daily_budget_usd: 1.5 },
+      },
+    })
+  );
+  const dom2 = loadDashboard({ fetch: fetchAbsent });
+  t.after(() => dom2.window.close());
+  await settle();
+  dom2.window.document
+    .getElementById("cfg-load")
+    .dispatchEvent(new dom2.window.MouseEvent("click", { bubbles: true }));
+  await settle();
+  const cfgSlo2 = dom2.window.document.getElementById("cfg-virtual-model-slo");
+  assert.ok(cfgSlo2);
+  assert.match(cfgSlo2.textContent || "", /No latency SLO|unset|empty/i);
+});
+
 test("401 on stats shows auth hint in status", async (t) => {
   const fetch = fakeFetch(routes({ "/v1/daari/stats": { status: 401 } }));
   const dom = loadDashboard({ fetch });

@@ -589,6 +589,36 @@ function renderAdminTeams(teams) {
   }
 }
 
+function renderVirtualModelLatencySlos(map) {
+  if (!virtualModelSloTableNode) {
+    return;
+  }
+  const entries =
+    map && typeof map === "object" && !Array.isArray(map)
+      ? Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
+      : [];
+  if (entries.length === 0) {
+    setEmptyRow(virtualModelSloTableNode, 2, "No latency SLO configured.");
+    return;
+  }
+  clearNode(virtualModelSloTableNode);
+  for (const [name, ms] of entries) {
+    const row = document.createElement("tr");
+    appendTextCells(row, [name || "-", typeof ms === "number" ? String(ms) : String(ms ?? "-")]);
+    virtualModelSloTableNode.appendChild(row);
+  }
+}
+
+function formatVirtualModelSloMap(map) {
+  if (!map || typeof map !== "object" || Array.isArray(map) || Object.keys(map).length === 0) {
+    return "No latency SLO configured (unset / empty).";
+  }
+  return Object.entries(map)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, ms]) => `${name}: ${ms} ms`)
+    .join("\n");
+}
+
 function renderReport(report) {
   const totals = report.totals || {};
   const requests = totals.requests || 0;
@@ -1117,6 +1147,7 @@ async function loadStats() {
     renderSystemoneBreaker(stats.systemone_breaker);
     renderFleetBreakers(stats.breakers);
     renderBackends(stats.backends);
+    renderVirtualModelLatencySlos(stats.virtual_model_latency_slo_ms);
 
     try {
       const profile = await fetchJson(`${apiBaseUrl}/v1/org-learning/profile`);
@@ -1162,6 +1193,7 @@ async function loadStats() {
     renderTeamRateLimits([]);
     renderKeyRateLimits([]);
     renderBackends([]);
+    renderVirtualModelLatencySlos(undefined);
     renderLockouts([]);
     if (lockoutsStatusNode) {
       lockoutsStatusNode.textContent = "";
@@ -1539,6 +1571,7 @@ autoRefreshNode.addEventListener("change", configureAutoRefresh);
 refreshIntervalNode.addEventListener("change", configureAutoRefresh);
 window.addEventListener("beforeunload", clearAutoRefresh);
 
+const virtualModelSloTableNode = document.getElementById("virtual-model-slo-table");
 const cfgConfidence = document.getElementById("cfg-confidence");
 const cfgPrefer = document.getElementById("cfg-prefer");
 const cfgDailyBudget = document.getElementById("cfg-daily-budget");
@@ -1546,6 +1579,7 @@ const cfgPersist = document.getElementById("cfg-persist");
 const cfgLoad = document.getElementById("cfg-load");
 const cfgSave = document.getElementById("cfg-save");
 const cfgStatus = document.getElementById("cfg-status");
+const cfgVirtualModelSloNode = document.getElementById("cfg-virtual-model-slo");
 
 async function loadConfigEditor() {
   if (!cfgStatus) return;
@@ -1570,6 +1604,11 @@ async function loadConfigEditor() {
     cfgConfidence.value = body.routing?.confidence_threshold ?? "";
     cfgPrefer.value = body.routing?.prefer || "balanced";
     cfgDailyBudget.value = body.frontier?.daily_budget_usd ?? "";
+    if (cfgVirtualModelSloNode) {
+      cfgVirtualModelSloNode.textContent = formatVirtualModelSloMap(
+        body.routing?.virtual_model_latency_slo_ms
+      );
+    }
     cfgStatus.textContent = "Loaded.";
   } catch (err) {
     cfgStatus.textContent = `Load error: ${err}`;

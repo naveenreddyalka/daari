@@ -8859,6 +8859,15 @@ span as `user_agent.original` (Portkey/OTel parity; never invented). Flag off
 keeps today's span shape. Docs: otel-genai + config. Covered by
 `tests/unit/test_otel_genai.py` and `test_otel_docs.py`.
 
+### Admin/web-ui: surface virtual_model_latency_slo_ms ([#2135](https://github.com/naveenreddyalka/daari/issues/2135))
+
+<!-- tracking:#2135 -->
+**Status:** Done (2026-11-08). `GET /v1/daari/stats` exposes
+`virtual_model_latency_slo_ms` (empty map when unset). Web-ui inventory table +
+config-editor read-only view render the map or empty-state copy. Covered by
+`tests/unit/test_stats_virtual_model_latency_slo.py` and
+`packages/web-ui/test/dashboard.test.js`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
