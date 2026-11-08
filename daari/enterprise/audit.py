@@ -21,6 +21,9 @@ from typing import Any, Iterator
 # Documented genesis for the first chained row (and after prune re-anchor).
 GENESIS_HASH = "0" * 64
 
+# Sentinel written when security.audit.omit_client_ip is true (#2136).
+OMITTED_CLIENT_IP = "[omitted]"
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS audit (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -509,14 +512,26 @@ def record_auth_throttled(
     client_ip: str,
     failures: int,
     retry_after: int,
+    omit_client_ip: bool = False,
 ) -> None:
-    """Record ``auth.throttled`` when invalid-key backoff trips (#935)."""
+    """Record ``auth.throttled`` when invalid-key backoff trips (#935).
+
+    When ``omit_client_ip`` is true (#2136), durable actor / detail.client_ip
+    store :data:`OMITTED_CLIENT_IP` instead of the requester address. Callers
+    still pass the real IP for in-memory throttle counters.
+    """
+    if omit_client_ip:
+        stored_ip = OMITTED_CLIENT_IP
+        actor = OMITTED_CLIENT_IP
+    else:
+        stored_ip = (client_ip or "")[:64]
+        actor = (client_ip or "unknown")[:64]
     audit.record(
-        actor=(client_ip or "unknown")[:64],
+        actor=actor,
         role="anonymous",
         action="auth.throttled",
         detail={
-            "client_ip": (client_ip or "")[:64],
+            "client_ip": stored_ip,
             "failures": int(failures),
             "retry_after": int(retry_after),
         },

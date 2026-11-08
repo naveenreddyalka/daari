@@ -2986,9 +2986,26 @@ class SecretsSettings(BaseModel):
     )
 
 
+class SecurityAuditSettings(BaseModel):
+    """Privacy dials for enterprise audit persistence (#2136)."""
+
+    omit_client_ip: bool = Field(
+        default=False,
+        description=(
+            "When true, new enterprise audit events that would store a "
+            "requester IP write the sentinel '[omitted]' for client_ip "
+            "(and actor when it would duplicate the IP). Throttle/lockout "
+            "in-memory counters still use the real IP. Default false "
+            "preserves today's capture (#2136). Env: "
+            "DAARI_SECURITY__AUDIT__OMIT_CLIENT_IP."
+        ),
+    )
+
+
 class SecuritySettings(BaseModel):
     """Optional at-rest encryption and air-gapped egress controls."""
 
+    audit: SecurityAuditSettings = Field(default_factory=SecurityAuditSettings)
     at_rest_key: str = Field(
         default="",
         description=(

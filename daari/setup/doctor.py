@@ -57,6 +57,9 @@ def run_doctor(
     results.append(_check_secret_refs(cfg))
     results.append(_check_at_rest_encryption(cfg))
     results.append(_check_offline_mode(cfg))
+    omit_ip_tip = _check_audit_omit_client_ip(cfg)
+    if omit_ip_tip is not None:
+        results.append(omit_ip_tip)
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
     results.append(_check_embedding_endpoint(cfg, httpx_client))
     results.append(_check_mlx(cfg, httpx_client))
@@ -372,6 +375,30 @@ def _check_offline_mode(settings: Settings) -> CheckResult:
         name="offline_mode",
         ok=True,
         detail=(f"on — refusing non-loopback/non-private egress{allow_detail}"),
+        optional=True,
+    )
+
+
+def _check_audit_omit_client_ip(settings: Settings) -> CheckResult | None:
+    """Informational tip when audit IP omit is enabled (#2136).
+
+    Absent when disabled (default) so doctor stays quiet. When enabled, remind
+    operators that durable audit rows store ``[omitted]`` while throttle /
+    lockout in-memory counters still key on the real client IP.
+    """
+    from daari.enterprise.audit import OMITTED_CLIENT_IP
+
+    audit = getattr(getattr(settings, "security", None), "audit", None)
+    if audit is None or not bool(getattr(audit, "omit_client_ip", False)):
+        return None
+    return CheckResult(
+        name="audit_omit_client_ip",
+        ok=True,
+        detail=(
+            "security.audit.omit_client_ip is on — new audit rows store "
+            f"{OMITTED_CLIENT_IP!r} instead of requester IPs; "
+            "throttle/lockout in-memory behavior is unchanged"
+        ),
         optional=True,
     )
 
