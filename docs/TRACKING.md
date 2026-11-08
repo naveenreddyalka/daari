@@ -8876,6 +8876,14 @@ writes sentinel `[omitted]` for durable `client_ip` / actor on
 `auth.throttled` audit rows; throttle/lockout in-memory counters unchanged.
 Doctor tip when enabled. Covered by `tests/unit/test_audit_omit_client_ip.py`.
 
+### Auth: per-key and per-team client IP allowlist ([#2144](https://github.com/naveenreddyalka/daari/issues/2144))
+
+<!-- tracking:#2144 -->
+**Status:** Done (2026-11-08). Optional `allowed_ips` (IP/CIDR) on virtual keys
+and teams; gateway denies with 403 `ip_not_allowed` + audit + reject counter.
+CLI `--allowed-ip` on keys/team create/update. Covered by
+`tests/unit/test_ip_allowlist.py` and `tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

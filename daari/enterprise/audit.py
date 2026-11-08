@@ -538,6 +538,33 @@ def record_auth_throttled(
     )
 
 
+def record_ip_not_allowed(
+    audit: AuditLog,
+    *,
+    key_id: str | None = None,
+    team_id: str | None = None,
+    client_ip: str = "",
+    omit_client_ip: bool = False,
+) -> None:
+    """Record ``auth.ip_not_allowed`` when a virtual-key IP allowlist denies (#2144)."""
+    if omit_client_ip:
+        stored_ip = OMITTED_CLIENT_IP
+    else:
+        stored_ip = (client_ip or "")[:64]
+    actor = (key_id or team_id or "unknown")[:64]
+    detail: dict[str, Any] = {"client_ip": stored_ip}
+    if key_id:
+        detail["key_id"] = str(key_id)[:64]
+    if team_id:
+        detail["team_id"] = str(team_id)[:64]
+    audit.record(
+        actor=actor,
+        role="key",
+        action="auth.ip_not_allowed",
+        detail=detail,
+    )
+
+
 def record_tenancy_denied(
     audit: AuditLog,
     *,

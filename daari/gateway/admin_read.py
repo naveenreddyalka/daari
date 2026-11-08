@@ -174,6 +174,9 @@ def redact_key(key: Any, *, spend: list[dict[str, Any]] | None = None) -> dict[s
         "degrade_disallowed_service_tier": bool(
             getattr(key, "degrade_disallowed_service_tier", False)
         ),
+        "allowed_ips": list(getattr(key, "allowed_ips", None) or ())
+        if getattr(key, "allowed_ips", None) is not None
+        else None,
         "signal_overrides": [
             rule.model_dump() if hasattr(rule, "model_dump") else dict(rule)
             for rule in (getattr(key, "signal_overrides", None) or ())
@@ -207,6 +210,9 @@ def redact_team(
         "degrade_disallowed_service_tier": bool(
             getattr(team, "degrade_disallowed_service_tier", False)
         ),
+        "allowed_ips": list(getattr(team, "allowed_ips", None) or ())
+        if getattr(team, "allowed_ips", None) is not None
+        else None,
         "signal_overrides": [
             rule.model_dump() if hasattr(rule, "model_dump") else dict(rule)
             for rule in (getattr(team, "signal_overrides", None) or ())

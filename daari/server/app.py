@@ -604,6 +604,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                 if selected:
                     apply_selected_team(claims, selected, store)
+                # Per-key / per-team client IP allowlist (#2144).
+                from daari.auth.invalid_key_throttle import client_ip_from_request
+                from daari.auth.ip_access import client_ip_allowed, denial_body as ip_denial_body
+                from daari.enterprise.audit import record_ip_not_allowed
+                from daari.enterprise.postgres_audit import audit_log_from_settings
+                from daari.gateway.request_log import log_gateway_event
+
+                key = claims.virtual_key
+                team_id = getattr(claims, "selected_team_id", None) or getattr(
+                    key, "team_id", None
+                )
+                team_row = store.get_team(team_id) if team_id else None
+                key_ips = getattr(key, "allowed_ips", None)
+                team_ips = (
+                    getattr(team_row, "allowed_ips", None) if team_row is not None else None
+                )
+                if key_ips is not None or team_ips is not None:
+                    client_ip = client_ip_from_request(request)
+                    if not client_ip_allowed(
+                        client_ip, key_ips=key_ips, team_ips=team_ips
+                    ):
+                        metrics = getattr(
+                            getattr(request.app.state, "ctx", None), "metrics", None
+                        )
+                        if metrics is not None and hasattr(metrics, "record_reject"):
+                            metrics.record_reject("ip_not_allowed")
+                        omit_ip = bool(
+                            getattr(
+                                getattr(resolved.security, "audit", None),
+                                "omit_client_ip",
+                                False,
+                            )
+                        )
+                        record_ip_not_allowed(
+                            audit_log_from_settings(resolved),
+                            key_id=claims.key_id,
+                            team_id=team_id,
+                            client_ip=client_ip,
+                            omit_client_ip=omit_ip,
+                        )
+                        log_gateway_event(
+                            "ip_not_allowed",
+                            {
+                                "key_id": claims.key_id,
+                                "team_id": team_id,
+                                "client_ip": None if omit_ip else client_ip,
+                                "path": request.url.path,
+                            },
+                        )
+                        return JSONResponse(
+                            status_code=403,
+                            content=ip_denial_body(client_ip="" if omit_ip else client_ip),
+                        )
             ledger = None
             statuses: list = []
             model_budget_before: list = []

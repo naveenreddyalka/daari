@@ -4712,3 +4712,70 @@ async def test_agent_access_default_deny_on_multi_agent(settings, tmp_path, monk
     ).lower()
     assert allowed.status_code != 403
     assert off.status_code != 403
+
+
+@pytest.mark.asyncio
+async def test_virtual_key_ip_allowlist_deny_and_allow(settings, tmp_path, monkeypatch):
+    """#2144: per-key CIDR allowlist accepts in-range client IP and 403s outside."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk-ip.sqlite3")
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    locked = store.create("locked", allowed_ips=["203.0.113.0/24"])
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = store
+    application.state.ctx.virtual_key_store = store
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model=request.model or "llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=1),
+        )
+
+    mock_all_ollama_executors(monkeypatch, application.state.ctx.router, fake_execute)
+
+    from daari.auth import invalid_key_throttle
+
+    monkeypatch.setattr(
+        invalid_key_throttle,
+        "client_ip_from_request",
+        lambda _req: "198.51.100.9",
+    )
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        denied = await client.post(
+            "/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {locked.plaintext}",
+                "X-Daari-No-Cache": "true",
+            },
+            json={
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
+        assert denied.status_code == 403
+        assert denied.json()["error"]["code"] == "ip_not_allowed"
+
+        monkeypatch.setattr(
+            invalid_key_throttle,
+            "client_ip_from_request",
+            lambda _req: "203.0.113.44",
+        )
+        allowed = await client.post(
+            "/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {locked.plaintext}",
+                "X-Daari-No-Cache": "true",
+            },
+            json={
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
+        assert allowed.status_code == 200
