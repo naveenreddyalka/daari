@@ -597,6 +597,23 @@
         <pre id="org-learning">Not available</pre>
       </section>
 
+      <section class="card" id="virtual-model-slo-card">
+        <h2>Virtual model latency SLOs</h2>
+        <p class="subtle">
+          Configured <code>routing.virtual_model_latency_slo_ms</code> from
+          <code>stats.virtual_model_latency_slo_ms</code> (read-only).
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Virtual model</th>
+              <th>SLO (ms)</th>
+            </tr>
+          </thead>
+          <tbody id="virtual-model-slo-table"></tbody>
+        </table>
+      </section>
+
       <section class="card" id="config-editor-card">
         <div class="card-heading">
           <h2>Config editor</h2>
@@ -623,6 +640,8 @@
           <button id="cfg-load" type="button">Load</button>
           <button id="cfg-save" type="button">Save</button>
         </div>
+        <p class="subtle">Latency SLO map (read-only from config Load)</p>
+        <pre id="cfg-virtual-model-slo" class="trace-detail">Not loaded</pre>
         <p id="cfg-status" class="subtle">Not loaded</p>
       </section>
 

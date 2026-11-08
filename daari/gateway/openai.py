@@ -2002,6 +2002,23 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "virtual_model_slo_demotion": dict(
                     full.get("virtual_model_slo_demotion") or {}
                 ),
+                # Configured latency SLO dial next to selection counters (#2135).
+                "virtual_model_latency_slo_ms": {
+                    str(name): float(ms)
+                    for name, ms in dict(
+                        getattr(
+                            getattr(ctx, "router", None),
+                            "virtual_model_latency_slo_ms",
+                            None,
+                        )
+                        or getattr(
+                            getattr(getattr(ctx, "settings", None), "routing", None),
+                            "virtual_model_latency_slo_ms",
+                            None,
+                        )
+                        or {}
+                    ).items()
+                },
                 "anthropic_message_thread": dict(
                     full.get("anthropic_message_thread") or {}
                 ),
