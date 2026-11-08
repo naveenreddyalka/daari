@@ -249,6 +249,7 @@ class PostgresVirtualKeyStore:
         signal_overrides: list[Any] | tuple[Any, ...] | None = None,
         allowed_service_tiers: list[str] | tuple[str, ...] | None = None,
         degrade_disallowed_service_tier: bool = False,
+        allowed_ips: list[str] | tuple[str, ...] | None = None,
     ) -> Team:
         if self._inner is not None:
             return self._inner.create_team(
@@ -272,6 +273,7 @@ class PostgresVirtualKeyStore:
                 signal_overrides=signal_overrides,
                 allowed_service_tiers=allowed_service_tiers,
                 degrade_disallowed_service_tier=degrade_disallowed_service_tier,
+                allowed_ips=allowed_ips,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -281,6 +283,7 @@ class PostgresVirtualKeyStore:
             encode_model_max_budget,
             windows_from_flat,
         )
+        from daari.auth.ip_access import coerce_ips, ips_from_meta, write_ips_to_meta
         from daari.auth.service_tier_access import (
             coerce_tiers,
             degrade_from_meta,
@@ -321,6 +324,8 @@ class PostgresVirtualKeyStore:
             allowed_service_tiers=tiers,
             degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
         )
+        ips = coerce_ips(allowed_ips)
+        meta = write_ips_to_meta(meta, allowed_ips=ips)
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
@@ -354,6 +359,7 @@ class PostgresVirtualKeyStore:
                         max_in_flight=_max_in_flight_from_meta(existing_meta),
                         allowed_service_tiers=tiers_from_meta(existing_meta),
                         degrade_disallowed_service_tier=degrade_from_meta(existing_meta),
+                        allowed_ips=ips_from_meta(existing_meta),
                         metadata=existing_meta,
                     )
                 cur.execute(
@@ -393,6 +399,7 @@ class PostgresVirtualKeyStore:
             max_in_flight=team_mif,
             allowed_service_tiers=tiers,
             degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
+            allowed_ips=ips,
             metadata=meta,
         )
 
@@ -525,6 +532,7 @@ class PostgresVirtualKeyStore:
                 row = cur.fetchone()
         if row is None:
             return None
+        from daari.auth.ip_access import ips_from_meta
         from daari.auth.service_tier_access import degrade_from_meta, tiers_from_meta
 
         team_meta = _parse_metadata(row[11]) if len(row) > 11 else {}
@@ -543,6 +551,7 @@ class PostgresVirtualKeyStore:
             max_in_flight=_max_in_flight_from_meta(team_meta),
             allowed_service_tiers=tiers_from_meta(team_meta),
             degrade_disallowed_service_tier=degrade_from_meta(team_meta),
+            allowed_ips=ips_from_meta(team_meta),
             metadata=team_meta,
         )
 
@@ -551,6 +560,7 @@ class PostgresVirtualKeyStore:
             return self._inner.list_teams()
         if not self.enabled:
             return []
+        from daari.auth.ip_access import ips_from_meta
         from daari.auth.service_tier_access import degrade_from_meta, tiers_from_meta
 
         with self._lock, self._connect() as conn:
@@ -580,6 +590,7 @@ class PostgresVirtualKeyStore:
                     max_in_flight=_max_in_flight_from_meta(team_meta),
                     allowed_service_tiers=tiers_from_meta(team_meta),
                     degrade_disallowed_service_tier=degrade_from_meta(team_meta),
+                    allowed_ips=ips_from_meta(team_meta),
                     metadata=team_meta,
                 )
             )
@@ -703,6 +714,7 @@ class PostgresVirtualKeyStore:
         max_in_flight: int = 0,
         allowed_service_tiers: list[str] | tuple[str, ...] | None = None,
         degrade_disallowed_service_tier: bool = False,
+        allowed_ips: list[str] | tuple[str, ...] | None = None,
     ) -> CreatedKey:
         if self._inner is not None:
             return self._inner.create(
@@ -733,6 +745,7 @@ class PostgresVirtualKeyStore:
                 max_in_flight=max_in_flight,
                 allowed_service_tiers=allowed_service_tiers,
                 degrade_disallowed_service_tier=degrade_disallowed_service_tier,
+                allowed_ips=allowed_ips,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -742,6 +755,7 @@ class PostgresVirtualKeyStore:
             encode_model_max_budget,
             windows_from_flat,
         )
+        from daari.auth.ip_access import coerce_ips, write_ips_to_meta
         from daari.auth.service_tier_access import coerce_tiers, write_tiers_to_meta
         from daari.router.signals import encode_signal_overrides
 
@@ -781,6 +795,8 @@ class PostgresVirtualKeyStore:
             allowed_service_tiers=tiers,
             degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
         )
+        ips = coerce_ips(allowed_ips)
+        meta = write_ips_to_meta(meta, allowed_ips=ips)
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
         scope = normalize_cache_scope(cache_scope)
@@ -847,6 +863,7 @@ class PostgresVirtualKeyStore:
                 max_in_flight=key_mif,
                 allowed_service_tiers=tiers,
                 degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
+                allowed_ips=ips,
             ),
             plaintext=plaintext,
         )
@@ -1250,6 +1267,76 @@ class PostgresVirtualKeyStore:
                     "UPDATE virtual_keys SET metadata_json = %s"
                     " WHERE key_id = %s AND revoked_at IS NULL",
                     (json.dumps(meta), key_id),
+                )
+                updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+
+    def update_ip_access(
+        self,
+        key_id: str,
+        *,
+        allowed_ips: list[str] | tuple[str, ...] | None | object = _UNSET,
+    ) -> bool:
+        if self._inner is not None:
+            return self._inner.update_ip_access(key_id, allowed_ips=allowed_ips)
+        if not self.enabled:
+            return False
+        from daari.auth.ip_access import write_ips_to_meta
+
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata_json FROM virtual_keys"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (key_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return False
+                meta = write_ips_to_meta(
+                    _parse_metadata(row[0]),
+                    allowed_ips=allowed_ips,
+                    unset_sentinel=_UNSET,
+                )
+                cur.execute(
+                    "UPDATE virtual_keys SET metadata_json = %s"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (json.dumps(meta), key_id),
+                )
+                updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+
+    def update_team_ip_access(
+        self,
+        team_id: str,
+        *,
+        allowed_ips: list[str] | tuple[str, ...] | None | object = _UNSET,
+    ) -> bool:
+        if self._inner is not None:
+            return self._inner.update_team_ip_access(team_id, allowed_ips=allowed_ips)
+        if not self.enabled:
+            return False
+        from daari.auth.ip_access import write_ips_to_meta
+
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata_json FROM teams WHERE team_id = %s",
+                    (team_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return False
+                meta = write_ips_to_meta(
+                    _parse_metadata(row[0] if len(row) else None),
+                    allowed_ips=allowed_ips,
+                    unset_sentinel=_UNSET,
+                )
+                cur.execute(
+                    "UPDATE teams SET metadata_json = %s WHERE team_id = %s",
+                    (json.dumps(meta), team_id),
                 )
                 updated = cur.rowcount > 0
             conn.commit()

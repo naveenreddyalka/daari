@@ -247,6 +247,11 @@ def keys_create(
         "--max-in-flight",
         help="Per-key in-flight concurrency cap (0=unlimited).",
     ),
+    allowed_ip: list[str] = typer.Option(
+        [],
+        "--allowed-ip",
+        help="Client IPv4/IPv6 address or CIDR this key may use. Repeatable (#2144).",
+    ),
     rate_family: list[str] = typer.Option(
         [],
         "--rate-family",
@@ -310,30 +315,35 @@ def keys_create(
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
-    created = store.create(
-        name,
-        daily_budget_usd=daily_budget,
-        monthly_budget_usd=monthly_budget,
-        rpm=rpm,
-        tpm=tpm,
-        rpd=rpd,
-        tpd=tpd,
-        tier_cap=tier_cap,
-        client_id=client_id,
-        team=team,
-        budget_windows=list(extra) or None,
-        metadata=metadata,
-        expires_at=expires_at,
-        user_daily_usd_cap=user_daily_cap,
-        user_rpd=user_rpd,
-        user_tpd=user_tpd,
-        region_pin=region_pin,
-        allowed_models=allowed_model or None,
-        model_groups=model_group or None,
-        cache_scope=scope,
-        priority=prio,
-        max_in_flight=max_in_flight,
-    )
+    try:
+        created = store.create(
+            name,
+            daily_budget_usd=daily_budget,
+            monthly_budget_usd=monthly_budget,
+            rpm=rpm,
+            tpm=tpm,
+            rpd=rpd,
+            tpd=tpd,
+            tier_cap=tier_cap,
+            client_id=client_id,
+            team=team,
+            budget_windows=list(extra) or None,
+            metadata=metadata,
+            expires_at=expires_at,
+            user_daily_usd_cap=user_daily_cap,
+            user_rpd=user_rpd,
+            user_tpd=user_tpd,
+            region_pin=region_pin,
+            allowed_models=allowed_model or None,
+            model_groups=model_group or None,
+            cache_scope=scope,
+            priority=prio,
+            max_in_flight=max_in_flight,
+            allowed_ips=allowed_ip or None,
+        )
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"key_id: {created.key.key_id}")
     typer.echo(f"name:   {created.key.name}")
     typer.echo(f"prefix: {created.key.prefix}…")
@@ -344,6 +354,8 @@ def keys_create(
         typer.echo(f"models:  {', '.join(created.key.allowed_models)}")
     if created.key.model_groups:
         typer.echo(f"groups:  {', '.join(created.key.model_groups)}")
+    if created.key.allowed_ips:
+        typer.echo(f"allowed_ips: {', '.join(created.key.allowed_ips)}")
     typer.echo(f"cache_scope: {created.key.cache_scope}")
     typer.echo(f"priority: {created.key.priority}")
     typer.echo(f"max_in_flight: {created.key.max_in_flight}")
@@ -408,6 +420,11 @@ def keys_update(
             "(same shape as routing.signal_overrides). Repeatable (#2050)."
         ),
     ),
+    allowed_ip: list[str] = typer.Option(
+        [],
+        "--allowed-ip",
+        help="Replace the key client IP/CIDR allowlist. Repeatable (#2144).",
+    ),
 ) -> None:
     """Update a virtual key's model allowlist (#708) or daily request/token caps."""
     import json
@@ -425,10 +442,11 @@ def keys_update(
         and not allowed_model
         and not model_group
         and not signal_override
+        and not allowed_ip
     ):
         typer.echo(
             "pass --rpd, --user-rpd, --tpd, --user-tpd, --allowed-model,"
-            " --model-group, and/or --signal-override",
+            " --model-group, --signal-override, and/or --allowed-ip",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -467,6 +485,15 @@ def keys_update(
         if not store.update_signal_overrides(key_id, rules):
             typer.echo(f"No active key {key_id}", err=True)
             raise typer.Exit(code=1)
+    if allowed_ip:
+        try:
+            updated_ips = store.update_ip_access(key_id, allowed_ips=allowed_ip)
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        if not updated_ips:
+            typer.echo(f"No active key {key_id}", err=True)
+            raise typer.Exit(code=1)
     key = next((item for item in store.list() if item.key_id == key_id), None)
     typer.echo(f"key_id: {key_id}")
     if key is not None and rpd is not None:
@@ -483,6 +510,8 @@ def keys_update(
         typer.echo(f"groups: {', '.join(key.model_groups)}")
     if key is not None and key.signal_overrides:
         typer.echo(f"signal_overrides: {len(key.signal_overrides)}")
+    if key is not None and key.allowed_ips is not None:
+        typer.echo(f"allowed_ips: {', '.join(key.allowed_ips)}")
     _audit_log_from_settings().record(
         actor=os.environ.get("USER") or "cli",
         role="admin",
@@ -494,6 +523,7 @@ def keys_update(
             "signal_overrides": encode_signal_overrides(key.signal_overrides)
             if key and key.signal_overrides
             else None,
+            "allowed_ips": list(key.allowed_ips) if key and key.allowed_ips else None,
         },
     )
 
@@ -970,6 +1000,11 @@ def keys_team_create(
             "Repeatable (#2050)."
         ),
     ),
+    allowed_ip: list[str] = typer.Option(
+        [],
+        "--allowed-ip",
+        help="Client IPv4/IPv6 address or CIDR every key on this team may use. Repeatable (#2144).",
+    ),
 ) -> None:
     """Create a team whose caps apply to every key that joins it."""
     import json
@@ -1005,23 +1040,28 @@ def keys_team_create(
             typer.echo(f"invalid --signal-override: {exc}", err=True)
             raise typer.Exit(code=1) from exc
     prior = store.get_team(name=name)
-    team = store.create_team(
-        name,
-        budget_windows=list(extra) or None,
-        daily_budget_usd=daily_budget,
-        monthly_budget_usd=monthly_budget,
-        region_pin=region_pin,
-        rpm=rpm,
-        tpm=tpm,
-        rpd=rpd,
-        tpd=tpd,
-        allowed_models=allowed_model or None,
-        model_groups=model_group or None,
-        cache_scope=scope,
-        priority=prio,
-        max_in_flight=max_in_flight,
-        signal_overrides=team_rules,
-    )
+    try:
+        team = store.create_team(
+            name,
+            budget_windows=list(extra) or None,
+            daily_budget_usd=daily_budget,
+            monthly_budget_usd=monthly_budget,
+            region_pin=region_pin,
+            rpm=rpm,
+            tpm=tpm,
+            rpd=rpd,
+            tpd=tpd,
+            allowed_models=allowed_model or None,
+            model_groups=model_group or None,
+            cache_scope=scope,
+            priority=prio,
+            max_in_flight=max_in_flight,
+            signal_overrides=team_rules,
+            allowed_ips=allowed_ip or None,
+        )
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
     if team.region_pin:
@@ -1030,6 +1070,8 @@ def keys_team_create(
         typer.echo(f"models:  {', '.join(team.allowed_models)}")
     if team.model_groups:
         typer.echo(f"groups:  {', '.join(team.model_groups)}")
+    if team.allowed_ips:
+        typer.echo(f"allowed_ips: {', '.join(team.allowed_ips)}")
     if team.rpm or team.tpm:
         typer.echo(f"rpm:     {team.rpm}")
         typer.echo(f"tpm:     {team.tpm}")
@@ -1111,6 +1153,11 @@ def keys_team_update(
             "Replace team signal_overrides with these JSON rules. Repeatable (#2050)."
         ),
     ),
+    allowed_ip: list[str] = typer.Option(
+        [],
+        "--allowed-ip",
+        help="Replace the team client IP/CIDR allowlist. Repeatable (#2144).",
+    ),
 ) -> None:
     """Update a team's budget windows (#464) and optional rpm/tpm/rpd/tpd."""
     import json
@@ -1160,6 +1207,15 @@ def keys_team_update(
     except (ValueError, TypeError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
+    if allowed_ip:
+        try:
+            if not store.update_team_ip_access(team_id, allowed_ips=allowed_ip):
+                typer.echo(f"No team {team_id}", err=True)
+                raise typer.Exit(code=1)
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        team = store.get_team(team_id) or team
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
     if team.rpm or team.tpm:
@@ -1169,6 +1225,8 @@ def keys_team_update(
         typer.echo(f"rpd:     {team.rpd}")
     if team.tpd:
         typer.echo(f"tpd:     {team.tpd}")
+    if team.allowed_ips:
+        typer.echo(f"allowed_ips: {', '.join(team.allowed_ips)}")
     if team.signal_overrides:
         typer.echo(f"signal_overrides: {len(team.signal_overrides)}")
     for item in team.budget_windows:
