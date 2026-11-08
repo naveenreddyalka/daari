@@ -67,6 +67,7 @@ def _request(
     key_id: str | None = None,
     team_id: str | None = None,
     tags: list[str] | None = None,
+    user_agent: str | None = None,
 ) -> InternalRequest:
     from daari.gateway.internal import RequestMeta
 
@@ -75,6 +76,7 @@ def _request(
         key_id=key_id,
         team_id=team_id,
         tags=list(tags or []),
+        user_agent=user_agent,
     )
     return InternalRequest(
         messages=[Message(role="user", content="hi")], model=model, meta=meta
@@ -341,6 +343,52 @@ def test_otel_include_request_tags_setting_default_false():
     from daari.config.settings import ObservabilitySettings
 
     assert ObservabilitySettings().otel_include_request_tags is False
+
+
+def test_user_agent_on_root_span_when_opt_in():
+    """Opt-in copies req_meta.user_agent as user_agent.original (#2134)."""
+    trace = RequestTrace()
+    export_trace(
+        trace,
+        request=_request(user_agent="Cursor/1.0"),
+        response=_response(),
+        include_user_agent=True,
+    )
+    attrs = dict(_root_span().attributes)
+    assert attrs["user_agent.original"] == "Cursor/1.0"
+
+    _EXPORTER.clear()
+    export_trace(
+        trace,
+        request=_request(user_agent="Cursor/1.0"),
+        response=_response(),
+        include_user_agent=False,
+    )
+    assert "user_agent.original" not in dict(_root_span().attributes)
+
+    _EXPORTER.clear()
+    export_trace(
+        trace,
+        request=_request(user_agent=""),
+        response=_response(),
+        include_user_agent=True,
+    )
+    assert "user_agent.original" not in dict(_root_span().attributes)
+
+    _EXPORTER.clear()
+    export_trace(
+        trace,
+        request=_request(user_agent=None),
+        response=_response(),
+        include_user_agent=True,
+    )
+    assert "user_agent.original" not in dict(_root_span().attributes)
+
+
+def test_otel_include_user_agent_setting_default_false():
+    from daari.config.settings import ObservabilitySettings
+
+    assert ObservabilitySettings().otel_include_user_agent is False
 
 
 def test_cache_read_and_creation_token_dims():

@@ -2059,6 +2059,19 @@ class ObservabilitySettings(RuntimeSettings):
             "(string array; never invent tags). Default false (#2124)."
         ),
     )
+    # Opt-in: copy req_meta.user_agent onto the root GenAI span (#2134). Off
+    # by default so privacy-sensitive installs do not leak IDE/agent UA.
+    # Sibling of ``otel`` (kept as bool) rather than nesting under
+    # ``observability.otel.*`` to avoid breaking ``otel: true`` YAML.
+    otel_include_user_agent: bool = Field(
+        default=False,
+        description=(
+            "When true (and observability.otel is on), copy a non-empty "
+            "req_meta.user_agent onto the root GenAI span as "
+            "user_agent.original (Portkey/OTel parity; never invent a value). "
+            "Default false (#2134)."
+        ),
+    )
     # Allow authenticated PATCH of a safe config subset via the web UI.
     config_editor: bool = False
     # sqlite (default) or postgres for ledger + traces (issue #116).
