@@ -485,11 +485,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
                         if metrics is not None and hasattr(metrics, "record_reject"):
                             metrics.record_reject("auth_throttled")
+                        omit_ip = bool(
+                            getattr(
+                                getattr(resolved.security, "audit", None),
+                                "omit_client_ip",
+                                False,
+                            )
+                        )
                         record_auth_throttled(
                             audit,
                             client_ip=client_ip,
                             failures=decision.failures,
                             retry_after=decision.retry_after,
+                            omit_client_ip=omit_ip,
                         )
                         return JSONResponse(
                             status_code=429,

@@ -8868,6 +8868,14 @@ config-editor read-only view render the map or empty-state copy. Covered by
 `tests/unit/test_stats_virtual_model_latency_slo.py` and
 `packages/web-ui/test/dashboard.test.js`.
 
+### Security: opt-in omit client_ip from enterprise audit ([#2136](https://github.com/naveenreddyalka/daari/issues/2136))
+
+<!-- tracking:#2136 -->
+**Status:** Done (2026-11-08). `security.audit.omit_client_ip` (default false)
+writes sentinel `[omitted]` for durable `client_ip` / actor on
+`auth.throttled` audit rows; throttle/lockout in-memory counters unchanged.
+Doctor tip when enabled. Covered by `tests/unit/test_audit_omit_client_ip.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

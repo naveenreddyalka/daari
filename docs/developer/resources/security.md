@@ -32,6 +32,14 @@ and RFC1918 hosts keep working; on-estate DNS names go in
 each configured off-box surface; `daari doctor` reports mode state; refused
 attempts emit `security.offline_egress_refused` via the request log (#2034).
 
+## Audit IP privacy
+
+Set `security.audit.omit_client_ip: true` so new enterprise audit rows that
+would persist a requester address store the sentinel `[omitted]` instead
+(LiteLLM-parity with `disable_requester_ip_address_logging`). Invalid-key
+throttle and lockout still key on the real IP in memory (#2136). Default
+`false` keeps today's capture. `daari doctor` tips when the dial is on.
+
 ## Report vulnerabilities
 
 Use [GitHub Security Advisories](https://github.com/naveenreddyalka/daari/security/advisories/new) — do not open public issues.
