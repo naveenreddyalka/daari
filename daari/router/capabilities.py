@@ -69,10 +69,12 @@ for _audio_model in (
         {"tools", "json", "vision", "audio", "long_context"}
     )
 
-# Local Ollama multimodal tags when config capabilities are empty (#2037).
+# Local Ollama multimodal / code-agent tags when config capabilities are empty
+# (#2037, #2147).
 _LOCAL_CAPABILITIES: dict[str, frozenset[str]] = {
     "lfm3-omni": frozenset({"tools", "json", "vision", "audio"}),
     "lfm3-vl": frozenset({"tools", "json", "vision"}),
+    "mimo-v2.6": frozenset({"tools", "json"}),
 }
 
 

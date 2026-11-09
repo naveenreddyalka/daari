@@ -80,6 +80,9 @@ def run_doctor(
     lfm3_vl_unused_tip = _check_lfm3_vl_unused(cfg, httpx_client)
     if lfm3_vl_unused_tip is not None:
         results.append(lfm3_vl_unused_tip)
+    mimo_unused_tip = _check_mimo_unused(cfg, httpx_client)
+    if mimo_unused_tip is not None:
+        results.append(mimo_unused_tip)
     lfm3_omni_unused_tip = _check_lfm3_omni_unused(cfg, httpx_client)
     if lfm3_omni_unused_tip is not None:
         results.append(lfm3_omni_unused_tip)
@@ -1389,6 +1392,52 @@ def _check_lfm3_vl_unused(
             detail=(
                 f"{LFM3_VL_MODEL} is present on Ollama at {base} but models.l4={l4!r} — "
                 f"run `daari setup models --lfm3-vl` for the multimodal L4 vision recipe"
+            ),
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+
+
+def _check_mimo_unused(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult | None:
+    """Tip when Ollama lists mimo-v2.6 but models.l4 is not wired to it (#2147)."""
+    from daari.setup.models import MIMO_MODEL
+
+    l4 = str(getattr(settings.models, "l4", None) or "").strip()
+    if l4 == MIMO_MODEL or l4.startswith(f"{MIMO_MODEL}:"):
+        return None
+    base = settings.ollama.base_url.rstrip("/")
+    own_client = client is None
+    http = client or httpx.Client(timeout=5.0)
+    try:
+        try:
+            response = http.get(f"{base}/api/tags")
+        except Exception:
+            return None
+        if response.status_code != 200:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        names = [
+            str(m.get("name") or "") for m in (data.get("models") or []) if isinstance(m, dict)
+        ]
+        if not _host_lists_model(names, MIMO_MODEL):
+            return None
+        return CheckResult(
+            name="ollama_mimo_unused",
+            ok=False,
+            detail=(
+                f"{MIMO_MODEL} is present on Ollama at {base} but models.l4={l4!r} — "
+                f"run `daari setup models --mimo` for the L4 code/agent recipe "
+                f"(Ollama ≥ 0.40.15)"
             ),
             optional=True,
         )

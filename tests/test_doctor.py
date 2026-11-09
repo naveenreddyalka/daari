@@ -65,6 +65,7 @@ class TestDoctor:
             tags_response,  # decisions_unused_host_models (#1985)
             tags_response,  # ollama_lfm3_unused (#1985)
             tags_response,  # ollama_lfm3_vl_unused (#2006)
+            tags_response,  # ollama_mimo_unused (#2147)
             tags_response,  # ollama_lfm3_omni_unused (#2037)
             tags_response,  # ollama_safeguard_unused (#2032)
             stats_response,
@@ -508,6 +509,7 @@ class TestDoctor:
             tags_response,  # tts lfm3-audio tip / Phonon tip tag probe (#1986)
             tags_response,  # ollama_lfm3_unused (#1985)
             tags_response,  # ollama_lfm3_vl_unused (#2006)
+            tags_response,  # ollama_mimo_unused (#2147)
             tags_response,  # ollama_lfm3_omni_unused (#2037)
             tags_response,  # ollama_safeguard_unused (#2032)
             stats_response,

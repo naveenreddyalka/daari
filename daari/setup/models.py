@@ -27,6 +27,15 @@ NEMOTRON_BOLT_RECIPE_NOTE = (
     f"Pull with: ollama pull {NEMOTRON_BOLT_MODEL}"
 )
 
+# Xiaomi MiMo V2.6 — optional L4 code/agent (Ollama ≥ 0.40.15) (#2147).
+MIMO_MODEL = "mimo-v2.6"
+MIMO_OLLAMA_FLOOR = (0, 40, 15)
+MIMO_RECIPE_NOTE = (
+    "Optional MiMo V2.6 L4 code/agent recipe "
+    f"(models.l4={MIMO_MODEL}). Requires Ollama ≥ 0.40.15. "
+    f"Pull with: ollama pull {MIMO_MODEL}"
+)
+
 # Liquid AI LFM3 — optional 256K local agent L3 (Ollama ≥ 0.40.12; GA on all OS in 0.40.13) (#1984, #2012).
 LFM3_MODEL = "lfm3"
 LFM3_OLLAMA_FLOOR = (0, 40, 12)
@@ -264,6 +273,33 @@ def apply_flint_l4_recipe(
             changed=changed,
         )
     return write_models_config(FLINT_MODEL, tier="l4", config_path=path)
+
+
+def apply_mimo_l4_recipe(
+    *,
+    config_path: Path | None = None,
+    dry_run: bool = False,
+) -> ModelSetupResult:
+    """Set ``models.l4`` to MiMo V2.6 without pulling weights (#2147)."""
+    path = config_path or Path.home() / ".daari" / "config.yaml"
+    if dry_run:
+        current_l4: str | None = None
+        if path.is_file():
+            with path.open(encoding="utf-8") as handle:
+                loaded = yaml.safe_load(handle) or {}
+            if isinstance(loaded, dict):
+                models = loaded.get("models") or {}
+                if isinstance(models, dict):
+                    raw = models.get("l4")
+                    current_l4 = str(raw) if raw is not None else None
+        changed = current_l4 != MIMO_MODEL
+        return ModelSetupResult(
+            tier="l4",
+            model=MIMO_MODEL,
+            config_path=path,
+            changed=changed,
+        )
+    return write_models_config(MIMO_MODEL, tier="l4", config_path=path)
 
 
 def apply_nemotron_bolt_l3_recipe(
@@ -627,6 +663,7 @@ def setup_models_interactive(
     model: str | None = None,
     list_only: bool = False,
     flint: bool = False,
+    mimo: bool = False,
     nemotron_bolt: bool = False,
     lfm3: bool = False,
     lfm3_vl: bool = False,
@@ -661,6 +698,15 @@ def setup_models_interactive(
             typer.echo(f"Dry-run: would set models.l4 = {FLINT_MODEL} in {path}")
         else:
             typer.echo(f"Set models.l4 = {FLINT_MODEL} in {path}")
+        return result
+
+    if mimo:
+        typer.echo(MIMO_RECIPE_NOTE)
+        result = apply_mimo_l4_recipe(config_path=path, dry_run=dry_run)
+        if dry_run:
+            typer.echo(f"Dry-run: would set models.l4 = {MIMO_MODEL} in {path}")
+        else:
+            typer.echo(f"Set models.l4 = {MIMO_MODEL} in {path}")
         return result
 
     if nemotron_bolt:
@@ -810,7 +856,7 @@ def setup_models_interactive(
             ):
                 result = apply_lfm3_l3_recipe(config_path=path, dry_run=False)
                 typer.echo(f"Set models.l3 = {LFM3_MODEL} in {path}")
-    if tier == "l4" and picked not in {FLINT_MODEL, LFM3_VL_MODEL}:
+    if tier == "l4" and picked not in {FLINT_MODEL, MIMO_MODEL, LFM3_VL_MODEL}:
         typer.echo(FLINT_RECIPE_NOTE)
         if typer.confirm(
             f"Apply optional Flint L4 coding recipe (set models.l4={FLINT_MODEL})?",
@@ -819,11 +865,21 @@ def setup_models_interactive(
             result = apply_flint_l4_recipe(config_path=path, dry_run=False)
             typer.echo(f"Set models.l4 = {FLINT_MODEL} in {path}")
         else:
-            typer.echo(LFM3_VL_RECIPE_NOTE)
+            typer.echo(MIMO_RECIPE_NOTE)
             if typer.confirm(
-                f"Apply optional LFM3-VL L4 vision recipe (set models.l4={LFM3_VL_MODEL})?",
+                f"Apply optional MiMo V2.6 L4 code/agent recipe "
+                f"(set models.l4={MIMO_MODEL})?",
                 default=False,
             ):
-                result = apply_lfm3_vl_l4_recipe(config_path=path, dry_run=False)
-                typer.echo(f"Set models.l4 = {LFM3_VL_MODEL} in {path}")
+                result = apply_mimo_l4_recipe(config_path=path, dry_run=False)
+                typer.echo(f"Set models.l4 = {MIMO_MODEL} in {path}")
+            else:
+                typer.echo(LFM3_VL_RECIPE_NOTE)
+                if typer.confirm(
+                    f"Apply optional LFM3-VL L4 vision recipe "
+                    f"(set models.l4={LFM3_VL_MODEL})?",
+                    default=False,
+                ):
+                    result = apply_lfm3_vl_l4_recipe(config_path=path, dry_run=False)
+                    typer.echo(f"Set models.l4 = {LFM3_VL_MODEL} in {path}")
     return result
