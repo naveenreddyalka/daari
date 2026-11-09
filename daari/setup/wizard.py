@@ -107,6 +107,8 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
             LFM3_RECIPE_NOTE,
             LFM3_VL_MODEL,
             LFM3_VL_RECIPE_NOTE,
+            MIMO_MODEL,
+            MIMO_RECIPE_NOTE,
             NEMOTRON_BOLT_MODEL,
             NEMOTRON_BOLT_RECIPE_NOTE,
             apply_flint_l4_recipe,
@@ -114,6 +116,7 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
             apply_lfm3_l3_recipe,
             apply_lfm3_omni_speech_recipe,
             apply_lfm3_vl_l4_recipe,
+            apply_mimo_l4_recipe,
             apply_nemotron_bolt_l3_recipe,
         )
 
@@ -148,14 +151,23 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
                 apply_flint_l4_recipe(dry_run=False)
                 typer.echo(f"Set models.l4 = {FLINT_MODEL}")
             else:
-                typer.echo(LFM3_VL_RECIPE_NOTE)
+                typer.echo(MIMO_RECIPE_NOTE)
                 if typer.confirm(
-                    f"Apply optional LFM3-VL L4 vision recipe "
-                    f"(set models.l4={LFM3_VL_MODEL})?",
+                    f"Apply optional MiMo V2.6 L4 code/agent recipe "
+                    f"(set models.l4={MIMO_MODEL})?",
                     default=False,
                 ):
-                    apply_lfm3_vl_l4_recipe(dry_run=False)
-                    typer.echo(f"Set models.l4 = {LFM3_VL_MODEL}")
+                    apply_mimo_l4_recipe(dry_run=False)
+                    typer.echo(f"Set models.l4 = {MIMO_MODEL}")
+                else:
+                    typer.echo(LFM3_VL_RECIPE_NOTE)
+                    if typer.confirm(
+                        f"Apply optional LFM3-VL L4 vision recipe "
+                        f"(set models.l4={LFM3_VL_MODEL})?",
+                        default=False,
+                    ):
+                        apply_lfm3_vl_l4_recipe(dry_run=False)
+                        typer.echo(f"Set models.l4 = {LFM3_VL_MODEL}")
         typer.echo(LFM3_AUDIO_RECIPE_NOTE)
         if typer.confirm(
             f"Apply optional LFM3-Audio speech-only recipe "

@@ -3666,6 +3666,14 @@ def setup_models(
         "--flint",
         help="Apply optional Flint L4 coding recipe (models.l4=flint; Ollama ≥ 0.40.9).",
     ),
+    mimo: bool = typer.Option(
+        False,
+        "--mimo",
+        help=(
+            "Apply optional MiMo V2.6 L4 code/agent recipe "
+            "(models.l4=mimo-v2.6; Ollama ≥ 0.40.15)."
+        ),
+    ),
     nemotron_bolt: bool = typer.Option(
         False,
         "--nemotron-bolt",
@@ -3732,6 +3740,7 @@ def setup_models(
         model=model,
         list_only=list_models,
         flint=flint,
+        mimo=mimo,
         nemotron_bolt=nemotron_bolt,
         lfm3=lfm3,
         lfm3_vl=lfm3_vl,

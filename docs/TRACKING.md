@@ -8902,6 +8902,15 @@ Apple-silicon-only this release). Recipe note + ollama.md + unused-host
 doctor hints. Covered by `tests/unit/test_decisions_local_catalog.py`,
 `tests/unit/test_decisions.py`, and `tests/integration/test_gateway_flow.py`.
 
+### Setup: MiMo V2.6 L4 code/agent recipe ([#2147](https://github.com/naveenreddyalka/daari/issues/2147))
+
+<!-- tracking:#2147 -->
+**Status:** Done (2026-11-09). `daari setup models --mimo` sets
+`models.l4=mimo-v2.6` (Ollama ≥ 0.40.15) with dry-run support, capability
+card (`tools`/`json`), doctor unused tip, wizard/CLI surfacing, and ollama.md
+note (incl. Qwen3/Qwen3.5 YaRN docs mention). Covered by
+`tests/unit/test_mimo_l4_recipe.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
