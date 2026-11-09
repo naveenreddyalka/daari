@@ -41,6 +41,12 @@ BUILTIN_LOCAL_MODELS = frozenset(
         "d1",
         "d1:2b",
         "d1-omni",
+        # Ollama 0.40.15 AutoTrust (autotrust-jev) decision-model family (#2146).
+        # Apple-silicon-only in this Ollama release; revisit on Linux/Windows GA.
+        "autotrust-jev",
+        "autotrust-jev:9b",
+        "autotrust-jev:35b",
+        "autotrust-jev:27b-vl",
     }
 )
 # Back-compat alias for importers/tests that still reference the old name.

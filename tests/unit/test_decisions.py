@@ -331,6 +331,72 @@ async def test_forwards_images_on_local_path(settings, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_autotrust_jev_9b_routes_local(settings, monkeypatch):
+    """Ollama 0.40.15 AutoTrust 9b hits the local systemone path (#2146)."""
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.read()))
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = _app(settings)
+    body = {**_BODY, "model": "autotrust-jev:9b"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json=body)
+
+    assert response.status_code == 200
+    assert response.json()["daari_meta"]["executor"] == "ollama"
+    assert seen[0]["model"] == "autotrust-jev:9b"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model_id", ["autotrust-jev:35b", "autotrust-jev:27b-vl"])
+async def test_autotrust_jev_vision_sizes_forward_images(settings, monkeypatch, model_id):
+    """AutoTrust 35b / 27b-vl accept input_image via existing flattening (#2146)."""
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.read()))
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = _app(settings)
+    body = {
+        "model": model_id,
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Rate this screenshot."},
+                    {
+                        "type": "input_image",
+                        "image_url": "data:image/png;base64,aGVsbG8=",
+                    },
+                ],
+            }
+        ],
+        "questions": [
+            {
+                "type": "predicate",
+                "name": "safe",
+                "instructions": "Is this safe?",
+            }
+        ],
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json=body)
+
+    assert response.status_code == 200
+    assert seen[0]["model"] == model_id
+    assert seen[0]["images"] == ["aGVsbG8="]
+
+
+@pytest.mark.asyncio
 async def test_gpt_6_luna_passthrough_to_frontier(settings, monkeypatch):
     seen: list[httpx.Request] = []
 

@@ -1204,9 +1204,9 @@ def _check_decisions_local_models(
         ]
         if present:
             return None
-        # Catalog grew with d3 + d1 families; keep enough ids that operators see
-        # both Liquid AI lines and older judges without opening ollama.md (#1983).
-        tip_n = 16
+        # Catalog grew with d3 + d1 + AutoTrust; keep enough ids that operators
+        # see each family and older judges without opening ollama.md (#1983/#2146).
+        tip_n = 20
         shown = ", ".join(local_ids[:tip_n])
         extra = f" (+{len(local_ids) - tip_n} more)" if len(local_ids) > tip_n else ""
         example = local_ids[0]
@@ -1236,6 +1236,14 @@ def _check_decisions_local_models(
 
 # Liquid AI d1 decision tags operators may pull after Ollama 0.40.12 (#1985).
 _D1_HOST_HINTS = ("d1", "d1:2b", "d1-omni")
+# AutoTrust family operators may pull after Ollama 0.40.15 (#2146).
+_AUTOTRUST_HOST_HINTS = (
+    "autotrust-jev",
+    "autotrust-jev:9b",
+    "autotrust-jev:35b",
+    "autotrust-jev:27b-vl",
+)
+_UNUSED_DECISIONS_HOST_HINTS = _D1_HOST_HINTS + _AUTOTRUST_HOST_HINTS
 
 
 def _host_lists_model(names: list[str], model: str) -> bool:
@@ -1246,7 +1254,7 @@ def _check_decisions_unused_host_models(
     settings: Settings,
     client: httpx.Client | None,
 ) -> CheckResult | None:
-    """Tip when Ollama serves d1* but the local decisions catalog omits them (#1985)."""
+    """Tip when Ollama serves d1*/autotrust* omitted from the local catalog (#1985/#2146)."""
     if not bool(getattr(getattr(settings, "systemone", None), "enabled", True)):
         return None
     from daari.gateway.decisions import local_decisions_models
@@ -1278,7 +1286,7 @@ def _check_decisions_unused_host_models(
         names = [str(m.get(id_key) or "") for m in (rows or []) if isinstance(m, dict)]
         unused = [
             hint
-            for hint in _D1_HOST_HINTS
+            for hint in _UNUSED_DECISIONS_HOST_HINTS
             if _host_lists_model(names, hint) and hint not in catalog
         ]
         if not unused:

@@ -92,6 +92,24 @@ SAFEGUARD_RECIPE_NOTE = (
     f"Pull with: ollama pull {SAFEGUARD_MODEL}"
 )
 
+# AutoTrust (autotrust-jev) — local decisions family (Ollama ≥ 0.40.15) (#2146).
+# Apple-silicon-only in the 0.40.15 release; revisit when Linux/Windows GA lands.
+AUTOTRUST_JEV_FAMILY = "autotrust-jev"
+AUTOTRUST_JEV_OLLAMA_FLOOR = (0, 40, 15)
+AUTOTRUST_JEV_SIZES = (
+    "autotrust-jev",
+    "autotrust-jev:9b",
+    "autotrust-jev:35b",
+    "autotrust-jev:27b-vl",
+)
+AUTOTRUST_JEV_RECIPE_NOTE = (
+    "Optional AutoTrust (autotrust-jev) local decisions family for "
+    "POST /v1/decisions (9b / 35b / 27b-vl; 35b and 27b-vl accept images). "
+    "Requires Ollama ≥ 0.40.15. Apple-silicon-only in this Ollama release "
+    "(revisit on Linux/Windows GA). "
+    "Pull with: ollama pull autotrust-jev:9b"
+)
+
 
 @dataclass
 class ModelSetupResult:

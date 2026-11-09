@@ -8893,6 +8893,15 @@ CLI `--allowed-ip` on keys/team create/update. Covered by
 emit a summary gateway event. Idempotent. Covered by
 `tests/unit/test_revoke_subject.py` and `tests/integration/test_gateway_flow.py`.
 
+### Decisions: AutoTrust (autotrust-jev) local catalog ([#2146](https://github.com/naveenreddyalka/daari/issues/2146))
+
+<!-- tracking:#2146 -->
+**Status:** Done (2026-11-09). Built-in local decisions catalog adds
+`autotrust-jev` / `:9b` / `:35b` / `:27b-vl` (Ollama ≥ 0.40.15,
+Apple-silicon-only this release). Recipe note + ollama.md + unused-host
+doctor hints. Covered by `tests/unit/test_decisions_local_catalog.py`,
+`tests/unit/test_decisions.py`, and `tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

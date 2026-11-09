@@ -124,8 +124,12 @@ local hops fold that evidence into systemone `state`/`images`.
 
 Built-in local catalog: `clef`, `clef-flash`, `nimble`, `tev1`, `drex-1.5`,
 `microsoft-decision-1`, the Ollama 0.40.9 **d3** family (`d3`, `d3:2b`,
-`d3:4b`, `d3:9b`, `d3:27b`), and the Ollama 0.40.12 Liquid AI **d1** family
-(`d1`, `d1:2b`, `d1-omni`) (vendor/`:tag` variants accepted). Extend via
+`d3:4b`, `d3:9b`, `d3:27b`), the Ollama 0.40.12 Liquid AI **d1** family
+(`d1`, `d1:2b`, `d1-omni`), and the Ollama 0.40.15 **AutoTrust** family
+(`autotrust-jev`, `autotrust-jev:9b`, `autotrust-jev:35b`,
+`autotrust-jev:27b-vl`; Apple-silicon-only in 0.40.15 — revisit on
+Linux/Windows GA; 35b and 27b-vl accept images) (vendor/`:tag` variants
+accepted). Extend via
 `decisions.local_models` without a daari release. When `systemone.enabled`
 (default true), those ids also appear on OpenAI `GET /v1/models`, Anthropic-shaped
 `GET /v1/models` (Accept / `anthropic-version` / `x-api-key` clients get
