@@ -11,28 +11,26 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-09)
+## Where daari stands (verified in-tree, 2026-11-09 pm)
 
-**Loop velocity.** The 11-06 wave shipped overnight: rows 316–319 landed
-as #2192–#2195 (IP allowlist CIDR, revoke-subject kill switch, AutoTrust
-family, MiMo recipe). Rows 320–344 remain open.
+**Loop velocity.** Afternoon merges: W3C baggage→request tags and
+Grafana panels for `service_tier_not_allowed` deny/degrade (rows 321–322
+shipped). Morning Kong deep-cut issues (345–349) remain open; overnight
+316–319 already shipped.
 
-**Outward.** Release trains flat vs 11-08: LiteLLM 1.108.3 LTS /
-1.110.0-dev.2, Portkey v2.33.1, Ollama 0.40.15, vLLM 0.33.0, OpenRouter
-(10-29 API), MCP 2026-07-28, OpenAI (11-05), Anthropic (11-05). The fresh
-material is deeper in **Kong AI Gateway 2.3.0** (11-04): the 11-08 runs
-mined cost split + `log_blocked_content`; still unconverted were the
-default `drop_block` thinking binding, per-call server-side tool billing
-(`usage.tool_cost`/`tool_usage`), rate-limit cost **pre-charge**, and the
-per-credential metric attribute with a cardinality cap.
+**Outward.** Fresh delta: **Anthropic 2026-11-09** launched Claude Fable
+5.2 / Mythos 5.2 ($8/$40; Fable fast $16/$80, no beta; always-on adaptive
+thinking; `computer_toolset_20260801` required; mid-conversation thinking
+drop when leaving 5.2). Other trains flat vs morning: LiteLLM 1.108.3 LTS
+/ 1.110.0-dev.2, Portkey v2.33.1, Kong AI Gateway 2.3.0, Ollama 0.40.15,
+vLLM 0.33.0, OpenRouter Auto/Auto Code, MCP 2026-07-28, OpenAI (11-05).
 
-**Inward theme: the 400 storm and the budget overshoot.** daari replays
-signed thinking blocks (`_thinking_prefix`) *and* mutates the prefix
-(compress/compact) with zero `drop_block` handling — agent loops on
-Claude ≥5.5 will 400 after compaction. Budgets settle after completion
-only, so a key at 99% of its window admits an unbounded parallel burst.
-Server-side tool billing is web-search-only at a flat $0.01; Prometheus
-has a team label but no per-key dimension.
+**Inward theme: the 5.2 agent-loop cliff.** Catalog still prices Fable at
+5.1 rates; zero `computer_toolset` handling; failover that leaves 5.2 can
+replay thinking onto Opus/Fable 5.1 and 400. Morning gaps still apply:
+`drop_block` unbound after compress/compact, budgets settle post-hoc,
+server-side tools = web-search-only, Prom has team but no per-key label.
+`baggage_to_tags` shipped without config ownership/PATCH.
 
 ---
 
@@ -40,6 +38,11 @@ has a team label but no per-key dimension.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 350 | Ship Claude Fable 5.2 / Mythos 5.2 catalog rates + caps + fast mode | 4 | 2 | Anthropic Platform 11-09 list prices | Honest on-box ledger vs invoice; local tiers stay $0 | Filed [#2204](https://github.com/naveenreddyalka/daari/issues/2204) |
+| 351 | Drop Fable/Mythos 5.2 thinking when failover switches to another model | 4 | 2 | Anthropic mid-conversation drop (11-09) | On-box switch owns the strip; agent loop survives without a cloud round-trip | Filed [#2205](https://github.com/naveenreddyalka/daari/issues/2205) |
+| 352 | Require `computer_toolset_20260801` on Fable/Mythos 5.2 (reject `computer_20251124`) | 3 | 2 | Anthropic 11-09 toolset gate | Gateway rewrite/fail-fast before the 400; Bedrock exception kept | Filed [#2206](https://github.com/naveenreddyalka/daari/issues/2206) |
+| 353 | Config ownership + PATCH for `routing.baggage_to_tags` | 3 | 1 | LiteLLM baggage→tags / Portkey Complete Logs | Hot-edit mesh-identity dial on the same-box console | Filed [#2207](https://github.com/naveenreddyalka/daari/issues/2207) |
+| 354 | Integration fence for the 11-09 afternoon wave | 2 | 2 | — (testability) | Hermetic proof: baggage tags, service-tier Grafana, 5.2 catalog smoke | Filed [#2208](https://github.com/naveenreddyalka/daari/issues/2208) |
 | 345 | Default `drop_block` thinking binding on preserved-thinking Claude (replay-after-prefix-change 400s) | 4 | 2 | Kong 2.3.0 default drop_block | daari mutates the prefix (compress/compact) so daari owns the binding fix | Filed [#2196](https://github.com/naveenreddyalka/daari/issues/2196) |
 | 346 | Bill server-side tools beyond web search + per-tool `tool_usage` breakdown | 4 | 2 | Kong 2.3.0 `usage.tool_cost`/`tool_usage` | On-box ledger reconciles with the provider invoice, no SaaS analytics | Filed [#2197](https://github.com/naveenreddyalka/daari/issues/2197) |
 | 347 | Opt-in in-flight budget reservation (pre-charge estimate, settle actual) | 4 | 3 | Kong 2.3.0 rate-limit cost pre-charge | Ledger + admission + pricing on one box; parallel bursts can't blow the window | Filed [#2198](https://github.com/naveenreddyalka/daari/issues/2198) |
@@ -64,8 +67,7 @@ has a team label but no per-key dimension.
 | 327 | Serve last-known-good virtual keys across Postgres blips | 4 | 2 | LiteLLM 1.108.2 LTS auth fix | Local tiers keep serving through a control-plane restart | Filed [#2163](https://github.com/naveenreddyalka/daari/issues/2163) |
 | 328 | Cost-aware virtual-model selection mode | 3 | 2 | OpenRouter Auto Router live-pricing factor | Zero-cost local tiers sort first from the arithmetic | Filed [#2164](https://github.com/naveenreddyalka/daari/issues/2164) |
 | 329 | Integration fence for the 11-06/11-07 overnight wave | 2 | 2 | — (testability) | Hermetic proof: Codex PAT, priority Prom, tier inventory | Filed [#2165](https://github.com/naveenreddyalka/daari/issues/2165) |
-| 321 | Grafana panels for `service_tier_not_allowed` deny + degrade | 2 | 1 | OpenAI Platform / LiteLLM Admin spend | Same-box scrape for the dial counters just shipped | Filed [#2152](https://github.com/naveenreddyalka/daari/issues/2152) |
-| 322 | Map W3C `baggage` into request tags (opt-in) | 3 | 2 | LiteLLM 1.109.0-rc.1 baggage→spend tags | Mesh identity steers local signal_overrides on-box | Filed [#2153](https://github.com/naveenreddyalka/daari/issues/2153) |
+| 321–322 | Grafana `service_tier_not_allowed`; W3C baggage→request tags | 2–3 | 1–2 | OpenAI Platform / LiteLLM baggage→tags | Same-box scrape + mesh identity on local signals | Shipped (#2202, #2203) |
 | 323 | Admin + web-ui surface for `allowed_ips` | 3 | 1 | Anthropic Console org IP allowlist | Per-key/team lists editable next to other dials | Filed [#2154](https://github.com/naveenreddyalka/daari/issues/2154) |
 | 324 | OpenAI AU/IN/JP residency pins + 1.10× billing | 3 | 2 | OpenAI data-residency endpoints (11-05) | Honest on-box pin + cost_usd; local tiers unaffected | Filed [#2155](https://github.com/naveenreddyalka/daari/issues/2155) |
 | 325 | Integration fence for the 11-06 afternoon wave | 2 | 2 | — (testability) | Hermetic proof: refusals + service-tier metrics | Filed [#2156](https://github.com/naveenreddyalka/daari/issues/2156) |
@@ -101,55 +103,58 @@ has a team label but no per-key dimension.
 
 Watch rows (do not file yet): coding-router recipe — an Auto Code twin
 combining virtual_models + `category=code` signal rules + SLO + the effort
-lever (file after rows 326/328 land); Kong 2.3.0 Cedar
-`access-policy-engine` + CEL `allow_when`/`deny_when` tool ACL conditions +
-Token Vault credential placement + `http_5xx` failover_criteria expansion
-(expression engine / catalog pricing = new dep or heavy — human sign-off);
-Grafana panels for input/output cost USD (file after row 343 series land);
-LiteLLM `1.110.0-dev` remainder beyond rows 340/342 (provider-reported
-`usage.cost` billing, tenant-scoped session affinity, Lens-split Helm,
-per-key/team prompt-storage off, per-key/team deployment weights,
-Responses SSE framing preserve, empty-reply cache poison — daari already
-skips empty L0/L1 writes — hold for a stable cut);
-Portkey v2.33 Anthropic `auto_caching` (revisit only if top-level
-`cache_control` diverges); Portkey MCP access policies (Prisma AIRS-only);
-Portkey OTel workspace name; Bedrock metadata map; LiteLLM OpenAI Live
-`/v1/live/sessions` + Azure PTU split + M365 Copilot + `gpt-live-1`
-outbound SIP (Realtime/WS family); AutoTrust beyond Apple silicon;
-`gpt-6-cyber` (Daybreak restricted); gpt-image-2.6 sunburst/flare catalog;
-Agents API `auto_review`; Anthropic text watermark (metric-only);
-minute-grain spend buckets; fleet Redis EWMA; MCP SEP-3398 (~March 2027);
-OpenAI org external key management; Anthropic Compliance API; Models API
-`between_tools` Sonnet-5.5-only; `gpt-6-rosalind`; Claude Code `groups` /
-`guardrail_trace`; OpenRouter private-provider CRUD + S3/IAM; LiteLLM
-Admin Chat UI / Lens; llama.cpp `/v1/realtime` + `POST /tts` + deferred
-tools; Portkey claim-based JWT / WIF; OpenAI `/agents/automations`; Prisma
-AIRS Agent Identity; Claude-on-GCP IAM (new dep — human); Anthropic hosted
-skills; Claude Tag beta; Open Responses WS; Anthropic OTel export beta;
-Prom exemplars + `gen_ai.agent.*`; LiteLLM ID-JAG; SCIM + multi-issuer
-SSO; Kong Skills/A2A; OpenRouter Private Endpoints L6 recipe; certifi
-emSign; Ollama d1 Linux/Windows GA; local message-thread analogue (prefix
-store on L3–L5 — only after explicit agent-loop ask); OpenAI CA/SG/KR/UAE/UK
-residency labels beyond au/in/jp (expand only when operators ask).
+lever (file after rows 326/328 land); Fable/Mythos 5.2 advisor-tool
+same-model pairing + 30-day retention / ZDR carve-out honesty (file after
+350 lands); Kong 2.3.0 Cedar `access-policy-engine` + CEL
+`allow_when`/`deny_when` tool ACL + Token Vault credential placement +
+`http_5xx` failover_criteria (expression engine = new dep or heavy —
+human sign-off); Grafana panels for input/output cost USD (after 343);
+LiteLLM `1.110.0-dev` remainder beyond 340/342 (provider-reported
+`usage.cost`, tenant session affinity, Lens-split Helm, per-key/team
+prompt-storage off, deployment weights, Responses SSE framing preserve;
+empty-reply cache poison already covered — hold for a stable cut);
+compare-litellm floor bump to 1.108.3 while 331 still targets 1.108.2;
+Portkey v2.33 Anthropic `auto_caching` (only if top-level `cache_control`
+diverges); Portkey MCP access policies (Prisma AIRS-only); Portkey OTel
+workspace name; Bedrock metadata map; LiteLLM OpenAI Live
+`/v1/live/sessions` + Azure PTU + M365 Copilot + `gpt-live-1` SIP
+(Realtime/WS); AutoTrust beyond Apple silicon; `gpt-6-cyber` (Daybreak);
+gpt-image-2.6 sunburst/flare; Agents API `auto_review`; Anthropic text
+watermark (metric-only); minute-grain spend; fleet Redis EWMA; MCP
+SEP-3398 (~March 2027); OpenAI org external key management; Anthropic
+Compliance API; `between_tools` Sonnet-5.5-only; `gpt-6-rosalind`; Claude
+Code `groups` / `guardrail_trace`; OpenRouter private-provider CRUD;
+LiteLLM Admin Chat UI / Lens; llama.cpp `/v1/realtime` + `POST /tts`;
+Portkey claim JWT / WIF; OpenAI `/agents/automations`; Prisma AIRS Agent
+Identity; Claude-on-GCP IAM (new dep — human); Anthropic hosted skills;
+Claude Tag beta; Open Responses WS; Anthropic OTel export beta; Prom
+exemplars + `gen_ai.agent.*`; LiteLLM ID-JAG; SCIM + multi-issuer SSO;
+Kong Skills/A2A; OpenRouter Private Endpoints L6 recipe; certifi emSign;
+Ollama d1 Linux/Windows GA; local message-thread analogue (only after
+explicit agent-loop ask); OpenAI CA/SG/KR/UAE/UK residency beyond
+au/in/jp (expand on operator ask); A2A 1.1 RC (wait for two-SDK gate).
 
 Verified fine this run — don't re-audit: cache-write pricing already
-TTL-keyed (`_cache_write_rate`, 30m/12h/1h rates, #1843) — Kong's
+TTL-keyed (`_cache_write_rate`, 30m/12h/1h rates) — Kong's
 `cache_write_tokens_by_ttl` is covered; request_log already runs
 `redact_secrets` on every sink (Kong `log_sanitization` parity holds);
 `pricing.models` in config.yaml already overrides the shipped price table
-(a polled catalog would mostly duplicate open hot-reload work, issue
-#1234); Kong's `x-opencode-session-id` default is compressor-specific,
-not a daari surface; beta-merge plumbing for row 345 already exists
-(`_merge_anthropic_beta`); OpenAI/Anthropic/MCP/OpenRouter/Portkey/
-Ollama/vLLM flat vs 11-08.
+(a polled catalog would mostly duplicate open hot-reload work); Kong's
+`x-opencode-session-id` default is compressor-specific, not a daari
+surface; beta-merge plumbing for row 345 already exists
+(`_merge_anthropic_beta`); circuit breaker already treats non-429/529
+(incl. 5xx) as hard failures — Kong `http_5xx` criteria stays Watch;
+LiteLLM/Portkey/Kong/Ollama/vLLM/OpenRouter/MCP/OpenAI flat vs morning
+aside from Anthropic 5.2.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Survive the agent loop** — drop_block thinking binding (345, else
-   Claude ≥5.5 400s after compaction); faithful MCP egress results (335);
-   streamable-HTTP conformance (336); then the CEL tool-ACL watch.
+1. **Survive the Fable 5.2 agent loop** — catalog rates + fast mode
+   (350); thinking strip on model switch away from 5.2 (351);
+   `computer_toolset_20260801` gate (352); then drop_block binding (345)
+   for compress/compact 400s; MCP egress fidelity (335–336); CEL watch.
 2. **FinOps that reconciles** — server-side tool billing + per-tool
    breakdown (346); in-flight budget reservation (347); cost input/output
    split (337) + Prom/stats (343); per-key metric label (348).
@@ -157,18 +162,29 @@ Ollama/vLLM flat vs 11-08.
    allowed_ips console (323); blocked-content forensics (338) +
    ownership (341).
 4. **Route like the new Auto Router** — effort lever (326); Claude
-   `effort=none` honesty (342); cost-aware selection (328); then the
-   coding-router recipe (watch); Grafana for SLO demotions (330).
+   `effort=none` honesty (342); cost-aware selection (328); baggage
+   ownership PATCH (353); then the coding-router recipe (watch); Grafana
+   for SLO demotions (330).
 5. **Survive the control-plane blip + honest compare** — last-known-good
    auth grace (327); offline Prom (279) + doctor (285); hot-reload (6);
-   service-tier Grafana (321); OTel tags PATCH (333); failover panels
-   (274); LiteLLM LTS + OpenRouter Auto compare (331–332); residency
-   pins (324); baggage→tags (322); fences (300, 305, 310, 315, 320, 325,
-   329, 334, 339, 344, 349); then rows 62–67.
+   OTel tags PATCH (333); failover panels (274); LiteLLM LTS +
+   OpenRouter Auto compare (331–332); residency pins (324); fences
+   (300, 305, 310, 315, 320, 325, 329, 334, 339, 344, 349, 354); then
+   rows 62–67.
 
 ---
 
 ## Changelog
+
+- **2026-11-09 pm (Claude Fable/Mythos 5.2 cliff)** — Marked rows
+  321–322 Shipped (service-tier Grafana; baggage→tags). Outward: Anthropic
+  launched Fable 5.2 / Mythos 5.2; other trains flat vs morning. Filed
+  catalog rates + fast mode (350), thinking strip on model switch (351),
+  `computer_toolset_20260801` gate (352), baggage_to_tags ownership
+  PATCH (353), afternoon fence (354). Watch gains advisor pairing /
+  ZDR honesty (after 350), 1.108.3 compare bump, A2A 1.1 RC. Verified:
+  5xx already hard-fails the circuit breaker; TTL cache-write + request
+  redaction still covered.
 
 - **2026-11-09 (Kong 2.3.0 deep cut: thinking binding, tool billing,
   pre-charge)** — Marked rows 316–319 Shipped (#2192–#2195 overnight).
