@@ -8911,6 +8911,14 @@ card (`tools`/`json`), doctor unused tip, wizard/CLI surfacing, and ollama.md
 note (incl. Qwen3/Qwen3.5 YaRN docs mention). Covered by
 `tests/unit/test_mimo_l4_recipe.py`.
 
+### Observability: Grafana service_tier_not_allowed panels ([#2152](https://github.com/naveenreddyalka/daari/issues/2152))
+
+<!-- tracking:#2152 -->
+**Status:** Done (2026-11-09). Overview Grafana adds dedicated panels for
+`daari_rejects_total{kind="service_tier_not_allowed"}` and
+`daari_soft_warnings_total{kind="service_tier_not_allowed_degraded"}` (Helm
+copy kept in sync). Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

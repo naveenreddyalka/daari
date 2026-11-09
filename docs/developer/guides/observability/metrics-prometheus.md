@@ -56,11 +56,14 @@ drops a continue on local/non-Anthropic; `continue_rejected` for fail-closed
 400 — fixed four-kind enum, no message-id labels), an
 **Admission priority by outcome** panel on `daari_admission_priority_total` for
 `X-Daari-Priority` raise / lower / ignored / baseline traffic next to the concurrency
-gate, and an
+gate, **Service-tier not allowed rejects** / **Service-tier not allowed degraded**
+panels on `daari_rejects_total{kind="service_tier_not_allowed"}` and
+`daari_soft_warnings_total{kind="service_tier_not_allowed_degraded"}` for per-key/team
+`allowed_service_tiers` allowlist pressure, and an
 **Escalations & errors** panel on `daari_escalations_total` / `daari_errors_total` so
 operators see flake / false-hit / budget / MCP deny / key-lifecycle / retired-model /
 routing-shadow / compact-to-fit / schema-lag / judge-breaker / selection-mode /
-SLO-demotion / admission-steer pressure without raw PromQL).
+SLO-demotion / admission-steer / service-tier-allowlist pressure without raw PromQL).
 
 Useful series: request latency histograms by tier (`daari_request_latency_ms`),
 stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path

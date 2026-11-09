@@ -1177,6 +1177,44 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 58,
+      "title": "Service-tier not allowed rejects",
+      "description": "Hard 403 when a key/team `allowed_service_tiers` allowlist blocks `service_tier`/`speed` (`daari_rejects_total{kind=\"service_tier_not_allowed\"}`) (#2152).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 232
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_rejects_total{kind=\"service_tier_not_allowed\"}[5m]))",
+          "legendFormat": "service_tier_not_allowed rejects/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 59,
+      "title": "Service-tier not allowed degraded",
+      "description": "Soft degrade when `degrade_disallowed_service_tier` clears a blocked tier (`daari_soft_warnings_total{kind=\"service_tier_not_allowed_degraded\"}`) (#2152).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 232
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_soft_warnings_total{kind=\"service_tier_not_allowed_degraded\"}[5m]))",
+          "legendFormat": "service_tier_not_allowed_degraded/s",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",
