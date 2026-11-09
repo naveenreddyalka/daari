@@ -70,7 +70,7 @@ of data the router already has — no model calls:
 | `category` | prompt profile category |
 | `complexity` | `trivial` / `standard` / `complex` |
 | `phase` | tool-history phase when phase routing is on, else null |
-| `tags` | sorted unique strings from `X-Daari-Tags` (comma-separated) union `metadata.tags` (list or comma string); case-sensitive (#2078) |
+| `tags` | sorted unique strings from `X-Daari-Tags` (comma-separated) union `metadata.tags` (list or comma string); when `routing.baggage_to_tags` is on, also W3C `baggage` keys as `baggage:<key>` (#2078 / #2153); case-sensitive |
 
 Opt-in `routing.signal_overrides` (empty by default) matches on those facts
 with equality / bucket match (first match wins) and applies an existing lever:

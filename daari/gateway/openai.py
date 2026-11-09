@@ -985,6 +985,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 default=None, alias="X-Daari-Boundary-Profile"
             ),
             x_daari_tags: str | None = Header(default=None, alias="X-Daari-Tags"),
+            baggage: str | None = Header(default=None, alias="baggage"),
         ) -> Any:
             confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
             confirm_tool = confirm_value in {"1", "true", "yes"}
@@ -1029,6 +1030,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             from daari.router.signals import parse_request_tags
 
+            baggage_to_tags = bool(getattr(ctx.settings.routing, "baggage_to_tags", False))
             meta = RequestMeta(
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
@@ -1048,6 +1050,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 tags=parse_request_tags(
                     header=x_daari_tags,
                     metadata=getattr(body, "metadata", None),
+                    baggage=baggage,
+                    baggage_to_tags=baggage_to_tags,
                 ),
             )
             apply_cost_tier(body, meta)

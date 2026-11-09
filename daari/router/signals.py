@@ -60,15 +60,52 @@ def _client_agent_family(request: InternalRequest) -> str:
     return "none"
 
 
+_BAGGAGE_KEY_TCHAR = frozenset("!#$%&'*+-.^_`|~")
+
+
+def _is_baggage_key(key: str) -> bool:
+    """RFC 7230 ``token`` / W3C baggage-key: 1*tchar."""
+    if not key:
+        return False
+    return all(c.isalnum() or c in _BAGGAGE_KEY_TCHAR for c in key)
+
+
+def parse_baggage_to_tags(header: str | None) -> list[str]:
+    """Parse W3C ``baggage`` into ``baggage:<key>`` tags (#2153).
+
+    Members are comma-separated ``key=value`` (optional ``;property`` suffix).
+    Only keys become tags (presence, not values) to keep cardinality honest.
+    Malformed members are dropped; never raises.
+    """
+    if not header or not str(header).strip():
+        return []
+    found: set[str] = set()
+    for member in str(header).split(","):
+        main = member.split(";", 1)[0].strip()
+        if not main or "=" not in main:
+            continue
+        key, _, _value = main.partition("=")
+        key = key.strip()
+        if not _is_baggage_key(key):
+            continue
+        found.add(f"baggage:{key}")
+    return sorted(found)
+
+
 def parse_request_tags(
     *,
     header: str | None = None,
     metadata: Any = None,
+    baggage: str | None = None,
+    baggage_to_tags: bool = False,
 ) -> list[str]:
     """Union of ``X-Daari-Tags`` and ``metadata.tags``; sorted unique, empties dropped.
 
     Header values are comma-separated. Body may be a list of strings or a
     comma-separated string. Case-sensitive exact strings (#2078).
+
+    When ``baggage_to_tags`` is true, also union W3C ``baggage`` keys as
+    ``baggage:<key>`` tags (#2153). Off by default.
     """
     found: set[str] = set()
 
@@ -91,6 +128,8 @@ def parse_request_tags(
     _add(header)
     if isinstance(metadata, dict):
         _add(metadata.get("tags"))
+    if baggage_to_tags:
+        found.update(parse_baggage_to_tags(baggage))
     return sorted(found)
 
 

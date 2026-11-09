@@ -1121,6 +1121,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             x_daari_meta: str | None = Header(default=None, alias="X-Daari-Meta"),
             x_daari_project: str | None = Header(default=None, alias="X-Daari-Project"),
             x_daari_tags: str | None = Header(default=None, alias="X-Daari-Tags"),
+            baggage: str | None = Header(default=None, alias="baggage"),
         ) -> Any:
             from daari.gateway.response_store import response_visible_to_caller
 
@@ -1260,6 +1261,10 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             meta.tags = parse_request_tags(
                 header=x_daari_tags,
                 metadata=getattr(body, "metadata", None),
+                baggage=baggage,
+                baggage_to_tags=bool(
+                    getattr(ctx.settings.routing, "baggage_to_tags", False)
+                ),
             )
             apply_cost_tier(body, meta)
             meta.dropped_content_parts = list(dropped_content_parts)

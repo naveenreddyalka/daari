@@ -107,6 +107,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.confidence_threshold` | float | `0.7` |  |
 | `routing.category_policies` | dict | `{}` |  |
 | `routing.signal_overrides` | list | `[]` | Opt-in list of request-fact signal matches that apply category / max_tier / tier_pin levers before local tier pick (#1996). Empty (default) leaves routing unchanged. First match wins. Documented in the routing-tiers guide. Editable via GET/PATCH /v1/daari/config ownership (config editor; full list replacement) (#2014). |
+| `routing.baggage_to_tags` | bool | `False` | When true, parse the W3C baggage request header and union each member key as a baggage:<key> tag with X-Daari-Tags / metadata.tags (#2153). Values are not copied into tags (cardinality). Malformed members are dropped. Default off. Documented next to X-Daari-Tags. |
 | `routing.max_tier_for_chat` | Optional | `None` |  |
 | `routing.latency_budget_ms` | int | `0` |  |
 | `routing.warm_model_preference` | bool | `True` |  |

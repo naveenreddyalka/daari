@@ -8919,6 +8919,14 @@ note (incl. Qwen3/Qwen3.5 YaRN docs mention). Covered by
 `daari_soft_warnings_total{kind="service_tier_not_allowed_degraded"}` (Helm
 copy kept in sync). Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Routing: W3C baggage → request tags ([#2153](https://github.com/naveenreddyalka/daari/issues/2153))
+
+<!-- tracking:#2153 -->
+**Status:** Done (2026-11-09). Opt-in `routing.baggage_to_tags` maps W3C
+`baggage` member keys to `baggage:<key>` tags (union with `X-Daari-Tags` /
+`metadata.tags`) on chat / Anthropic / Responses. Covered by
+`tests/unit/test_baggage_to_tags.py` and `tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
