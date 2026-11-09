@@ -1062,6 +1062,15 @@ class RoutingSettings(RuntimeSettings):
             "(#2014)."
         ),
     )
+    baggage_to_tags: bool = Field(
+        default=False,
+        description=(
+            "When true, parse the W3C baggage request header and union each "
+            "member key as a baggage:<key> tag with X-Daari-Tags / metadata.tags "
+            "(#2153). Values are not copied into tags (cardinality). Malformed "
+            "members are dropped. Default off. Documented next to X-Daari-Tags."
+        ),
+    )
     # Cap the local tier chosen for chat/Ask requests (L3|L4|L5). None keeps
     # the weight/length heuristics unbounded. X-Daari-Tier-Cap header wins.
     max_tier_for_chat: Literal["L3", "L4", "L5"] | None = None

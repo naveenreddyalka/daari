@@ -4926,3 +4926,46 @@ async def test_revoke_subject_offboarding_kill_switch(settings, tmp_path, monkey
     audit = AuditLog(settings.enterprise.audit_path)
     events = [e for e in audit.list() if e["action"] == "keys.revoke_subject"]
     assert len(events) == 3
+
+
+@pytest.mark.asyncio
+async def test_baggage_to_tags_on_chat(settings, monkeypatch):
+    """Opt-in W3C baggage keys land on meta.tags for signal_overrides (#2153)."""
+    settings.routing.baggage_to_tags = True
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    seen: list[InternalRequest] = []
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        seen.append(request)
+        return InternalResponse(
+            content=MOCK_MODEL_CONTENT,
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama:l3",
+                latency_ms=1,
+            ),
+        )
+
+    mock_all_ollama_executors(monkeypatch, application.state.ctx.router, fake_execute)
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "hello"}],
+                "metadata": {"tags": ["eval"]},
+            },
+            headers={
+                "X-Daari-Tags": "canary",
+                "baggage": "team=eng,env=prod",
+            },
+        )
+    assert response.status_code == 200
+    assert seen
+    assert seen[0].meta.tags == ["baggage:env", "baggage:team", "canary", "eval"]

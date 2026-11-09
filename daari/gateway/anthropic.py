@@ -327,6 +327,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             x_daari_session: str | None = Header(default=None, alias="X-Daari-Session"),
             x_daari_project: str | None = Header(default=None, alias="X-Daari-Project"),
             x_daari_tags: str | None = Header(default=None, alias="X-Daari-Tags"),
+            baggage: str | None = Header(default=None, alias="baggage"),
         ) -> Any:
             confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
             confirm_tool = confirm_value in {"1", "true", "yes"}
@@ -449,6 +450,10 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 tags=parse_request_tags(
                     header=x_daari_tags,
                     metadata=getattr(body, "metadata", None),
+                    baggage=baggage,
+                    baggage_to_tags=bool(
+                        getattr(ctx.settings.routing, "baggage_to_tags", False)
+                    ),
                 ),
             )
             # Local / non-Anthropic: continue fail-closed unless soft-ignore (#2093).
