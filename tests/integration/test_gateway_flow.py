@@ -4779,3 +4779,87 @@ async def test_virtual_key_ip_allowlist_deny_and_allow(settings, tmp_path, monke
             },
         )
         assert allowed.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_revoke_subject_offboarding_kill_switch(settings, tmp_path, monkeypatch):
+    """#2145: admin revoke-subject kills SSO keys and leaves others intact."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.enterprise.audit import AuditLog
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk-revoke-subject.sqlite3")
+    settings.enterprise.audit_path = str(tmp_path / "audit-revoke-subject.sqlite3")
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    alice_keys = [store.create(f"alice-{i}", client_id="sso:alice") for i in range(3)]
+    bob = store.create("bob", client_id="sso:bob")
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = store
+    application.state.ctx.virtual_key_store = store
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model=request.model or "llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=1),
+        )
+
+    mock_all_ollama_executors(monkeypatch, application.state.ctx.router, fake_execute)
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        denied = await client.post(
+            "/v1/daari/keys/revoke-subject",
+            headers={"Authorization": f"Bearer {bob.plaintext}"},
+            json={"subject": "alice"},
+        )
+        assert denied.status_code == 403
+
+        ok = await client.post(
+            "/v1/daari/keys/revoke-subject",
+            headers={"Authorization": "Bearer master"},
+            json={"subject": "alice"},
+        )
+        assert ok.status_code == 200
+        assert ok.json() == {"revoked": 3}
+
+        for created in alice_keys:
+            chat = await client.post(
+                "/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {created.plaintext}",
+                    "X-Daari-No-Cache": "true",
+                },
+                json={
+                    "model": "llama3.2:3b",
+                    "messages": [{"role": "user", "content": "hi"}],
+                },
+            )
+            assert chat.status_code in (401, 403)
+
+        bob_ok = await client.post(
+            "/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {bob.plaintext}",
+                "X-Daari-No-Cache": "true",
+            },
+            json={
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
+        assert bob_ok.status_code == 200
+
+        again = await client.post(
+            "/v1/daari/keys/revoke-subject",
+            headers={"Authorization": "Bearer master"},
+            json={"subject": "alice"},
+        )
+        assert again.status_code == 200
+        assert again.json() == {"revoked": 0}
+
+    audit = AuditLog(settings.enterprise.audit_path)
+    events = [e for e in audit.list() if e["action"] == "keys.revoke_subject"]
+    assert len(events) == 3

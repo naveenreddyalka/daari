@@ -39,6 +39,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/v1/daari/events` | Daari Events List |
 | `POST` | `/v1/daari/feedback` | Daari Feedback |
 | `GET` | `/v1/daari/keys` | Daari Keys List |
+| `POST` | `/v1/daari/keys/revoke-subject` | Daari Keys Revoke Subject |
 | `POST` | `/v1/daari/keys/unlock` | Daari Keys Unlock |
 | `GET` | `/v1/daari/learn/stats` | Daari Learn Stats |
 | `GET` | `/v1/daari/lockouts` | Daari Lockouts List |
