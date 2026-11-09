@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import httpx
+import typer.main
 import yaml
-from typer.testing import CliRunner
 
 from daari.cli.app import app
 from daari.config.settings import Settings
@@ -105,9 +105,11 @@ def test_mimo_unused_tip_quiet_when_l4_already_mimo():
 
 
 def test_mimo_cli_option_documents_floor():
-    runner = CliRunner()
-    result = runner.invoke(app, ["setup", "models", "--help"])
-    assert result.exit_code == 0
-    assert "--mimo" in result.stdout
-    assert "0.40.15" in result.stdout
-    assert MIMO_MODEL in result.stdout
+    """Pin --mimo Option.help (not rendered stdout — Rich wrap/ANSI vary in CI)."""
+    click_cmd = typer.main.get_command(app)
+    setup = click_cmd.get_command(None, "setup")
+    models = setup.get_command(None, "models")
+    opt = next(p for p in models.params if "--mimo" in (p.opts or []))
+    help_text = opt.help or ""
+    assert "0.40.15" in help_text
+    assert MIMO_MODEL in help_text
