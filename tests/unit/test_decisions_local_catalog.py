@@ -38,6 +38,23 @@ def test_builtin_includes_d1_family():
     assert not is_local_decisions_model("d2:2b")
 
 
+def test_builtin_includes_autotrust_jev_family():
+    """Ollama 0.40.15 AutoTrust (autotrust-jev) decision models (#2146)."""
+    for model_id in (
+        "autotrust-jev",
+        "autotrust-jev:9b",
+        "autotrust-jev:35b",
+        "autotrust-jev:27b-vl",
+    ):
+        assert model_id in BUILTIN_LOCAL_MODELS
+        assert is_local_decisions_model(model_id)
+        assert is_local_decisions_model(model_id.upper())
+    assert not is_local_decisions_model("autotrust")
+    # Tag variants of a catalog base stay local (same as d3:*) — typo bases do not.
+    assert is_local_decisions_model("autotrust-jev:7b")
+    assert not is_local_decisions_model("autotrust-typo:9b")
+
+
 def test_normalize_accepts_new_ids_and_variants():
     assert normalize_decisions_model("drex-1.5") == "drex-1.5"
     assert normalize_decisions_model("nace/drex-1.5") == "drex-1.5"
@@ -53,6 +70,9 @@ def test_normalize_accepts_new_ids_and_variants():
     assert normalize_decisions_model("d1") == "d1"
     assert normalize_decisions_model("d1:2b") == "d1:2b"
     assert normalize_decisions_model("d1-omni") == "d1-omni"
+    assert normalize_decisions_model("autotrust-jev:9b") == "autotrust-jev:9b"
+    assert normalize_decisions_model("autotrust-jev:35b") == "autotrust-jev:35b"
+    assert normalize_decisions_model("autotrust-jev:27b-vl") == "autotrust-jev:27b-vl"
     # Vendor slash keeps a local catalog id (tag may collapse to base `d3`).
     assert normalize_decisions_model("ollama/d3:4b") in {"d3", "d3:4b"}
     assert is_local_decisions_model("ollama/d3:4b")
@@ -177,14 +197,29 @@ def test_ollama_guide_documents_catalog_and_extension():
     assert "d1" in text
     assert "d1:2b" in text
     assert "d1-omni" in text
+    assert "autotrust-jev" in text
+    assert "autotrust-jev:9b" in text
     assert "0.40.9" in text
     assert "0.40.12" in text
+    assert "0.40.15" in text
+    assert "Apple-silicon" in text or "Apple silicon" in text
     assert "Linux" in text and "Windows" in text
     assert "Mac-first" not in text
     assert "decisions.local_models" in text
     assert "/v1/models" in text
     assert "/api/tags" in text
     assert "decision" in text
+
+
+def test_autotrust_recipe_note_floor_and_apple_caveat():
+    from daari.setup.models import AUTOTRUST_JEV_RECIPE_NOTE
+
+    note = AUTOTRUST_JEV_RECIPE_NOTE
+    assert "0.40.15" in note
+    assert "Apple-silicon" in note or "Apple silicon" in note
+    assert "Linux" in note and "Windows" in note
+    assert "revisit" in note.lower()
+    assert "ollama pull autotrust-jev:9b" in note
 
 
 def test_doctor_tip_lists_d3_when_catalog_missing():
@@ -205,5 +240,6 @@ def test_doctor_tip_lists_d3_when_catalog_missing():
     assert "d3" in result.detail
     assert "d1" in result.detail
     assert "d1-omni" in result.detail
+    assert "autotrust-jev" in result.detail
     assert "d1" in result.detail
     assert "d1-omni" in result.detail

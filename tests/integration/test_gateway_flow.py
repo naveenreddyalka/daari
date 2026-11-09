@@ -4355,6 +4355,69 @@ async def test_decisions_l0_exact_cache_gateway(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_autotrust_jev_decisions_local_path(app, monkeypatch):
+    """#2146: autotrust-jev:9b routes to mocked systemone, not stale-model 400."""
+    import httpx
+
+    from daari.gateway import systemone
+
+    seen: list[dict] = []
+    systemone_ok = {
+        "model": "autotrust-jev:9b",
+        "answers": {
+            "department": {
+                "type": "choice",
+                "choice": "billing",
+                "probabilities": {"billing": 0.9, "other": 0.1},
+                "confidence": 0.9,
+            }
+        },
+        "usage": {"input_tokens": 40, "output_tokens": 1},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append({"url": str(request.url), "body": json.loads(request.read())})
+        return httpx.Response(200, json=systemone_ok)
+
+    systemone._http = None
+    real = httpx.AsyncClient
+
+    class Patched(real):
+        def __init__(self, *args, **kwargs):
+            if kwargs.get("transport") is None:
+                kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    monkeypatch.setattr("daari.gateway.systemone.httpx.AsyncClient", Patched)
+    app.state.ctx.settings.ollama.base_url = "http://ollama.local:11434"
+    app.state.ctx.settings.decisions.cache_enabled = False
+
+    body = {
+        "model": "autotrust-jev:9b",
+        "input": "charged twice",
+        "questions": [
+            {
+                "type": "choice",
+                "name": "department",
+                "instructions": "Which department?",
+                "choices": [
+                    {"value": "billing"},
+                    {"value": "other"},
+                ],
+            }
+        ],
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json=body)
+
+    assert response.status_code == 200
+    assert response.json()["daari_meta"]["executor"] == "ollama"
+    assert seen and seen[0]["body"]["model"] == "autotrust-jev:9b"
+
+
+@pytest.mark.asyncio
 async def test_systemone_explicit_base_url_on_gateway(app, monkeypatch):
     """POST /v1/systemone uses systemone.base_url, not ollama.base_url (#1808)."""
     import httpx
