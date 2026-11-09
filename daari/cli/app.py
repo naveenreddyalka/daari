@@ -840,6 +840,28 @@ def keys_revoke(key_id: str = typer.Argument(..., help="key_id from `daari keys 
         raise typer.Exit(code=1)
 
 
+@keys_app.command("revoke-subject")
+def keys_revoke_subject(
+    subject: str = typer.Argument(..., help="IdP subject (bare or sso:<subject>)."),
+) -> None:
+    """Revoke every live virtual key for an IdP subject (offboarding kill switch)."""
+    import os
+
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.enterprise.sso_keys import revoke_subject_keys
+
+    settings = get_settings()
+    store = virtual_key_store_from_settings(settings)
+    result = revoke_subject_keys(
+        store,
+        subject=subject,
+        audit=_audit_log_from_settings(),
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+    )
+    typer.echo(f"Revoked {result['revoked']} key(s) for subject {subject}")
+
+
 @keys_app.command("rotate")
 def keys_rotate(
     key_id: str = typer.Argument(..., help="key_id from `daari keys list`"),

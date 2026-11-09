@@ -3440,6 +3440,37 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             )
             return {"status": "ok", "prefix": prefix, "cleared": cleared}
 
+        @router.post("/v1/daari/keys/revoke-subject")
+        async def daari_keys_revoke_subject(request: Request) -> dict[str, Any]:
+            """Revoke every live key for an IdP subject (#2145). Admin / master key."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_admin_role(request, ctx)
+            try:
+                body = await request.json()
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="subject is required") from exc
+            subject = ""
+            if isinstance(body, dict):
+                subject = str(body.get("subject") or "").strip()
+            if not subject:
+                raise HTTPException(status_code=400, detail="subject is required")
+            store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+                ctx, "virtual_key_store", None
+            )
+            if store is None:
+                raise HTTPException(status_code=503, detail="virtual key store is not configured")
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.enterprise.sso_keys import revoke_subject_keys
+
+            result = revoke_subject_keys(
+                store,
+                subject=subject,
+                audit=audit_log_from_settings(ctx.settings),
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+            )
+            return {"revoked": int(result.get("revoked") or 0)}
+
         @router.get("/v1/daari/teams")
         async def daari_teams_list(
             request: Request,

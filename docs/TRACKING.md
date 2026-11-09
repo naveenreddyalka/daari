@@ -8884,6 +8884,15 @@ and teams; gateway denies with 403 `ip_not_allowed` + audit + reject counter.
 CLI `--allowed-ip` on keys/team create/update. Covered by
 `tests/unit/test_ip_allowlist.py` and `tests/integration/test_gateway_flow.py`.
 
+### Admin: revoke every SSO key for a subject ([#2145](https://github.com/naveenreddyalka/daari/issues/2145))
+
+<!-- tracking:#2145 -->
+**Status:** Done (2026-11-09). `daari keys revoke-subject` and
+`POST /v1/daari/keys/revoke-subject` revoke all live keys whose `client_id` is
+`<subject>` or `sso:<subject>`, clear team memberships, audit per key, and
+emit a summary gateway event. Idempotent. Covered by
+`tests/unit/test_revoke_subject.py` and `tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

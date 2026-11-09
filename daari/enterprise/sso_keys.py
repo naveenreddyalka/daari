@@ -111,6 +111,70 @@ def find_sso_key(store: VirtualKeyStore, subject: str) -> VirtualKey | None:
     return None
 
 
+def subject_client_ids(subject: str) -> tuple[str, str]:
+    """Bare IdP subject and ``sso:<subject>`` client_id forms (#2145)."""
+    sub = (subject or "").strip()
+    if sub.startswith("sso:"):
+        bare = sub[4:]
+        return bare, sub
+    return sub, f"sso:{sub}"
+
+
+def revoke_subject_keys(
+    store: VirtualKeyStore,
+    *,
+    subject: str,
+    audit: AuditLog,
+    actor: str,
+    role: str,
+) -> dict[str, Any]:
+    """Revoke every live key for an IdP subject and clear team entitlements (#2145).
+
+    Matches ``client_id`` of ``<subject>`` or ``sso:<subject>``. Idempotent: a
+    second call revokes 0. Emits one ``keys.revoke_subject`` audit row per key
+    and a summary gateway event.
+    """
+    bare, sso_id = subject_client_ids(subject)
+    if not bare:
+        return {"revoked": 0, "key_ids": []}
+    wanted = {bare, sso_id}
+    revoked_ids: list[str] = []
+    for key in store.list():
+        if key.revoked:
+            continue
+        if (key.client_id or "") not in wanted:
+            continue
+        if store.revoke(key.key_id):
+            revoked_ids.append(key.key_id)
+            audit.record(
+                actor=actor,
+                role=role,
+                action="keys.revoke_subject",
+                detail={
+                    "key_id": key.key_id,
+                    "subject": bare,
+                    "client_id": key.client_id,
+                },
+            )
+    for sub in (bare, sso_id):
+        store.set_team_memberships(sub, [])
+    try:
+        from daari.gateway.request_log import log_gateway_event
+
+        log_gateway_event(
+            "keys.revoke_subject",
+            {
+                "subject": bare,
+                "revoked": len(revoked_ids),
+                "key_ids": revoked_ids,
+                "actor": actor,
+            },
+        )
+    except Exception:
+        pass
+    return {"revoked": len(revoked_ids), "key_ids": revoked_ids}
+
+
 def sync_sso_virtual_key(
     store: VirtualKeyStore,
     *,
