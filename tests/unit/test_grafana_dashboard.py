@@ -790,3 +790,39 @@ def test_grafana_dashboard_includes_admission_priority_panel():
     assert any("outcome" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
     assert any("{{outcome}}" in legend for legend in legends)
+
+
+def test_grafana_dashboard_includes_service_tier_not_allowed_panels():
+    """Per-key/team allowlist deny + degrade cliffs should chart (#2152)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    rejects = next(
+        (
+            p
+            for p in payload["panels"]
+            if "service-tier not allowed" in p.get("title", "").lower()
+            and "degrad" not in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert rejects is not None, "expected a service_tier_not_allowed rejects panel"
+    reject_exprs = [t.get("expr", "") for t in rejects.get("targets", [])]
+    assert any("daari_rejects_total" in expr for expr in reject_exprs)
+    assert any('kind="service_tier_not_allowed"' in expr for expr in reject_exprs)
+    assert any("rate(" in expr for expr in reject_exprs)
+
+    degraded = next(
+        (
+            p
+            for p in payload["panels"]
+            if "service-tier not allowed" in p.get("title", "").lower()
+            and "degrad" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert degraded is not None, "expected a service_tier_not_allowed_degraded panel"
+    soft_exprs = [t.get("expr", "") for t in degraded.get("targets", [])]
+    assert any("daari_soft_warnings_total" in expr for expr in soft_exprs)
+    assert any(
+        'kind="service_tier_not_allowed_degraded"' in expr for expr in soft_exprs
+    )
+    assert any("rate(" in expr for expr in soft_exprs)
