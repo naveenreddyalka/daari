@@ -575,9 +575,9 @@ class Metrics:
             self.virtual_model_failover += 1
 
     def record_virtual_model_selection(self, mode: str) -> None:
-        """Record how a virtual-model candidate list was ordered (#2052)."""
+        """Record how a virtual-model candidate list was ordered (#2052, #2164)."""
         label = (mode or "ordered").strip().lower() or "ordered"
-        if label not in {"ordered", "performance"}:
+        if label not in {"ordered", "performance", "cost"}:
             label = "ordered"
         with self._lock:
             self.virtual_model_selection[label] = self.virtual_model_selection.get(label, 0) + 1

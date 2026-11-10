@@ -642,3 +642,142 @@ async def test_ordered_mode_still_tries_first_candidate(settings, monkeypatch):
     assert response.json()["daari_meta"]["virtual_candidate"] == "L3"
     assert calls == ["L3"]
     assert app.state.ctx.metrics.virtual_model_selection.get("ordered", 0) >= 1
+
+
+# --- cost-aware selection (#2164) ---
+
+
+def test_virtual_model_selection_accepts_cost():
+    routing = RoutingSettings(virtual_model_selection="cost")
+    assert routing.virtual_model_selection == "cost"
+
+
+def test_cost_mode_local_first_and_priced_order():
+    from daari.config.settings import PricingSettings
+    from daari.router.virtual_models import order_virtual_candidates
+
+    pricing = PricingSettings()
+    # Config order puts expensive first; cost mode must flip to cheap then local.
+    ranked = order_virtual_candidates(
+        ["gpt-4o", "gpt-4o-mini", "L3"],
+        mode="cost",
+        virtual_model="chat",
+        pricing=pricing,
+        classify_settings=None,
+    )
+    assert ranked == ["L3", "gpt-4o-mini", "gpt-4o"]
+
+
+def test_cost_mode_tie_keeps_config_order():
+    from daari.config.settings import PricingSettings
+    from daari.router.virtual_models import order_virtual_candidates
+
+    pricing = PricingSettings()
+    # Two locals (both 0) and two unpriced ids keep relative config order.
+    ranked = order_virtual_candidates(
+        ["L4", "L3", "unknown-a", "unknown-b"],
+        mode="cost",
+        virtual_model="chat",
+        pricing=pricing,
+        classify_settings=None,
+    )
+    assert ranked == ["L4", "L3", "unknown-a", "unknown-b"]
+
+
+def test_cost_mode_slo_demotion_ahead_of_cost():
+    """Within-SLO bucket wins even when the over-SLO peer is cheaper (#2164)."""
+    from daari.config.settings import PricingSettings
+    from daari.router.virtual_models import (
+        VirtualModelPerformanceTracker,
+        order_virtual_candidates,
+    )
+
+    pricing = PricingSettings()
+    tracker = VirtualModelPerformanceTracker(alpha=0.5)
+    # cheap (gpt-4o-mini) is over SLO; expensive (gpt-4o) is within.
+    for _ in range(5):
+        tracker.observe_success("chat", "gpt-4o-mini", latency_ms=9000.0)
+        tracker.observe_success("chat", "gpt-4o", latency_ms=400.0)
+
+    without = order_virtual_candidates(
+        ["gpt-4o", "gpt-4o-mini"],
+        mode="cost",
+        virtual_model="chat",
+        tracker=tracker,
+        pricing=pricing,
+        classify_settings=None,
+    )
+    assert without[0] == "gpt-4o-mini"
+
+    slo_out: list[str] = []
+    ranked = order_virtual_candidates(
+        ["gpt-4o", "gpt-4o-mini"],
+        mode="cost",
+        virtual_model="chat",
+        tracker=tracker,
+        pricing=pricing,
+        classify_settings=None,
+        latency_slo_ms=1000.0,
+        slo_outcome=slo_out,
+    )
+    assert ranked[0] == "gpt-4o"
+    assert ranked[1] == "gpt-4o-mini"
+    assert slo_out == ["demoted"]
+
+
+def test_metrics_record_virtual_model_selection_cost_mode():
+    from daari.observability.prometheus import render_prometheus
+
+    metrics = Metrics()
+    metrics.record_virtual_model_selection("cost")
+    snap = metrics.snapshot(include_histograms=True)
+    assert snap["virtual_model_selection"]["cost"] == 1
+    text = render_prometheus(metrics)
+    assert 'daari_virtual_model_selection_total{mode="cost"} 1' in text
+
+
+@pytest.mark.asyncio
+async def test_cost_mode_tries_cheap_candidate_first(settings, monkeypatch):
+    """Gateway path: cost mode tries cheaper frontier id before expensive (#2164)."""
+    settings.routing.virtual_models = {
+        "chat-default": ["gpt-4o", "gpt-4o-mini"],
+    }
+    settings.routing.virtual_model_selection = "cost"
+    settings.frontier.enabled = True
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    calls: list[str] = []
+
+    async def fake_l6(request, *, escalated_from: str, local_confidence: float):
+        calls.append(request.model)
+        return InternalResponse(
+            content="from-frontier",
+            model=request.model,
+            daari_meta=DaariMeta(
+                tier="L6",
+                executor="frontier",
+                provider_id="openai",
+                escalated_from=escalated_from,
+            ),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router.frontier, "execute", fake_l6)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "chat-default",
+                "messages": [{"role": "user", "content": "prefer cheap"}],
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["daari_meta"]["virtual_candidate"] == "gpt-4o-mini"
+    assert calls == ["gpt-4o-mini"]
+    assert app.state.ctx.metrics.virtual_model_selection.get("cost", 0) >= 1

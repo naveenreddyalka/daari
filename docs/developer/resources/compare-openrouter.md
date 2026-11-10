@@ -35,6 +35,10 @@ target. What ships on-box:
   `routing.virtual_model_selection: performance` reorders candidates by
   in-process EWMA of latency and error rate across local tiers and estate
   OpenAI-compatible backends (#2052). No catalog telemetry leaves the machine.
+- **Cost-aware** selection — opt-in
+  `routing.virtual_model_selection: cost` orders by blended $/1M from the
+  in-tree pricing table (3:1 input:output); local/unpriced candidates sort as
+  0 so local-first falls out of the arithmetic (#2164).
 
 daari does **not** claim OpenRouter Private Endpoints or CSAM in-flight
 screening parity here — those trust boundaries stay in the sections below

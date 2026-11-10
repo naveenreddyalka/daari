@@ -1213,6 +1213,55 @@ async def test_virtual_model_meta_on_chat(settings, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_cost_mode_virtual_model_prefers_cheap_candidate(settings, monkeypatch):
+    """Cost selection tries cheaper frontier candidate first (#2164)."""
+    settings.routing.virtual_models = {"chat-default": ["gpt-4o", "gpt-4o-mini"]}
+    settings.routing.virtual_model_selection = "cost"
+    settings.frontier.enabled = True
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    calls: list[str] = []
+
+    async def fake_l6(request, *, escalated_from: str, local_confidence: float):
+        calls.append(request.model)
+        return InternalResponse(
+            content=MOCK_MODEL_CONTENT,
+            model=request.model,
+            daari_meta=DaariMeta(
+                tier="L6",
+                executor="frontier",
+                provider_id="openai",
+                escalated_from=escalated_from,
+                latency_ms=1,
+            ),
+        )
+
+    monkeypatch.setattr(application.state.ctx.router.frontier, "execute", fake_l6)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "chat-default",
+                "messages": [{"role": "user", "content": "cost prefer cheap"}],
+                "stream": False,
+            },
+            headers=META_HEADERS,
+        )
+
+    assert response.status_code == 200
+    meta = response.json()["daari_meta"]
+    assert meta["virtual_model"] == "chat-default"
+    assert meta["virtual_candidate"] == "gpt-4o-mini"
+    assert calls == ["gpt-4o-mini"]
+
+
+@pytest.mark.asyncio
 async def test_non_stream_daari_meta_includes_signals(app, monkeypatch):
     """Routed chat responses expose bounded request-fact signals (#1996)."""
 

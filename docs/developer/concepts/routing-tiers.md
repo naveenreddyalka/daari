@@ -310,21 +310,25 @@ routing:
       - L3                 # local tier (or models.l3 / models.l4 / models.l5 id)
       - L5
       - openai/gpt-4o-mini # L6 / provider-style frontier id
-  # ordered (default) = config list order; performance = EWMA latency/error (#2052)
+  # ordered (default) = config list order; performance = EWMA latency/error (#2052);
+  # cost = blended $/1M from pricing table, 3:1 input:output (#2164)
   virtual_model_selection: ordered
-  # Opt-in: within-SLO EWMA candidates rank before over-SLO in performance mode (#2086)
+  # Opt-in: within-SLO EWMA candidates rank before over-SLO in performance/cost (#2086)
   virtual_model_latency_slo_ms:
     chat-default: 800
 ```
 
 `routing.virtual_model_selection` defaults to `ordered` (shipped behavior). Set
 `performance` to prefer the healthiest candidate by an in-process EWMA of
-realized latency and error rate (config position is the tiebreak). Optional
+realized latency and error rate (config position is the tiebreak). Set `cost`
+to order by blended $/1M from the in-tree pricing table (3 parts input + 1
+part output); local tiers and unpriced ids sort as 0 and keep config order
+among themselves, so local-first falls out of the arithmetic. Optional
 `routing.virtual_model_latency_slo_ms` maps a virtual-model name to a latency
-SLO in ms; in `performance` mode, candidates whose EWMA latency is within the
-SLO (or that have no samples yet) rank before over-SLO ones, then the usual
-error/latency/index sort applies inside each bucket. `ordered` mode ignores
-the map. Breaker-open candidates are skipped using the existing circuit state.
+SLO in ms; in `performance` or `cost` mode, candidates whose EWMA latency is
+within the SLO (or that have no samples yet) rank before over-SLO ones, then
+the mode's usual sort applies inside each bucket. `ordered` mode ignores the
+map. Breaker-open candidates are skipped using the existing circuit state.
 Failover on typed `BackendUnavailable` is unchanged and still increments
 `daari_virtual_model_failover_total`. Selection decisions emit
 `daari_virtual_model_selection_total{mode=...}` and a `virtual_model_selection`

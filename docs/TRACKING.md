@@ -8963,6 +8963,17 @@ Postgres raises `PostgresBackendUnavailable`; expired/unknown keys never
 grace-serve; `auth_grace_served` + `daari_auth_grace_served_total`. Covered by
 `tests/unit/test_auth_resolve_grace.py`.
 
+### Routing: cost-aware virtual-model selection mode ([#2164](https://github.com/naveenreddyalka/daari/issues/2164))
+
+<!-- tracking:#2164 -->
+**Status:** Done (2026-11-10). Opt-in `routing.virtual_model_selection: cost`
+orders virtual-model candidates by blended $/1M from the in-tree pricing table
+(3:1 input:output); local/unpriced → 0 with config-order ties. Latency-SLO
+bucketing still demotes over-SLO peers ahead of cost. Metrics/events record
+`mode=cost`. Docs: routing-tiers, config, compare-openrouter. Covered by
+`tests/unit/test_virtual_models.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

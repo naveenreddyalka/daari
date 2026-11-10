@@ -698,7 +698,7 @@ class Router:
         self.virtual_models = dict(virtual_models or {})
         sel = (virtual_model_selection or "ordered").strip().lower() or "ordered"
         self.virtual_model_selection = (
-            sel if sel in {"ordered", "performance"} else "ordered"
+            sel if sel in {"ordered", "performance", "cost"} else "ordered"
         )
         self.virtual_model_latency_slo_ms = {
             str(k).strip(): float(v)
@@ -5819,7 +5819,8 @@ class Router:
 
         Returns None when the request model is not a configured virtual name
         so the normal tier path runs. Selection mode ``ordered`` (default) keeps
-        config order; ``performance`` reorders by in-process EWMA health.
+        config order; ``performance`` reorders by in-process EWMA health;
+        ``cost`` orders by blended in-tree pricing (#2164).
         Breaker-open candidates are skipped. On typed BackendUnavailable,
         continues to the next and increments ``virtual_model_failover``.
         Exhaustion re-raises the last BackendUnavailable (or raises one).
@@ -5855,6 +5856,11 @@ class Router:
             breaker_open=lambda c: candidate_breaker_open(self, c, settings),
             latency_slo_ms=latency_slo_ms,
             slo_outcome=slo_outcome,
+            pricing=getattr(self, "pricing", None),
+            classify_settings=settings,
+            fallback_per_1k=float(
+                getattr(self, "frontier_price_per_1k_tokens", 0.002) or 0.002
+            ),
         )
         if hasattr(self.metrics, "record_virtual_model_selection"):
             self.metrics.record_virtual_model_selection(mode)
