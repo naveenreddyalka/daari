@@ -1215,6 +1215,25 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 60,
+      "title": "Virtual-model SLO demotion by outcome",
+      "description": "Latency-SLO bucketing pressure on virtual-model candidate order (`daari_virtual_model_slo_demotion_total` by outcome `demoted`|`within`). No virtual-model name label (#2169).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 240
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(daari_virtual_model_slo_demotion_total[5m])) or vector(0)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

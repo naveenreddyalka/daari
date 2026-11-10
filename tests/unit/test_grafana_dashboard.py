@@ -792,6 +792,35 @@ def test_grafana_dashboard_includes_admission_priority_panel():
     assert any("{{outcome}}" in legend for legend in legends)
 
 
+def test_grafana_dashboard_includes_virtual_model_slo_demotion_panel():
+    """Latency-SLO demotion pressure should chart by outcome (#2169)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "slo demotion" in p.get("title", "").lower()
+            or "virtual-model slo" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a virtual-model SLO demotion panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    legends = [t.get("legendFormat", "") for t in panel.get("targets", [])]
+    assert any("daari_virtual_model_slo_demotion_total" in expr for expr in exprs)
+    assert any("outcome" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+    assert any("{{outcome}}" in legend for legend in legends)
+    # No high-cardinality virtual-model name label (#2169).
+    assert not any(
+        "by (virtual_model)" in expr
+        or "by(virtual_model)" in expr
+        or 'virtual_model="' in expr
+        or "virtual_model='" in expr
+        for expr in exprs
+    )
+
+
 def test_grafana_dashboard_includes_service_tier_not_allowed_panels():
     """Per-key/team allowlist deny + degrade cliffs should chart (#2152)."""
     payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
