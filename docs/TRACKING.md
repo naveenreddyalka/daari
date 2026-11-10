@@ -8927,6 +8927,16 @@ copy kept in sync). Covered by `tests/unit/test_grafana_dashboard.py`.
 `metadata.tags`) on chat / Anthropic / Responses. Covered by
 `tests/unit/test_baggage_to_tags.py` and `tests/integration/test_gateway_flow.py`.
 
+### Admin + web-ui: surface allowed_ips ([#2154](https://github.com/naveenreddyalka/daari/issues/2154))
+
+<!-- tracking:#2154 -->
+**Status:** Done (2026-11-10). `redact_key` / `redact_team` expose `allowed_ips`;
+admin keys/teams tables render the CIDR allowlist (`*` when unrestricted).
+`PATCH /v1/daari/keys/{key_id}` and `PATCH /v1/daari/teams/{team_id}` accept
+`allowed_ips` (invalid CIDR → 400; empty/`null` clears to unrestricted). Covered
+by `tests/unit/test_admin_read_plane.py`, `tests/unit/test_admin_ip_allowlist_patch.py`,
+and `packages/web-ui/test/dashboard.test.js`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

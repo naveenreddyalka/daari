@@ -95,6 +95,7 @@ const ADMIN_KEYS = {
       user_daily_usd_cap: 2.5,
       allowed_service_tiers: null,
       degrade_disallowed_service_tier: false,
+      allowed_ips: null,
       spend: [{ window: "day", quota: "usd", spend: 0.25, limit: 1.0 }],
     },
   ],
@@ -114,6 +115,7 @@ const ADMIN_TEAMS = {
       max_in_flight: 5,
       allowed_service_tiers: null,
       degrade_disallowed_service_tier: false,
+      allowed_ips: null,
       spend: [{ window: "day", quota: "usd", spend: 1.5, limit: 10.0 }],
     },
   ],
@@ -687,6 +689,7 @@ test("admin keys and teams tables render from inventory endpoints", async (t) =>
   assert.ok(keyCells.includes("2.5"), `expected user_daily_usd_cap 2.5 in ${keyCells.join("|")}`);
   assert.ok(keyCells.includes("*"), `expected unrestricted service tiers * in ${keyCells.join("|")}`);
   assert.ok(keyCells.includes("no"), `expected degrade flag no in ${keyCells.join("|")}`);
+  assert.equal(keyCells.filter((c) => c === "*").length >= 2, true, `expected unrestricted IPs * in ${keyCells.join("|")}`);
   assert.match(doc.getElementById("admin-keys-status").textContent, /1 key/);
 
   const teamRows = [...doc.querySelectorAll("#admin-teams-table tr")];
@@ -701,6 +704,7 @@ test("admin keys and teams tables render from inventory endpoints", async (t) =>
   assert.ok(teamCells.includes("5"), `expected max_in_flight 5 in ${teamCells.join("|")}`);
   assert.ok(teamCells.includes("*"), `expected unrestricted service tiers * in ${teamCells.join("|")}`);
   assert.ok(teamCells.includes("no"), `expected degrade flag no in ${teamCells.join("|")}`);
+  assert.equal(teamCells.filter((c) => c === "*").length >= 2, true, `expected unrestricted IPs * in ${teamCells.join("|")}`);
   assert.match(doc.getElementById("admin-teams-status").textContent, /1 team/);
 });
 
@@ -741,6 +745,44 @@ test("admin keys and teams render allowed_service_tiers allowlist cells", async 
   const teamCells = [...doc.querySelectorAll("#admin-teams-table tr td")].map((td) => td.textContent);
   assert.ok(teamCells.includes("default,flex"), `expected team allowlist in ${teamCells.join("|")}`);
   assert.ok(teamCells.includes("yes"), `expected team degrade yes in ${teamCells.join("|")}`);
+});
+
+test("admin keys and teams render allowed_ips allowlist cells", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/keys": {
+        keys: [
+          {
+            ...ADMIN_KEYS.keys[0],
+            name: "ip-locked",
+            allowed_ips: ["203.0.113.10/32", "2001:db8::/64"],
+          },
+        ],
+      },
+      "/v1/daari/teams": {
+        teams: [
+          {
+            ...ADMIN_TEAMS.teams[0],
+            name: "ip-team",
+            allowed_ips: ["10.0.0.0/8"],
+          },
+        ],
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const keyCells = [...doc.querySelectorAll("#admin-keys-table tr td")].map((td) => td.textContent);
+  assert.ok(
+    keyCells.includes("203.0.113.10/32,2001:db8::/64"),
+    `expected IP allowlist cell in ${keyCells.join("|")}`
+  );
+
+  const teamCells = [...doc.querySelectorAll("#admin-teams-table tr td")].map((td) => td.textContent);
+  assert.ok(teamCells.includes("10.0.0.0/8"), `expected team IP allowlist in ${teamCells.join("|")}`);
 });
 
 test("admin keys status and idle_days filters build query and render rows", async (t) => {

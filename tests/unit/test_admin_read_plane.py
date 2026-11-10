@@ -417,3 +417,25 @@ def test_redact_key_and_team_include_service_tier_fields(tmp_path):
     team_row = redact_team(team)
     assert team_row["allowed_service_tiers"] == ["default", "flex"]
     assert team_row["degrade_disallowed_service_tier"] is True
+
+
+def test_redact_key_and_team_include_allowed_ips(tmp_path):
+    from daari.gateway.admin_read import redact_key, redact_team
+
+    store = VirtualKeyStore(tmp_path / "vk-ips.sqlite3")
+    team = store.create_team("ip-team", allowed_ips=["203.0.113.0/24"])
+    locked = store.create(
+        "locked",
+        team="ip-team",
+        allowed_ips=["203.0.113.10", "2001:db8::/64"],
+    )
+    open_key = store.create("open")
+
+    key_row = redact_key(locked.key)
+    assert key_row["allowed_ips"] == ["203.0.113.10/32", "2001:db8::/64"]
+
+    open_row = redact_key(open_key.key)
+    assert open_row["allowed_ips"] is None
+
+    team_row = redact_team(team)
+    assert team_row["allowed_ips"] == ["203.0.113.0/24"]

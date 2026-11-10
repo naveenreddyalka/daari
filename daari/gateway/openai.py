@@ -3475,6 +3475,53 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             )
             return {"revoked": int(result.get("revoked") or 0)}
 
+        @router.patch("/v1/daari/keys/{key_id}")
+        async def daari_keys_patch(request: Request, key_id: str) -> dict[str, Any]:
+            """Update redacted key fields (currently ``allowed_ips``) (#2154)."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_admin_role(request, ctx)
+            try:
+                body = await request.json()
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="JSON body required") from exc
+            if not isinstance(body, dict) or "allowed_ips" not in body:
+                raise HTTPException(status_code=400, detail="allowed_ips is required")
+            raw_ips = body.get("allowed_ips")
+            # Empty list or null clears the allowlist (unrestricted).
+            if raw_ips is None or raw_ips == []:
+                ips: list[str] | None = None
+            elif isinstance(raw_ips, list):
+                ips = [str(item) for item in raw_ips]
+            else:
+                raise HTTPException(
+                    status_code=400, detail="allowed_ips must be a list of IP or CIDR strings"
+                )
+            store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+                ctx, "virtual_key_store", None
+            )
+            if store is None:
+                raise HTTPException(status_code=503, detail="virtual key store is not configured")
+            try:
+                updated = store.update_ip_access(key_id, allowed_ips=ips)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if not updated:
+                raise HTTPException(status_code=404, detail=f"key {key_id} not found")
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.gateway.admin_read import redact_key
+
+            key = next((item for item in (store.list() or []) if item.key_id == key_id), None)
+            if key is None:
+                raise HTTPException(status_code=404, detail=f"key {key_id} not found")
+            row = redact_key(key)
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="admin.keys.patch_ips",
+                detail={"key_id": key_id, "allowed_ips": row.get("allowed_ips")},
+            )
+            return row
+
         @router.get("/v1/daari/teams")
         async def daari_teams_list(
             request: Request,
@@ -3516,6 +3563,52 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 },
             )
             return result
+
+        @router.patch("/v1/daari/teams/{team_id}")
+        async def daari_teams_patch(request: Request, team_id: str) -> dict[str, Any]:
+            """Update redacted team fields (currently ``allowed_ips``) (#2154)."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_admin_role(request, ctx)
+            try:
+                body = await request.json()
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="JSON body required") from exc
+            if not isinstance(body, dict) or "allowed_ips" not in body:
+                raise HTTPException(status_code=400, detail="allowed_ips is required")
+            raw_ips = body.get("allowed_ips")
+            if raw_ips is None or raw_ips == []:
+                ips: list[str] | None = None
+            elif isinstance(raw_ips, list):
+                ips = [str(item) for item in raw_ips]
+            else:
+                raise HTTPException(
+                    status_code=400, detail="allowed_ips must be a list of IP or CIDR strings"
+                )
+            store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+                ctx, "virtual_key_store", None
+            )
+            if store is None:
+                raise HTTPException(status_code=503, detail="virtual key store is not configured")
+            try:
+                updated = store.update_team_ip_access(team_id, allowed_ips=ips)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if not updated:
+                raise HTTPException(status_code=404, detail=f"team {team_id} not found")
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.gateway.admin_read import redact_team
+
+            team = store.get_team(team_id)
+            if team is None:
+                raise HTTPException(status_code=404, detail=f"team {team_id} not found")
+            row = redact_team(team)
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="admin.teams.patch_ips",
+                detail={"team_id": team_id, "allowed_ips": row.get("allowed_ips")},
+            )
+            return row
 
         @router.post("/v1/org-learning/sync")
         async def org_learning_sync(request: Request) -> dict[str, Any]:
