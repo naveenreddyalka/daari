@@ -8974,6 +8974,15 @@ bucketing still demotes over-SLO peers ahead of cost. Metrics/events record
 `tests/unit/test_virtual_models.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Observability: Grafana panels for virtual-model SLO demotions ([#2169](https://github.com/naveenreddyalka/daari/issues/2169))
+
+<!-- tracking:#2169 -->
+**Status:** Done (2026-11-10). Overview Grafana adds **Virtual-model SLO
+demotion by outcome** on `daari_virtual_model_slo_demotion_total` rate by
+`outcome` (`demoted`/`within`); Helm-embedded dashboard kept in sync. Docs
+line under metrics-prometheus Grafana. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

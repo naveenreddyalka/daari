@@ -138,6 +138,10 @@ prometheus-operator), same as `ServiceMonitor`.
 
 ## Grafana
 
+**Virtual-model SLO demotion by outcome** charts
+`sum by (outcome) (rate(daari_virtual_model_slo_demotion_total[5m]))` for
+`demoted` / `within` pressure next to selection-by-mode (#2169).
+
 Per-team traffic (requires `observability.team_metrics=true`):
 
 ```promql
