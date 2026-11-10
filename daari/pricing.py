@@ -66,9 +66,10 @@ _DEFAULT_ANTHROPIC_SPEED_LIFECYCLE: dict[str, dict[str, Any]] = {
 }
 
 # OpenAI regional processing (data residency) is 1.10× for models released on
-# or after 2026-03-05 when a us/eu pin is active (#1531). FedRAMP is out of scope.
+# or after 2026-03-05 when a residency pin is active (#1531, #2155). FedRAMP is
+# out of scope. AU/IN/JP store in-region; processing may still leave the region.
 _REGIONAL_PROCESSING_FACTOR = 1.10
-_REGIONAL_PROCESSING_PINS = frozenset({"us", "eu"})
+_REGIONAL_PROCESSING_PINS = frozenset({"us", "eu", "au", "in", "jp"})
 _REGIONAL_PREMIUM_MODEL_KEYS = (
     "gpt-5.4",
     "gpt-5.5",
@@ -101,7 +102,7 @@ def service_tier_factor(tier: str | None) -> float:
 
 
 def regional_processing_factor(region_pin: str | None, model: str | None) -> float:
-    """1.10× when us/eu pin is set on a post-2026-03-05 OpenAI model (#1531)."""
+    """1.10× when a residency pin is set on a post-2026-03-05 OpenAI model (#1531/#2155)."""
     pin = (region_pin or "").strip().lower()
     if pin not in _REGIONAL_PROCESSING_PINS:
         return 1.0
