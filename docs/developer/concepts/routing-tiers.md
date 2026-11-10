@@ -74,8 +74,12 @@ of data the router already has — no model calls:
 
 Opt-in `routing.signal_overrides` (empty by default) matches on those facts
 with equality / bucket match (first match wins) and applies an existing lever:
-`category`, `max_tier` (like `X-Daari-Tier-Cap`), or `tier_pin` (like
-`X-Daari-Tier-Override`). Each rule must have a non-empty `match` using only
+`category`, `max_tier` (like `X-Daari-Tier-Cap`), `tier_pin` (like
+`X-Daari-Tier-Override`), or `reasoning_effort` (`minimal` / `low` /
+`medium` / `high`). The effort lever applies **only when the client omitted**
+`reasoning_effort`; an explicit client value always wins. It is applied before
+tier selection so `reasoning_effort_escalation` and `param_compat` see the
+overridden value (#2162). Each rule must have a non-empty `match` using only
 known signal keys, match values of `str | bool | int | None`
 (`approx_context_tokens` must be one of the four bucket strings), and at least
 one lever set — otherwise load / `daari config validate` fails naming the rule
@@ -105,6 +109,9 @@ routing:
     - id: eval-cap
       match: { tags: [eval, canary] }
       max_tier: L3
+    - id: trivial-cheap
+      match: { complexity: trivial }
+      reasoning_effort: minimal
 ```
 
 ## Shadow evals for tier decisions

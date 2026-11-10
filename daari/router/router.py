@@ -1385,6 +1385,7 @@ class Router:
             "category": getattr(rule, "category", None),
             "max_tier": levers.get("max_tier"),
             "tier_pin": levers.get("tier_pin"),
+            "reasoning_effort": levers.get("reasoning_effort"),
             "request_id": getattr(request.meta, "request_id", None),
         }
         add_step("signal_override", **{k: v for k, v in detail.items() if k != "request_id"})

@@ -270,7 +270,9 @@ def apply_signal_override(
     request: InternalRequest,
     rule: Any,
 ) -> tuple[PromptProfile, dict[str, str | None]]:
-    """Apply category / max_tier / tier_pin levers; mutate request.meta when set."""
+    """Apply category / max_tier / tier_pin / reasoning_effort levers."""
+    from daari.gateway.sampling import ACCEPTED_REASONING_EFFORTS
+
     category = getattr(rule, "category", None)
     if category is None and isinstance(rule, dict):
         category = rule.get("category")
@@ -280,6 +282,9 @@ def apply_signal_override(
     tier_pin = getattr(rule, "tier_pin", None)
     if tier_pin is None and isinstance(rule, dict):
         tier_pin = rule.get("tier_pin")
+    reasoning_effort = getattr(rule, "reasoning_effort", None)
+    if reasoning_effort is None and isinstance(rule, dict):
+        reasoning_effort = rule.get("reasoning_effort")
 
     new_profile = profile
     if category:
@@ -292,7 +297,16 @@ def apply_signal_override(
     if tier_pin_s in _TIER_SET and not request.meta.tier_override:
         request.meta.tier_override = tier_pin_s
 
+    # Client-sent effort always wins; only fill when omitted (#2162).
+    effort_s: str | None = None
+    if isinstance(reasoning_effort, str):
+        candidate = reasoning_effort.strip().lower()
+        if candidate in ACCEPTED_REASONING_EFFORTS and request.sampling.reasoning_effort is None:
+            request.sampling.reasoning_effort = candidate
+            effort_s = candidate
+
     return new_profile, {
         "max_tier": max_tier_s if max_tier_s in _TIER_SET else None,
         "tier_pin": tier_pin_s if tier_pin_s in _TIER_SET else None,
+        "reasoning_effort": effort_s,
     }

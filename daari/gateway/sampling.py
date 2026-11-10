@@ -62,6 +62,9 @@ _REASONING_EFFORT_TO_THINK: dict[str, str | None] = {
     "high": "high",
 }
 
+# Values signal_overrides / config may set as a reasoning_effort lever (#2162).
+ACCEPTED_REASONING_EFFORTS: frozenset[str] = frozenset(_REASONING_EFFORT_TO_THINK)
+
 # Name markers for Ollama models that accept think levels (gpt-oss, Qwen3, …).
 _THINKING_MODEL_MARKERS = ("gpt-oss", "qwen3", "thinking", "deepseek-r1")
 

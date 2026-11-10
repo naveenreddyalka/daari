@@ -8945,6 +8945,15 @@ and `packages/web-ui/test/dashboard.test.js`.
 `au`/`in`/`jp` hosts with storage-vs-processing honesty; budgets-frontier
 uplift sentence updated. Covered by `tests/unit/test_regional_pricing.py`.
 
+### Routing: reasoning_effort lever on signal_overrides ([#2162](https://github.com/naveenreddyalka/daari/issues/2162))
+
+<!-- tracking:#2162 -->
+**Status:** Done (2026-11-10). `signal_overrides` rules accept optional
+`reasoning_effort` (`minimal`/`low`/`medium`/`high`); applied only when the
+client omitted effort, before tier selection. Covered by
+`tests/unit/test_signal_overrides.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

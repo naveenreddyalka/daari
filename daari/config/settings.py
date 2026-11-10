@@ -818,6 +818,13 @@ class SignalOverrideRule(BaseModel):
         default=None,
         description="When set, pin the initial tier like X-Daari-Tier-Override.",
     )
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = Field(
+        default=None,
+        description=(
+            "When set, pin reasoning_effort only if the client omitted it "
+            "(#2162). Accepted: minimal|low|medium|high."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_match_and_levers(self) -> SignalOverrideRule:
@@ -829,10 +836,15 @@ class SignalOverrideRule(BaseModel):
                 f"signal_overrides rule {rule_id!r} has an empty match "
                 "(dead rule; every override needs at least one signal key)"
             )
-        if self.category is None and self.max_tier is None and self.tier_pin is None:
+        if (
+            self.category is None
+            and self.max_tier is None
+            and self.tier_pin is None
+            and self.reasoning_effort is None
+        ):
             raise ValueError(
                 f"signal_overrides rule {rule_id!r} sets no lever "
-                "(set category, max_tier, and/or tier_pin)"
+                "(set category, max_tier, tier_pin, and/or reasoning_effort)"
             )
         from daari.router.signals import TAG_MATCH_KEYS
 
@@ -1055,7 +1067,8 @@ class RoutingSettings(RuntimeSettings):
         default_factory=list,
         description=(
             "Opt-in list of request-fact signal matches that apply category / "
-            "max_tier / tier_pin levers before local tier pick (#1996). Empty "
+            "max_tier / tier_pin / reasoning_effort levers before local tier "
+            "pick (#1996/#2162). Empty "
             "(default) leaves routing unchanged. First match wins. Documented "
             "in the routing-tiers guide. Editable via GET/PATCH "
             "/v1/daari/config ownership (config editor; full list replacement) "

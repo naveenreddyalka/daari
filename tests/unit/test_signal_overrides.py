@@ -151,8 +151,60 @@ def test_signal_override_rejects_empty_match():
 
 
 def test_signal_override_rejects_leverless_rule():
-    with pytest.raises(ValidationError, match=r"no-lever|lever|category|max_tier|tier_pin"):
+    with pytest.raises(
+        ValidationError, match=r"no-lever|lever|category|max_tier|tier_pin|reasoning_effort"
+    ):
         SignalOverrideRule(id="no-lever", match={"has_images": True})
+
+
+def test_signal_override_accepts_reasoning_effort_only_rule():
+    """A rule setting only reasoning_effort is a live lever (#2162)."""
+    rule = SignalOverrideRule(
+        id="cheap-trivial",
+        match={"complexity": "trivial"},
+        reasoning_effort="minimal",
+    )
+    assert rule.reasoning_effort == "minimal"
+
+
+def test_signal_override_rejects_unknown_reasoning_effort():
+    with pytest.raises(ValidationError, match=r"bad-effort|reasoning_effort|ultra"):
+        SignalOverrideRule(
+            id="bad-effort",
+            match={"has_images": True},
+            reasoning_effort="ultra",
+        )
+
+
+def test_apply_override_sets_reasoning_effort_when_omitted():
+    from daari.gateway.sampling import SamplingParams
+
+    profile = PromptProfile(category="chat", complexity="standard", prompt_tokens_est=10)
+    request = _req(sampling=SamplingParams())
+    assert request.sampling.reasoning_effort is None
+    rule = SignalOverrideRule(
+        id="code-high",
+        match={"category": "chat"},
+        reasoning_effort="high",
+    )
+    _, levers = apply_signal_override(profile, request, rule)
+    assert levers["reasoning_effort"] == "high"
+    assert request.sampling.reasoning_effort == "high"
+
+
+def test_apply_override_preserves_client_reasoning_effort():
+    from daari.gateway.sampling import SamplingParams
+
+    profile = PromptProfile(category="chat", complexity="standard", prompt_tokens_est=10)
+    request = _req(sampling=SamplingParams(reasoning_effort="low"))
+    rule = SignalOverrideRule(
+        id="code-high",
+        match={"category": "chat"},
+        reasoning_effort="high",
+    )
+    _, levers = apply_signal_override(profile, request, rule)
+    assert levers.get("reasoning_effort") is None
+    assert request.sampling.reasoning_effort == "low"
 
 
 def test_signal_override_valid_rule_loads():
