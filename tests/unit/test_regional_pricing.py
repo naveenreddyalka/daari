@@ -10,7 +10,10 @@ from daari.gateway.internal import DaariMeta
 from daari.pricing import cost_usd, regional_processing_factor
 
 
-@pytest.mark.parametrize("pin", ["us", "eu", "US", " EU "])
+@pytest.mark.parametrize(
+    "pin",
+    ["us", "eu", "au", "in", "jp", "US", " EU ", "AU", "IN", "JP", " au ", " in ", " jp "],
+)
 def test_regional_factor_is_1_10_for_post_cutoff_openai_models(pin):
     assert regional_processing_factor(pin, "gpt-6-luna") == pytest.approx(1.10)
     assert regional_processing_factor(pin, "gpt-6-astra") == pytest.approx(1.10)
@@ -24,6 +27,7 @@ def test_regional_factor_is_1_without_pin_or_pre_cutoff_model():
     assert regional_processing_factor("us", "gpt-4o-mini") == 1.0
     assert regional_processing_factor("eu", "claude-sonnet-5-5") == 1.0
     assert regional_processing_factor("apac", "gpt-6-luna") == 1.0
+    assert regional_processing_factor("sg", "gpt-6-luna") == 1.0
 
 
 def test_chat_cost_uplift_with_region_pin():

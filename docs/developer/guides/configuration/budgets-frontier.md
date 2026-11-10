@@ -432,9 +432,10 @@ most restrictive) so expensive tiers cannot be requested without governance;
 see [virtual keys](../features/virtual-keys.md#service-tier-allowlists).
 
 OpenAI regional processing (data residency) adds a further **1.10×** uplift on
-models released on or after 2026-03-05 when a key/team `region_pin` is `us` or
-`eu`; unset pin bills the standard (or Fast/Ultrafast) rate with no residency
-premium (`daari doctor` pricing notes). FedRAMP routing is not invented here.
+models released on or after 2026-03-05 when a key/team `region_pin` is `us`,
+`eu`, `au`, `in`, or `jp`; unset pin bills the standard (or Fast/Ultrafast) rate
+with no residency premium (`daari doctor` pricing notes). FedRAMP routing is
+not invented here.
 
 ### Anthropic cache_control TTL write rates
 

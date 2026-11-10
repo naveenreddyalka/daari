@@ -10,7 +10,8 @@ pattern as [`provider.zdr`](budgets-frontier.md#providers--fallback).
 
 ## Slot declaration
 
-Each frontier provider may declare a free-form `region` label (`us`, `eu`, …):
+Each frontier provider may declare a free-form `region` label (`us`, `eu`,
+`au`, `in`, `jp`, …):
 
 ```yaml
 frontier:
@@ -27,11 +28,30 @@ frontier:
       model: openrouter/auto
       api_key_env: OPENROUTER_API_KEY
       region: eu
+    - id: openai-au
+      base_url: https://au.api.openai.com/v1
+      model: gpt-6-luna
+      api_key_env: OPENAI_API_KEY
+      region: au
+    - id: openai-in
+      base_url: https://in.api.openai.com/v1
+      model: gpt-6-luna
+      api_key_env: OPENAI_API_KEY
+      region: in
+    - id: openai-jp
+      base_url: https://jp.api.openai.com/v1
+      model: gpt-6-luna
+      api_key_env: OPENAI_API_KEY
+      region: jp
 ```
 
 OpenRouter's [US / EU in-region routing](https://openrouter.ai/blog/announcements/us-in-region-routing/)
 endpoints decrypt and serve entirely in-region on Business/Enterprise plans.
-daari never silently routes a pinned request to an unlabeled or mismatched slot.
+OpenAI's AU / IN / JP data-residency hosts (`au.api.openai.com`,
+`in.api.openai.com`, `jp.api.openai.com`) store in-region; processing for those
+regions may still leave the region — pin them only when that honesty matches
+your review. daari never silently routes a pinned request to an unlabeled or
+mismatched slot.
 
 ## Key / team pin
 
@@ -52,9 +72,10 @@ L6 responses that used a regional slot set `daari_meta.region` and the
 `x-daari-region` response header so logs and SIEM pipelines can prove residency
 per request.
 
-Pinned `us`/`eu` traffic on OpenAI models released on or after 2026-03-05 also
-bills at **1.10×** the standard (or Fast/Ultrafast) rate so `cost_usd` matches
-the regional invoice (see [budgets and frontier](budgets-frontier.md#service-tier-pricing)).
+Pinned `us`/`eu`/`au`/`in`/`jp` traffic on OpenAI models released on or after
+2026-03-05 also bills at **1.10×** the standard (or Fast/Ultrafast) rate so
+`cost_usd` matches the regional invoice (see
+[budgets and frontier](budgets-frontier.md#service-tier-pricing)).
 
 ## Next
 

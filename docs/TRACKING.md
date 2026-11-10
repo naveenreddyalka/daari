@@ -8937,6 +8937,14 @@ admin keys/teams tables render the CIDR allowlist (`*` when unrestricted).
 by `tests/unit/test_admin_read_plane.py`, `tests/unit/test_admin_ip_allowlist_patch.py`,
 and `packages/web-ui/test/dashboard.test.js`.
 
+### Frontier: OpenAI AU/IN/JP residency pins + 1.10× ([#2155](https://github.com/naveenreddyalka/daari/issues/2155))
+
+<!-- tracking:#2155 -->
+**Status:** Done (2026-11-10). `_REGIONAL_PROCESSING_PINS` adds `au`/`in`/`jp`
+(same 1.10× model-gate as us/eu). Data-residency guide documents OpenAI
+`au`/`in`/`jp` hosts with storage-vs-processing honesty; budgets-frontier
+uplift sentence updated. Covered by `tests/unit/test_regional_pricing.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
