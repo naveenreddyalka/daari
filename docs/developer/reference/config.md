@@ -34,6 +34,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `auth.key_lockout.max_failures` | int | `10` | Invalid-auth attempts for one key prefix within window_seconds before lockout. 0 disables the counter. Matches auth.max_failures. Env: DAARI_AUTH__KEY_LOCKOUT__MAX_FAILURES. |
 | `auth.key_lockout.window_seconds` | float | `60.0` | Sliding window for auth.key_lockout.max_failures. Env: DAARI_AUTH__KEY_LOCKOUT__WINDOW_SECONDS. |
 | `auth.key_lockout.lockout_seconds` | int | `60` | How long a tripped key prefix stays locked (Retry-After). Env: DAARI_AUTH__KEY_LOCKOUT__LOCKOUT_SECONDS. |
+| `auth.resolve_grace_ttl_s` | float | `0.0` | Seconds to serve a last-known-good virtual key from an in-process cache when the Postgres VK store raises PostgresBackendUnavailable (#2163). 0 (default) keeps today's fail-closed behavior. Non-zero is a revocation-latency trade-off: a revoked key may still auth until the TTL elapses. Expired keys are never grace-served. Env: DAARI_AUTH__RESOLVE_GRACE_TTL_S. |
 | `auth.throttle_enabled` | bool | `True` | When false, invalid-key attempts are never rate-limited. |
 | `auth.max_failures` | int | `10` | Invalid-key failures per client IP within window_seconds before 429. 0 disables the counter. Env: DAARI_AUTH__MAX_FAILURES. |
 | `auth.window_seconds` | float | `60.0` | Sliding window for auth.max_failures. Env: DAARI_AUTH__WINDOW_SECONDS. |

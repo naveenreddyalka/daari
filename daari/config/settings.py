@@ -2970,6 +2970,18 @@ class AuthSettings(BaseModel):
     """Invalid API-key brute-force throttle (#935) and per-key lockout (#1684)."""
 
     key_lockout: KeyLockoutSettings = Field(default_factory=KeyLockoutSettings)
+    resolve_grace_ttl_s: float = Field(
+        default=0.0,
+        ge=0,
+        description=(
+            "Seconds to serve a last-known-good virtual key from an in-process "
+            "cache when the Postgres VK store raises PostgresBackendUnavailable "
+            "(#2163). 0 (default) keeps today's fail-closed behavior. Non-zero "
+            "is a revocation-latency trade-off: a revoked key may still auth "
+            "until the TTL elapses. Expired keys are never grace-served. "
+            "Env: DAARI_AUTH__RESOLVE_GRACE_TTL_S."
+        ),
+    )
     throttle_enabled: bool = Field(
         default=True,
         description="When false, invalid-key attempts are never rate-limited.",

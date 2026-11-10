@@ -101,6 +101,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     vk_store: VirtualKeyStore | None = None
     if resolved.server.virtual_keys.enabled:
         vk_store = virtual_key_store_from_settings(resolved)  # type: ignore[assignment]
+    from daari.server.auth import ResolveGraceCache
+
+    resolve_grace_cache = ResolveGraceCache()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -220,6 +223,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="daari", version="0.1.0", lifespan=lifespan)
     app.state.virtual_key_store = vk_store
+    app.state.resolve_grace_cache = resolve_grace_cache
     app.state.rate_limiter = build_rate_limiter(resolved)
     from daari.auth.invalid_key_throttle import build_auth_throttle
     from daari.auth.key_lockout import build_key_lockout
@@ -363,19 +367,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             supplied = extract_api_key(request.headers)
             from daari.server.auth import master_key_matches
 
-            # Unreachable Postgres VK: fail closed unless master key matches (#1652).
+            grace_ttl = float(getattr(resolved.auth, "resolve_grace_ttl_s", 0.0) or 0.0)
+            grace_cache = getattr(request.app.state, "resolve_grace_cache", None)
+            # Unreachable Postgres VK: fail closed unless master matches or
+            # opt-in resolve grace can still serve a cached key (#1652/#2163).
             if (
                 store is not None
                 and getattr(store, "unreachable", False)
                 and not master_key_matches(supplied, master_keys)
+                and grace_ttl <= 0
             ):
                 return _postgres_unavailable_response(
                     getattr(store, "_unreach_detail", "") or "virtual_keys"
                 )
             try:
-                claims = resolve_auth(supplied, master_key=master_keys, store=store)
+                claims = resolve_auth(
+                    supplied,
+                    master_key=master_keys,
+                    store=store,
+                    grace_cache=grace_cache,
+                    grace_ttl_s=grace_ttl,
+                )
             except PostgresBackendUnavailable as exc:
                 return _postgres_unavailable_response(exc.detail or str(exc.store))
+            if claims is not None and getattr(claims, "grace_served", False):
+                from daari.gateway.request_log import log_gateway_event
+
+                log_gateway_event(
+                    "auth_grace_served",
+                    {
+                        "key_id": claims.key_id,
+                        "grace_ttl_s": grace_ttl,
+                    },
+                )
+                metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
+                if metrics is not None and hasattr(metrics, "record_auth_grace_served"):
+                    metrics.record_auth_grace_served()
+                elif metrics is not None and hasattr(metrics, "record_soft_warning"):
+                    metrics.record_soft_warning("auth_grace")
             if claims is None and supplied and resolved.integrations.mcp_oauth.local_as:
                 from daari.gateway.mcp_oauth import verify_access_token
 
@@ -1047,11 +1076,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         claims = getattr(request.state, "auth_claims", None)
         if claims is None:
             store = getattr(request.app.state, "virtual_key_store", None)
+            grace_ttl = float(getattr(resolved.auth, "resolve_grace_ttl_s", 0.0) or 0.0)
             try:
                 claims = resolve_auth(
                     extract_api_key(request.headers),
                     master_key=master_keys,
                     store=store,
+                    grace_cache=getattr(request.app.state, "resolve_grace_cache", None),
+                    grace_ttl_s=grace_ttl,
                 )
             except PostgresBackendUnavailable as exc:
                 return _postgres_unavailable_response(exc.detail or str(exc.store))
