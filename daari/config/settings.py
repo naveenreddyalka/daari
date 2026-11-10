@@ -1265,29 +1265,33 @@ class RoutingSettings(RuntimeSettings):
             "replacement) (#2051)."
         ),
     )
-    virtual_model_selection: Literal["ordered", "performance"] = Field(
+    virtual_model_selection: Literal["ordered", "performance", "cost"] = Field(
         default="ordered",
         description=(
-            "How to order virtual_models candidates before failover (#2052). "
+            "How to order virtual_models candidates before failover (#2052, #2164). "
             "'ordered' (default) keeps the configured list order. 'performance' "
             "prefers the healthiest candidate by in-process EWMA of realized "
-            "latency and error rate (config position is the tiebreak); breaker-open "
-            "candidates are skipped. Strict failover on BackendUnavailable is "
-            "unchanged. Stats expose the EWMA snapshot; fleet/Redis sharing is "
-            "out of scope for v1."
+            "latency and error rate (config position is the tiebreak). 'cost' "
+            "orders by blended $/1M from the in-tree pricing table "
+            "(3:1 input:output); local and unpriced candidates sort as 0 and "
+            "keep config order among themselves. Breaker-open candidates are "
+            "skipped. Strict failover on BackendUnavailable is unchanged. "
+            "Stats expose the EWMA snapshot; fleet/Redis sharing is out of "
+            "scope for v1."
         ),
     )
     virtual_model_latency_slo_ms: dict[str, float] = Field(
         default_factory=dict,
         description=(
             "Opt-in latency SLO (ms) per virtual-model name for performance "
-            "selection (#2086). When set, within-SLO EWMA candidates (or cold "
-            "starts with no samples) rank before over-SLO ones; within each "
-            "bucket the existing error/latency/index sort is unchanged. "
-            "Ignored in ordered mode (map may still be stored). Keys must "
-            "name an entry in routing.virtual_models; values must be positive. "
-            "Editable via GET/PATCH /v1/daari/config ownership (full map "
-            "replacement) (#2125)."
+            "and cost selection (#2086, #2164). When set, within-SLO EWMA "
+            "candidates (or cold starts with no samples) rank before over-SLO "
+            "ones; within each bucket performance keeps error/latency/index "
+            "sort and cost keeps blended-rate/index sort. Ignored in ordered "
+            "mode (map may still be stored). Keys must name an entry in "
+            "routing.virtual_models; values must be positive. Editable via "
+            "GET/PATCH /v1/daari/config ownership (full map replacement) "
+            "(#2125)."
         ),
     )
 

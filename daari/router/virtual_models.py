@@ -1,4 +1,4 @@
-"""Named virtual models → ordered local/L6 candidate lists (#2023, #2052, #2086)."""
+"""Named virtual models → ordered local/L6 candidate lists (#2023, #2052, #2086, #2164)."""
 
 from __future__ import annotations
 
@@ -7,9 +7,12 @@ from threading import Lock
 from typing import Any, Callable, Literal
 
 Kind = Literal["local", "frontier"]
-SelectionMode = Literal["ordered", "performance"]
+SelectionMode = Literal["ordered", "performance", "cost"]
 
 DEFAULT_EWMA_ALPHA = 0.3
+# Blended $/1M for cost selection: 3 parts input + 1 part output (#2164).
+COST_BLEND_INPUT_WEIGHT = 3.0
+COST_BLEND_OUTPUT_WEIGHT = 1.0
 
 
 @dataclass
@@ -109,6 +112,43 @@ class VirtualModelPerformanceTracker:
             return out
 
 
+def blended_candidate_cost(
+    candidate: str,
+    *,
+    pricing: object | None,
+    classify_settings: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> float:
+    """Blended $/1M for cost selection (3:1 input:output); local/unpriced → 0."""
+    kind, target = classify_candidate(candidate, classify_settings)
+    if kind == "local":
+        return 0.0
+    if pricing is None:
+        return 0.0
+    model_id = candidate.strip()
+    if target == "L6" and model_id.upper() in {"L6", "FRONTIER"}:
+        frontier = getattr(classify_settings, "frontier", None)
+        model_id = (
+            getattr(frontier, "default_model", None)
+            or getattr(frontier, "model", None)
+            or model_id
+        )
+    from daari.pricing import resolve_price
+
+    price = resolve_price(
+        str(model_id) if model_id else None,
+        pricing,
+        fallback_per_1k=float(fallback_per_1k or 0.002),
+    )
+    if price.is_fallback:
+        return 0.0
+    total_w = COST_BLEND_INPUT_WEIGHT + COST_BLEND_OUTPUT_WEIGHT
+    return (
+        COST_BLEND_INPUT_WEIGHT * float(price.input_per_1m)
+        + COST_BLEND_OUTPUT_WEIGHT * float(price.output_per_1m)
+    ) / total_w
+
+
 def order_virtual_candidates(
     candidates: list[str],
     *,
@@ -118,18 +158,23 @@ def order_virtual_candidates(
     breaker_open: Callable[[str], bool] | None = None,
     latency_slo_ms: float | None = None,
     slo_outcome: list[str] | None = None,
+    pricing: object | None = None,
+    classify_settings: Any = None,
+    fallback_per_1k: float = 0.002,
 ) -> list[str]:
-    """Return try-order for virtual-model candidates (#2052, #2086, #2123).
+    """Return try-order for virtual-model candidates (#2052, #2086, #2123, #2164).
 
     ``ordered`` (default): config order, minus breaker-open ids.
     ``performance``: lowest EWMA error_rate, then latency, then config index;
-    breaker-open candidates are omitted (skipped). When ``latency_slo_ms`` is
-    set, within-SLO candidates (EWMA latency ≤ SLO, or no samples) rank before
-    over-SLO ones; within each bucket the error/latency/index sort is unchanged.
+    breaker-open candidates are omitted (skipped). ``cost``: lowest blended
+    $/1M (3:1 input:output) from the pricing table; local/unpriced → 0 with
+    config-order ties. When ``latency_slo_ms`` is set in performance or cost
+    mode, within-SLO candidates (EWMA latency ≤ SLO, or no samples) rank
+    before over-SLO ones; within each bucket the mode's sort is unchanged.
 
-    When ``slo_outcome`` is provided and an SLO is applied in performance mode,
-    appends ``\"demoted\"`` (over-SLO behind a within-SLO peer) or ``\"within\"``
-    (SLO configured, no demotion) for metrics (#2123).
+    When ``slo_outcome`` is provided and an SLO is applied in performance or
+    cost mode, appends ``\"demoted\"`` (over-SLO behind a within-SLO peer) or
+    ``\"within\"`` (SLO configured, no demotion) for metrics (#2123).
     """
     cleaned = [str(c).strip() for c in candidates if str(c).strip()]
     if breaker_open is not None:
@@ -137,11 +182,13 @@ def order_virtual_candidates(
     if not cleaned:
         return []
     sel = (mode or "ordered").strip().lower()
-    if sel != "performance" or tracker is None:
+    if sel not in {"performance", "cost"}:
+        return cleaned
+    if sel == "performance" and tracker is None:
         return cleaned
 
     slo: float | None = None
-    if latency_slo_ms is not None:
+    if latency_slo_ms is not None and tracker is not None:
         try:
             slo_val = float(latency_slo_ms)
         except (TypeError, ValueError):
@@ -152,7 +199,7 @@ def order_virtual_candidates(
     indexed = list(enumerate(cleaned))
 
     def _within_slo(cand: str) -> bool:
-        if slo is None:
+        if slo is None or tracker is None:
             return True
         row = tracker.stats_for(virtual_model, cand)
         # Cold start must not starve new backends (#2086).
@@ -160,16 +207,32 @@ def order_virtual_candidates(
             return True
         return float(row.latency_ms) <= slo
 
-    def _key(item: tuple[int, str]) -> tuple[int, float, float, int]:
-        idx, cand = item
-        row = tracker.stats_for(virtual_model, cand)
-        # Round so EWMA residuals after a recovery window do not permanently
-        # lose to a never-errored sibling (acceptance: recovers after decay).
-        over = 0 if _within_slo(cand) else 1
-        return (over, round(row.error_rate, 4), round(row.latency_ms, 1), idx)
+    if sel == "cost":
 
-    ranked = [cand for _, cand in sorted(indexed, key=_key)]
-    if slo is not None:
+        def _cost_key(item: tuple[int, str]) -> tuple[int, float, int]:
+            idx, cand = item
+            over = 0 if _within_slo(cand) else 1
+            rate = blended_candidate_cost(
+                cand,
+                pricing=pricing,
+                classify_settings=classify_settings,
+                fallback_per_1k=fallback_per_1k,
+            )
+            return (over, round(rate, 6), idx)
+
+        ranked = [cand for _, cand in sorted(indexed, key=_cost_key)]
+    else:
+
+        def _perf_key(item: tuple[int, str]) -> tuple[int, float, float, int]:
+            idx, cand = item
+            row = tracker.stats_for(virtual_model, cand)  # type: ignore[union-attr]
+            # Round so EWMA residuals after a recovery window do not permanently
+            # lose to a never-errored sibling (acceptance: recovers after decay).
+            over = 0 if _within_slo(cand) else 1
+            return (over, round(row.error_rate, 4), round(row.latency_ms, 1), idx)
+
+        ranked = [cand for _, cand in sorted(indexed, key=_perf_key)]
+    if slo is not None and tracker is not None:
         demoted = [c for c in ranked if not _within_slo(c)]
         # Only note demotion when a within-SLO peer actually took priority.
         if demoted and any(_within_slo(c) for c in ranked):
