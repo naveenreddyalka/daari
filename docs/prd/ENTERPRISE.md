@@ -11,30 +11,27 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-10)
+## Where daari stands (verified in-tree, 2026-11-10 pm)
 
-**Loop velocity.** Overnight merges: allowed_ips admin/web-ui, OpenAI
-AU/IN/JP residency pins, `reasoning_effort` signal lever, last-known-good
-VK grace (rows 323–324, 326–327 shipped). The 5.2 cliff set (350–354) and
-Kong deep-cut set (345–349) remain open.
+**Loop velocity.** Morning PRD (#2219) filed reasoning/BYOK/truncation
+rows 355–359; overnight feature merges (allowed_ips, AU/IN/JP residency,
+effort lever, VK grace) stay shipped. No new feature merges since 17:27
+UTC. Open cliffs: 5.2 set (350–354), Kong deep-cut (345–349), morning
+wave (355–359).
 
-**Outward.** Fresh deltas: **LiteLLM v1.108.4 LTS** (11-09 — Messages→
-OpenAI `background:true` billing leak fixed; encrypted reasoning dropped
-between turns on `chatgpt/` via `/v1/messages`; team keys served by
-proxy-wide instead of team BYOK wildcard; Bedrock 400s when Claude signed
-thinking lands on GLM/Luna/Nova) and **Ollama v0.40.16** (11-09 — Ripple
-Preview 65B agentic-coding model; `/v1/responses` now honors `truncation`;
-`/v1/models` empty-list fix). Kong AI Gateway 2.3.1 (11-10) is nginx CVE
-patches only. Flat: Portkey v2.33.1, vLLM 0.33.0, OpenRouter (10-29),
-MCP 2026-07-28, OpenAI (11-05), Anthropic (11-09, converted).
+**Outward.** Flat vs morning. LiteLLM still **1.108.4 LTS** (11-09);
+Ollama still **0.40.16**; Kong **2.3.1** = nginx CVE patches only;
+Portkey **v2.33.1**, vLLM **0.33.0**, OpenRouter (10-29), MCP 2026-07-28,
+OpenAI/Anthropic unchanged. No-delta is not a stop — convert watch +
+inward debt.
 
-**Inward theme: cross-vendor reasoning fidelity + tenant credentials.**
-`openai_executor.py` has zero reasoning handling — a Messages client
-served by an OpenAI frontier loses encrypted reasoning every turn (the
-Responses surface already round-trips it). `truncation` is parsed then
-dropped (`responses_truncation_ignored`). Frontier credentials are
-global-only — per-endpoint key slots exist in `frontier_pool.py` but no
-team binding, so every tenant bills to one shared invoice.
+**Inward theme: residency honesty + cache/failover dials + 5.2 advisor.**
+`_REGIONAL_PROCESSING_PINS` stops at us/eu/au/in/jp while OpenAI hosts
+already ship ca/sg/kr/gb/ae (unit pin asserts `sg` → 1.0× today).
+`prompt_cache` only marks the last system block — no top-level Anthropic
+`cache_control` auto dial (Portkey 2.33). `RETRYABLE_STATUS` misses
+501/522 that Kong's `http_5xx` failover catches. No advisor-tool gate for
+Fable/Mythos 5.2 same-model pairing (Anthropic 400 before egress).
 
 ---
 
@@ -42,6 +39,11 @@ team binding, so every tenant bills to one shared invoice.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 360 | Expand OpenAI residency 1.10× + docs to CA/SG/KR/GB/AE | 3 | 1 | OpenAI regional hosts + invoice uplift | Same-box ledger matches regional invoice; storage-vs-processing honesty next to the pin | Filed [#2220](https://github.com/naveenreddyalka/daari/issues/2220) |
+| 361 | Opt-in Anthropic `auto_caching` via top-level `cache_control` | 3 | 2 | Portkey 2.33.0 auto_caching | Agent loops get Claude automatic cache without a SaaS config plane | Filed [#2221](https://github.com/naveenreddyalka/daari/issues/2221) |
+| 362 | Opt-in failover on any HTTP 5xx incl. 501/522 | 3 | 2 | Kong 2.3.0 `http_5xx` failover_criteria | Local/frontier 5xx fail over on-box; no Cedar dep | Filed [#2222](https://github.com/naveenreddyalka/daari/issues/2222) |
+| 363 | Require Fable/Mythos 5.2-compatible advisor model | 3 | 2 | Anthropic 11-09 advisor pairing gate | Fail-fast before the cloud 400; agent loop stays on-box | Filed [#2223](https://github.com/naveenreddyalka/daari/issues/2223) |
+| 364 | Integration fence for the 11-10 evening wave | 2 | 2 | — (testability) | Hermetic proof: residency pins, auto_caching, 5xx failover, advisor gate | Filed [#2224](https://github.com/naveenreddyalka/daari/issues/2224) |
 | 355 | Round-trip OpenAI encrypted reasoning on `/v1/messages` across turns | 4 | 2 | LiteLLM 1.108.4 LTS reasoning fix | One box fronts both vendors; reasoning fidelity survives any executor, no SaaS middle layer | Filed [#2214](https://github.com/naveenreddyalka/daari/issues/2214) |
 | 356 | Honor `truncation` auto/disabled on `/v1/responses` | 3 | 2 | Ollama 0.40.16 honors it; OpenAI semantics | Local tiers hit context walls first; compact on-box, payload never leaves | Filed [#2215](https://github.com/naveenreddyalka/daari/issues/2215) |
 | 357 | Per-team frontier credential binding (team BYOK) | 4 | 3 | LiteLLM team BYOK (1.108.4 precedence fix) | Each team's L6 bills to their own invoice; shared local tiers stay $0 | Filed [#2216](https://github.com/naveenreddyalka/daari/issues/2216) |
@@ -109,77 +111,80 @@ team binding, so every tenant bills to one shared invoice.
 
 Watch rows (do not file yet): coding-router recipe — an Auto Code twin
 combining virtual_models + `category=code` signal rules + SLO + the effort
-lever (file after rows 326/328 land); Fable/Mythos 5.2 advisor-tool
-same-model pairing + 30-day retention / ZDR carve-out honesty (file after
-350 lands); Kong 2.3.0 Cedar `access-policy-engine` + CEL
-`allow_when`/`deny_when` tool ACL + Token Vault credential placement +
-`http_5xx` failover_criteria (expression engine = new dep or heavy —
-human sign-off); Grafana panels for input/output cost USD (after 343);
-LiteLLM `1.110.0-dev` remainder beyond 340/342 (provider-reported
+lever (file after rows 326/328 land); Fable/Mythos 5.2 30-day retention /
+ZDR carve-out honesty (file after 350 lands; advisor pairing converted
+to row 363); Kong 2.3.0 Cedar `access-policy-engine` + CEL
+`allow_when`/`deny_when` tool ACL + Token Vault credential placement
+(expression engine = new dep or heavy — human sign-off; `http_5xx`
+converted to row 362); Grafana panels for input/output cost USD (after
+343); LiteLLM `1.110.0-dev` remainder beyond 340/342 (provider-reported
 `usage.cost`, tenant session affinity, Lens-split Helm, per-key/team
 prompt-storage off, deployment weights, Responses SSE framing preserve;
 empty-reply cache poison already covered — hold for a stable cut);
 Kong 2.3.1 (11-10) = nginx CVE patches only, floor stays 2.3.0 semantics;
-Ollama top stable floor 0.40.16 (0.40.15 recipes unaffected);
-Portkey v2.33 Anthropic `auto_caching` (only if top-level `cache_control`
-diverges); Portkey MCP access policies (Prisma AIRS-only); Portkey OTel
-workspace name; Bedrock metadata map; LiteLLM OpenAI Live
-`/v1/live/sessions` + Azure PTU + M365 Copilot + `gpt-live-1` SIP
-(Realtime/WS); AutoTrust beyond Apple silicon; `gpt-6-cyber` (Daybreak);
-gpt-image-2.6 sunburst/flare; Agents API `auto_review`; Anthropic text
-watermark (metric-only); minute-grain spend; fleet Redis EWMA; MCP
-SEP-3398 (~March 2027); OpenAI org external key management; Anthropic
-Compliance API; `between_tools` Sonnet-5.5-only; `gpt-6-rosalind`; Claude
-Code `groups` / `guardrail_trace`; OpenRouter private-provider CRUD;
-LiteLLM Admin Chat UI / Lens; llama.cpp `/v1/realtime` + `POST /tts`;
-Portkey claim JWT / WIF; OpenAI `/agents/automations`; Prisma AIRS Agent
-Identity; Claude-on-GCP IAM (new dep — human); Anthropic hosted skills;
-Claude Tag beta; Open Responses WS; Anthropic OTel export beta; Prom
-exemplars + `gen_ai.agent.*`; LiteLLM ID-JAG; SCIM + multi-issuer SSO;
-Kong Skills/A2A; OpenRouter Private Endpoints L6 recipe; certifi emSign;
+Ollama top stable floor 0.40.16 (0.40.15 recipes unaffected); Portkey MCP
+access policies (Prisma AIRS-only); Portkey OTel workspace name; Bedrock
+metadata map; LiteLLM OpenAI Live `/v1/live/sessions` + Azure PTU + M365
+Copilot + `gpt-live-1` SIP (Realtime/WS); AutoTrust beyond Apple silicon;
+`gpt-6-cyber` (Daybreak); gpt-image-2.6 sunburst/flare; Agents API
+`auto_review`; Anthropic text watermark (metric-only); minute-grain spend;
+fleet Redis EWMA; MCP SEP-3398 (~March 2027); OpenAI org external key
+management; Anthropic Compliance API; `between_tools` Sonnet-5.5-only;
+`gpt-6-rosalind`; Claude Code `groups` / `guardrail_trace`; OpenRouter
+private-provider CRUD; LiteLLM Admin Chat UI / Lens; llama.cpp
+`/v1/realtime` + `POST /tts`; Portkey claim JWT / WIF; OpenAI
+`/agents/automations`; Prisma AIRS Agent Identity; Claude-on-GCP IAM
+(new dep — human); Anthropic hosted skills; Claude Tag beta; Open
+Responses WS; Anthropic OTel export beta; Prom exemplars +
+`gen_ai.agent.*`; LiteLLM ID-JAG; SCIM + multi-issuer SSO; Kong
+Skills/A2A; OpenRouter Private Endpoints L6 recipe; certifi emSign;
 Ollama d1 Linux/Windows GA; local message-thread analogue (only after
-explicit agent-loop ask); OpenAI CA/SG/KR/UAE/UK residency beyond
-au/in/jp (expand on operator ask); A2A 1.1 RC (wait for two-SDK gate).
+explicit agent-loop ask); A2A 1.1 RC (wait for two-SDK gate).
 
-Verified fine this run — don't re-audit: daari never forwards `background`
-on `/v1/messages` (the request model has no such field and nothing passes
-it upstream — LiteLLM 1.108.4's billing leak is not present); thinking
-blocks are already dropped when a Messages turn routes to a non-Anthropic
-executor (`openai_executor` never reads `thinking_blocks` — matches the
-1.108.4 Bedrock cross-model fix); facade `/api/tags` and `/v1/models`
-always return list-shaped payloads built from the configured tiers (Ollama
-0.40.16 null fix not applicable); daari has no `/bedrock` passthrough or
-`/v1/videos` surface, so the remaining 1.108.4 fixes don't map; cache-write
-pricing TTL-keyed and request_log `redact_secrets` per prior runs.
+Verified fine this run — don't re-audit: morning's LiteLLM 1.108.4
+`background` / cross-model thinking / facade list / missing `/bedrock` +
+`/v1/videos` checks still hold; Kong 2.3.1 still CVE-only; cache-write
+TTL pricing + `redact_secrets` unchanged; Portkey auto_caching divergence
+confirmed (block-level only → row 361); residency pin set still excludes
+ca/sg/kr/gb/ae (→ row 360).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
 1. **Agent-loop fidelity on every executor** — 5.2 catalog rates + fast
-   mode (350); thinking strip on model switch away from 5.2 (351);
-   OpenAI encrypted-reasoning round-trip on Messages (355);
-   `computer_toolset_20260801` gate (352); drop_block binding (345);
-   `truncation` honesty (356); MCP egress fidelity (335–336); CEL watch.
-2. **FinOps + tenancy that reconcile** — per-team frontier credential
-   binding (357); server-side tool billing + per-tool breakdown (346);
+   mode (350); thinking strip on model switch (351); advisor pairing
+   (363); OpenAI encrypted-reasoning on Messages (355);
+   `computer_toolset_20260801` (352); drop_block (345); `truncation`
+   (356); MCP egress (335–336); CEL watch.
+2. **FinOps + tenancy that reconcile** — CA/SG/KR/GB/AE residency uplift
+   (360); per-team frontier BYOK (357); server-side tool billing (346);
    in-flight budget reservation (347); cost input/output split (337) +
    Prom/stats (343); per-key metric label (348).
 3. **Contain the leaked key** — provider credential patterns (340);
    blocked-content forensics (338) + ownership (341).
-4. **Route like the new Auto Router** — Claude `effort=none` honesty
-   (342); cost-aware selection (328); Ripple coding tier (358); baggage
-   ownership PATCH (353); then the coding-router recipe (watch); Grafana
-   for SLO demotions (330).
+4. **Route like the new Auto Router** — Claude `effort=none` (342);
+   auto_caching dial (361); any-5xx failover (362); cost-aware selection
+   (328); Ripple coding tier (358); baggage PATCH (353); coding-router
+   recipe (watch); Grafana for SLO demotions (330).
 5. **Survive the control-plane blip + honest compare** — offline Prom
    (279) + doctor (285); hot-reload (6); OTel tags PATCH (333); failover
    panels (274); LiteLLM LTS + OpenRouter Auto compare (331–332); fences
-   (300, 305, 310, 315, 320, 325, 329, 334, 339, 344, 349, 354, 359);
-   then rows 62–67.
+   (300, 305, 310, 315, 320, 325, 329, 334, 339, 344, 349, 354, 359,
+   364); then rows 62–67.
 
 ---
 
 ## Changelog
+
+- **2026-11-10 pm (residency, auto_caching, 5xx failover, advisor gate)** —
+  Outward flat vs morning (LiteLLM 1.108.4, Ollama 0.40.16, Kong 2.3.1
+  CVE-only). Converted watch + inward: OpenAI CA/SG/KR/GB/AE residency
+  1.10× + docs (row 360 — pins stop at au/in/jp today), Portkey-parity
+  Anthropic top-level `auto_caching` (361), Kong `http_5xx` without Cedar
+  (362), Fable/Mythos 5.2 advisor same-model fail-fast (363), evening
+  fence (364). Watch drops converted auto_caching / residency /
+  http_5xx / advisor; retains Cedar/CEL/Token Vault + 5.2 ZDR after 350.
 
 - **2026-11-10 (reasoning fidelity, tenant BYOK, truncation honesty)** —
   Marked rows 323–324, 326–327 Shipped (allowed_ips console, residency
