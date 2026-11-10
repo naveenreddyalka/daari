@@ -191,7 +191,7 @@ telemetry fails open:
 
 | Store | Redis down | Postgres down |
 |-------|------------|---------------|
-| Auth (virtual keys) | n/a (VK is SQLite/PG) | **fail-closed** — `503` with `error.code=postgres_unavailable` (never open, never raw 500) |
+| Auth (virtual keys) | n/a (VK is SQLite/PG) | **fail-closed** by default — `503` with `error.code=postgres_unavailable` (never open, never raw 500). Opt-in `auth.resolve_grace_ttl_s` (>0) serves a last-known-good in-process cache for keys resolved successfully within the TTL; unknown/expired keys and master-key auth are unchanged. Revocation takes effect at latest after the TTL (revocation-latency trade-off). Grace serves emit `auth_grace_served` + `daari_auth_grace_served_total` (#2163). |
 | Budgets (usage ledger) | n/a | **soft-allow** — spend reads return `0.0`, response carries `X-Daari-Budget-Degraded: soft_allow`, Prom `daari_budget_degraded{mode="soft_allow"}=1` |
 | Rate limit | **sqlite_fallback** (default) or **fail_open** when `rate_limit.fail_open: true`; `/ready` degraded | n/a (counters are Redis/SQLite) |
 | Audit | n/a | **fail-open** (writes swallowed; undocumented prior behavior, now explicit) |

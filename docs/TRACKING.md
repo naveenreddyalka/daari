@@ -8954,6 +8954,15 @@ client omitted effort, before tier selection. Covered by
 `tests/unit/test_signal_overrides.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Auth: resolve grace TTL across Postgres blips ([#2163](https://github.com/naveenreddyalka/daari/issues/2163))
+
+<!-- tracking:#2163 -->
+**Status:** Done (2026-11-10). Opt-in `auth.resolve_grace_ttl_s` (default 0 =
+fail-closed) serves last-known-good virtual keys from an in-process cache when
+Postgres raises `PostgresBackendUnavailable`; expired/unknown keys never
+grace-serve; `auth_grace_served` + `daari_auth_grace_served_total`. Covered by
+`tests/unit/test_auth_resolve_grace.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

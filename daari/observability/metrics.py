@@ -266,6 +266,8 @@ class Metrics:
     batch_webhooks: dict[str, int] = field(default_factory=dict)
     org_enforcement_webhooks: dict[str, int] = field(default_factory=dict)
     soft_warnings: dict[str, int] = field(default_factory=dict)
+    # Last-known-good VK serves during Postgres resolve blips (#2163).
+    auth_grace_served: int = 0
     # outcome → count for X-Daari-Priority admission resolution (#2113).
     admission_priority: dict[str, int] = field(default_factory=dict)
     # requested:served → count when Phonon coerces response_format (#1961).
@@ -461,6 +463,11 @@ class Metrics:
         """Soft band before hard 402/429 (request_quota or rate_limit, #526)."""
         with self._lock:
             self.soft_warnings[kind] = self.soft_warnings.get(kind, 0) + 1
+
+    def record_auth_grace_served(self) -> None:
+        """Postgres VK resolve grace served a cached key (#2163)."""
+        with self._lock:
+            self.auth_grace_served += 1
 
     def record_admission_priority(self, outcome: str) -> None:
         """X-Daari-Priority admission resolution (raised|lowered|ignored|baseline, #2113)."""
@@ -745,6 +752,7 @@ class Metrics:
                 "batch_webhooks": dict(self.batch_webhooks),
                 "org_enforcement_webhooks": dict(self.org_enforcement_webhooks),
                 "soft_warnings": dict(self.soft_warnings),
+                "auth_grace_served": self.auth_grace_served,
                 "admission_priority": dict(self.admission_priority),
                 "tts_phonon_format_coerced": dict(self.tts_phonon_format_coerced),
                 "rejects": dict(self.rejects),

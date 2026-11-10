@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
+import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -53,6 +56,50 @@ class AuthClaims:
     selected_team_id: str | None = None
     # Team-scoped signal_overrides stamped at resolve / team select (#2050).
     team_signal_overrides: list[Any] | None = None
+    # True when claims came from resolve-grace cache during a PG blip (#2163).
+    grace_served: bool = False
+
+
+@dataclass
+class _GraceEntry:
+    key: VirtualKey
+    resolved_at: float
+
+
+class ResolveGraceCache:
+    """In-process last-known-good VK cache for Postgres resolve blips (#2163)."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._entries: dict[str, _GraceEntry] = {}
+
+    @staticmethod
+    def hash_key(plaintext: str) -> str:
+        return hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
+
+    def remember(self, plaintext: str, key: VirtualKey) -> None:
+        digest = self.hash_key(plaintext)
+        with self._lock:
+            self._entries[digest] = _GraceEntry(key=key, resolved_at=time.monotonic())
+
+    def lookup(
+        self,
+        plaintext: str,
+        *,
+        ttl_s: float,
+        now: float | None = None,
+    ) -> VirtualKey | None:
+        if ttl_s <= 0 or not plaintext:
+            return None
+        digest = self.hash_key(plaintext)
+        clock = time.monotonic() if now is None else now
+        with self._lock:
+            entry = self._entries.get(digest)
+            if entry is None:
+                return None
+            if clock - entry.resolved_at > ttl_s:
+                return None
+            return entry.key
 
 
 def extract_api_key(headers: Any) -> str:
@@ -231,60 +278,93 @@ def apply_selected_team(
         claims.region_pin = team.region_pin
 
 
+def _claims_from_virtual_key(
+    key: VirtualKey,
+    store: VirtualKeyStore | None,
+    *,
+    grace_served: bool = False,
+) -> AuthClaims:
+    """Build AuthClaims from a VirtualKey; team lookup skipped when store is down."""
+    if key.is_expired():
+        return AuthClaims(
+            kind="expired",
+            key_id=key.key_id,
+            client_id=key.client_id or key.key_id,
+            virtual_key=key,
+            grace_served=grace_served,
+        )
+    region_pin = key.region_pin
+    team_allowed = None
+    team_groups = None
+    team_signal_overrides = None
+    team_scope = "global"
+    if key.team_id and store is not None:
+        try:
+            team = store.get_team(key.team_id)
+        except Exception:
+            team = None
+        if team is not None:
+            if not region_pin and team.region_pin:
+                region_pin = team.region_pin
+            team_allowed = team.allowed_models
+            team_groups = team.model_groups
+            team_scope = team.cache_scope
+            team_signal_overrides = list(team.signal_overrides or ())
+    return AuthClaims(
+        kind="virtual",
+        key_id=key.key_id,
+        client_id=key.client_id or key.key_id,
+        tier_cap=key.tier_cap,
+        daily_budget_usd=key.daily_budget_usd,
+        monthly_budget_usd=key.monthly_budget_usd,
+        virtual_key=key,
+        boundary_profile=(key.metadata or {}).get("boundary_profile"),
+        region_pin=region_pin,
+        allowed_models=key.allowed_models,
+        model_groups=key.model_groups,
+        team_allowed_models=team_allowed,
+        team_model_groups=team_groups,
+        cache_scope=effective_cache_scope(key.cache_scope, team_scope),
+        team_signal_overrides=team_signal_overrides,
+        grace_served=grace_served,
+    )
+
+
 def resolve_auth(
     supplied: str,
     *,
     master_key: str | list[str] | None,
     store: VirtualKeyStore | None,
+    grace_cache: ResolveGraceCache | None = None,
+    grace_ttl_s: float = 0.0,
 ) -> AuthClaims | None:
     """Return claims when the key is valid, else None.
 
     Raises ``PostgresBackendUnavailable`` when the Postgres VK store is down
-    so the gateway can fail closed (#1652).
+    so the gateway can fail closed (#1652). With ``grace_ttl_s`` > 0 and a
+    populated ``grace_cache``, an unexpired last-known-good key is served
+    instead (#2163); never for unknown/expired keys. Master-key auth is
+    unchanged.
     """
     if master_key_matches(supplied, master_key):
         return AuthClaims(kind="master")
     if store is not None and store.enabled and supplied:
-        key = store.resolve(supplied)
+        from daari.auth.postgres_virtual_keys import PostgresBackendUnavailable
+
+        try:
+            key = store.resolve(supplied)
+        except PostgresBackendUnavailable:
+            if grace_cache is not None and grace_ttl_s > 0:
+                cached = grace_cache.lookup(supplied, ttl_s=grace_ttl_s)
+                if cached is not None and not cached.is_expired():
+                    return _claims_from_virtual_key(
+                        cached, store=None, grace_served=True
+                    )
+            raise
         if key is not None:
-            if key.is_expired():
-                return AuthClaims(
-                    kind="expired",
-                    key_id=key.key_id,
-                    client_id=key.client_id or key.key_id,
-                    virtual_key=key,
-                )
-            region_pin = key.region_pin
-            team_allowed = None
-            team_groups = None
-            team_signal_overrides = None
-            team_scope = "global"
-            if key.team_id:
-                team = store.get_team(key.team_id)
-                if team is not None:
-                    if not region_pin and team.region_pin:
-                        region_pin = team.region_pin
-                    team_allowed = team.allowed_models
-                    team_groups = team.model_groups
-                    team_scope = team.cache_scope
-                    team_signal_overrides = list(team.signal_overrides or ())
-            return AuthClaims(
-                kind="virtual",
-                key_id=key.key_id,
-                client_id=key.client_id or key.key_id,
-                tier_cap=key.tier_cap,
-                daily_budget_usd=key.daily_budget_usd,
-                monthly_budget_usd=key.monthly_budget_usd,
-                virtual_key=key,
-                boundary_profile=(key.metadata or {}).get("boundary_profile"),
-                region_pin=region_pin,
-                allowed_models=key.allowed_models,
-                model_groups=key.model_groups,
-                team_allowed_models=team_allowed,
-                team_model_groups=team_groups,
-                cache_scope=effective_cache_scope(key.cache_scope, team_scope),
-                team_signal_overrides=team_signal_overrides,
-            )
+            if grace_cache is not None and grace_ttl_s > 0:
+                grace_cache.remember(supplied, key)
+            return _claims_from_virtual_key(key, store)
     # Auth required but nothing matched.
     if normalize_master_keys(master_key) or store_enforces_auth(store):
         return None

@@ -670,6 +670,15 @@ def render_prometheus(
         for kind, count in soft_warnings.items():
             lines.append(f"daari_soft_warnings_total{_labels(kind=kind)} {int(count)}")
 
+    auth_grace = int(snap.get("auth_grace_served") or 0)
+    if auth_grace:
+        lines.append(
+            "# HELP daari_auth_grace_served_total Virtual-key resolves served from "
+            "in-process last-known-good cache during Postgres blips."
+        )
+        lines.append("# TYPE daari_auth_grace_served_total counter")
+        lines.append(f"daari_auth_grace_served_total {auth_grace}")
+
     admission_priority = snap.get("admission_priority") or {}
     if admission_priority:
         lines.append(
