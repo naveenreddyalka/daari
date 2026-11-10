@@ -138,15 +138,20 @@ def render_api_reference() -> str:
             "`GET /v1/daari/keys` and `GET /v1/daari/teams` (admin / master key) return "
             "redacted rows plus pagination metadata: query `limit` (default **100**, "
             "max **500**), `offset` (default **0**), and optional `team_id`. Response "
-            "includes `total`, `has_more`, `limit`, and `offset`. A caller pinned to a "
-            "team who requests a different `team_id` receives **403**. Omitting "
-            "`team_id` keeps the full inventory for an unscoped admin. Successful reads "
-            "emit `admin.keys.list` / `admin.teams.list` audit events "
+            "includes `total`, `has_more`, `limit`, and `offset`. Rows include "
+            "`allowed_ips` (list of CIDR/address strings, or `null` when unrestricted). "
+            "A caller pinned to a team who requests a different `team_id` receives "
+            "**403**. Omitting `team_id` keeps the full inventory for an unscoped admin. "
+            "Successful reads emit `admin.keys.list` / `admin.teams.list` audit events "
             "(`limit` / `offset` / `total` / `returned` / `team_id` — never secrets). "
-            "`GET /v1/daari/audit` accepts the same optional `team_id` and returns only "
-            "rows whose detail includes that id (`total` / `has_more` match the filtered "
-            "set). `GET /v1/daari/events` records `admin.events.list` (actor, role, "
-            "limit, team scope, returned count; event bodies are not copied).",
+            "`PATCH /v1/daari/keys/{key_id}` and `PATCH /v1/daari/teams/{team_id}` accept "
+            '`{"allowed_ips": [...]}` (invalid CIDR → **400**; empty list or `null` '
+            "clears to unrestricted) and audit `admin.keys.patch_ips` / "
+            "`admin.teams.patch_ips`. `GET /v1/daari/audit` accepts the same optional "
+            "`team_id` and returns only rows whose detail includes that id (`total` / "
+            "`has_more` match the filtered set). `GET /v1/daari/events` records "
+            "`admin.events.list` (actor, role, limit, team scope, returned count; event "
+            "bodies are not copied).",
             "",
             "## Request / event log",
             "",

@@ -456,6 +456,13 @@ function formatServiceTiers(tiers) {
   return tiers.join(",");
 }
 
+function formatAllowedIps(ips) {
+  if (!Array.isArray(ips) || ips.length === 0) {
+    return "*";
+  }
+  return ips.join(",");
+}
+
 function formatDegradeFlag(value) {
   return value ? "yes" : "no";
 }
@@ -530,7 +537,7 @@ function renderAdminKeys(keys) {
   }
   const list = Array.isArray(keys) ? keys : [];
   if (list.length === 0) {
-    setEmptyRow(adminKeysTableNode, 17, "No virtual keys.");
+    setEmptyRow(adminKeysTableNode, 18, "No virtual keys.");
     return;
   }
   clearNode(adminKeysTableNode);
@@ -552,6 +559,7 @@ function renderAdminKeys(keys) {
       formatNumber(key.user_daily_usd_cap),
       formatServiceTiers(key.allowed_service_tiers),
       formatDegradeFlag(key.degrade_disallowed_service_tier),
+      formatAllowedIps(key.allowed_ips),
       key.status || "-",
       formatSpendSummary(key.spend),
     ]);
@@ -565,7 +573,7 @@ function renderAdminTeams(teams) {
   }
   const list = Array.isArray(teams) ? teams : [];
   if (list.length === 0) {
-    setEmptyRow(adminTeamsTableNode, 12, "No teams.");
+    setEmptyRow(adminTeamsTableNode, 13, "No teams.");
     return;
   }
   clearNode(adminTeamsTableNode);
@@ -583,6 +591,7 @@ function renderAdminTeams(teams) {
       formatNumber(team.max_in_flight),
       formatServiceTiers(team.allowed_service_tiers),
       formatDegradeFlag(team.degrade_disallowed_service_tier),
+      formatAllowedIps(team.allowed_ips),
       formatSpendSummary(team.spend),
     ]);
     adminTeamsTableNode.appendChild(row);
