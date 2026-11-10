@@ -2342,6 +2342,65 @@ async def test_reasoning_effort_accepted_and_recorded(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_signal_override_reasoning_effort_precedence(settings, monkeypatch):
+    """#2162: signal_overrides sets effort only when the client omitted it."""
+    from daari.config.settings import SignalOverrideRule
+
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    settings.routing.signal_overrides = [
+        SignalOverrideRule(
+            id="trivial-minimal",
+            match={"complexity": "trivial"},
+            reasoning_effort="minimal",
+        )
+    ]
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=5,
+                reasoning_effort=request.sampling.reasoning_effort,
+            ),
+        )
+
+    mock_all_ollama_executors(monkeypatch, application.state.ctx.router, fake_execute)
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        omitted = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+            },
+            headers=META_HEADERS,
+        )
+        explicit = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "hi"}],
+                "reasoning_effort": "high",
+                "stream": False,
+            },
+            headers=META_HEADERS,
+        )
+
+    assert omitted.status_code == 200
+    assert omitted.json()["daari_meta"]["reasoning_effort"] == "minimal"
+    assert explicit.status_code == 200
+    assert explicit.json()["daari_meta"]["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
 async def test_reasoning_effort_mapped_on_thinking_local_tier(settings, monkeypatch):
     """#297: thinking-capable local models get Ollama think= from effort."""
     settings.models.l3 = "gpt-oss:20b"
