@@ -2082,7 +2082,8 @@ class ObservabilitySettings(RuntimeSettings):
         description=(
             "When true (and observability.otel is on), copy non-empty "
             "req_meta.tags onto the root GenAI span as daari.request.tags "
-            "(string array; never invent tags). Default false (#2124)."
+            "(string array; never invent tags). Default false (#2124). "
+            "Editable via GET/PATCH /v1/daari/config ownership (config editor)."
         ),
     )
     # Opt-in: copy req_meta.user_agent onto the root GenAI span (#2134). Off

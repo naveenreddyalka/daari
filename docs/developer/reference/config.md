@@ -232,7 +232,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `observability.metrics_port` | int | `0` |  |
 | `observability.team_metrics` | bool | `False` | Opt-in team label on daari_requests_total / daari_errors_total (#1997). Off keeps exposition byte-identical. When on, team values are bounded to the virtual-key teams store (unknown/empty → '-'). Latency histograms stay team-less as a deliberate cardinality guard. Editable via GET/PATCH /v1/daari/config ownership (config editor). |
 | `observability.otel` | bool | `False` |  |
-| `observability.otel_include_request_tags` | bool | `False` | When true (and observability.otel is on), copy non-empty req_meta.tags onto the root GenAI span as daari.request.tags (string array; never invent tags). Default false (#2124). |
+| `observability.otel_include_request_tags` | bool | `False` | When true (and observability.otel is on), copy non-empty req_meta.tags onto the root GenAI span as daari.request.tags (string array; never invent tags). Default false (#2124). Editable via GET/PATCH /v1/daari/config ownership (config editor). |
 | `observability.otel_include_user_agent` | bool | `False` | When true (and observability.otel is on), copy a non-empty req_meta.user_agent onto the root GenAI span as user_agent.original (Portkey/OTel parity; never invent a value). Default false (#2134). |
 | `observability.config_editor` | bool | `False` |  |
 | `observability.backend` | Literal | `'sqlite'` |  |

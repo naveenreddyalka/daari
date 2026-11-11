@@ -9000,6 +9000,14 @@ Auto Code (2026-11-06) vs on-box virtual-model selection modes,
 may still point at those slugs. Covered by
 `tests/unit/test_compare_openrouter_auto.py`.
 
+### Config ownership + PATCH for observability.otel_include_request_tags ([#2172](https://github.com/naveenreddyalka/daari/issues/2172))
+
+<!-- tracking:#2172 -->
+**Status:** Done (2026-11-11). `observability.otel_include_request_tags` is an
+ownership leaf; GET inventory + PATCH bool (default false). Hot-applies to
+settings and the live router without restart. Covered by
+`tests/unit/test_config_ownership.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
