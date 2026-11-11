@@ -61,8 +61,8 @@ LiteLLM [v1.106.0](https://github.com/BerriAI/litellm/releases/tag/v1.106.0)
 27 Oct 2026 and
 [1.106.4](https://github.com/BerriAI/litellm/releases/tag/v1.106.4) on
 25 Oct 2026; also backported as 1.103.9 / 1.104.7 / 1.105.5). The **current
-stable comparison floor** is **[1.108.0 GA / LTS pilot](https://github.com/BerriAI/litellm/releases/tag/v1.108.0)**
-(2026-11-04) — see below. The 1.106 cut includes a native
+stable comparison floor** is **[1.108.2 GA / LTS](https://github.com/BerriAI/litellm/releases/tag/v1.108.2)**
+(2026-11-06) — see below. The 1.106 cut includes a native
 [decision-model guardrail](https://docs.litellm.ai/docs/proxy/guardrails/decision_model)
 (`guardrail: decision_model`): yes/no questions against any `/v1/decisions`
 model, blocking or logging at a probability threshold.
@@ -95,27 +95,30 @@ PyPI quarantined the version; the Docker image was removed from Docker Hub /
 GHCR. Indicators include `/tmp/.pc_once_*` and `/tmp/remote_code_loader.lock`.
 
 **Do not** `pip install litellm==1.107.0` or pull `litellm/litellm:1.107.0`.
-Stay on LiteLLM **1.108.0** (or skip LiteLLM entirely). Treat 1.107.0 as
+Stay on LiteLLM **1.108.2** (or skip LiteLLM entirely). Treat 1.107.0 as
 unsafe / do-not-install — not a feature comparison bar. Do **not** advertise
 compromised 1.107 watchables as safe.
 
 daari does **not** depend on LiteLLM at runtime; the local-first install path
 never pulled the poisoned artifact.
 
-## LiteLLM 1.108.0 GA (LTS pilot)
+## LiteLLM 1.108.2 GA (LTS)
 
 LiteLLM
-**[v1.108.0](https://github.com/BerriAI/litellm/releases/tag/v1.108.0)**
-stable published **2026-11-04** (03:35 UTC) is **GA** and the current
-**stable comparison floor**. It is also the one-month
+**[v1.108.2](https://github.com/BerriAI/litellm/releases/tag/v1.108.2)**
+(2026-11-06) is **GA / LTS** and the current **stable comparison floor** on
+the one-month
 [LTS pilot](https://docs.litellm.ai/docs/enterprise/lts_pilot) line
 ([version support](https://docs.litellm.ai/docs/enterprise/version_support);
 [blog](https://docs.litellm.ai/blog/release-cadence-and-lts-pilot)). The prior
-RC
+LTS GA cut was
+**[v1.108.0](https://github.com/BerriAI/litellm/releases/tag/v1.108.0)**
+(2026-11-04); **1.108.2** is the fixes-only LTS patch (including spend/key
+401s while Postgres restarts). The earlier RC
 [v1.108.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.108.0-rc.1)
 (29 Oct 2026) was a **parity** cut of the 1.106.x gzip / off-loop compression
 fixes onto the 1.108 train — not a feature ship — and is superseded by the
-stable tag. **1.106.7** remains the final 1.106.x patch; do **not** treat
+stable tags. **1.106.7** remains the final 1.106.x patch; do **not** treat
 compromised **1.107.0** as a support window.
 
 **LTS pilot and Tuesday cadence are live** (not pending): LiteLLM pauses the
@@ -130,8 +133,8 @@ against.
 
 LiteLLM
 [v1.109.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-rc.1)
-is the current **prerelease** watch — do **not** promote 1.109 to the GA floor
-(stable comparison remains **1.108.0 GA / LTS**). Earlier
+is a **prerelease** watch — do **not** promote 1.109 or 1.109-rc to the GA
+floor (stable comparison remains **1.108.2 GA / LTS**). Earlier
 [v1.109.0-dev.2](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.2)
 /
 [v1.109.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.1)
@@ -175,5 +178,15 @@ builds are superseded by the RC. Watchables and daari's stance:
   `pricing.models` (no catalog fetch required).
 - **Admin Chat UI / model hub** — cloud control-plane surface; non-goal for
   daari (no Lens / hosted hub parity claimed).
+
+## LiteLLM 1.110.0-dev.1 watch
+
+LiteLLM
+[v1.110.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.110.0-dev.1)
+(2026-11-07) is **prerelease watch only** — do **not** promote 1.110 or
+1.109-rc to the GA floor (stable comparison remains **1.108.2 GA / LTS**).
+Watchables on this channel include provider-reported `usage.cost`, tenant
+session affinity, and Lens-split Helm; daari does **not** claim Lens / hosted
+Helm parity. Treat 1.110-dev as competitor ops context, not a support window.
 
 Measured on the same Ollama corpus: [benchmark vs LiteLLM](benchmark-vs-litellm.md). Short matrix: [compare](compare.md).

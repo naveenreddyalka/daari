@@ -8983,6 +8983,14 @@ demotion by outcome** on `daari_virtual_model_slo_demotion_total` rate by
 line under metrics-prometheus Grafana. Covered by
 `tests/unit/test_grafana_dashboard.py`.
 
+### Docs: promote LiteLLM LTS floor to 1.108.2; watch 1.110.0-dev.1 ([#2170](https://github.com/naveenreddyalka/daari/issues/2170))
+
+<!-- tracking:#2170 -->
+**Status:** Done (2026-11-11). `compare-litellm.md` stable comparison floor is
+**1.108.2 GA / LTS** (2026-11-06 tag); prior LTS GA **1.108.0** retained in
+narrative; **1.110.0-dev.1** noted as prerelease watch only; compromised
+1.107.0 advisory unchanged. Covered by `tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
