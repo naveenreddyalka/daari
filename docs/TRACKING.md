@@ -8991,6 +8991,15 @@ line under metrics-prometheus Grafana. Covered by
 narrative; **1.110.0-dev.1** noted as prerelease watch only; compromised
 1.107.0 advisory unchanged. Covered by `tests/unit/test_compare_litellm_1104.py`.
 
+### Docs: OpenRouter Auto and Auto Code local-first positioning ([#2171](https://github.com/naveenreddyalka/daari/issues/2171))
+
+<!-- tracking:#2171 -->
+**Status:** Done (2026-11-11). `compare-openrouter.md` positions Auto Router +
+Auto Code (2026-11-06) vs on-box virtual-model selection modes,
+`signal_overrides`, and latency SLO; does not clone the hosted marketplace; L6
+may still point at those slugs. Covered by
+`tests/unit/test_compare_openrouter_auto.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

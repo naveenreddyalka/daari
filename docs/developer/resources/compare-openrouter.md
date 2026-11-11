@@ -46,6 +46,30 @@ screening parity here — those trust boundaries stay in the sections below
 `preferred_*` thresholds are a marketplace feature; daari's counter is the
 virtual-model selection modes above, not a hosted percentile router.
 
+## Auto Router and Auto Code (2026-11-06)
+
+OpenRouter's rebuilt
+[Auto Router](https://openrouter.ai/blog/announcements/auto-and-auto-code-routers/)
+(`openrouter/auto`) and **Auto Code** (`openrouter/auto-code`) (6 Nov 2026)
+weigh ~eleven live factors per request (pricing, provider health, benchmarks,
+cache state) and pick a **model and reasoning effort** from the
+governance-allowed cloud pool. That is a hosted marketplace router: prompts
+still leave the machine.
+
+daari does **not** clone the hosted Auto / Auto Code marketplace. The
+local-first counterpart on-box is:
+
+- `routing.virtual_models` with selection modes (`ordered` /
+  `performance` / `cost`) so candidate walk stays on-device.
+- `routing.signal_overrides` levers (category / `max_tier` / `tier_pin` /
+  `reasoning_effort` when configured) for governance without a cloud pool.
+- Optional `routing.virtual_model_latency_slo_ms` demotion so over-SLO peers
+  lose priority before cost or performance reorder.
+
+Operators who still want cloud may point the single L6 slot at
+`openrouter/auto` or `openrouter/auto-code`; local tiers remain the default
+path, and budgets / audit stay on the same box.
+
 ## Private Endpoints vs local tiers
 
 OpenRouter [Private Endpoints](https://openrouter.ai/blog/announcements/private-endpoints/)
