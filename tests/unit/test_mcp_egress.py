@@ -465,3 +465,122 @@ async def test_private_url_allowed_when_opted_in(monkeypatch):
     )
     assert "ping" in result.content
     assert result.daari_meta.warning is None
+
+
+# --- faithful tools/call results (#2180) ------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_call_tool_round_trips_1mib_text_item(monkeypatch):
+    """1 MiB content[] text must reach the caller unmangled (no 4000-char repr)."""
+    payload = "X" * (1024 * 1024)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [{"type": "text", "text": payload}],
+                },
+            },
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    provider = McpEgressProvider(McpServerConfig(id="demo", url="http://mcp.test/rpc"))
+    result = await provider.call_tool(
+        InternalRequest(messages=[Message(role="user", content="x")], model="daari"),
+        tool="read_file",
+        arguments={"path": "/tmp/big"},
+    )
+    assert result.content == payload
+    assert result.daari_meta.warning is None
+
+
+@pytest.mark.asyncio
+async def test_call_tool_extracts_content_text_not_dict_repr(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [
+                        {"type": "text", "text": "hello"},
+                        {"type": "image", "mimeType": "image/png", "data": "abc"},
+                        {"type": "text", "text": "world"},
+                    ],
+                },
+            },
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    provider = McpEgressProvider(McpServerConfig(id="demo", url="http://mcp.test/rpc"))
+    result = await provider.call_tool(
+        InternalRequest(messages=[Message(role="user", content="x")], model="daari"),
+        tool="mix",
+        arguments={},
+    )
+    assert "hello" in result.content
+    assert "world" in result.content
+    assert "{'type'" not in result.content
+    assert '"type"' not in result.content or "[image" in result.content
+    assert "abc" not in result.content  # image bytes summarized, not dumped
+
+
+@pytest.mark.asyncio
+async def test_call_tool_truncation_warns_logs_and_counts(monkeypatch):
+    from daari.config.settings import McpEgressSettings, Settings
+    from daari.observability.metrics import Metrics
+
+    events: list[tuple[str, dict]] = []
+
+    def capture(name, payload=None, **kwargs):
+        events.append((name, payload or {}))
+
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event", capture
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [{"type": "text", "text": "ABCDEFGHIJ"}],
+                },
+            },
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    settings = Settings()
+    settings.integrations.mcp_egress = McpEgressSettings(max_result_chars=4)
+    metrics = Metrics()
+    provider = McpEgressProvider(
+        McpServerConfig(id="demo", url="http://mcp.test/rpc"),
+        metrics=metrics,
+        settings=settings,
+    )
+    result = await provider.call_tool(
+        InternalRequest(messages=[Message(role="user", content="x")], model="daari"),
+        tool="big",
+        arguments={},
+    )
+    assert result.content == "ABCD"
+    assert result.daari_meta.warning == "mcp_result_truncated"
+    assert any(name == "mcp_egress_result_truncated" for name, _ in events)
+    assert metrics.mcp_egress_result_truncated.get("demo", 0) >= 1
+    snap = metrics.snapshot(include_histograms=True)
+    assert (snap.get("mcp_egress_result_truncated") or {}).get("demo", 0) >= 1
+
+
+def test_format_mcp_call_result_json_fallback_not_repr():
+    from daari.providers.mcp_egress import format_mcp_call_result
+
+    text = format_mcp_call_result({"ok": True, "n": 2})
+    assert text == '{"ok": true, "n": 2}' or '"ok"' in text
+    assert "True" not in text  # not Python repr

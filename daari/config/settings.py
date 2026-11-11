@@ -2523,6 +2523,16 @@ class McpEgressSettings(BaseModel):
             "Default false fails closed with an honesty 400."
         ),
     )
+    max_result_chars: int = Field(
+        default=2_097_152,
+        ge=1,
+        description=(
+            "Max characters of a tools/call result text handed to the model "
+            "after content[] extraction (#2180). Default 2 MiB lets a 1 MiB "
+            "text item through intact. Truncation is never silent: warning, "
+            "log event, and Prometheus counter."
+        ),
+    )
 
 
 class McpOauthSettings(BaseModel):
