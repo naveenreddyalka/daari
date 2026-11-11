@@ -2,7 +2,13 @@
 # daari install — venv, editable install, Ollama model hint, optional doctor
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Pure-bash dirname: external coreutils may be absent from PATH (#2231),
+# and the Python 3.12 check below must still report clearly.
+case "${BASH_SOURCE[0]}" in
+  */*) _script_parent="${BASH_SOURCE[0]%/*}" ;;
+  *) _script_parent="." ;;
+esac
+SCRIPT_DIR="$(cd "${_script_parent}" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 VENV="${REPO_ROOT}/.venv"
 RUN_DOCTOR="${RUN_DOCTOR:-1}"
