@@ -30,6 +30,54 @@ DEFAULT_HTTP_TIMEOUT_SECONDS = 30.0
 # Default tools/call result cap — 2 MiB so a 1 MiB text item survives (#2180).
 DEFAULT_MAX_RESULT_CHARS = 2_097_152
 WARNING_RESULT_TRUNCATED = "mcp_result_truncated"
+ACCEPT_JSON_AND_SSE = "application/json, text/event-stream"
+
+
+def parse_mcp_http_response(
+    response: httpx.Response, *, request_id: Any = None
+) -> dict[str, Any]:
+    """Parse a Streamable HTTP JSON-RPC reply (plain JSON or SSE-framed) (#2181)."""
+    content_type = (response.headers.get("content-type") or "").lower()
+    if "text/event-stream" not in content_type:
+        data = response.json()
+        if isinstance(data, dict):
+            return data
+        raise RuntimeError(f"MCP JSON-RPC response must be an object, got {type(data).__name__}")
+
+    chosen: dict[str, Any] | None = None
+    event_name = "message"
+    data_lines: list[str] = []
+
+    def flush() -> None:
+        nonlocal chosen, event_name, data_lines
+        if data_lines and (event_name or "message") == "message":
+            raw = "\n".join(data_lines)
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f"invalid SSE JSON-RPC payload: {exc}") from exc
+            if isinstance(payload, dict):
+                if request_id is None or payload.get("id") == request_id or chosen is None:
+                    chosen = payload
+        event_name = "message"
+        data_lines = []
+
+    for line in response.text.splitlines():
+        if line == "":
+            flush()
+            continue
+        if line.startswith(":"):
+            continue
+        if line.startswith("event:"):
+            event_name = line[6:].strip() or "message"
+            continue
+        if line.startswith("data:"):
+            data_lines.append(line[5:].lstrip())
+            continue
+    flush()
+    if chosen is None:
+        raise RuntimeError("SSE stream ended without a JSON-RPC message event")
+    return chosen
 
 
 def format_mcp_call_result(result: Any) -> str:
@@ -363,7 +411,10 @@ class McpEgressProvider(HttpIntegrationProvider):
     async def _request_headers(
         self, request: InternalRequest
     ) -> tuple[dict[str, str] | None, InternalResponse | None]:
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": ACCEPT_JSON_AND_SSE,
+        }
         token, err = await self._resolve_authorization(request)
         if err is not None:
             return None, err
@@ -562,7 +613,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         }
         try:
             response = await self._post_json(payload, headers)
-            data = response.json()
+            data = parse_mcp_http_response(response, request_id=payload.get("id"))
             if "error" in data:
                 self.breaker.record_failure()
                 self._record_egress("error")
@@ -702,7 +753,7 @@ class McpEgressProvider(HttpIntegrationProvider):
                 "params": params,
             }
             response = await self._post_json(payload, headers)
-            data = response.json()
+            data = parse_mcp_http_response(response, request_id=payload.get("id"))
             if "error" in data:
                 raise RuntimeError(str(data["error"]))
             result = data.get("result", data)

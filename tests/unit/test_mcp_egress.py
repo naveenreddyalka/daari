@@ -584,3 +584,91 @@ def test_format_mcp_call_result_json_fallback_not_repr():
     text = format_mcp_call_result({"ok": True, "n": 2})
     assert text == '{"ok": true, "n": 2}' or '"ok"' in text
     assert "True" not in text  # not Python repr
+
+
+# --- streamable HTTP Accept + SSE (#2181) -----------------------------------
+
+
+@pytest.mark.asyncio
+async def test_egress_posts_accept_json_and_event_stream(monkeypatch):
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200, json={"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": "ok"}]}}
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    provider = McpEgressProvider(McpServerConfig(id="demo", url="http://mcp.test/rpc"))
+    await provider.call_tool(
+        InternalRequest(messages=[Message(role="user", content="x")], model="daari"),
+        tool="ping",
+        arguments={},
+    )
+    accept = seen[0].headers.get("Accept") or seen[0].headers.get("accept") or ""
+    assert "application/json" in accept
+    assert "text/event-stream" in accept
+
+
+@pytest.mark.asyncio
+async def test_call_tool_accepts_sse_framed_jsonrpc(monkeypatch):
+    body = (
+        "event: message\n"
+        'data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"from-sse"}]}}\n'
+        "\n"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=body.encode(),
+            headers={"Content-Type": "text/event-stream"},
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    provider = McpEgressProvider(McpServerConfig(id="demo", url="http://mcp.test/rpc"))
+    result = await provider.call_tool(
+        InternalRequest(messages=[Message(role="user", content="x")], model="daari"),
+        tool="ping",
+        arguments={},
+    )
+    assert result.content == "from-sse"
+    assert result.daari_meta.warning is None
+
+
+@pytest.mark.asyncio
+async def test_call_tool_sse_jsonrpc_error_uses_failure_path(monkeypatch):
+    body = (
+        "event: message\n"
+        'data: {"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"boom"}}\n'
+        "\n"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=body.encode(),
+            headers={"Content-Type": "text/event-stream"},
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    provider = McpEgressProvider(McpServerConfig(id="demo", url="http://mcp.test/rpc"))
+    result = await provider.call_tool(
+        InternalRequest(messages=[Message(role="user", content="x")], model="daari"),
+        tool="ping",
+        arguments={},
+    )
+    assert result.daari_meta.warning == "integration_request_failed"
+    assert "boom" in result.content
+
+
+def test_parse_mcp_http_response_plain_json_unchanged():
+    from daari.providers.mcp_egress import parse_mcp_http_response
+
+    response = httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"ok": True}})
+    assert parse_mcp_http_response(response, request_id=1) == {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"ok": True},
+    }

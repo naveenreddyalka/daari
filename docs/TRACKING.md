@@ -9000,6 +9000,14 @@ Auto Code (2026-11-06) vs on-box virtual-model selection modes,
 may still point at those slugs. Covered by
 `tests/unit/test_compare_openrouter_auto.py`.
 
+### MCP egress Streamable HTTP Accept + SSE (#2181)
+
+<!-- tracking:#2181 -->
+**Status:** Done (2026-11-11). Egress JSON-RPC POSTs send
+`Accept: application/json, text/event-stream`; SSE `message` events are parsed
+to the matching JSON-RPC id; plain JSON unchanged. Covered by
+`tests/unit/test_mcp_egress.py`.
+
 ### Faithful MCP egress tools/call results ([#2180](https://github.com/naveenreddyalka/daari/issues/2180))
 
 <!-- tracking:#2180 -->
