@@ -9000,6 +9000,16 @@ Auto Code (2026-11-06) vs on-box virtual-model selection modes,
 may still point at those slugs. Covered by
 `tests/unit/test_compare_openrouter_auto.py`.
 
+### Faithful MCP egress tools/call results ([#2180](https://github.com/naveenreddyalka/daari/issues/2180))
+
+<!-- tracking:#2180 -->
+**Status:** Done (2026-11-11). Egress `tools/call` extracts `content[]` text
+items (JSON fallback, not Python repr); drops the hard `[:4000]` slice for
+`integrations.mcp_egress.max_result_chars` (default 2 MiB); truncation emits
+`daari_meta.warning`, `mcp_egress_result_truncated` log, and Prometheus counter;
+output guardrails via `check_tool_result`. Covered by
+`tests/unit/test_mcp_egress.py`.
+
 ### Config ownership + PATCH for observability.otel_include_request_tags ([#2172](https://github.com/naveenreddyalka/daari/issues/2172))
 
 <!-- tracking:#2172 -->

@@ -278,6 +278,8 @@ class Metrics:
     mcp_tasks: dict[str, int] = field(default_factory=dict)
     # server:outcome:circuit → count for MCP egress resilience (#1203).
     mcp_egress: dict[str, int] = field(default_factory=dict)
+    # server → count when tools/call result text hits max_result_chars (#2180).
+    mcp_egress_result_truncated: dict[str, int] = field(default_factory=dict)
     # event (open|trip|reject) → count for systemone upstream breaker (#1801).
     systemone_breaker: dict[str, int] = field(default_factory=dict)
     # family:event → count for fleet-wide breaker trips (#1932).
@@ -511,6 +513,14 @@ class Metrics:
         key = f"{server}:{outcome}:{circuit}"
         with self._lock:
             self.mcp_egress[key] = self.mcp_egress.get(key, 0) + 1
+
+    def record_mcp_egress_result_truncated(self, *, server: str) -> None:
+        """tools/call result truncated at integrations.mcp_egress.max_result_chars (#2180)."""
+        label = (server or "").strip() or "unknown"
+        with self._lock:
+            self.mcp_egress_result_truncated[label] = (
+                self.mcp_egress_result_truncated.get(label, 0) + 1
+            )
 
     def record_systemone_breaker(self, *, event: str) -> None:
         """Systemone upstream breaker trip / open / reject (#1801)."""
@@ -760,6 +770,7 @@ class Metrics:
                 "mcp_tool_calls": dict(self.mcp_tool_calls),
                 "mcp_tasks": dict(self.mcp_tasks),
                 "mcp_egress": dict(self.mcp_egress),
+                "mcp_egress_result_truncated": dict(self.mcp_egress_result_truncated),
                 "systemone_breaker": dict(self.systemone_breaker),
                 "systemone_breaker_state": self._systemone_breaker_state(),
                 "breaker_events": dict(self.breaker_events),
