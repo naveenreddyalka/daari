@@ -211,10 +211,14 @@ def validated_integrations(patch: dict[str, Any]) -> dict[str, Any]:
 
 
 def validated_observability(patch: dict[str, Any]) -> dict[str, Any]:
-    """Safe log-shape + team_metrics knobs — other observability flags stay file/restart."""
+    """Safe log-shape + team_metrics / otel tag knobs — other flags stay file/restart."""
     if not isinstance(patch, dict):
         raise ConfigValidationError("observability must be an object")
-    allowed = {"structured_json_logs", "team_metrics"}
+    allowed = {
+        "structured_json_logs",
+        "team_metrics",
+        "otel_include_request_tags",
+    }
     unknown = sorted(set(patch) - allowed)
     if unknown:
         raise ConfigValidationError(f"unknown observability keys: {unknown}")
@@ -226,6 +230,11 @@ def validated_observability(patch: dict[str, Any]) -> dict[str, Any]:
     if "team_metrics" in patch:
         out["team_metrics"] = _bool(
             patch["team_metrics"], "observability.team_metrics"
+        )
+    if "otel_include_request_tags" in patch:
+        out["otel_include_request_tags"] = _bool(
+            patch["otel_include_request_tags"],
+            "observability.otel_include_request_tags",
         )
     return out
 

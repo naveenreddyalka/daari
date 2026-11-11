@@ -3063,6 +3063,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         metrics.configure_team_metrics(
                             enabled=False, allowed=frozenset()
                         )
+            if "otel_include_request_tags" in observability:
+                enabled = bool(observability["otel_include_request_tags"])
+                ctx.settings.observability.otel_include_request_tags = enabled
+                router = getattr(ctx, "router", None)
+                if router is not None:
+                    router.otel_include_request_tags = enabled
             if "local_models" in decisions:
                 ctx.settings.decisions.local_models = list(decisions["local_models"])
             if "base_url" in systemone:
