@@ -9063,6 +9063,16 @@ leaf; GET inventory + PATCH bool (default false). Hot-applies to settings and
 the live guardrail engine without restart. Covered by
 `tests/unit/test_config_ownership.py`.
 
+### reasoning_effort none disables adaptive thinking on Claude 5.5 ([#2188](https://github.com/naveenreddyalka/daari/issues/2188))
+
+<!-- tracking:#2188 -->
+**Status:** Done (2026-11-12). For Claude 5.5 (sonnet/opus/haiku), OpenAI
+`reasoning_effort: none` and Anthropic `output_config.effort: none` map to
+`thinking: {type: disabled}` on the L6 Messages payload so adaptive-default
+models do not keep thinking on. Non-none efforts keep adaptive; gpt-6-astra /
+gpt-6.1-sol none→minimal floor unchanged. Covered by
+`tests/unit/test_frontier_param_compat.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from daari.gateway.internal import InternalRequest, Message
 from daari.gateway.sampling import SamplingParams
 from daari.router.frontier import FrontierExecutor
@@ -272,3 +274,79 @@ def test_stream_path_attaches_param_compat_to_daari_meta():
     assert "temperature" in meta.dropped_params
     assert meta.warning is not None
     assert "temperature" in meta.warning
+
+
+def _anthropic_executor(model: str) -> FrontierExecutor:
+    return FrontierExecutor(
+        base_url="https://api.anthropic.com",
+        default_model=model,
+        api_key="sk-ant-test",
+        provider="anthropic",
+    )
+
+
+@pytest.mark.parametrize(
+    "model",
+    ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"),
+)
+def test_claude_55_reasoning_effort_none_disables_thinking(model):
+    """OpenAI reasoning_effort=none must disable adaptive-default thinking (#2188)."""
+    executor = _anthropic_executor(model)
+    request = InternalRequest(
+        messages=[Message(role="user", content="hi")],
+        model=model,
+        sampling=SamplingParams(max_tokens=64, reasoning_effort="none"),
+    )
+    payload = executor._anthropic_payload(request, stream=False)
+    assert payload.get("thinking") == {"type": "disabled"}
+    assert "reasoning_effort" not in payload
+
+
+@pytest.mark.parametrize(
+    "model",
+    ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"),
+)
+def test_claude_55_output_config_effort_none_disables_thinking(model):
+    """Anthropic output_config.effort=none disables adaptive thinking (#2188)."""
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 64,
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": "none"},
+    }
+    apply_frontier_param_compat(payload, model)
+    assert payload["thinking"] == {"type": "disabled"}
+
+
+@pytest.mark.parametrize(
+    "model,effort",
+    (
+        ("claude-sonnet-5-5", "medium"),
+        ("claude-opus-5-5", "high"),
+        ("claude-haiku-5-5", "low"),
+    ),
+)
+def test_claude_55_non_none_effort_keeps_adaptive(model, effort):
+    """Non-none effort keeps adaptive thinking on Claude 5.5 (#2188)."""
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 64,
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": effort},
+    }
+    apply_frontier_param_compat(payload, model)
+    assert payload["thinking"] == {"type": "adaptive"}
+    assert payload["output_config"]["effort"] == effort
+
+
+def test_gpt_astra_none_still_floors_to_minimal_not_thinking_disabled():
+    """gpt-6-astra none→minimal floor must stay unchanged (#2188)."""
+    executor = _openai_executor("gpt-6-astra")
+    payload = executor._openai_payload(
+        _request(top_p=None, logprobs=None, reasoning_effort="none"),
+        stream=False,
+    )
+    assert payload["reasoning_effort"] == "minimal"
+    assert "thinking" not in payload

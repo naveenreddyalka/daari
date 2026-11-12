@@ -39,7 +39,14 @@ class FrontierParamCompatResult:
 # reasoning.effort=none — do not floor it.
 # claude-sonnet-5-5 / claude-opus-5-5 / claude-haiku-5-5: adaptive thinking
 # (and haiku effort) on by default; non-default temperature/top_p/top_k → 400
-# (strip like gpt-6.1-sol).
+# (strip like gpt-6.1-sol). reasoning_effort / output_config.effort "none"
+# must flip thinking to disabled (#2188 / LiteLLM v1.110.0-dev.2 parity).
+_CLAUDE_55_ADAPTIVE_DEFAULT: tuple[str, ...] = (
+    "claude-sonnet-5-5",
+    "claude-opus-5-5",
+    "claude-haiku-5-5",
+)
+
 _FRONTIER_PARAM_COMPAT: dict[str, FrontierParamCompat] = {
     "gpt-6-astra": FrontierParamCompat(
         unsupported_params=frozenset({"temperature", "top_p", "logprobs"}),
@@ -181,7 +188,43 @@ def apply_frontier_param_compat(
             if "budget_tokens" not in result.dropped_params:
                 result.dropped_params.append("budget_tokens")
 
+    # Claude 5.5 adaptive-default: effort none → thinking disabled (#2188).
+    # Runs after Haiku budget remap so an explicit none still wins.
+    if matching_model_key(model, _CLAUDE_55_ADAPTIVE_DEFAULT) is not None:
+        warning = _disable_claude_55_thinking_on_none_effort(payload)
+        if warning:
+            result.warnings.append(warning)
+
     return result
+
+
+def _payload_reasoning_effort(payload: dict[str, Any]) -> str | None:
+    """Resolve effort from OpenAI or Anthropic knobs on an L6 payload."""
+    raw = payload.get("reasoning_effort")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip().lower()
+    output_config = payload.get("output_config")
+    if isinstance(output_config, dict):
+        effort = output_config.get("effort")
+        if isinstance(effort, str) and effort.strip():
+            return effort.strip().lower()
+    return None
+
+
+def _disable_claude_55_thinking_on_none_effort(payload: dict[str, Any]) -> str | None:
+    """Map effort ``none`` to ``thinking: {type: disabled}`` for Claude 5.5."""
+    if _payload_reasoning_effort(payload) != "none":
+        return None
+    # OpenAI-shaped reasoning_effort is not an Anthropic Messages field.
+    payload.pop("reasoning_effort", None)
+    thinking = payload.get("thinking")
+    if isinstance(thinking, dict) and str(thinking.get("type") or "").strip().lower() == "disabled":
+        return None
+    payload["thinking"] = {"type": "disabled"}
+    return (
+        "reasoning_effort/output_config.effort 'none' disables adaptive thinking "
+        "on Claude 5.5; set thinking.type to disabled"
+    )
 
 
 def _strip_adaptive_thinking_keys(
