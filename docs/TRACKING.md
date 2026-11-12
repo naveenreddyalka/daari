@@ -9046,6 +9046,15 @@ in gateway/audit events for chat, endpoint, and MCP paths. Warn/redact stay
 content-free. Config docs note the privacy trade-off. Covered by
 `tests/unit/test_log_blocked_content.py`.
 
+### Guardrails: prebuilt OpenAI/Anthropic/Gemini credential patterns ([#2186](https://github.com/naveenreddyalka/daari/issues/2186))
+
+<!-- tracking:#2186 -->
+**Status:** Done (2026-11-12). Built-in `kind: secret` patterns recognize
+OpenAI (`sk-` / `sk-proj-`), Anthropic (`sk-ant-`), and Gemini (`AIza`) shapes
+(prefix + length) on input and output; hit rules named `secret:openai_key` /
+`secret:anthropic_key` / `secret:gemini_key`. Guardrails guide names the
+builtins. Covered by `tests/unit/test_provider_secret_patterns.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
