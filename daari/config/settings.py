@@ -2240,6 +2240,17 @@ class GuardrailSettings(BaseModel):
             "System/user/assistant messages are unchanged. Default off."
         ),
     )
+    # Kong 2.3.0 log_blocked_content parity (#2183). Off by default so events
+    # stay metadata-only; when on, block hits include secret-redacted capped text.
+    log_blocked_content: bool = Field(
+        default=False,
+        description=(
+            "When true, guardrail block events include the matched text "
+            "(secret-redacted, capped at 4 KiB) for local forensics. "
+            "Privacy trade-off: blocked payloads land in the on-box event store. "
+            "Warn/redact actions stay content-free. Default off."
+        ),
+    )
 
 
 class BoundariesSettings(RuntimeSettings):

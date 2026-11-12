@@ -9037,6 +9037,24 @@ settings and the live router without restart. Covered by
 `daari.cost.output_usd`. Local tiers report 0/0. Covered by
 `tests/unit/test_cost_breakdown.py`.
 
+### Guardrails: opt-in log_blocked_content forensics ([#2183](https://github.com/naveenreddyalka/daari/issues/2183))
+
+<!-- tracking:#2183 -->
+**Status:** Done (2026-11-12). `guardrails.log_blocked_content` (and MCP twin)
+default false; when on, block hits include secret-redacted text capped at 4 KiB
+in gateway/audit events for chat, endpoint, and MCP paths. Warn/redact stay
+content-free. Config docs note the privacy trade-off. Covered by
+`tests/unit/test_log_blocked_content.py`.
+
+### Guardrails: prebuilt OpenAI/Anthropic/Gemini credential patterns ([#2186](https://github.com/naveenreddyalka/daari/issues/2186))
+
+<!-- tracking:#2186 -->
+**Status:** Done (2026-11-12). Built-in `kind: secret` patterns recognize
+OpenAI (`sk-` / `sk-proj-`), Anthropic (`sk-ant-`), and Gemini (`AIza`) shapes
+(prefix + length) on input and output; hit rules named `secret:openai_key` /
+`secret:anthropic_key` / `secret:gemini_key`. Guardrails guide names the
+builtins. Covered by `tests/unit/test_provider_secret_patterns.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

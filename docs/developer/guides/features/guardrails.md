@@ -2,6 +2,10 @@
 
 **Outcome:** Block or redact injection / secrets / oversized prompts.
 
+Built-in `kind: secret` patterns cover AWS `AKIA…`, PEM private keys, OpenAI
+(`sk-` / `sk-proj-`), Anthropic (`sk-ant-`), and Gemini (`AIza…`) credential
+shapes (prefix + length), plus a generic `api_key=` heuristic.
+
 ## Steps
 
 ```yaml

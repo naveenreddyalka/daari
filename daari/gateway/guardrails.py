@@ -22,6 +22,22 @@ Action = Literal["block", "warn", "redact"]
 OnError = Literal["warn", "block"]
 RuleKind = Literal["deny", "allow", "max_length", "injection", "secret", "pii", "decision"]
 
+# Cap for opt-in blocked-content forensics (#2183 / Kong log_blocked_content).
+BLOCKED_CONTENT_CAP_BYTES = 4096
+
+
+def format_blocked_content_for_log(text: str, *, enabled: bool, action: str) -> str | None:
+    """Secret-redacted, capped text for block events; None when off or non-block."""
+    if not enabled or action != "block":
+        return None
+    from daari.security.secret_refs import redact_secrets
+
+    redacted = redact_secrets(text)
+    raw = redacted.encode("utf-8")
+    if len(raw) > BLOCKED_CONTENT_CAP_BYTES:
+        redacted = raw[:BLOCKED_CONTENT_CAP_BYTES].decode("utf-8", errors="ignore")
+    return redacted
+
 # Heuristic phrases that often precede prompt-injection attempts.
 _INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions", re.I),
@@ -31,10 +47,28 @@ _INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"<\s*/?\s*system\s*>", re.I),
 ]
 
-# Secrets we never want echoed in model output.
+# Secrets we never want echoed in model output (or prompts when kind=secret).
+# Provider shapes (#2186 / LiteLLM credential-guardrail parity): prefix + length
+# so short `sk-` / `AIza` fragments in ordinary prose do not trip.
 _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("aws_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
     ("private_key", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")),
+    (
+        "anthropic_key",
+        re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}\b"),
+    ),
+    (
+        "openai_key",
+        re.compile(r"\bsk-proj-[A-Za-z0-9_-]{20,}\b"),
+    ),
+    (
+        "openai_key",
+        re.compile(r"\bsk-(?!ant-|proj-)[A-Za-z0-9]{32,}\b"),
+    ),
+    (
+        "gemini_key",
+        re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
+    ),
     (
         "generic_secret",
         re.compile(
@@ -42,6 +76,35 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         ),
     ),
 ]
+
+
+def _apply_secret_patterns(
+    text: str,
+    *,
+    stage: str,
+    action: str,
+    result: GuardrailResult,
+    rule: GuardrailRule,
+) -> tuple[str, bool]:
+    """Apply built-in secret patterns. Returns (rewritten, blocked)."""
+    rewritten = text
+    for kind, pattern in _SECRET_PATTERNS:
+        if not pattern.search(rewritten):
+            continue
+        hit = GuardrailHit(
+            stage=stage,
+            rule=f"secret:{kind}",
+            action=action,  # type: ignore[arg-type]
+            kind="secret",
+        )
+        result.hits.append(hit)
+        if action == "block":
+            return rewritten, True
+        if action == "warn":
+            result.warning = f"guardrail:secret:{kind}"
+        if action == "redact":
+            rewritten = pattern.sub(f"<{kind}>", rewritten)
+    return rewritten, False
 
 
 @dataclass
@@ -102,6 +165,8 @@ class GuardrailEngine:
     stream_holdback_chars: int = 256
     # When on, scan role=tool messages with output rules before the model hop (#387).
     scan_tool_results: bool = False
+    # When on, block events carry secret-redacted capped text (#2183).
+    log_blocked_content: bool = False
     # Settings + optional sync httpx client for kind=decision (#1589).
     settings: Any = None
     decision_client: Any = None
@@ -321,6 +386,19 @@ class GuardrailEngine:
             return result
 
         for rule in self.input_rules:
+            if rule.kind == "secret" or rule.name == "secrets":
+                rewritten, blocked = _apply_secret_patterns(
+                    rewritten,
+                    stage="input",
+                    action=rule.action,
+                    result=result,
+                    rule=rule,
+                )
+                if blocked:
+                    self._mark_blocked(result, rule)
+                    result.rewritten = rewritten
+                    return result
+                continue
             if rule.kind != "deny" or not rule.pattern:
                 continue
             if re.search(rule.pattern, rewritten, re.I):
@@ -423,21 +501,15 @@ class GuardrailEngine:
         rewritten = text
         for rule in self.output_rules:
             if rule.kind == "secret" or rule.name == "secrets":
-                for kind, pattern in _SECRET_PATTERNS:
-                    if pattern.search(rewritten):
-                        hit = GuardrailHit(
-                            stage="output",
-                            rule=f"secret:{kind}",
-                            action=rule.action,
-                            kind="secret",
-                        )
-                        result.hits.append(hit)
-                        if rule.action == "block":
-                            return self._mark_blocked(result, rule), result
-                        if rule.action == "warn":
-                            result.warning = f"guardrail:secret:{kind}"
-                        if rule.action == "redact":
-                            rewritten = pattern.sub(f"<{kind}>", rewritten)
+                rewritten, blocked = _apply_secret_patterns(
+                    rewritten,
+                    stage="output",
+                    action=rule.action,
+                    result=result,
+                    rule=rule,
+                )
+                if blocked:
+                    return self._mark_blocked(result, rule), result
             if rule.kind == "pii" or rule.name == "pii":
                 scrubbed, counts = scrub_pii(rewritten)
                 if counts:
@@ -678,6 +750,7 @@ def engine_from_block(block: Any, *, settings: Any = None) -> GuardrailEngine | 
     stream_mode = getattr(block, "stream_mode", "buffered") or "buffered"
     holdback = int(getattr(block, "stream_holdback_chars", 256) or 256)
     scan_tool = bool(getattr(block, "scan_tool_results", False))
+    log_blocked = bool(getattr(block, "log_blocked_content", False))
     return GuardrailEngine(
         enabled=True,
         input_rules=input_rules,
@@ -688,6 +761,7 @@ def engine_from_block(block: Any, *, settings: Any = None) -> GuardrailEngine | 
         stream_mode=stream_mode,  # type: ignore[arg-type]
         stream_holdback_chars=max(0, holdback),
         scan_tool_results=scan_tool,
+        log_blocked_content=log_blocked,
         settings=settings,
     )
 
@@ -724,19 +798,25 @@ def _record_endpoint_guardrail_hits(
     *,
     warning: str | None,
     metrics: Any = None,
+    text: str | None = None,
+    log_blocked_content: bool = False,
 ) -> None:
     from daari.gateway.request_log import log_gateway_event
 
     for hit in hits:
-        log_gateway_event(
-            "guardrail",
-            {
-                "stage": hit.stage,
-                "rule": hit.rule,
-                "action": hit.action,
-                "detail": hit.detail,
-            },
-        )
+        payload: dict[str, Any] = {
+            "stage": hit.stage,
+            "rule": hit.rule,
+            "action": hit.action,
+            "detail": hit.detail,
+        }
+        if text is not None:
+            content = format_blocked_content_for_log(
+                text, enabled=log_blocked_content, action=hit.action
+            )
+            if content is not None:
+                payload["content"] = content
+        log_gateway_event("guardrail", payload)
         if metrics is not None and hasattr(metrics, "record_guardrail"):
             metrics.record_guardrail(hit.action, kind=getattr(hit, "kind", None) or "deny")
     if warning:
@@ -757,7 +837,13 @@ def apply_endpoint_input_policy(
         return EndpointTextPolicy(text=text)
     result = engine.check_input_text(text)
     if result.hits or result.warning:
-        _record_endpoint_guardrail_hits(result.hits, warning=result.warning, metrics=metrics)
+        _record_endpoint_guardrail_hits(
+            result.hits,
+            warning=result.warning,
+            metrics=metrics,
+            text=text,
+            log_blocked_content=bool(getattr(engine, "log_blocked_content", False)),
+        )
     if result.blocked:
         message = (
             result.block_message
@@ -790,7 +876,13 @@ def apply_endpoint_output_policy(
         return EndpointTextPolicy(text=text)
     rewritten, result = engine.check_output_text(text)
     if result.hits or result.warning:
-        _record_endpoint_guardrail_hits(result.hits, warning=result.warning, metrics=metrics)
+        _record_endpoint_guardrail_hits(
+            result.hits,
+            warning=result.warning,
+            metrics=metrics,
+            text=text,
+            log_blocked_content=bool(getattr(engine, "log_blocked_content", False)),
+        )
     if result.blocked:
         message = (
             result.block_message
