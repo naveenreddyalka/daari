@@ -2248,7 +2248,9 @@ class GuardrailSettings(BaseModel):
             "When true, guardrail block events include the matched text "
             "(secret-redacted, capped at 4 KiB) for local forensics. "
             "Privacy trade-off: blocked payloads land in the on-box event store. "
-            "Warn/redact actions stay content-free. Default off."
+            "Warn/redact actions stay content-free. Default off. "
+            "Top-level guardrails.log_blocked_content is editable via GET/PATCH "
+            "/v1/daari/config ownership (config editor)."
         ),
     )
 

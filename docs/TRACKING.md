@@ -9055,6 +9055,14 @@ OpenAI (`sk-` / `sk-proj-`), Anthropic (`sk-ant-`), and Gemini (`AIza`) shapes
 `secret:anthropic_key` / `secret:gemini_key`. Guardrails guide names the
 builtins. Covered by `tests/unit/test_provider_secret_patterns.py`.
 
+### Config ownership + PATCH for guardrails.log_blocked_content ([#2187](https://github.com/naveenreddyalka/daari/issues/2187))
+
+<!-- tracking:#2187 -->
+**Status:** Done (2026-11-12). `guardrails.log_blocked_content` is an ownership
+leaf; GET inventory + PATCH bool (default false). Hot-applies to settings and
+the live guardrail engine without restart. Covered by
+`tests/unit/test_config_ownership.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -239,6 +239,22 @@ def validated_observability(patch: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def validated_guardrails(patch: dict[str, Any]) -> dict[str, Any]:
+    """Safe forensic dial only — rules / enablement stay file/restart (#2187)."""
+    if not isinstance(patch, dict):
+        raise ConfigValidationError("guardrails must be an object")
+    allowed = {"log_blocked_content"}
+    unknown = sorted(set(patch) - allowed)
+    if unknown:
+        raise ConfigValidationError(f"unknown guardrails keys: {unknown}")
+    out: dict[str, Any] = {}
+    if "log_blocked_content" in patch:
+        out["log_blocked_content"] = _bool(
+            patch["log_blocked_content"], "guardrails.log_blocked_content"
+        )
+    return out
+
+
 def validated_security(patch: dict[str, Any]) -> dict[str, Any]:
     """Safe air-gap knobs only — at_rest keys stay file/restart (#2076)."""
     if not isinstance(patch, dict):
