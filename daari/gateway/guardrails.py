@@ -47,10 +47,28 @@ _INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"<\s*/?\s*system\s*>", re.I),
 ]
 
-# Secrets we never want echoed in model output.
+# Secrets we never want echoed in model output (or prompts when kind=secret).
+# Provider shapes (#2186 / LiteLLM credential-guardrail parity): prefix + length
+# so short `sk-` / `AIza` fragments in ordinary prose do not trip.
 _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("aws_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
     ("private_key", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")),
+    (
+        "anthropic_key",
+        re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}\b"),
+    ),
+    (
+        "openai_key",
+        re.compile(r"\bsk-proj-[A-Za-z0-9_-]{20,}\b"),
+    ),
+    (
+        "openai_key",
+        re.compile(r"\bsk-(?!ant-|proj-)[A-Za-z0-9]{32,}\b"),
+    ),
+    (
+        "gemini_key",
+        re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
+    ),
     (
         "generic_secret",
         re.compile(
@@ -58,6 +76,35 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         ),
     ),
 ]
+
+
+def _apply_secret_patterns(
+    text: str,
+    *,
+    stage: str,
+    action: str,
+    result: GuardrailResult,
+    rule: GuardrailRule,
+) -> tuple[str, bool]:
+    """Apply built-in secret patterns. Returns (rewritten, blocked)."""
+    rewritten = text
+    for kind, pattern in _SECRET_PATTERNS:
+        if not pattern.search(rewritten):
+            continue
+        hit = GuardrailHit(
+            stage=stage,
+            rule=f"secret:{kind}",
+            action=action,  # type: ignore[arg-type]
+            kind="secret",
+        )
+        result.hits.append(hit)
+        if action == "block":
+            return rewritten, True
+        if action == "warn":
+            result.warning = f"guardrail:secret:{kind}"
+        if action == "redact":
+            rewritten = pattern.sub(f"<{kind}>", rewritten)
+    return rewritten, False
 
 
 @dataclass
@@ -339,6 +386,19 @@ class GuardrailEngine:
             return result
 
         for rule in self.input_rules:
+            if rule.kind == "secret" or rule.name == "secrets":
+                rewritten, blocked = _apply_secret_patterns(
+                    rewritten,
+                    stage="input",
+                    action=rule.action,
+                    result=result,
+                    rule=rule,
+                )
+                if blocked:
+                    self._mark_blocked(result, rule)
+                    result.rewritten = rewritten
+                    return result
+                continue
             if rule.kind != "deny" or not rule.pattern:
                 continue
             if re.search(rule.pattern, rewritten, re.I):
@@ -441,21 +501,15 @@ class GuardrailEngine:
         rewritten = text
         for rule in self.output_rules:
             if rule.kind == "secret" or rule.name == "secrets":
-                for kind, pattern in _SECRET_PATTERNS:
-                    if pattern.search(rewritten):
-                        hit = GuardrailHit(
-                            stage="output",
-                            rule=f"secret:{kind}",
-                            action=rule.action,
-                            kind="secret",
-                        )
-                        result.hits.append(hit)
-                        if rule.action == "block":
-                            return self._mark_blocked(result, rule), result
-                        if rule.action == "warn":
-                            result.warning = f"guardrail:secret:{kind}"
-                        if rule.action == "redact":
-                            rewritten = pattern.sub(f"<{kind}>", rewritten)
+                rewritten, blocked = _apply_secret_patterns(
+                    rewritten,
+                    stage="output",
+                    action=rule.action,
+                    result=result,
+                    rule=rule,
+                )
+                if blocked:
+                    return self._mark_blocked(result, rule), result
             if rule.kind == "pii" or rule.name == "pii":
                 scrubbed, counts = scrub_pii(rewritten)
                 if counts:
