@@ -961,23 +961,48 @@ class Router:
         self._record(l6_response, started)
         return l6_response
 
-    def _apply_guardrail_hits(self, hits: list[Any], *, warning: str | None) -> None:
+    def _apply_guardrail_hits(
+        self, hits: list[Any], *, warning: str | None, text: str | None = None
+    ) -> None:
+        from daari.gateway.guardrails import format_blocked_content_for_log
+        from daari.gateway.request_log import log_gateway_event
+
+        log_blocked = bool(getattr(self.guardrails, "log_blocked_content", False))
         for hit in hits:
-            add_step(
-                "guardrail",
-                stage=hit.stage,
-                rule=hit.rule,
-                action=hit.action,
-                detail=hit.detail,
-            )
+            step_kwargs: dict[str, Any] = {
+                "stage": hit.stage,
+                "rule": hit.rule,
+                "action": hit.action,
+                "detail": hit.detail,
+            }
+            content = None
+            if text is not None:
+                content = format_blocked_content_for_log(
+                    text, enabled=log_blocked, action=hit.action
+                )
+            if content is not None:
+                step_kwargs["content"] = content
+            add_step("guardrail", **step_kwargs)
+            if content is not None:
+                # Opt-in forensics only (#2183); default-off stays add_step-only.
+                log_gateway_event(
+                    "guardrail",
+                    {
+                        "stage": hit.stage,
+                        "rule": hit.rule,
+                        "action": hit.action,
+                        "detail": hit.detail,
+                        "content": content,
+                    },
+                )
             if hasattr(self.metrics, "record_guardrail"):
                 self.metrics.record_guardrail(hit.action, kind=getattr(hit, "kind", None) or "deny")
             if hit.action == "block":
-                self._audit_guardrail_block(hit)
+                self._audit_guardrail_block(hit, content=content)
         if warning:
             add_step("guardrail_warning", warning=warning)
 
-    def _audit_guardrail_block(self, hit: Any) -> None:
+    def _audit_guardrail_block(self, hit: Any, *, content: str | None = None) -> None:
         """Write a chat guardrail block to the audit ledger (#1610)."""
         audit = self.audit
         if audit is None:
@@ -992,16 +1017,19 @@ class Router:
         if audit is None or not getattr(audit, "enabled", True):
             return
         try:
+            detail: dict[str, Any] = {
+                "rule": hit.rule,
+                "stage": hit.stage,
+                "action": hit.action,
+                "kind": getattr(hit, "kind", None) or "deny",
+            }
+            if content is not None:
+                detail["content"] = content
             audit.record(
                 actor="anonymous",
                 role="system",
                 action="guardrail.blocked",
-                detail={
-                    "rule": hit.rule,
-                    "stage": hit.stage,
-                    "action": hit.action,
-                    "kind": getattr(hit, "kind", None) or "deny",
-                },
+                detail=detail,
             )
         except Exception:
             return
@@ -1027,7 +1055,12 @@ class Router:
         warning = getattr(scanner, "warning", None)
         if not hits and not warning:
             return
-        self._apply_guardrail_hits(hits, warning=warning)
+        stream_text = getattr(scanner, "scanned_text", None)
+        if not isinstance(stream_text, str) or not stream_text:
+            stream_text = getattr(scanner, "_raw", None)
+        if not isinstance(stream_text, str):
+            stream_text = None
+        self._apply_guardrail_hits(hits, warning=warning, text=stream_text)
         from daari.gateway.request_log import log_gateway_event
 
         log_gateway_event(
@@ -1084,13 +1117,18 @@ class Router:
                     return policy
                 policy.warning = f"boundary_out:{decision.reason}"
         if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
+            input_text = "\n".join(
+                m.content or "" for m in request.messages if m.role != "system"
+            )
             check_input = getattr(self.guardrails, "check_input_async", None)
             if check_input is not None:
                 inbound = await check_input(request)
             else:
                 inbound = self.guardrails.check_input(request)
             if inbound.hits:
-                self._apply_guardrail_hits(inbound.hits, warning=inbound.warning)
+                self._apply_guardrail_hits(
+                    inbound.hits, warning=inbound.warning, text=input_text
+                )
             if inbound.blocked:
                 denial = getattr(inbound, "block_message", None) or self.guardrails.block_message
                 policy.refusal = blocked_response(request, denial)
@@ -1100,9 +1138,14 @@ class Router:
             # Opt-in scan of role=tool / tool_result payloads (#387). Mutates
             # request in place on redact so cache keys and execute see scrubbed text.
             if getattr(self.guardrails, "scan_tool_results", False):
+                tool_text = "\n".join(
+                    m.content or "" for m in request.messages if m.role == "tool"
+                )
                 tool_scan = self.guardrails.check_tool_results(request)
                 if tool_scan.hits:
-                    self._apply_guardrail_hits(tool_scan.hits, warning=tool_scan.warning)
+                    self._apply_guardrail_hits(
+                        tool_scan.hits, warning=tool_scan.warning, text=tool_text
+                    )
                 if tool_scan.blocked:
                     denial = (
                         getattr(tool_scan, "block_message", None) or self.guardrails.block_message
@@ -1119,7 +1162,9 @@ class Router:
             return response
         outbound = self.guardrails.check_output(response)
         if outbound.hits:
-            self._apply_guardrail_hits(outbound.hits, warning=outbound.warning)
+            self._apply_guardrail_hits(
+                outbound.hits, warning=outbound.warning, text=response.content or ""
+            )
         if outbound.response is not None:
             response = outbound.response
         if outbound.warning and not response.daari_meta.warning:
@@ -1136,7 +1181,9 @@ class Router:
         else:
             outbound = self.guardrails.check_output(response)
         if outbound.hits:
-            self._apply_guardrail_hits(outbound.hits, warning=outbound.warning)
+            self._apply_guardrail_hits(
+                outbound.hits, warning=outbound.warning, text=response.content or ""
+            )
         if outbound.response is not None:
             response = outbound.response
         if outbound.warning and not response.daari_meta.warning:

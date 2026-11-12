@@ -9037,6 +9037,15 @@ settings and the live router without restart. Covered by
 `daari.cost.output_usd`. Local tiers report 0/0. Covered by
 `tests/unit/test_cost_breakdown.py`.
 
+### Guardrails: opt-in log_blocked_content forensics ([#2183](https://github.com/naveenreddyalka/daari/issues/2183))
+
+<!-- tracking:#2183 -->
+**Status:** Done (2026-11-12). `guardrails.log_blocked_content` (and MCP twin)
+default false; when on, block hits include secret-redacted text capped at 4 KiB
+in gateway/audit events for chat, endpoint, and MCP paths. Warn/redact stay
+content-free. Config docs note the privacy trade-off. Covered by
+`tests/unit/test_log_blocked_content.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

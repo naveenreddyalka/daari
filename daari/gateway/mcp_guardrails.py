@@ -4,8 +4,9 @@
 them*. The same `GuardrailEngine` used for chat inspects tool arguments before
 execution (input rules) and tool results after (output rules), on the /mcp
 ingress, the legacy REST route, and the egress client. Trips are audited as
-`mcp.guardrail` rows carrying tool / rule / direction / action — never the
-payload, which is the whole point of governing on the developer's machine.
+`mcp.guardrail` rows carrying tool / rule / direction / action. Payload text is
+omitted by default; opt-in `log_blocked_content` adds secret-redacted capped
+text on block actions only (#2183).
 """
 
 from __future__ import annotations
@@ -100,36 +101,48 @@ class McpGuardrails:
             return legacy
         return self.block_message
 
-    def _record(self, tool: str, result: GuardrailResult, direction: str) -> None:
+    def _record(
+        self, tool: str, result: GuardrailResult, direction: str, *, text: str = ""
+    ) -> None:
         if self.audit is None or not result.hits:
             return
+        from daari.gateway.guardrails import format_blocked_content_for_log
+
+        log_blocked = bool(getattr(self.engine, "log_blocked_content", False))
         actor, role = _actor(self.claims)
         for hit in result.hits:
+            detail: dict[str, Any] = {
+                "tool": tool,
+                "rule": hit.rule,
+                "direction": direction,
+                "action": hit.action,
+                "transport": self.transport,
+            }
+            content = format_blocked_content_for_log(
+                text, enabled=log_blocked, action=hit.action
+            )
+            if content is not None:
+                detail["content"] = content
             self.audit.record(
                 actor=actor,
                 role=role,
                 action=AUDIT_ACTION,
-                detail={
-                    "tool": tool,
-                    "rule": hit.rule,
-                    "direction": direction,
-                    "action": hit.action,
-                    "transport": self.transport,
-                },
+                detail=detail,
             )
 
     def check_arguments(self, tool: str, arguments: Any) -> GuardrailResult:
         if not self.enabled:
             return GuardrailResult()
-        result = self.engine.check_input_text(arguments_text(arguments))  # type: ignore[union-attr]
-        self._record(tool, result, "input")
+        scanned = arguments_text(arguments)
+        result = self.engine.check_input_text(scanned)  # type: ignore[union-attr]
+        self._record(tool, result, "input", text=scanned)
         return result
 
     def check_result_text(self, tool: str, text: str) -> tuple[str, GuardrailResult]:
         if not self.enabled:
             return text, GuardrailResult()
         rewritten, result = self.engine.check_output_text(text)  # type: ignore[union-attr]
-        self._record(tool, result, "output")
+        self._record(tool, result, "output", text=text)
         return rewritten, result
 
     def check_tool_result(
