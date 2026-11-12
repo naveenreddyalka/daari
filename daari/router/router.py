@@ -27,7 +27,6 @@ from daari.gateway.cost_headers import (
     SessionAvoidedStore,
     StreamOutcome,
     stream_cached_tokens,
-    stream_usage_cost,
     stream_usage_cost_breakdown,
 )
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
