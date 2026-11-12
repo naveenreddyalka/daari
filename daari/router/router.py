@@ -27,7 +27,7 @@ from daari.gateway.cost_headers import (
     SessionAvoidedStore,
     StreamOutcome,
     stream_cached_tokens,
-    stream_usage_cost,
+    stream_usage_cost_breakdown,
 )
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.gateway.provider_prefs import RegionUnavailable, ZdrUnavailable
@@ -37,7 +37,7 @@ from daari.observability.trace import TraceStore, add_step, end_trace, start_tra
 from daari.observability.tokens import ollama_token_usage, response_token_usage
 from daari.observability.usage import UsageLedger
 from daari.policy.engine import PolicyEngine
-from daari.pricing import cost_usd, is_ollama_cloud_model
+from daari.pricing import cost_breakdown, cost_usd, is_ollama_cloud_model
 from daari.providers.integrations import (
     GitHubEnterpriseProvider,
     GitLabProvider,
@@ -1486,7 +1486,7 @@ class Router:
             response.daari_meta.cost_usd is None
             and (response.daari_meta.tier or "").upper() == "L6"
         ):
-            response.daari_meta.cost_usd = cost_usd(
+            parts = cost_breakdown(
                 response.daari_meta.model or response.model,
                 input_tokens,
                 output_tokens,
@@ -1499,6 +1499,38 @@ class Router:
                 region_pin=getattr(request.meta, "region_pin", None),
                 usage_speed=getattr(response.daari_meta, "usage_speed", None),
             )
+            response.daari_meta.cost_usd = parts.total
+            response.daari_meta.cost_input_usd = parts.input_usd
+            response.daari_meta.cost_output_usd = parts.output_usd
+        # Provider-reported total without a split: derive input/output from
+        # the pricing table and scale so they sum to cost_usd (#2182).
+        elif (
+            response.daari_meta.cost_usd is not None
+            and response.daari_meta.cost_input_usd is None
+            and response.daari_meta.cost_output_usd is None
+            and (response.daari_meta.tier or "").upper() == "L6"
+        ):
+            parts = cost_breakdown(
+                response.daari_meta.model or response.model,
+                input_tokens,
+                output_tokens,
+                self.pricing,
+                fallback_per_1k=float(self.frontier_price_per_1k_tokens or 0.002),
+                cached_input_tokens=int(response.daari_meta.cached_tokens or 0),
+                cache_write_tokens=write_tokens,
+                cache_ttl=cache_ttl,
+                service_tier=bill_tier,
+                region_pin=getattr(request.meta, "region_pin", None),
+                usage_speed=getattr(response.daari_meta, "usage_speed", None),
+            )
+            spent = float(response.daari_meta.cost_usd)
+            if parts.total > 0:
+                scale = spent / parts.total
+                response.daari_meta.cost_input_usd = parts.input_usd * scale
+                response.daari_meta.cost_output_usd = parts.output_usd * scale
+            else:
+                response.daari_meta.cost_input_usd = spent
+                response.daari_meta.cost_output_usd = 0.0
         self.metrics.record_cache_write(tokens=write_tokens, ttl=cache_ttl)
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
@@ -6351,7 +6383,7 @@ class Router:
         has_tier = isinstance(tier, str) and bool(tier.strip())
         if not has_speed and writes <= 0 and not has_tier:
             return
-        cost = self._stream_usage_cost(
+        parts = self._stream_usage_cost_breakdown(
             "L6",
             prompt_tokens=tokens[0],
             completion_tokens=tokens[1],
@@ -6359,23 +6391,29 @@ class Router:
         )
         from daari.gateway.cost_headers import usd_string
 
-        outcome.response_cost = usd_string(cost)
+        outcome.response_cost = usd_string(parts.total)
+        outcome.response_cost_input = usd_string(parts.input_usd)
+        outcome.response_cost_output = usd_string(parts.output_usd)
 
-    def _stream_usage_cost(
+    def _stream_usage_cost_breakdown(
         self,
         tier: str | None,
         *,
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
         served: InternalResponse | None = None,
-    ) -> float:
+    ):
         reported = None
+        reported_in = None
+        reported_out = None
         model = None
         cached = 0
         write = 0
         billed = tier
         if served is not None:
             reported = served.daari_meta.cost_usd
+            reported_in = getattr(served.daari_meta, "cost_input_usd", None)
+            reported_out = getattr(served.daari_meta, "cost_output_usd", None)
             model = served.daari_meta.model or served.model
             cached = int(served.daari_meta.cached_tokens or 0)
             write = int(served.daari_meta.cache_write_tokens or 0)
@@ -6394,7 +6432,7 @@ class Router:
         bound = current_spend_context()
         if bound is not None:
             cache_ttl = getattr(bound, "cache_ttl", None)
-        return stream_usage_cost(
+        return stream_usage_cost_breakdown(
             tier=billed,
             model=model,
             prompt_tokens=prompt_tokens,
@@ -6405,10 +6443,27 @@ class Router:
             cache_write_tokens=write,
             cache_ttl=cache_ttl,
             reported_cost=reported,
+            reported_cost_input=reported_in,
+            reported_cost_output=reported_out,
             service_tier=service_tier,
             region_pin=region_pin,
             usage_speed=usage_speed,
         )
+
+    def _stream_usage_cost(
+        self,
+        tier: str | None,
+        *,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        served: InternalResponse | None = None,
+    ) -> float:
+        return self._stream_usage_cost_breakdown(
+            tier,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            served=served,
+        ).total
 
     def _stream_cached_tokens(
         self,

@@ -279,6 +279,25 @@ def test_cost_usd_on_root_span_when_priced():
     assert "daari.cost.usd" not in dict(_root_span().attributes)
 
 
+def test_cost_input_output_usd_on_root_span_when_split():
+    """Kong-style input/output cost attrs sit next to the total (#2182)."""
+    trace = RequestTrace()
+    response = _response(
+        model="gpt-4o-mini",
+        tier="L6",
+        executor="frontier",
+        provider_id="openai",
+        cost_usd=0.0042,
+    )
+    response.daari_meta.cost_input_usd = 0.0012
+    response.daari_meta.cost_output_usd = 0.0030
+    export_trace(trace, request=_request(model="gpt-4o-mini"), response=response)
+    attrs = dict(_root_span().attributes)
+    assert attrs["daari.cost.usd"] == pytest.approx(0.0042)
+    assert attrs["daari.cost.input_usd"] == pytest.approx(0.0012)
+    assert attrs["daari.cost.output_usd"] == pytest.approx(0.0030)
+
+
 def test_key_and_team_id_on_root_span_when_authenticated():
     """Authenticated requests stamp key/team ids; blanks and anon omit (#2085)."""
     trace = RequestTrace()

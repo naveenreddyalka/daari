@@ -9026,6 +9026,17 @@ ownership leaf; GET inventory + PATCH bool (default false). Hot-applies to
 settings and the live router without restart. Covered by
 `tests/unit/test_config_ownership.py`.
 
+### Observability: split request cost into input and output ([#2182](https://github.com/naveenreddyalka/daari/issues/2182))
+
+<!-- tracking:#2182 -->
+**Status:** Done (2026-11-12). `cost_breakdown()` returns input/output USD
+(billable + cached-read + cache-write on the input side; multipliers on both);
+`cost_usd()` is their sum. Headers `x-daari-cost-input-usd` /
+`x-daari-cost-output-usd` (incl. stream), `daari_meta.cost_input_usd` /
+`cost_output_usd`, and OTel `daari.cost.input_usd` /
+`daari.cost.output_usd`. Local tiers report 0/0. Covered by
+`tests/unit/test_cost_breakdown.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
