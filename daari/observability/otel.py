@@ -585,9 +585,16 @@ def export_trace(
                 # Known USD spend only (L6 / Ollama :cloud set cost_usd);
                 # unpriced local stays omitted. Estimated token paths keep
                 # daari.usage_estimated — no separate currency attr (#2085).
+                # Input/output split lands next to the total when present (#2182).
                 cost = getattr(meta, "cost_usd", None)
                 if cost is not None:
                     root_attrs["daari.cost.usd"] = float(cost)
+                cost_in = getattr(meta, "cost_input_usd", None)
+                if cost_in is not None:
+                    root_attrs["daari.cost.input_usd"] = float(cost_in)
+                cost_out = getattr(meta, "cost_output_usd", None)
+                if cost_out is not None:
+                    root_attrs["daari.cost.output_usd"] = float(cost_out)
         else:
             span_name = f"daari.request.{getattr(trace, 'trace_id', '')}"
         if error_type:

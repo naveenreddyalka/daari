@@ -465,6 +465,63 @@ def resolve_price(
     )
 
 
+@dataclass(frozen=True)
+class CostBreakdown:
+    """USD split matching Kong AI Gateway 2.3.0 input/output cost (#2182).
+
+    ``input_usd`` covers billable input + cached-read + cache-write tokens.
+    ``output_usd`` covers completion tokens. Multipliers apply to both sides.
+    """
+
+    input_usd: float
+    output_usd: float
+
+    @property
+    def total(self) -> float:
+        return self.input_usd + self.output_usd
+
+
+def cost_breakdown(
+    model: str | None,
+    input_tokens: int,
+    output_tokens: int,
+    pricing: object,
+    *,
+    fallback_per_1k: float,
+    cached_input_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    cache_ttl: str | None = None,
+    service_tier: str | None = None,
+    region_pin: str | None = None,
+    billing_path: str | None = None,
+    usage_speed: str | None = None,
+) -> CostBreakdown:
+    """Input/output USD components; ``input + output == cost_usd(...)``."""
+    price = resolve_price(
+        model,
+        pricing,
+        fallback_per_1k=fallback_per_1k,
+        input_tokens=input_tokens,
+        billing_path=billing_path,
+    )
+    write_tokens = max(0, int(cache_write_tokens))
+    billable_input = max(0, input_tokens - cached_input_tokens)
+    input_raw = billable_input / 1_000_000 * price.input_per_1m
+    if cached_input_tokens and price.cached_input_per_1m is not None:
+        input_raw += cached_input_tokens / 1_000_000 * price.cached_input_per_1m
+    elif cached_input_tokens:
+        input_raw += cached_input_tokens / 1_000_000 * price.input_per_1m
+    if write_tokens:
+        input_raw += write_tokens / 1_000_000 * _cache_write_rate(price, cache_ttl)
+    output_raw = max(0, output_tokens) / 1_000_000 * price.output_per_1m
+    factor = (
+        service_tier_factor(service_tier)
+        * regional_processing_factor(region_pin, model)
+        * anthropic_speed_factor(usage_speed)
+    )
+    return CostBreakdown(input_usd=input_raw * factor, output_usd=output_raw * factor)
+
+
 def cost_usd(
     model: str | None,
     input_tokens: int,
@@ -480,29 +537,20 @@ def cost_usd(
     billing_path: str | None = None,
     usage_speed: str | None = None,
 ) -> float:
-    price = resolve_price(
+    return cost_breakdown(
         model,
+        input_tokens,
+        output_tokens,
         pricing,
         fallback_per_1k=fallback_per_1k,
-        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        cache_write_tokens=cache_write_tokens,
+        cache_ttl=cache_ttl,
+        service_tier=service_tier,
+        region_pin=region_pin,
         billing_path=billing_path,
-    )
-    write_tokens = max(0, int(cache_write_tokens))
-    billable_input = max(0, input_tokens - cached_input_tokens)
-    total = billable_input / 1_000_000 * price.input_per_1m
-    total += max(0, output_tokens) / 1_000_000 * price.output_per_1m
-    if cached_input_tokens and price.cached_input_per_1m is not None:
-        total += cached_input_tokens / 1_000_000 * price.cached_input_per_1m
-    elif cached_input_tokens:
-        total += cached_input_tokens / 1_000_000 * price.input_per_1m
-    if write_tokens:
-        total += write_tokens / 1_000_000 * _cache_write_rate(price, cache_ttl)
-    return (
-        total
-        * service_tier_factor(service_tier)
-        * regional_processing_factor(region_pin, model)
-        * anthropic_speed_factor(usage_speed)
-    )
+        usage_speed=usage_speed,
+    ).total
 
 
 def _cache_write_rate(price: ResolvedPrice, cache_ttl: str | None) -> float:
