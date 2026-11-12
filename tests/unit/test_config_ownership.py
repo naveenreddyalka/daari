@@ -45,6 +45,7 @@ _MCP_LEAVES = (
 _OBS_JSON_LOGS = "observability.structured_json_logs"
 _OBS_TEAM_METRICS = "observability.team_metrics"
 _OBS_OTEL_TAGS = "observability.otel_include_request_tags"
+_GUARD_LOG_BLOCKED = "guardrails.log_blocked_content"
 _SEC_OFFLINE_MODE = "security.offline_mode"
 _SEC_OFFLINE_ALLOW_HOSTS = "security.offline_allow_hosts"
 
@@ -109,6 +110,9 @@ def _base_live() -> dict:
             "structured_json_logs": False,
             "team_metrics": False,
             "otel_include_request_tags": False,
+        },
+        "guardrails": {
+            "log_blocked_content": False,
         },
         "security": {
             "offline_mode": False,
@@ -458,6 +462,22 @@ def test_ownership_fields_include_otel_include_request_tags():
     assert meta[_OBS_OTEL_TAGS]["file_value"] is False
 
 
+def test_ownership_fields_include_log_blocked_content():
+    """guardrails.log_blocked_content is an ownership leaf (#2187)."""
+    live = _base_live()
+    live["guardrails"]["log_blocked_content"] = True
+    file_doc = {"guardrails": {"log_blocked_content": False}}
+    meta = ownership_fields(
+        live,
+        file_doc=file_doc,
+        runtime_overrides={_GUARD_LOG_BLOCKED},
+    )
+    assert _GUARD_LOG_BLOCKED in meta
+    assert meta[_GUARD_LOG_BLOCKED]["editable"] is True
+    assert meta[_GUARD_LOG_BLOCKED]["source"] == "runtime"
+    assert meta[_GUARD_LOG_BLOCKED]["file_value"] is False
+
+
 def test_ownership_fields_include_offline_mode():
     """security.offline_mode / offline_allow_hosts are ownership leaves (#2076)."""
     live = _base_live()
@@ -489,6 +509,7 @@ def test_live_config_payload_matches_editor_shape(settings):
         "boundaries",
         "integrations",
         "observability",
+        "guardrails",
         "security",
     }
     assert "confidence_threshold" in payload["routing"]
@@ -520,6 +541,8 @@ def test_live_config_payload_matches_editor_shape(settings):
     assert payload["observability"]["structured_json_logs"] is False
     assert payload["observability"]["team_metrics"] is False
     assert payload["observability"]["otel_include_request_tags"] is False
+    assert set(payload["guardrails"]) == {"log_blocked_content"}
+    assert payload["guardrails"]["log_blocked_content"] is False
     assert set(payload["security"]) == {"offline_mode", "offline_allow_hosts"}
     assert payload["security"]["offline_mode"] is False
     assert payload["security"]["offline_allow_hosts"] == []
@@ -776,6 +799,73 @@ async def test_patch_otel_include_request_tags_round_trip_hot_apply(
 
 
 @pytest.mark.asyncio
+async def test_patch_log_blocked_content_round_trip_hot_apply(
+    settings, tmp_path, monkeypatch
+):
+    """PATCH guardrails.log_blocked_content applies without restart (#2187)."""
+    from daari.config.settings import GuardrailRuleSettings
+
+    settings.observability.config_editor = True
+    settings.guardrails.enabled = True
+    settings.guardrails.input_rules = [
+        GuardrailRuleSettings(name="deny-secret", pattern="SECRETWORD", action="block")
+    ]
+    assert settings.guardrails.log_blocked_content is False
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump({"guardrails": {"log_blocked_content": False}}),
+        encoding="utf-8",
+    )
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    engine = app.state.ctx.router.guardrails
+    assert engine is not None
+    assert engine.log_blocked_content is False
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        got = await client.get("/v1/daari/config")
+        assert got.status_code == 200
+        body = got.json()
+        assert _GUARD_LOG_BLOCKED in body["ownership"]
+        assert body["ownership"][_GUARD_LOG_BLOCKED]["editable"] is True
+        assert body["guardrails"]["log_blocked_content"] is False
+
+        bad = await client.patch(
+            "/v1/daari/config",
+            json={"guardrails": {"log_blocked_content": "yes"}},
+        )
+        assert bad.status_code == 400
+        assert settings.guardrails.log_blocked_content is False
+        assert engine.log_blocked_content is False
+
+        on = await client.patch(
+            "/v1/daari/config",
+            json={"guardrails": {"log_blocked_content": True}, "persist": True},
+        )
+        assert on.status_code == 200
+        payload = on.json()
+        assert payload["guardrails"]["log_blocked_content"] is True
+        assert payload["ownership"][_GUARD_LOG_BLOCKED]["source"] == "file"
+        written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert written["guardrails"]["log_blocked_content"] is True
+        assert settings.guardrails.log_blocked_content is True
+        # Same live engine instance picks up the dial (no restart / rebuild).
+        assert app.state.ctx.router.guardrails is engine
+        assert engine.log_blocked_content is True
+
+        off = await client.patch(
+            "/v1/daari/config",
+            json={"guardrails": {"log_blocked_content": False}},
+        )
+        assert off.status_code == 200
+        assert settings.guardrails.log_blocked_content is False
+        assert engine.log_blocked_content is False
+
+
+@pytest.mark.asyncio
 async def test_patch_offline_mode_round_trip_and_egress_refusal(
     settings, tmp_path, monkeypatch
 ):
@@ -963,6 +1053,7 @@ def test_docs_pin_classifier_mcp_config_ownership():
         _OBS_JSON_LOGS,
         _OBS_TEAM_METRICS,
         _OBS_OTEL_TAGS,
+        _GUARD_LOG_BLOCKED,
         _SIGNAL_OVERRIDES,
         _SEC_OFFLINE_MODE,
         _SEC_OFFLINE_ALLOW_HOSTS,
@@ -980,6 +1071,7 @@ def test_docs_pin_classifier_mcp_config_ownership():
     assert "structured_json_logs" in http_api
     assert "team_metrics" in http_api
     assert "otel_include_request_tags" in http_api
+    assert "log_blocked_content" in http_api
     assert "offline_mode" in http_api
     assert "offline_allow_hosts" in http_api
     assert "mcp_servers" in http_api

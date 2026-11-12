@@ -14,6 +14,7 @@ _SAFE_SECTIONS = (
     "boundaries",
     "integrations",
     "observability",
+    "guardrails",
     "decisions",
     "systemone",
     "security",
@@ -66,6 +67,7 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("observability", "structured_json_logs"),
     ("observability", "team_metrics"),
     ("observability", "otel_include_request_tags"),
+    ("guardrails", "log_blocked_content"),
     ("decisions", "local_models"),
     ("systemone", "base_url"),
     ("security", "offline_mode"),
@@ -259,6 +261,11 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
             "structured_json_logs": s.observability.structured_json_logs,
             "team_metrics": s.observability.team_metrics,
             "otel_include_request_tags": s.observability.otel_include_request_tags,
+        },
+        "guardrails": {
+            "log_blocked_content": bool(
+                getattr(s.guardrails, "log_blocked_content", False)
+            ),
         },
         "decisions": {
             "local_models": list(getattr(s.decisions, "local_models", None) or []),

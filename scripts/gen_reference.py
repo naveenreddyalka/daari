@@ -184,6 +184,7 @@ def render_api_reference() -> str:
             "`observability.structured_json_logs`, "
             "`observability.team_metrics`, "
             "`observability.otel_include_request_tags`, "
+            "`guardrails.log_blocked_content`, "
             "`security.offline_mode`, `security.offline_allow_hosts`, and MCP knobs "
             "(`integrations.mcp_oauth.local_as` / `protected_resource`, "
             "`integrations.mcp_aggregate_egress.enabled`, "

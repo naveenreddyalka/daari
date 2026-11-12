@@ -2893,6 +2893,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 validated_cache,
                 validated_decisions,
                 validated_frontier,
+                validated_guardrails,
                 validated_integrations,
                 validated_observability,
                 validated_routing,
@@ -2913,6 +2914,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 cache = validated_cache(body.get("cache") or {})
                 integrations = validated_integrations(body.get("integrations") or {})
                 observability = validated_observability(body.get("observability") or {})
+                guardrails = validated_guardrails(body.get("guardrails") or {})
                 decisions = validated_decisions(body.get("decisions") or {})
                 systemone = validated_systemone(body.get("systemone") or {})
                 security = validated_security(body.get("security") or {})
@@ -3069,6 +3071,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 router = getattr(ctx, "router", None)
                 if router is not None:
                     router.otel_include_request_tags = enabled
+            if "log_blocked_content" in guardrails:
+                enabled = bool(guardrails["log_blocked_content"])
+                ctx.settings.guardrails.log_blocked_content = enabled
+                engine = getattr(getattr(ctx, "router", None), "guardrails", None)
+                if engine is not None:
+                    engine.log_blocked_content = enabled
             if "local_models" in decisions:
                 ctx.settings.decisions.local_models = list(decisions["local_models"])
             if "base_url" in systemone:
@@ -3112,6 +3120,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "boundaries": boundaries,
                     "integrations": integrations,
                     "observability": observability,
+                    "guardrails": guardrails,
                     "decisions": decisions,
                     "systemone": systemone,
                     "security": security,
@@ -3134,6 +3143,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                             "boundaries": boundaries,
                             "integrations": integrations,
                             "observability": observability,
+                            "guardrails": guardrails,
                             "decisions": decisions,
                             "systemone": systemone,
                             "security": security,
