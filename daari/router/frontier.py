@@ -415,6 +415,11 @@ class FrontierExecutor:
             stream=stream,
             prompt_cache=self.prompt_cache,
         )
+        # Bridge OpenAI reasoning_effort into param_compat for Claude 5.5 none→
+        # thinking disabled (#2188). Stripped again after compat (not an Anthropic field).
+        effort = getattr(request.sampling, "reasoning_effort", None)
+        if isinstance(effort, str) and effort.strip() and "reasoning_effort" not in payload:
+            payload["reasoning_effort"] = effort.strip().lower()
         version_drops = apply_anthropic_version_sampling_compat(
             payload, request.meta.anthropic_version
         )
@@ -422,6 +427,7 @@ class FrontierExecutor:
             payload, request.meta.anthropic_version
         )
         compat = self._run_param_compat(payload, has_tools=bool(request.tools))
+        payload.pop("reasoning_effort", None)
         for name in version_drops:
             if name not in compat.dropped_params:
                 compat.dropped_params.append(name)
