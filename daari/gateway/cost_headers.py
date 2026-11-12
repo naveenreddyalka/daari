@@ -22,9 +22,11 @@ from starlette.responses import StreamingResponse
 from starlette.types import Send
 
 from daari.gateway.internal import DaariMeta
-from daari.pricing import cost_usd, is_ollama_cloud_model
+from daari.pricing import CostBreakdown, cost_breakdown, is_ollama_cloud_model
 
 COST_HEADER = "x-daari-response-cost"
+COST_INPUT_HEADER = "x-daari-cost-input-usd"
+COST_OUTPUT_HEADER = "x-daari-cost-output-usd"
 COST_AVOIDED_HEADER = "x-daari-response-cost-avoided"
 SESSION_COST_AVOIDED_HEADER = "x-daari-session-cost-avoided"
 TIER_HEADER = "x-daari-tier"
@@ -208,6 +210,45 @@ def avoided_usd(
     return tokens / 1000 * _frontier_price_per_1k(settings)
 
 
+def _metered_cost_parts(
+    meta: DaariMeta,
+    settings: Any,
+    *,
+    price_per_1k: float,
+) -> tuple[float, float, float]:
+    """Return (spent, input_usd, output_usd) for a metered response (#2182)."""
+    priced = cost_breakdown(
+        meta.model,
+        int(meta.input_tokens or 0),
+        int(meta.output_tokens or 0),
+        getattr(settings, "pricing", None),
+        fallback_per_1k=price_per_1k,
+        cached_input_tokens=int(meta.cached_tokens or 0),
+        cache_write_tokens=int(meta.cache_write_tokens or 0),
+        service_tier=meta.service_tier,
+        region_pin=meta.region_pin,
+        usage_speed=getattr(meta, "usage_speed", None),
+    )
+    meta_in = getattr(meta, "cost_input_usd", None)
+    meta_out = getattr(meta, "cost_output_usd", None)
+    if meta_in is not None and meta_out is not None:
+        input_usd = float(meta_in)
+        output_usd = float(meta_out)
+    else:
+        input_usd = priced.input_usd
+        output_usd = priced.output_usd
+    if meta.cost_usd is not None:
+        spent = float(meta.cost_usd)
+        parts_total = input_usd + output_usd
+        if parts_total > 0 and abs(parts_total - spent) > 1e-12:
+            scale = spent / parts_total
+            input_usd *= scale
+            output_usd *= scale
+    else:
+        spent = input_usd + output_usd
+    return spent, input_usd, output_usd
+
+
 def response_cost_headers(
     meta: DaariMeta,
     settings: Any,
@@ -223,25 +264,17 @@ def response_cost_headers(
         meta, settings, prompt_chars=prompt_chars, completion_chars=completion_chars
     )
     if _is_metered(meta):
-        if meta.cost_usd is not None:
-            spent = float(meta.cost_usd)
-        else:
-            spent = cost_usd(
-                meta.model,
-                int(meta.input_tokens or 0),
-                int(meta.output_tokens or 0),
-                getattr(settings, "pricing", None),
-                fallback_per_1k=price_per_1k,
-                cached_input_tokens=int(meta.cached_tokens or 0),
-                cache_write_tokens=int(meta.cache_write_tokens or 0),
-                service_tier=meta.service_tier,
-                region_pin=meta.region_pin,
-                usage_speed=getattr(meta, "usage_speed", None),
-            )
+        spent, input_usd, output_usd = _metered_cost_parts(
+            meta, settings, price_per_1k=price_per_1k
+        )
     else:
         spent = 0.0
+        input_usd = 0.0
+        output_usd = 0.0
     headers = {
         COST_HEADER: _decimal(spent),
+        COST_INPUT_HEADER: _decimal(input_usd),
+        COST_OUTPUT_HEADER: _decimal(output_usd),
         COST_AVOIDED_HEADER: _decimal(avoided),
         TIER_HEADER: meta.tier,
         CACHE_HEADER: _cache_state(cache_hit=meta.cache_hit, draft=meta.draft),
@@ -303,6 +336,58 @@ def modality_response_headers(
     )
 
 
+def stream_usage_cost_breakdown(
+    *,
+    tier: str | None,
+    model: str | None = None,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    pricing: object | None = None,
+    fallback_per_1k: float = 0.002,
+    cached_input_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    cache_ttl: str | None = None,
+    reported_cost: float | None = None,
+    reported_cost_input: float | None = None,
+    reported_cost_output: float | None = None,
+    service_tier: str | None = None,
+    region_pin: str | None = None,
+    usage_speed: str | None = None,
+) -> CostBreakdown:
+    """Input/output USD for a streamed usage object (#2182). Local tiers are $0."""
+    if (tier or "").upper() != FRONTIER_TIER and not is_ollama_cloud_model(model):
+        return CostBreakdown(input_usd=0.0, output_usd=0.0)
+    if reported_cost_input is not None and reported_cost_output is not None:
+        return CostBreakdown(
+            input_usd=float(reported_cost_input),
+            output_usd=float(reported_cost_output),
+        )
+    parts = cost_breakdown(
+        model,
+        int(prompt_tokens),
+        int(completion_tokens),
+        pricing,
+        fallback_per_1k=fallback_per_1k,
+        cached_input_tokens=int(cached_input_tokens),
+        cache_write_tokens=int(cache_write_tokens),
+        cache_ttl=cache_ttl,
+        service_tier=service_tier,
+        region_pin=region_pin,
+        usage_speed=usage_speed,
+    )
+    if reported_cost is not None:
+        spent = float(reported_cost)
+        if parts.total > 0 and abs(parts.total - spent) > 1e-12:
+            scale = spent / parts.total
+            return CostBreakdown(
+                input_usd=parts.input_usd * scale,
+                output_usd=parts.output_usd * scale,
+            )
+        if parts.total == 0 and spent:
+            return CostBreakdown(input_usd=spent, output_usd=0.0)
+    return parts
+
+
 def stream_usage_cost(
     *,
     tier: str | None,
@@ -320,23 +405,21 @@ def stream_usage_cost(
     usage_speed: str | None = None,
 ) -> float:
     """USD for a streamed usage object. Local tiers are $0; L6 and :cloud match headers."""
-    if (tier or "").upper() != FRONTIER_TIER and not is_ollama_cloud_model(model):
-        return 0.0
-    if reported_cost is not None:
-        return float(reported_cost)
-    return cost_usd(
-        model,
-        int(prompt_tokens),
-        int(completion_tokens),
-        pricing,
+    return stream_usage_cost_breakdown(
+        tier=tier,
+        model=model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        pricing=pricing,
         fallback_per_1k=fallback_per_1k,
-        cached_input_tokens=int(cached_input_tokens),
-        cache_write_tokens=int(cache_write_tokens),
+        cached_input_tokens=cached_input_tokens,
+        cache_write_tokens=cache_write_tokens,
         cache_ttl=cache_ttl,
+        reported_cost=reported_cost,
         service_tier=service_tier,
         region_pin=region_pin,
         usage_speed=usage_speed,
-    )
+    ).total
 
 
 def stream_cached_tokens(
@@ -370,6 +453,9 @@ class StreamOutcome:
     _ollama_034_knobs: list[str] | None = None
     # Final streamed frontier USD, set before the first relayed chunk (#1737).
     response_cost: str | None = None
+    # Kong-style input/output split next to the total (#2182).
+    response_cost_input: str | None = None
+    response_cost_output: str | None = None
     # Soft notes such as fast_degraded_to_standard, sent with the first chunk.
     warning: str | None = None
 
@@ -401,6 +487,10 @@ class StreamOutcome:
             out[DROPPED_PARAMS_HEADER] = ",".join(self.dropped_params)
         if self.response_cost is not None:
             out[COST_HEADER] = self.response_cost
+        if self.response_cost_input is not None:
+            out[COST_INPUT_HEADER] = self.response_cost_input
+        if self.response_cost_output is not None:
+            out[COST_OUTPUT_HEADER] = self.response_cost_output
         if self.warning:
             out[WARNING_HEADER] = self.warning
         return out

@@ -204,6 +204,9 @@ class DaariMeta(BaseModel):
     # G2: OpenRouter usage.cost, cached prompt tokens, and the client
     # `provider` constraint that was honored or refused.
     cost_usd: float | None = None
+    # Kong-style input/output USD split next to cost_usd (#2182).
+    cost_input_usd: float | None = None
+    cost_output_usd: float | None = None
     # Web-search call fee added on top of token cost when the provider did
     # not send usage.cost (#1770). None when there is nothing to bill.
     tool_cost_usd: float | None = None

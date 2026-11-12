@@ -44,6 +44,7 @@ _MCP_LEAVES = (
 )
 _OBS_JSON_LOGS = "observability.structured_json_logs"
 _OBS_TEAM_METRICS = "observability.team_metrics"
+_OBS_OTEL_TAGS = "observability.otel_include_request_tags"
 _SEC_OFFLINE_MODE = "security.offline_mode"
 _SEC_OFFLINE_ALLOW_HOSTS = "security.offline_allow_hosts"
 
@@ -107,6 +108,7 @@ def _base_live() -> dict:
         "observability": {
             "structured_json_logs": False,
             "team_metrics": False,
+            "otel_include_request_tags": False,
         },
         "security": {
             "offline_mode": False,
@@ -440,6 +442,22 @@ def test_ownership_fields_include_team_metrics():
     assert meta[_OBS_TEAM_METRICS]["file_value"] is False
 
 
+def test_ownership_fields_include_otel_include_request_tags():
+    """observability.otel_include_request_tags is an ownership leaf (#2172)."""
+    live = _base_live()
+    live["observability"]["otel_include_request_tags"] = True
+    file_doc = {"observability": {"otel_include_request_tags": False}}
+    meta = ownership_fields(
+        live,
+        file_doc=file_doc,
+        runtime_overrides={_OBS_OTEL_TAGS},
+    )
+    assert _OBS_OTEL_TAGS in meta
+    assert meta[_OBS_OTEL_TAGS]["editable"] is True
+    assert meta[_OBS_OTEL_TAGS]["source"] == "runtime"
+    assert meta[_OBS_OTEL_TAGS]["file_value"] is False
+
+
 def test_ownership_fields_include_offline_mode():
     """security.offline_mode / offline_allow_hosts are ownership leaves (#2076)."""
     live = _base_live()
@@ -497,9 +515,11 @@ def test_live_config_payload_matches_editor_shape(settings):
     assert set(payload["observability"]) == {
         "structured_json_logs",
         "team_metrics",
+        "otel_include_request_tags",
     }
     assert payload["observability"]["structured_json_logs"] is False
     assert payload["observability"]["team_metrics"] is False
+    assert payload["observability"]["otel_include_request_tags"] is False
     assert set(payload["security"]) == {"offline_mode", "offline_allow_hosts"}
     assert payload["security"]["offline_mode"] is False
     assert payload["security"]["offline_allow_hosts"] == []
@@ -699,6 +719,63 @@ async def test_patch_team_metrics_round_trip_and_metrics_label(
 
 
 @pytest.mark.asyncio
+async def test_patch_otel_include_request_tags_round_trip_hot_apply(
+    settings, tmp_path, monkeypatch
+):
+    """PATCH observability.otel_include_request_tags applies without restart (#2172)."""
+    settings.observability.config_editor = True
+    assert settings.observability.otel_include_request_tags is False
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump({"observability": {"otel_include_request_tags": False}}),
+        encoding="utf-8",
+    )
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        got = await client.get("/v1/daari/config")
+        assert got.status_code == 200
+        body = got.json()
+        assert _OBS_OTEL_TAGS in body["ownership"]
+        assert body["ownership"][_OBS_OTEL_TAGS]["editable"] is True
+        assert body["observability"]["otel_include_request_tags"] is False
+        assert app.state.ctx.router.otel_include_request_tags is False
+
+        bad = await client.patch(
+            "/v1/daari/config",
+            json={"observability": {"otel_include_request_tags": "yes"}},
+        )
+        assert bad.status_code == 400
+        assert settings.observability.otel_include_request_tags is False
+        assert app.state.ctx.router.otel_include_request_tags is False
+
+        on = await client.patch(
+            "/v1/daari/config",
+            json={"observability": {"otel_include_request_tags": True}, "persist": True},
+        )
+        assert on.status_code == 200
+        payload = on.json()
+        assert payload["observability"]["otel_include_request_tags"] is True
+        assert payload["ownership"][_OBS_OTEL_TAGS]["source"] == "file"
+        written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert written["observability"]["otel_include_request_tags"] is True
+        assert settings.observability.otel_include_request_tags is True
+        assert app.state.ctx.router.otel_include_request_tags is True
+
+        off = await client.patch(
+            "/v1/daari/config",
+            json={"observability": {"otel_include_request_tags": False}},
+        )
+        assert off.status_code == 200
+        assert settings.observability.otel_include_request_tags is False
+        assert app.state.ctx.router.otel_include_request_tags is False
+
+
+@pytest.mark.asyncio
 async def test_patch_offline_mode_round_trip_and_egress_refusal(
     settings, tmp_path, monkeypatch
 ):
@@ -885,6 +962,7 @@ def test_docs_pin_classifier_mcp_config_ownership():
     for key in _CLASSIFIER_LEAVES + _MCP_LEAVES + _COMPACT_LEAVES + (
         _OBS_JSON_LOGS,
         _OBS_TEAM_METRICS,
+        _OBS_OTEL_TAGS,
         _SIGNAL_OVERRIDES,
         _SEC_OFFLINE_MODE,
         _SEC_OFFLINE_ALLOW_HOSTS,
@@ -901,6 +979,7 @@ def test_docs_pin_classifier_mcp_config_ownership():
     assert "require_key_access_defined" in http_api or "mcp_policy" in http_api
     assert "structured_json_logs" in http_api
     assert "team_metrics" in http_api
+    assert "otel_include_request_tags" in http_api
     assert "offline_mode" in http_api
     assert "offline_allow_hosts" in http_api
     assert "mcp_servers" in http_api

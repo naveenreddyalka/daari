@@ -2082,7 +2082,8 @@ class ObservabilitySettings(RuntimeSettings):
         description=(
             "When true (and observability.otel is on), copy non-empty "
             "req_meta.tags onto the root GenAI span as daari.request.tags "
-            "(string array; never invent tags). Default false (#2124)."
+            "(string array; never invent tags). Default false (#2124). "
+            "Editable via GET/PATCH /v1/daari/config ownership (config editor)."
         ),
     )
     # Opt-in: copy req_meta.user_agent onto the root GenAI span (#2134). Off
@@ -2520,6 +2521,16 @@ class McpEgressSettings(BaseModel):
             "`integrations.mcp_servers` id; daari lists tools, runs egress "
             "`tools/call` on model tool rounds, and continues the turn (#1261). "
             "Default false fails closed with an honesty 400."
+        ),
+    )
+    max_result_chars: int = Field(
+        default=2_097_152,
+        ge=1,
+        description=(
+            "Max characters of a tools/call result text handed to the model "
+            "after content[] extraction (#2180). Default 2 MiB lets a 1 MiB "
+            "text item through intact. Truncation is never silent: warning, "
+            "log event, and Prometheus counter."
         ),
     )
 

@@ -770,6 +770,19 @@ def render_prometheus(
                 f"{int(count)}"
             )
 
+    mcp_trunc = snap.get("mcp_egress_result_truncated") or {}
+    if mcp_trunc:
+        lines.append(
+            "# HELP daari_mcp_egress_result_truncated_total MCP egress tools/call "
+            "results truncated at max_result_chars (#2180)."
+        )
+        lines.append("# TYPE daari_mcp_egress_result_truncated_total counter")
+        for server, count in sorted(mcp_trunc.items()):
+            lines.append(
+                f"daari_mcp_egress_result_truncated_total"
+                f"{_labels(server=str(server))} {int(count)}"
+            )
+
     systemone_breaker = snap.get("systemone_breaker") or {}
     if systemone_breaker:
         lines.append(

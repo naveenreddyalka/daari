@@ -9,6 +9,7 @@ and emit an OTel client span (`mcp.tools/call` / `mcp.tools/list`) (#1203).
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from dataclasses import dataclass, field
@@ -26,6 +27,82 @@ from daari.router.retry import RetryPolicy, run_upstream
 
 # Default httpx timeout when McpServerConfig.timeout_seconds is 0 (#1995).
 DEFAULT_HTTP_TIMEOUT_SECONDS = 30.0
+# Default tools/call result cap — 2 MiB so a 1 MiB text item survives (#2180).
+DEFAULT_MAX_RESULT_CHARS = 2_097_152
+WARNING_RESULT_TRUNCATED = "mcp_result_truncated"
+ACCEPT_JSON_AND_SSE = "application/json, text/event-stream"
+
+
+def parse_mcp_http_response(
+    response: httpx.Response, *, request_id: Any = None
+) -> dict[str, Any]:
+    """Parse a Streamable HTTP JSON-RPC reply (plain JSON or SSE-framed) (#2181)."""
+    content_type = (response.headers.get("content-type") or "").lower()
+    if "text/event-stream" not in content_type:
+        data = response.json()
+        if isinstance(data, dict):
+            return data
+        raise RuntimeError(f"MCP JSON-RPC response must be an object, got {type(data).__name__}")
+
+    chosen: dict[str, Any] | None = None
+    event_name = "message"
+    data_lines: list[str] = []
+
+    def flush() -> None:
+        nonlocal chosen, event_name, data_lines
+        if data_lines and (event_name or "message") == "message":
+            raw = "\n".join(data_lines)
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f"invalid SSE JSON-RPC payload: {exc}") from exc
+            if isinstance(payload, dict):
+                if request_id is None or payload.get("id") == request_id or chosen is None:
+                    chosen = payload
+        event_name = "message"
+        data_lines = []
+
+    for line in response.text.splitlines():
+        if line == "":
+            flush()
+            continue
+        if line.startswith(":"):
+            continue
+        if line.startswith("event:"):
+            event_name = line[6:].strip() or "message"
+            continue
+        if line.startswith("data:"):
+            data_lines.append(line[5:].lstrip())
+            continue
+    flush()
+    if chosen is None:
+        raise RuntimeError("SSE stream ended without a JSON-RPC message event")
+    return chosen
+
+
+def format_mcp_call_result(result: Any) -> str:
+    """Turn a tools/call JSON-RPC result into model-facing text (#2180).
+
+    Prefer ``content[]`` text items joined in order. Non-text items get a short
+    deliberate summary (never ``str()`` of the whole dict). Results without a
+    content list fall back to JSON (not Python repr).
+    """
+    if isinstance(result, dict) and isinstance(result.get("content"), list):
+        parts: list[str] = []
+        for item in result["content"]:
+            if isinstance(item, dict) and item.get("type") == "text":
+                parts.append(str(item.get("text") or ""))
+                continue
+            if isinstance(item, dict):
+                typ = str(item.get("type") or "item")
+                mime = item.get("mimeType") or item.get("mime_type") or ""
+                parts.append(f"[{typ}:{mime}]" if mime else f"[{typ}]")
+                continue
+            parts.append(f"[{type(item).__name__}]")
+        return "\n".join(parts)
+    if isinstance(result, str):
+        return result
+    return json.dumps(result, default=str)
 
 
 @dataclass
@@ -334,7 +411,10 @@ class McpEgressProvider(HttpIntegrationProvider):
     async def _request_headers(
         self, request: InternalRequest
     ) -> tuple[dict[str, str] | None, InternalResponse | None]:
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": ACCEPT_JSON_AND_SSE,
+        }
         token, err = await self._resolve_authorization(request)
         if err is not None:
             return None, err
@@ -533,20 +613,87 @@ class McpEgressProvider(HttpIntegrationProvider):
         }
         try:
             response = await self._post_json(payload, headers)
-            data = response.json()
+            data = parse_mcp_http_response(response, request_id=payload.get("id"))
             if "error" in data:
                 self.breaker.record_failure()
                 self._record_egress("error")
                 return self._failure(request, RuntimeError(str(data["error"])))
             result = data.get("result", data)
-            text, _outcome = self.guardrails.check_result_text(tool, str(result)[:4000])
+            text, warning = self._finalize_tool_result_text(tool, result)
             self.breaker.record_success()
             self._record_egress("ok")
-            return self._ok_response(request, self.id, text)
+            return self._tool_result_response(request, text, warning=warning)
         except Exception as exc:  # noqa: BLE001
             self.breaker.record_failure()
             self._record_egress("error")
             return self._failure(request, exc)
+
+    def _max_result_chars(self) -> int:
+        egress = getattr(getattr(self.settings, "integrations", None), "mcp_egress", None)
+        raw = getattr(egress, "max_result_chars", None)
+        try:
+            value = int(raw) if raw is not None else DEFAULT_MAX_RESULT_CHARS
+        except (TypeError, ValueError):
+            value = DEFAULT_MAX_RESULT_CHARS
+        return value if value >= 1 else DEFAULT_MAX_RESULT_CHARS
+
+    def _finalize_tool_result_text(
+        self, tool: str, result: Any
+    ) -> tuple[str, str | None]:
+        """Guardrail + extract + optional truncate for a tools/call result (#2180)."""
+        if isinstance(result, dict):
+            result, _outcome = self.guardrails.check_tool_result(tool, result)
+            text = format_mcp_call_result(result)
+            if not isinstance(result.get("content"), list):
+                text, _ = self.guardrails.check_result_text(tool, text)
+        else:
+            text = format_mcp_call_result(result)
+            text, _ = self.guardrails.check_result_text(tool, text)
+
+        max_chars = self._max_result_chars()
+        if len(text) <= max_chars:
+            return text, None
+
+        truncated = text[:max_chars]
+        from daari.gateway.request_log import log_gateway_event
+
+        log_gateway_event(
+            "mcp_egress_result_truncated",
+            {
+                "server_id": self.server.id,
+                "tool": tool,
+                "chars": len(text),
+                "max_result_chars": max_chars,
+            },
+        )
+        if self.metrics is not None and hasattr(
+            self.metrics, "record_mcp_egress_result_truncated"
+        ):
+            try:
+                self.metrics.record_mcp_egress_result_truncated(server=self.server.id)
+            except Exception:  # noqa: BLE001 — metrics must never break a request
+                pass
+        return truncated, WARNING_RESULT_TRUNCATED
+
+    def _tool_result_response(
+        self,
+        request: InternalRequest,
+        content: str,
+        *,
+        warning: str | None = None,
+    ) -> InternalResponse:
+        """Ok path that does not apply the generic integration 4000-char slice."""
+        return InternalResponse(
+            content=content,
+            model=request.model,
+            daari_meta=DaariMeta(
+                tier=self.tier,
+                executor="integration",
+                provider_id=self.id,
+                task_type="tool",
+                warning=warning,
+            ),
+        )
 
     async def _execute_under_span(
         self,
@@ -606,7 +753,7 @@ class McpEgressProvider(HttpIntegrationProvider):
                 "params": params,
             }
             response = await self._post_json(payload, headers)
-            data = response.json()
+            data = parse_mcp_http_response(response, request_id=payload.get("id"))
             if "error" in data:
                 raise RuntimeError(str(data["error"]))
             result = data.get("result", data)

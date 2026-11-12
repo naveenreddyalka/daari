@@ -9000,6 +9000,43 @@ Auto Code (2026-11-06) vs on-box virtual-model selection modes,
 may still point at those slugs. Covered by
 `tests/unit/test_compare_openrouter_auto.py`.
 
+### MCP egress Streamable HTTP Accept + SSE (#2181)
+
+<!-- tracking:#2181 -->
+**Status:** Done (2026-11-11). Egress JSON-RPC POSTs send
+`Accept: application/json, text/event-stream`; SSE `message` events are parsed
+to the matching JSON-RPC id; plain JSON unchanged. Covered by
+`tests/unit/test_mcp_egress.py`.
+
+### Faithful MCP egress tools/call results ([#2180](https://github.com/naveenreddyalka/daari/issues/2180))
+
+<!-- tracking:#2180 -->
+**Status:** Done (2026-11-11). Egress `tools/call` extracts `content[]` text
+items (JSON fallback, not Python repr); drops the hard `[:4000]` slice for
+`integrations.mcp_egress.max_result_chars` (default 2 MiB); truncation emits
+`daari_meta.warning`, `mcp_egress_result_truncated` log, and Prometheus counter;
+output guardrails via `check_tool_result`. Covered by
+`tests/unit/test_mcp_egress.py`.
+
+### Config ownership + PATCH for observability.otel_include_request_tags ([#2172](https://github.com/naveenreddyalka/daari/issues/2172))
+
+<!-- tracking:#2172 -->
+**Status:** Done (2026-11-11). `observability.otel_include_request_tags` is an
+ownership leaf; GET inventory + PATCH bool (default false). Hot-applies to
+settings and the live router without restart. Covered by
+`tests/unit/test_config_ownership.py`.
+
+### Observability: split request cost into input and output ([#2182](https://github.com/naveenreddyalka/daari/issues/2182))
+
+<!-- tracking:#2182 -->
+**Status:** Done (2026-11-12). `cost_breakdown()` returns input/output USD
+(billable + cached-read + cache-write on the input side; multipliers on both);
+`cost_usd()` is their sum. Headers `x-daari-cost-input-usd` /
+`x-daari-cost-output-usd` (incl. stream), `daari_meta.cost_input_usd` /
+`cost_output_usd`, and OTel `daari.cost.input_usd` /
+`daari.cost.output_usd`. Local tiers report 0/0. Covered by
+`tests/unit/test_cost_breakdown.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

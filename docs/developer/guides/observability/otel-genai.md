@@ -44,6 +44,7 @@ Each routed request becomes a root span named `chat {model}` carrying:
 | `gen_ai.response.finish_reasons` | `["stop"]` |
 | `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` | `120` / `45` |
 | `daari.cost.usd` | `0.0042` when `daari_meta.cost_usd` is set (L6 / Ollama `:cloud`); omitted for unpriced local |
+| `daari.cost.input_usd` / `daari.cost.output_usd` | Kong-style split next to the total when `daari_meta.cost_input_usd` / `cost_output_usd` are set |
 | `daari.key_id` / `daari.team_id` | virtual-key / team ids when authenticated (ids only, never secrets) |
 | `daari.request.tags` | string array of `X-Daari-Tags` / `metadata.tags` when `observability.otel_include_request_tags` is true (default **false**; never invented; omitted when empty) |
 | `user_agent.original` | HTTP `User-Agent` from `req_meta.user_agent` when `observability.otel_include_user_agent` is true (default **false**; never invented; omitted when empty) |
@@ -60,8 +61,9 @@ as measurements. Numeric attributes are numbers, not strings.
 
 daari-specific facts stay under the `daari.*` namespace — `daari.tier`,
 `daari.cache_hit`, `daari.backend_id`, `daari.escalated_from`,
-`daari.agent_turn` (ADR-0004), `daari.cost.usd` when spend is known,
-`daari.key_id` / `daari.team_id` for authenticated chargeback, and
+`daari.agent_turn` (ADR-0004), `daari.cost.usd` when spend is known
+(plus `daari.cost.input_usd` / `daari.cost.output_usd` when the split is
+known), `daari.key_id` / `daari.team_id` for authenticated chargeback, and
 (opt-in) `daari.request.tags` as a **string array** when
 `observability.otel_include_request_tags` is enabled — kept off by default
 so privacy-sensitive installs do not leak eval/canary labels. Opt-in
