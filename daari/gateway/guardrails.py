@@ -22,6 +22,22 @@ Action = Literal["block", "warn", "redact"]
 OnError = Literal["warn", "block"]
 RuleKind = Literal["deny", "allow", "max_length", "injection", "secret", "pii", "decision"]
 
+# Cap for opt-in blocked-content forensics (#2183 / Kong log_blocked_content).
+BLOCKED_CONTENT_CAP_BYTES = 4096
+
+
+def format_blocked_content_for_log(text: str, *, enabled: bool, action: str) -> str | None:
+    """Secret-redacted, capped text for block events; None when off or non-block."""
+    if not enabled or action != "block":
+        return None
+    from daari.security.secret_refs import redact_secrets
+
+    redacted = redact_secrets(text)
+    raw = redacted.encode("utf-8")
+    if len(raw) > BLOCKED_CONTENT_CAP_BYTES:
+        redacted = raw[:BLOCKED_CONTENT_CAP_BYTES].decode("utf-8", errors="ignore")
+    return redacted
+
 # Heuristic phrases that often precede prompt-injection attempts.
 _INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions", re.I),
@@ -102,6 +118,8 @@ class GuardrailEngine:
     stream_holdback_chars: int = 256
     # When on, scan role=tool messages with output rules before the model hop (#387).
     scan_tool_results: bool = False
+    # When on, block events carry secret-redacted capped text (#2183).
+    log_blocked_content: bool = False
     # Settings + optional sync httpx client for kind=decision (#1589).
     settings: Any = None
     decision_client: Any = None
@@ -678,6 +696,7 @@ def engine_from_block(block: Any, *, settings: Any = None) -> GuardrailEngine | 
     stream_mode = getattr(block, "stream_mode", "buffered") or "buffered"
     holdback = int(getattr(block, "stream_holdback_chars", 256) or 256)
     scan_tool = bool(getattr(block, "scan_tool_results", False))
+    log_blocked = bool(getattr(block, "log_blocked_content", False))
     return GuardrailEngine(
         enabled=True,
         input_rules=input_rules,
@@ -688,6 +707,7 @@ def engine_from_block(block: Any, *, settings: Any = None) -> GuardrailEngine | 
         stream_mode=stream_mode,  # type: ignore[arg-type]
         stream_holdback_chars=max(0, holdback),
         scan_tool_results=scan_tool,
+        log_blocked_content=log_blocked,
         settings=settings,
     )
 
@@ -724,19 +744,25 @@ def _record_endpoint_guardrail_hits(
     *,
     warning: str | None,
     metrics: Any = None,
+    text: str | None = None,
+    log_blocked_content: bool = False,
 ) -> None:
     from daari.gateway.request_log import log_gateway_event
 
     for hit in hits:
-        log_gateway_event(
-            "guardrail",
-            {
-                "stage": hit.stage,
-                "rule": hit.rule,
-                "action": hit.action,
-                "detail": hit.detail,
-            },
-        )
+        payload: dict[str, Any] = {
+            "stage": hit.stage,
+            "rule": hit.rule,
+            "action": hit.action,
+            "detail": hit.detail,
+        }
+        if text is not None:
+            content = format_blocked_content_for_log(
+                text, enabled=log_blocked_content, action=hit.action
+            )
+            if content is not None:
+                payload["content"] = content
+        log_gateway_event("guardrail", payload)
         if metrics is not None and hasattr(metrics, "record_guardrail"):
             metrics.record_guardrail(hit.action, kind=getattr(hit, "kind", None) or "deny")
     if warning:
@@ -757,7 +783,13 @@ def apply_endpoint_input_policy(
         return EndpointTextPolicy(text=text)
     result = engine.check_input_text(text)
     if result.hits or result.warning:
-        _record_endpoint_guardrail_hits(result.hits, warning=result.warning, metrics=metrics)
+        _record_endpoint_guardrail_hits(
+            result.hits,
+            warning=result.warning,
+            metrics=metrics,
+            text=text,
+            log_blocked_content=bool(getattr(engine, "log_blocked_content", False)),
+        )
     if result.blocked:
         message = (
             result.block_message
@@ -790,7 +822,13 @@ def apply_endpoint_output_policy(
         return EndpointTextPolicy(text=text)
     rewritten, result = engine.check_output_text(text)
     if result.hits or result.warning:
-        _record_endpoint_guardrail_hits(result.hits, warning=result.warning, metrics=metrics)
+        _record_endpoint_guardrail_hits(
+            result.hits,
+            warning=result.warning,
+            metrics=metrics,
+            text=text,
+            log_blocked_content=bool(getattr(engine, "log_blocked_content", False)),
+        )
     if result.blocked:
         message = (
             result.block_message
