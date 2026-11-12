@@ -11,28 +11,35 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-11)
+## Where daari stands (verified in-tree, 2026-11-12)
 
-**Loop velocity.** Overnight merges shipped rows 328 and 330–332
-(cost-aware selection #2226, SLO-demotion panel #2227, LTS floor #2228,
-OpenRouter Auto compare #2229). Open cliffs: 5.2 set (350–354), Kong
-deep-cut (345–349), 11-10 waves (355–364).
+**Loop velocity.** Overnight merges shipped rows 333, 335–338, 340
+(OTel-tags ownership #2230, MCP egress fidelity #2244/#2245, cost split
+#2246, block forensics #2247, credential patterns #2248). The 11-11 pm
+Actions PRD PR died on the pin test and was drained as a no-op — its
+rows 370–374 (issues #2238–#2242) are restored below.
 
-**Outward.** **LiteLLM v1.109.0 stable (11-11)** — 982 PRs, 5
-action-required items incl. **disk-cache backend removed** (daari's L1
-runs on diskcache by design); **1.108.5 LTS** (11-10); 1.110.0-rc.1 =
-fixes-only RC (watch). Ollama 0.40.17-rc0 (MLX concurrent gen) = rc,
-floor stays **0.40.16**. MCP blog 11-10: **file-uploads draft extension**
-(`io.modelcontextprotocol/files`, stable expected end of year) → watch.
-Flat: Kong 2.3.1 (CVE-only), Portkey v2.33.1, vLLM 0.33.0, OpenRouter
-(10-29), OpenAI (11-05), Anthropic (5.2 converted).
+**Outward.** **LiteLLM emergency security night (11-12):** one fix
+(litellm#51254 — client bodies could override admin credential fields
+and smuggle `os.environ/` secret refs) backported to **all four live
+branches** (v1.109.1 GA, v1.108.6 LTS, v1.106.9, v1.110.0-rc.2). daari
+is immune by design — allowlist payloads, `secret://` resolves from
+Settings only (row 378 proves + fences it). 1.108.6 also carried
+mineable LTS fixes: `allowed_tools` tool_choice both layouts (→ 377),
+Gemini image-edit token billing (→ 375), idempotent spend resets +
+comma scope grants (verified N/A below). MCP blog 11-11:
+release-cadence post (governance only). Anthropic 11-12: **self-hosted
+Claude Managed Agents** (watch — daari can be its chosen provider
+endpoint). Flat: Kong 2.3.1, Portkey v2.33.1, vLLM 0.33.0, OpenRouter
+(10-29), Ollama 0.40.17-rc0 (floor 0.40.16), OpenAI (11-05).
 
-**Inward theme: fidelity the 1.109.0 cut exposes.** The frontier
-executor never captures Anthropic `stop_reason` and the Messages facade
-always answers `end_turn` — truncation, `pause_turn`, and refusals all
-read as clean finishes. Guardrails never scan assistant `tool_calls`
-arguments. A streamed L0 hit on a tool-bearing cached response replays
-text only. compare-litellm floor (1.108.2) is a train behind.
+**Inward theme: billing truth on the modality surfaces.** Every
+`/v1/images/*` call and the frontier ASR leg record `reported_cost=0.0`
+— real frontier dollars invisible to budgets, ledger, and cost headers
+(a budget-capped key spends unbounded through images). The images
+default model is 2024-era `dall-e-3`; gpt-image-2.6 (11-04, token-
+billed) is absent. `tool_choice: allowed_tools` is silently dropped on
+the Anthropic path — a tool-governance bypass.
 
 ---
 
@@ -40,6 +47,16 @@ text only. compare-litellm floor (1.108.2) is a train behind.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 375 | Bill frontier image generations/edits from upstream `usage`; gpt-image-2.6 catalog rates | 4 | 2 | OpenAI token-billed images; LiteLLM 1.108.6 Gemini image-edit billing | Image spend lands in the same-box ledger/budgets that meter chat | Filed [#2249](https://github.com/naveenreddyalka/daari/issues/2249) |
+| 376 | Bill the frontier ASR leg honestly (duration/token rates); local stays $0 | 3 | 2 | OpenAI per-minute/token ASR billing | The fallback that costs money is the leg the ledger must meter | Filed [#2250](https://github.com/naveenreddyalka/daari/issues/2250) |
+| 377 | Honor `tool_choice: allowed_tools` (nested + flat) across Anthropic + local backends | 3 | 2 | LiteLLM 1.108.6 LTS (#49043/#50467) | One tool-governance contract at the edge for every executor | Filed [#2251](https://github.com/naveenreddyalka/daari/issues/2251) |
+| 378 | Prove + fence client credential-field hygiene (immune to the litellm#51254 class); floors 1.109.1/1.108.6 | 3 | 1 | LiteLLM (after its emergency patch) | Allowlist payloads never needed the patch — argue it with a test | Filed [#2252](https://github.com/naveenreddyalka/daari/issues/2252) |
+| 379 | Integration fence for the 11-11/11-12 overnight wave | 2 | 2 | — (testability) | Hermetic proof: MCP egress fidelity, cost split, forensics, patterns | Filed [#2253](https://github.com/naveenreddyalka/daari/issues/2253) |
+| 370 | Coding-router recipe (virtual_models + code signals + cost/SLO/effort) | 4 | 2 | OpenRouter Auto Code (hosted) | $0 local-first coding compose on-box; marketplace stays optional L6 | Filed [#2238](https://github.com/naveenreddyalka/daari/issues/2238) |
+| 371 | Ship Gemini 4 Carbon + Argon catalog rates + capabilities | 4 | 2 | Google AI Studio / LiteLLM day-0 | Honest on-box ledger vs Gemini invoice incl. Dec 1 step-up | Filed [#2239](https://github.com/naveenreddyalka/daari/issues/2239) |
+| 372 | Per-model daily `rpd`/`tpd` + virtual-model failover on exhaust | 3 | 2 | LiteLLM 1.109.0 deployment daily limits | Burn one L6 daily quota; walk continues on local peers | Filed [#2240](https://github.com/naveenreddyalka/daari/issues/2240) |
+| 373 | Streams that `abort` or omit `finish_reason` fail visibly + failover | 4 | 2 | LiteLLM 1.109.0 stream-failure visibility | On-box failover salvages cancelled/truncated turns | Filed [#2241](https://github.com/naveenreddyalka/daari/issues/2241) |
+| 374 | Integration fence for the 11-11 afternoon wave | 2 | 2 | — (testability) | Hermetic proof: coding compose, Carbon rates, daily skip, abort | Filed [#2242](https://github.com/naveenreddyalka/daari/issues/2242) |
 | 365 | Honest `stop_reason` on `/v1/messages` (capture `pause_turn`/`max_tokens`/`refusal`) | 4 | 2 | LiteLLM 1.109.0 pause_turn + length fixes | One box fronts local + frontier; truncation and pauses surface truthfully on one contract | Filed [#2232](https://github.com/naveenreddyalka/daari/issues/2232) |
 | 366 | Guardrails scan assistant `tool_calls` arguments (+ opt-in system scan) | 4 | 2 | LiteLLM 1.109.0 hide-secrets surface fix | Secrets scrubbed on-box before any byte leaves; #2186 patterns need the surface | Filed [#2233](https://github.com/naveenreddyalka/daari/issues/2233) |
 | 367 | Streamed L0 hits must not drop cached `tool_calls` | 3 | 2 | LiteLLM 1.109.0 streamed-cache-hit fix | The $0 cache tier must be byte-faithful or agent loops can't trust it | Filed [#2234](https://github.com/naveenreddyalka/daari/issues/2234) |
@@ -65,18 +82,13 @@ text only. compare-litellm floor (1.108.2) is a train behind.
 | 347 | Opt-in in-flight budget reservation (pre-charge estimate, settle actual) | 4 | 3 | Kong 2.3.0 rate-limit cost pre-charge | Ledger + admission + pricing on one box; parallel bursts can't blow the window | Filed [#2198](https://github.com/naveenreddyalka/daari/issues/2198) |
 | 348 | Opt-in cardinality-capped per-key label on Prometheus series | 3 | 2 | Kong 2.3.0 `enable_credential_attribute` + limit | Per-key FinOps from the same-box scrape; `team_metrics` pattern proven | Filed [#2199](https://github.com/naveenreddyalka/daari/issues/2199) |
 | 349 | Integration fence for the 11-08/11-09 overnight wave | 2 | 2 | — (testability) | Hermetic proof: IP deny, revoke-subject, AutoTrust, MiMo | Filed [#2200](https://github.com/naveenreddyalka/daari/issues/2200) |
-| 340 | Prebuilt OpenAI/Anthropic/Gemini credential guardrail patterns | 3 | 1 | LiteLLM 1.110.0-dev.2 credential patterns | On-box scrub of provider keys before any hop | Filed [#2186](https://github.com/naveenreddyalka/daari/issues/2186) |
+| 333, 335–338, 340 | OTel-tags ownership; MCP egress fidelity + SSE framing; cost input/output split; block forensics; credential patterns | 3–4 | 1–2 | Kong 2.3.0 / LiteLLM 1.108.3–1.110-dev | Byte-faithful egress + on-box forensics and FinOps | Shipped (#2230, #2244–#2248) |
 | 341 | Config ownership + PATCH for `guardrails.log_blocked_content` | 3 | 1 | Kong / LiteLLM control-plane toggles | Hot-edit forensics dial on the operator console | Filed [#2187](https://github.com/naveenreddyalka/daari/issues/2187) |
 | 342 | `reasoning_effort`/`output_config.effort` `none` disables Claude 5.5 adaptive thinking | 3 | 2 | LiteLLM 1.110.0-dev.2 Anthropic fix | Zero-thinking means zero thinking tokens on L6 | Filed [#2188](https://github.com/naveenreddyalka/daari/issues/2188) |
 | 343 | Prometheus + stats counters for input/output cost USD | 3 | 2 | Kong 2.3.0 analytics / LiteLLM Admin | Same-box scrape once the cost split lands | Filed [#2189](https://github.com/naveenreddyalka/daari/issues/2189) |
 | 344 | Integration fence for the 11-08 morning MCP/Kong wave | 2 | 2 | — (testability) | Hermetic proof: MCP fidelity, cost split, blocked content | Filed [#2190](https://github.com/naveenreddyalka/daari/issues/2190) |
-| 335 | Faithful MCP egress tool results (extract `content[]`, lift `str()[:4000]`) | 4 | 2 | LiteLLM 1.108.3 LTS >1 MiB fix | Byte-faithful local tool results are the product | Filed [#2180](https://github.com/naveenreddyalka/daari/issues/2180) |
-| 336 | MCP egress streamable-HTTP conformance (Accept + SSE-framed replies) | 3 | 2 | LiteLLM 1.108.3 SSE framing fix | Spec-default local MCP servers just work | Filed [#2181](https://github.com/naveenreddyalka/daari/issues/2181) |
-| 337 | Split request cost into input/output components everywhere cost shows | 3 | 2 | Kong AI Gateway 2.3.0 analytics | FinOps truth in headers + operator-owned OTel, no SaaS | Filed [#2182](https://github.com/naveenreddyalka/daari/issues/2182) |
-| 338 | Opt-in `guardrails.log_blocked_content` for block forensics | 3 | 2 | Kong 2.3.0 `log_blocked_content` | Blocked payloads stay in the on-box event store | Filed [#2183](https://github.com/naveenreddyalka/daari/issues/2183) |
 | 339 | Integration fence for the 11-07/11-08 overnight wave | 2 | 2 | — (testability) | Hermetic proof: SLO PATCH/UI, threads, UA spans, IP omit | Filed [#2184](https://github.com/naveenreddyalka/daari/issues/2184) |
 | 330–332 | SLO-demotion Grafana; compare LTS floor; OpenRouter Auto compare | 2–3 | 1 | OpenRouter / LiteLLM release notes | Same-box scrape + honest compare floors | Shipped (#2227–#2229) |
-| 333 | Config ownership + PATCH for `observability.otel_include_request_tags` | 3 | 1 | Portkey Complete Logs / LiteLLM tag dashboards | Hot-edit tag export on operator-owned OTel | Filed [#2172](https://github.com/naveenreddyalka/daari/issues/2172) |
 | 334 | Integration fence for the 11-07 afternoon wave | 2 | 2 | — (testability) | Hermetic proof: SLO demotion Prom + OTel request tags | Filed [#2173](https://github.com/naveenreddyalka/daari/issues/2173) |
 | 326–328 | `reasoning_effort` signal lever; VK grace across PG blips; cost-aware selection | 3–4 | 2 | OpenRouter Auto / LiteLLM 1.108.2 | Effort + $0-first arithmetic on-box; serve through control-plane restarts | Shipped (#2212, #2213, #2226) |
 | 329 | Integration fence for the 11-06/11-07 overnight wave | 2 | 2 | — (testability) | Hermetic proof: Codex PAT, priority Prom, tier inventory | Filed [#2165](https://github.com/naveenreddyalka/daari/issues/2165) |
@@ -112,17 +124,20 @@ text only. compare-litellm floor (1.108.2) is a train behind.
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (≥60m session) | Parked |
 | 8 | Full DCR; A2A; Realtime/WS; OpenAI Live; stdio MCP; M365; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM | Demand-triggered | Watch |
 
-Watch rows (do not file yet): **coding-router recipe — trigger FIRED
-(326 + 328 both shipped); file next run** (Auto Code twin: virtual_models
-+ `category=code` signals + SLO + effort lever + cost-aware mode);
-**MCP file-uploads draft extension** (`io.modelcontextprotocol/files`,
+Watch rows (do not file yet): **Anthropic self-hosted Claude Managed
+Agents (11-12)** — the operator picks the model provider; a recipe
+pointing it at daari's Anthropic facade is the convert when a buyer
+asks; **MCP file-uploads draft extension** (`io.modelcontextprotocol/files`,
 `x-mcp-file` schema marker, blog 11-10 — experimental repo, no reference
-impl; file ingress/egress conformance when it stabilizes ~end of year);
+impl; file ingress/egress conformance when it stabilizes ~end of year;
+blog 11-11 = release-cadence governance, no spec delta);
 LiteLLM 1.109.0 remainder (K8s headless-pod discovery for local pools;
 `pricing_provider` shadow-pricing for savings honesty; size-capped
 request-log retention analog of `maximum_spend_logs_size`; non-chat
-deployment filter) — convert on buyer ask; 1.110.0-rc.1 = fixes-only RC
-(hold for stable); Ollama 0.40.17-rc0 (MLX concurrent gen — hold for GA);
+deployment filter) — convert on buyer ask; 1.110.0-rc.2 = fixes + the
+security backport (hold for stable); Opus 4.8 fast-mode removal 11-30
+(warn when `speed:"fast"` targets it — fold into lifecycle warnings on
+buyer ask); Ollama 0.40.17-rc0 (MLX concurrent gen — hold for GA);
 Fable/Mythos 5.2 30-day retention / ZDR carve-out honesty (after 350);
 Kong 2.3.0 Cedar `access-policy-engine` + CEL tool ACL + Token Vault
 (expression engine = new dep — human sign-off); Grafana panels for
@@ -133,7 +148,7 @@ framing — hold for stable); Portkey MCP
 access policies (Prisma AIRS-only); Portkey OTel workspace name; Bedrock
 metadata map; LiteLLM OpenAI Live `/v1/live/sessions` + Azure PTU + M365
 Copilot + `gpt-live-1` SIP (Realtime/WS); AutoTrust beyond Apple silicon;
-`gpt-6-cyber` (Daybreak); gpt-image-2.6 sunburst/flare; Agents API
+`gpt-6-cyber` (Daybreak); Agents API
 `auto_review`; Anthropic text watermark (metric-only); minute-grain spend;
 fleet Redis EWMA; MCP SEP-3398 (~March 2027); OpenAI org external key
 management; Anthropic Compliance API; `between_tools` Sonnet-5.5-only;
@@ -148,47 +163,73 @@ Skills/A2A; OpenRouter Private Endpoints L6 recipe; certifi emSign;
 Ollama d1 Linux/Windows GA; local message-thread analogue (only after
 explicit agent-loop ask); A2A 1.1 RC (wait for two-SDK gate).
 
-Verified fine this run (vs LiteLLM 1.109.0) — don't re-audit:
-`prompt_cache_retention` already forwarded (sampling.py L730) with a
-local-model warning; `redacted_thinking` blocks kept on extract/replay
-(content.py); background-stream resume `stream`/`starting_after` exists
-(doctor pins it); **mid-stream fallback continuation exists**
-(`stream_fallback_continue`, router.py ~L3059 — their #41127 highlight
-is parity); session pin re-pins to the served tier after failover
-(`_finish_session_pin` — their #48206 is parity); PII system-prompt
-skip is deliberate (operator's own text) so row 366 makes system scan
-opt-in only.
+Verified fine this run (vs LiteLLM 1.108.6/1.109.1) — don't re-audit:
+client bodies cannot override credentials or smuggle secret refs —
+`openai_payload` is an explicit allowlist (sampling.py ~L689),
+`secret://` resolves from Settings only (boot/refresh + doctor), and
+the admin config PATCH (openai.py ~L2881) is a validated whitelist with
+no credential fields (row 378 fences this); budget window resets are
+epoch-derived from the ledger, so their idempotent-resets fix (#50298)
+is N/A; MCP egress OAuth never gates on the granted scope string, so
+comma-separated grant parsing (#50717) is N/A; TTS targets are local
+(Phonon), so $0 TTS metering is honest — the ASR gap (row 376) is the
+frontier leg only. Still parity: mid-stream fallback continuation,
+session repin, `prompt_cache_retention`, `redacted_thinking`.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Agent-loop fidelity on every executor** — honest `stop_reason`
-   incl. `pause_turn` (365); streamed cache-hit tool_calls (367); 5.2
-   catalog rates + fast mode (350); thinking strip on model switch
-   (351); advisor pairing (363); OpenAI encrypted-reasoning on Messages
-   (355); `computer_toolset_20260801` (352); drop_block (345);
-   `truncation` (356); MCP egress (335–336); CEL watch.
-2. **FinOps + tenancy that reconcile** — CA/SG/KR/GB/AE residency uplift
-   (360); per-team frontier BYOK (357); server-side tool billing (346);
-   in-flight budget reservation (347); cost input/output split (337) +
-   Prom/stats (343); per-key metric label (348).
-3. **Contain the leaked key** — scan tool_call arguments + opt-in
-   system scan (366); provider credential patterns (340);
-   blocked-content forensics (338) + ownership (341).
-4. **Route like the new Auto Router** — Claude `effort=none` (342);
-   auto_caching dial (361); any-5xx failover (362); cost-aware selection
-   (328); Ripple coding tier (358); baggage PATCH (353); coding-router
-   recipe (watch); Grafana for SLO demotions (330).
+1. **Billing truth everywhere money moves** — image generations/edits
+   billed from upstream usage (375); frontier ASR leg (376); Gemini 4
+   Carbon/Argon rates (371); 5.2 catalog + fast mode (350); server-side
+   tool billing (346); in-flight budget reservation (347); Prom/stats
+   for the cost split (343); per-key metric label (348); daily
+   `rpd`/`tpd` (372); CA/SG/KR/GB/AE residency uplift (360); per-team
+   frontier BYOK (357).
+2. **Agent-loop fidelity on every executor** — honest `stop_reason`
+   incl. `pause_turn` (365); abort/missing-`finish_reason` honesty
+   (373); streamed cache-hit tool_calls (367); `allowed_tools` honored
+   (377); thinking strip on model switch (351); advisor pairing (363);
+   encrypted-reasoning on Messages (355); `computer_toolset_20260801`
+   (352); drop_block (345); `truncation` (356).
+3. **Contain the leaked key, prove the hygiene** — credential-field
+   hygiene fence (378); scan tool_call arguments + opt-in system scan
+   (366); forensics ownership (341).
+4. **Route like the new Auto Router** — coding-router recipe (370);
+   Claude `effort=none` (342); auto_caching dial (361); any-5xx
+   failover (362); Ripple coding tier (358); baggage PATCH (353).
 5. **Survive the control-plane blip + honest compare** — offline Prom
-   (279) + doctor (285); hot-reload (6); OTel tags PATCH (333); failover
-   panels (274); LiteLLM 1.109.0 compare + disk-cache positioning (368);
-   fences (300, 305, 310, 315, 320, 325, 329, 334, 339, 344, 349, 354,
-   359, 364, 369); then rows 62–67.
+   (279) + doctor (285); hot-reload (6); failover panels (274); LiteLLM
+   1.109.1/1.108.6 compare + disk-cache positioning (368 + 378); fences
+   (300, 305, 310, 315, 320, 325, 329, 334, 339, 344, 349, 354, 359,
+   364, 369, 374, 379); then rows 62–67.
 
 ---
 
 ## Changelog
+
+- **2026-11-12 (billing truth on modality surfaces; LiteLLM security
+  night)** — Marked rows 333, 335–338, 340 Shipped (#2230, #2244–#2248
+  overnight). Drained the dead 11-11 pm Actions PRD PR (pin-test
+  failure) as a no-op and restored its rows 370–374 + changelog here.
+  Outward: **litellm#51254 security fix backported to all four live
+  branches** (1.109.1 GA / 1.108.6 LTS / 1.106.9 / 1.110.0-rc.2) —
+  daari immune by design, converted as prove-and-fence row 378; 1.108.6
+  LTS mining → `allowed_tools` (377) and image-billing precedent (375);
+  Anthropic self-hosted Managed Agents + MCP release-cadence post →
+  watch. Converted inward: frontier images billed $0 with fake token
+  counts + stale dall-e-3 default (375), frontier ASR leg billed $0
+  (376), `allowed_tools` dropped on Anthropic path (377), overnight
+  fence (379). Verified N/A: idempotent spend resets, comma scope
+  grants, local-TTS $0 metering.
+
+- **2026-11-11 pm (coding-router recipe, Gemini 4 Carbon, stream
+  honesty — restored from the drained Actions PR)** — Filed
+  coding-router compose (370), Gemini 4 Carbon/Argon rates incl. the
+  Dec 1 step-up (371), per-model daily `rpd`/`tpd` + failover (372),
+  abort/missing-`finish_reason` stream honesty (373), afternoon fence
+  (374). Gemini 4 Carbon GA'd 11-10 at intro $2/$10 through 11-30.
 
 - **2026-11-11 (LiteLLM 1.109.0 fidelity cut)** — Marked rows 328,
   330–332 Shipped (cost-aware selection, SLO panel, LTS floor,
@@ -205,60 +246,20 @@ opt-in only.
   `prompt_cache_retention`, `redacted_thinking`, stream resume.
   Coding-router recipe trigger fired — file next run.
 
-- **2026-11-10 pm (residency, auto_caching, 5xx failover, advisor gate)** —
-  Outward flat vs morning (LiteLLM 1.108.4, Ollama 0.40.16, Kong 2.3.1
-  CVE-only). Converted watch + inward: OpenAI CA/SG/KR/GB/AE residency
-  1.10× + docs (row 360 — pins stop at au/in/jp today), Portkey-parity
-  Anthropic top-level `auto_caching` (361), Kong `http_5xx` without Cedar
-  (362), Fable/Mythos 5.2 advisor same-model fail-fast (363), evening
-  fence (364). Watch drops converted auto_caching / residency /
-  http_5xx / advisor; retains Cedar/CEL/Token Vault + 5.2 ZDR after 350.
+- **2026-11-09 → 11-10 pm** — Condensed: Kong 2.3.0 deep cut (rows
+  345–349: drop_block binding, tool billing, pre-charge, per-key Prom
+  label); Fable/Mythos 5.2 cliff (350–354: catalog + fast mode, thinking
+  strip, toolset gate, baggage PATCH); reasoning fidelity + tenant BYOK
+  + truncation (355–359, on LiteLLM 1.108.4 LTS + Ollama 0.40.16);
+  residency/auto_caching/5xx/advisor converts (360–364). Verified then:
+  5xx hard-fails the breaker; no `background` billing leak; facade list
+  shapes fine.
 
-- **2026-11-10 (reasoning fidelity, tenant BYOK, truncation honesty)** —
-  Marked rows 323–324, 326–327 Shipped (allowed_ips console, residency
-  pins, effort lever, VK grace — all overnight). Outward: LiteLLM
-  v1.108.4 LTS + Ollama v0.40.16 (both 11-09); Kong 2.3.1 = CVE-only;
-  rest flat. Converted inward: OpenAI encrypted-reasoning round-trip on
-  Messages (row 355 — `openai_executor` has zero reasoning handling),
-  `truncation` auto/disabled honesty (356 — parsed then dropped today),
-  per-team frontier credential binding (357 — keys are global-only),
-  Ripple Preview coding recipe (358), overnight fence (359). Verified
-  not present: the 1.108.4 `background` billing leak and cross-model
-  thinking replay; facade list shapes already fine.
-
-- **2026-11-09 pm (Claude Fable/Mythos 5.2 cliff)** — Marked rows
-  321–322 Shipped (service-tier Grafana; baggage→tags). Outward: Anthropic
-  launched Fable 5.2 / Mythos 5.2; other trains flat vs morning. Filed
-  catalog rates + fast mode (350), thinking strip on model switch (351),
-  `computer_toolset_20260801` gate (352), baggage_to_tags ownership
-  PATCH (353), afternoon fence (354). Watch gains advisor pairing /
-  ZDR honesty (after 350), 1.108.3 compare bump, A2A 1.1 RC. Verified:
-  5xx already hard-fails the circuit breaker; TTL cache-write + request
-  redaction still covered.
-
-- **2026-11-09 (Kong 2.3.0 deep cut: thinking binding, tool billing,
-  pre-charge)** — Marked rows 316–319 Shipped (#2192–#2195 overnight).
-  Outward flat on every train; converted the unmined Kong AI Gateway
-  2.3.0 remainder inward: default `drop_block` thinking binding (row
-  345 — daari replays thinking *and* mutates the prefix), per-call
-  server-side tool billing + `tool_usage` breakdown (346), in-flight
-  budget pre-charge (347), cardinality-capped per-key Prom label (348),
-  plus the overnight fence (349). Verified covered: TTL-keyed cache-write
-  pricing, request_log redaction, config price overrides.
-
-- **2026-11-08 pm (1.110-dev privacy/effort converts; FinOps scrape)** —
-  Outward flat vs morning; converted LiteLLM 1.110.0-dev.2 credential
-  patterns + Claude `effort=none` (rows 340, 342); filed ownership for
-  `log_blocked_content` (341), input/output cost Prom/stats (343), and
-  the morning-wave fence (344). Watch retains prompt-storage off,
-  deployment weights, Responses SSE framing, Kong Cedar/CEL/`http_5xx`.
-
-- **2026-11-08 (tool-result fidelity; Kong 2.3.0 parity)** — Marked rows
-  309, 311–314 Shipped (#2175–#2179, the whole 11-05 wave overnight).
-  Outward: Kong AI Gateway runtime 2.3.0 (cost split, log_blocked_content,
-  Cedar/CEL → Watch); LiteLLM 1.108.3 LTS MCP >1 MiB SSE fix;
-  1.110.0-dev.2 → Watch. Inward: MCP egress repr-truncates results at
-  4000 chars and cannot parse SSE framing. Filed rows 335–339.
+- **2026-11-08 → 11-08 pm** — Condensed: MCP egress fidelity + Kong
+  2.3.0 parity (rows 335–339, filed off the 1.108.3 LTS MCP >1 MiB SSE
+  fix); 1.110-dev credential patterns + Claude `effort=none` converts
+  (340, 342) + forensics ownership (341) + cost Prom/stats (343) +
+  fence (344).
 
 - **2026-11-07 → 11-07 pm** — Condensed: Auto-Router converts + PG-blip
   grace (rows 326–329; adopted dead Actions PR rows 321–325); observe +
