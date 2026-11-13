@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from daari.config.settings import ModelPrice, PricingSettings, Settings
+from daari.config.settings import ModelPrice, PricingSettings
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
 from daari.observability.prometheus import render_prometheus
@@ -86,9 +86,7 @@ async def test_ledger_record_accumulates_cost_split_with_multipliers(tmp_path, s
     settings = settings.model_copy(
         update={
             "pricing": _pricing(),
-            "usage": settings.usage.model_copy(
-                update={"db_path": str(tmp_path / "usage.db")}
-            ),
+            "usage": settings.usage.model_copy(update={"db_path": str(tmp_path / "usage.db")}),
         }
     )
     ctx = AppContext.from_settings(settings)
