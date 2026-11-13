@@ -11,33 +11,27 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-13)
+## Where daari stands (verified in-tree, 2026-11-13 pm)
 
-**Loop velocity.** 11-12 pm PRD PR #2260 merged (rows 380–384).
-Overnight wave shipped rows 341–343 + 345 (#2261–#2264: forensics
-ownership, effort `none`, cost counters, drop_block binding).
+**Loop velocity.** Morning PRD #2270 merged (rows 385–389). Overnight
+wave still Filed (MCP cancel, abandoned-stream bill, session pins,
+llama.cpp pin, fence). Cost-split counters shipped (#2263) but Grafana
+panels missing (→ 392).
 
-**Outward.** **llama.cpp v1.0.0** (11-13 — first stable major):
-hardened `llama-server` (SSRF/CORS/DNS-rebind fixes,
-`--allow-unauthenticated-tools`, `--media-allow-private-urls`),
-OpenAI-compatible `/v1/audio/speech` + drama-3 TTS, FP8 KV caches,
-MoE expert cache, Ripple-65B, and **MCP tool-call cancellation on
-client disconnect with server notification** (#32025 → 385). daari's
-guide still pins v0.8.0 (→ 388). LiteLLM stable floors unchanged
-(GA 1.109.1 / LTS 1.108.7 / 1.106.9); **1.111.0-dev.1** (11-13) is a
-dev dump — mined for direction (abandoned-stream billing #50425 → 386,
-subagent pin isolation #50741 → 387; rest → watch). Flat: Kong 2.3.1,
-Portkey v2.33.1, vLLM 0.33.0rc3, Ollama 0.40.17-rc0 (floor 0.40.16),
-OpenAI (11-05), Anthropic (CMA 11-12, converted). OpenRouter moved to
-an auto-generated API changelog (guardrail policies API → watch).
+**Outward.** **LiteLLM 1.108.8 LTS** (11-13 evening): Azure Decisions
+(#48529 → compare 393), file-id spelling ownership (#51503 → watch /
+compare), `mcp_all` wildcard (#51578 → compare). **1.111.0-dev.2**
+(11-13 evening) customer-org budgets / saturation fallback — hold for
+stable; mined refused-leg billing #50735 → 391. **OpenRouter
+Extractions API** alpha (11-10) — Decisions envelope + `fields` map →
+390. Flat vs morning: Kong 2.3.1, Portkey 2.33.1, Ollama 0.40.17-rc0,
+vLLM 0.33.0rc3 / 0.34.0rc2, llama.cpp 1.0.0 (+ b12366 tags).
 
-**Inward theme: abandoned work must stop and still bill.** L6 stream
-spend settles inside the generator after `[DONE]` (router.py ~L3515) —
-client disconnect skips the ledger entirely (budget bypass → 386).
-MCP egress never sends `notifications/cancelled`; ingress doesn't
-honor it (→ 385). `is_continuation` replays any tool-result turn
-before checking `prefix_hash`, so shared session keys leak tier pins
-across conversations (→ 387).
+**Inward theme: typed extraction + every billed attempt.** No
+`/v1/extractions` next to Decisions (→ 390). Failover that walks past a
+billed refusal/safeguard leg undercounts the ledger (→ 391). Input/
+output USD counters exist without dashboard panels (→ 392). Compare
+LTS floor still behind 1.108.8 (→ 393).
 
 ---
 
@@ -45,6 +39,11 @@ across conversations (→ 387).
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 390 | `POST /v1/extractions` — OpenRouter Extractions twin on Decisions/System One | 4 | 3 | OpenRouter Extractions alpha (11-10) | Local System One absorbs doc-intel at $0; one box owns Decisions + Extractions | Filed [#2271](https://github.com/naveenreddyalka/daari/issues/2271) |
+| 391 | Bill refused/safeguard legs the router falls back from | 4 | 2 | LiteLLM 1.111-dev #50735 | Same-box ledger matches every billed attempt, not only the answer the client sees | Filed [#2272](https://github.com/naveenreddyalka/daari/issues/2272) |
+| 392 | Grafana panels for `daari_cost_input_usd_total` / `daari_cost_output_usd_total` | 2 | 1 | Kong AI Gateway FinOps dashboards | Input vs output USD on the same-box scrape; local paths stay 0/0 | Filed [#2273](https://github.com/naveenreddyalka/daari/issues/2273) |
+| 393 | compare-litellm: LTS floor → 1.108.8; Azure Decisions + MCP `mcp_all` notes | 2 | 1 | LiteLLM 1.108.8 release notes | Honest floor + local-first Decisions positioning next to tonight's LTS | Filed [#2274](https://github.com/naveenreddyalka/daari/issues/2274) |
+| 394 | Integration fence for the 11-13 evening wave | 2 | 2 | — (testability) | Hermetic proof: extractions schema, refused-leg sum, cost panels, LTS pin | Filed [#2275](https://github.com/naveenreddyalka/daari/issues/2275) |
 | 385 | MCP `notifications/cancelled` — emit on egress abort, honor on ingress | 4 | 2 | llama.cpp v1.0.0 server (#32025) | Abandoned agent work stops burning local GPU + egress quota the moment the caller hangs up | Filed [#2265](https://github.com/naveenreddyalka/daari/issues/2265) |
 | 386 | Settle ledger spend for frontier streams the client abandons | 4 | 2 | LiteLLM (python path; 1.111-dev #50425 native parity) | Same-box ledger matches the invoice even for aborted streams; closes a budget bypass | Filed [#2266](https://github.com/naveenreddyalka/daari/issues/2266) |
 | 387 | Session pins must not replay across conversations under a shared key | 4 | 2 | LiteLLM 1.111-dev #50741; Kong 2.3.0 x-opencode header | Prefix-hash gate on-box — no vendor header convention needed | Filed [#2267](https://github.com/naveenreddyalka/daari/issues/2267) |
@@ -131,87 +130,88 @@ across conversations (→ 387).
 
 Watch rows (do not file yet): **MCP file-uploads** draft
 (`io.modelcontextprotocol/files`, blog 11-10 — no reference impl; ~EOY);
-**LiteLLM 1.111.0-dev.1** (11-13 dev dump — hold for stable:
-`total_timeout`, refused-leg billing #50735, per-model tpm/rpm maps on
-budgets/customers, customer portal beta, OpenSearch pass-through,
-access groups via principal attributes, shared encrypted-content
-boundary #50750); 1.108.7 remainder (Gemini `/v1/batches` + Azure
-gpt-image edits — on buyer ask); 1.109.0 remainder (K8s headless-pod
-discovery; `pricing_provider` shadow rates; size-capped request-log
-retention; non-chat deployment filter); 1.110.0-rc.2 (hold for
-stable); Opus 4.8 fast-mode removal 11-30; Ollama 0.40.17-rc0 (MLX
-concurrent gen — hold for GA); vLLM 0.33.0rc3/0.34; **OpenRouter
-guardrail-policies API** (budget/moderation/model-availability bound
-to keys/members — new auto-generated API changelog train, watch);
-Fable/Mythos 5.2 ZDR honesty (after 350); Kong Cedar/CEL/Token Vault
-(new dep — human); Grafana input/output cost panels (after 343);
-LiteLLM 1.110-dev remainder (provider `usage.cost`, session affinity,
-Lens Helm, prompt-storage off, deployment weights, Responses SSE —
-hold); Portkey MCP policies (Prisma AIRS-only); OpenAI Live/SIP /
-Realtime/WS; AutoTrust beyond Apple silicon; `gpt-6-cyber`; Agents
-`auto_review` / `/agents/automations`; Anthropic watermark / Compliance
-API / hosted skills / Tag beta / OTel export; CMA-as-provider recipe
-(buyer ask); minute-grain spend; fleet Redis EWMA; MCP SEP-3398;
-OpenAI org external keys; `between_tools`; `gpt-6-rosalind`; Claude
-Code `groups` / `guardrail_trace`; OpenRouter private-provider CRUD /
-Private Endpoints; LiteLLM Admin Chat / Lens / ID-JAG; llama.cpp
-`/v1/realtime`; Portkey JWT/WIF; Prisma AIRS Agent Identity;
-Claude-on-GCP IAM (new dep); Open Responses WS; Prom exemplars +
-`gen_ai.agent.*`; SCIM + multi-issuer SSO; Kong Skills/A2A; certifi
-emSign; Ollama d1 GA; local message-thread analogue (after explicit
-ask); A2A 1.1 RC (two-SDK gate).
+**LiteLLM 1.111.0-dev.2** (11-13 evening — hold for stable: customer
+org/team/member budgets + portal UI, `fallback_on_saturation`, annual
+budget reset, access-group vector stores, Deep Research cost binding;
+prior-dev remainder: per-model tpm/rpm maps, OpenSearch pass-through,
+encrypted-content boundary #50750); **1.110.0-rc.2** (hold —
+Agent Skills Hub, Rust-only router, Responses named-SSE / no Chat
+`[DONE]`, response-id ownership 403); 1.108.7 remainder (Gemini
+batches + Azure gpt-image edits — buyer ask); 1.109.0 remainder (K8s
+headless-pod discovery; shadow rates; request-log retention); Opus
+4.8 fast-mode removal 11-30; Ollama 0.40.17-rc0 (MLX concurrent gen —
+hold for GA); vLLM 0.33/0.34 rc; **OpenRouter guardrail-policies
+API**; Fable/Mythos 5.2 ZDR honesty (after 350); Kong Cedar/CEL/Token
+Vault (new dep — human); Portkey MCP policies (Prisma AIRS-only);
+OpenAI Live/SIP / Realtime/WS; AutoTrust beyond Apple silicon;
+`gpt-6-cyber`; Agents `auto_review`; Anthropic watermark / Compliance
+API / hosted skills; CMA-as-provider (buyer ask); minute-grain spend;
+fleet Redis EWMA; MCP SEP-3398; OpenAI org external keys;
+`between_tools`; `gpt-6-rosalind`; Claude Code `groups` /
+`guardrail_trace`; OpenRouter private-provider CRUD; LiteLLM Admin
+Chat / Lens / ID-JAG; llama.cpp `/v1/realtime`; Portkey JWT/WIF;
+Prisma AIRS Agent Identity; Claude-on-GCP IAM (new dep); Open
+Responses WS; Prom exemplars + `gen_ai.agent.*`; SCIM + multi-issuer
+SSO; Kong Skills/A2A; certifi emSign; Ollama d1 GA; local
+message-thread analogue (after ask); A2A 1.1 RC (two-SDK gate).
 
-Verified fine this run (vs llama.cpp 1.0.0 / LiteLLM 1.111-dev) —
-don't re-audit: `upstream.request_deadline_seconds` + doctor check
-exist (LiteLLM `total_timeout` class covered); `tts.base_url` is
-already a generic OpenAI-compat target (llama-server
-`/v1/audio/speech` works — 388 is docs only); MCP egress httpx client
-has a configured timeout (the gap is the missing cancel notification,
-385); `tasks/cancel` works on ingress; semantic-router 1.1.2 minor,
-GPTCache/RouteLLM/OptiLLM dormant/flat. Still parity: credential
-allowlist hygiene (378), mid-stream fallback continuation, session
-repin after failover, `prompt_cache_retention`, `redacted_thinking`.
+Verified fine this run (vs LiteLLM 1.108.8 / 1.111-dev.2 / OpenRouter
+Extractions) — don't re-audit: Decisions + System One path exists
+(390 is Extractions twin, not Decisions); Responses already emit named
+SSE ending at `response.completed` without Chat `[DONE]` (1.110
+Responses framing class covered); response `owner_key_id` deny for
+foreign virtual keys exists (#453 class); `upstream.request_deadline_seconds`
+covers LiteLLM `total_timeout`; file store ownership is exact
+`file-{uuid}` (provider spelling normalize stays compare/watch until
+a pass-through files surface needs it); semantic-router / GPTCache /
+RouteLLM / OptiLLM flat. Still parity: credential hygiene (378),
+mid-stream fallback continuation, session repin after failover,
+`prompt_cache_retention`, `redacted_thinking`.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Billing truth everywhere money moves** — abandoned-stream
-   settlement (386); image generations/edits (375); frontier ASR
-   (376); Gemini 4 Carbon/Argon (371); 5.2 catalog (350); server-side
-   tool billing (346); in-flight reservation (347); per-key label
-   (348); daily `rpd`/`tpd` (372); residency uplift (360); per-team
-   BYOK (357).
+1. **Billing truth everywhere money moves** — refused-leg sum (391);
+   abandoned-stream settlement (386); image generations/edits (375);
+   frontier ASR (376); Gemini 4 Carbon/Argon (371); 5.2 catalog (350);
+   server-side tool billing (346); in-flight reservation (347); per-key
+   label (348); daily `rpd`/`tpd` (372); residency uplift (360);
+   per-team BYOK (357); Grafana input/output panels (392).
 2. **Abandoned work stops and stays attributed** — MCP cancellation
    notifications (385); session-pin isolation (387); abort/
    `finish_reason` honesty (373); honest `stop_reason` (365).
-3. **Agent-loop / Responses session fidelity** — skip failed
-   `previous_response_id` turns (380); `max_tool_calls` honesty (381);
-   streamed cache tool_calls (367); `allowed_tools` (377); thinking
-   strip (351); advisor (363); encrypted-reasoning (355); toolset gate
-   (352); `truncation` (356).
+3. **Agent-loop / Responses / Extractions fidelity** — Extractions facade
+   (390); skip failed `previous_response_id` turns (380);
+   `max_tool_calls` honesty (381); streamed cache tool_calls (367);
+   `allowed_tools` (377); thinking strip (351); advisor (363);
+   encrypted-reasoning (355); toolset gate (352); `truncation` (356).
 4. **CMA, containment, and routing like Auto Router** — Managed
    Agents → daari recipe (382); credential hygiene fence (378); scan
    tool_call args (366); coding-router (370); auto_caching (361);
    any-5xx (362); Ripple (358); baggage PATCH (353).
 5. **Local engine floor + survive the blip + honest compare** —
-   llama.cpp v1.0.0 pin (388); offline Prom (279) + doctor (285);
-   hot-reload (6); failover panels (274); LTS floor 1.108.7 compare
-   (368, 383); fences through 389; then 62–67.
+   llama.cpp v1.0.0 pin (388); LTS floor 1.108.8 compare (393; prior
+   368/383); offline Prom (279) + doctor (285); hot-reload (6);
+   failover panels (274); fences through 394; then 62–67.
 
 ---
 
 ## Changelog
 
+- **2026-11-13 pm (Extractions + LTS 1.108.8 + refused-leg truth)** —
+  Outward: OpenRouter Extractions alpha → 390; LiteLLM **1.108.8 LTS**
+  → compare floor 393; 1.111.0-dev.2 mined for refused-leg billing
+  (#50735 → 391) — customer-org budgets / saturation held for stable;
+  Grafana cost-split panels converted from watch (392); evening fence
+  394. Morning rows 385–389 unchanged (still Filed).
+
 - **2026-11-13 (llama.cpp v1.0.0 + abandoned-work truth)** — Outward:
-  **llama.cpp v1.0.0** (first stable major) converted into MCP
-  cancellation parity (385) and the guide/TTS/capacity refresh (388);
-  LiteLLM 1.111.0-dev.1 mined for abandoned-stream billing (386) and
-  subagent pin isolation (387) — rest held for stable; OpenRouter now
-  publishes an auto-generated API changelog (guardrail policies →
-  watch). Inward: L6 stream settlement is skipped on client disconnect
-  (386); `is_continuation` replays foreign tool turns (387). Overnight
-  rows 341–343 + 345 Shipped (#2261–#2264); fence 389.
+  **llama.cpp v1.0.0** (first stable major) → MCP cancellation (385) +
+  guide/TTS/capacity (388); LiteLLM 1.111.0-dev.1 → abandoned-stream
+  (386) + session-pin isolation (387); OpenRouter API changelog
+  (guardrail policies → watch). Overnight 341–343 + 345 Shipped;
+  fence 389.
 
 - **2026-11-12 pm (LiteLLM 1.108.7 Responses fidelity + CMA recipe)** —
   Outward: **1.108.7 LTS** shipped; mined failed-turn session rebuild
