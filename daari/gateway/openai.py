@@ -1971,6 +1971,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "compact_to_fit_tokens_dropped": 0,
                     "mcp_grant_denied": 0,
                     "agent_access_denied": 0,
+                    "cost_input_usd": 0.0,
+                    "cost_output_usd": 0.0,
                 }
             from daari.gateway.systemone import breaker_snapshot
             from daari.router.breaker_inventory import inventory_from_ctx
@@ -2026,6 +2028,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "anthropic_message_thread": dict(
                     full.get("anthropic_message_thread") or {}
                 ),
+                "cost_input_usd": float(full.get("cost_input_usd") or 0.0),
+                "cost_output_usd": float(full.get("cost_output_usd") or 0.0),
             }
             perf = getattr(getattr(ctx, "router", None), "virtual_model_perf", None)
             if perf is not None and hasattr(perf, "snapshot"):
