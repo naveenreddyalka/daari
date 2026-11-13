@@ -1811,6 +1811,23 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
 }
 
 
+# Per-call USD for Responses / Anthropic server tools (#2197). Sources checked
+# 2026-11-13:
+# - web_search $10/1k: OpenAI tools table + Anthropic web search pricing
+# - web_fetch $0: Anthropic web fetch (token-only; no per-request fee)
+# - file_search $2.50/1k: OpenAI Responses file search tool calls
+# - code_execution $0: container/time billed elsewhere; operators set a
+#   per-call estimate when they want ledger coverage
+# https://developers.openai.com/api/docs/pricing
+# https://platform.claude.com/docs/en/about-claude/pricing
+_DEFAULT_SERVER_TOOL_PRICES: dict[str, float] = {
+    "web_search": 0.01,
+    "web_fetch": 0.0,
+    "file_search": 0.0025,
+    "code_execution": 0.0,
+}
+
+
 class PricingSettings(BaseModel):
     models: dict[str, ModelPrice] = Field(
         default_factory=lambda: {
@@ -1826,6 +1843,16 @@ class PricingSettings(BaseModel):
             "run `daari doctor` to list models being billed at the fallback rate "
             "or aliases pointing at unknown keys. Set in config.yaml (not "
             "live-editable via the config editor ownership subset)."
+        ),
+    )
+    server_tools: dict[str, float] = Field(
+        default_factory=lambda: dict(_DEFAULT_SERVER_TOOL_PRICES),
+        description=(
+            "Per-call USD for server-side tools (web_search, web_fetch, "
+            "file_search, code_execution). Added outside service-tier / region / "
+            "speed multipliers. Partial config merges over shipped defaults; "
+            "unknown tool types bill $0. Set in config.yaml (not live-editable "
+            "via the config editor ownership subset)."
         ),
     )
 
