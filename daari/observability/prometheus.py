@@ -226,6 +226,21 @@ def render_prometheus(
                 f"daari_cache_write_tokens_total{_labels(ttl=str(ttl))} {int(count)}"
             )
 
+    lines.append(
+        "# HELP daari_cost_input_usd_total "
+        "Cumulative input-side USD (billable + cached-read + cache-write, "
+        "after service-tier / region / Anthropic speed multipliers)."
+    )
+    lines.append("# TYPE daari_cost_input_usd_total counter")
+    lines.append(f"daari_cost_input_usd_total {float(snap.get('cost_input_usd') or 0.0)}")
+    lines.append(
+        "# HELP daari_cost_output_usd_total "
+        "Cumulative output-side USD after the same multipliers; "
+        "sums with daari_cost_input_usd_total to priced spend."
+    )
+    lines.append("# TYPE daari_cost_output_usd_total counter")
+    lines.append(f"daari_cost_output_usd_total {float(snap.get('cost_output_usd') or 0.0)}")
+
     lines.append("# HELP daari_upstream_retries_total Transient upstream failures retried.")
     lines.append("# TYPE daari_upstream_retries_total counter")
     lines.append(f"daari_upstream_retries_total {snap.get('upstream_retries', 0)}")

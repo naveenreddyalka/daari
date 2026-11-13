@@ -1579,6 +1579,15 @@ class Router:
                 response.daari_meta.cost_input_usd = spent
                 response.daari_meta.cost_output_usd = 0.0
         self.metrics.record_cache_write(tokens=write_tokens, ttl=cache_ttl)
+        # Cumulative FinOps split next to cache-write counters (#2189).
+        in_usd = float(getattr(response.daari_meta, "cost_input_usd", None) or 0.0)
+        out_usd = float(getattr(response.daari_meta, "cost_output_usd", None) or 0.0)
+        if (
+            getattr(response.daari_meta, "cost_input_usd", None) is None
+            and getattr(response.daari_meta, "cost_output_usd", None) is None
+        ):
+            in_usd, out_usd = 0.0, 0.0
+        self.metrics.record_cost(input_usd=in_usd, output_usd=out_usd)
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,
@@ -3492,6 +3501,17 @@ class Router:
                             cached_tok = bill[0].daari_meta.cached_tokens
                             if cached_tok is not None:
                                 record_kwargs["cached_tokens"] = int(cached_tok)
+                            parts = self._stream_usage_cost_breakdown(
+                                "L6",
+                                prompt_tokens=bill[1][0],
+                                completion_tokens=bill[1][1],
+                                served=bill[0],
+                            )
+                            self.metrics.record_cost(
+                                input_usd=parts.input_usd, output_usd=parts.output_usd
+                            )
+                        else:
+                            self.metrics.record_cost(input_usd=0.0, output_usd=0.0)
                         self.usage_ledger.record(**record_kwargs)
                     add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
                     flight_meta = DaariMeta(
@@ -3648,6 +3668,15 @@ class Router:
                     stream_ttl = getattr(bound, "cache_ttl", None) if bound else None
                     if write_tok:
                         self.metrics.record_cache_write(tokens=int(write_tok), ttl=stream_ttl)
+                    parts = self._stream_usage_cost_breakdown(
+                        served_tier,
+                        prompt_tokens=stream_in,
+                        completion_tokens=stream_out,
+                        served=served,
+                    )
+                    self.metrics.record_cost(
+                        input_usd=parts.input_usd, output_usd=parts.output_usd
+                    )
                     self.usage_ledger.record(
                         tier=tier,
                         cache_hit=False,

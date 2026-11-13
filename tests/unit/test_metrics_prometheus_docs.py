@@ -33,6 +33,8 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert any("daari_decision_classifier_total" in row for row in body)
     assert any("daari_decision_classifier_latency_ms" in row for row in body)
     assert any("daari_cache_write_tokens_total" in row for row in body)
+    assert any("daari_cost_input_usd_total" in row for row in body)
+    assert any("daari_cost_output_usd_total" in row for row in body)
     # Orphaned mid-table prose would end the contiguous body early.
     assert body[-1].startswith("| `daari_escalations_total")
 
@@ -65,3 +67,6 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert "ttl" in cache_write_row.lower()
     assert "30m" in cache_write_row
     assert "12h" in cache_write_row
+    cost_row = next(row for row in body if "daari_cost_input_usd_total" in row)
+    assert "output" in cost_row.lower()
+    assert "stats" in cost_row.lower() or "cost_input_usd" in cost_row

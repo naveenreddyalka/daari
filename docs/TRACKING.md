@@ -9073,6 +9073,16 @@ models do not keep thinking on. Non-none efforts keep adaptive; gpt-6-astra /
 gpt-6.1-sol none→minimal floor unchanged. Covered by
 `tests/unit/test_frontier_param_compat.py`.
 
+### Observability: Prometheus and stats counters for input/output cost USD ([#2189](https://github.com/naveenreddyalka/daari/issues/2189))
+
+<!-- tracking:#2189 -->
+**Status:** Done (2026-11-13). Process-lifetime `daari_cost_input_usd_total` /
+`daari_cost_output_usd_total` counters (and `cost_input_usd` /
+`cost_output_usd` on `GET /v1/daari/stats`) accumulate the Kong 2.3.0
+input/output split from `_ledger_record` and stream ledger paths; local/zero
+paths add 0/0; multipliers match `cost_breakdown()`. Covered by
+`tests/unit/test_cost_usd_metrics.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

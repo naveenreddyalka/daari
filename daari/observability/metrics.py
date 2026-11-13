@@ -316,6 +316,9 @@ class Metrics:
     gzip_bytes_after: int = 0
     # Cache-write tokens by TTL class (30m|12h|1h|unset) (#1872).
     cache_write_tokens: dict[str, int] = field(default_factory=dict)
+    # Process-lifetime input/output USD (Kong 2.3.0 split; sums to priced total) (#2189).
+    cost_input_usd: float = 0.0
+    cost_output_usd: float = 0.0
     # Opt-in per-team request/error counters (#1997). Off → no team dims.
     team_metrics: bool = False
     team_allowlist: frozenset[str] = field(default_factory=frozenset)
@@ -721,6 +724,14 @@ class Metrics:
         with self._lock:
             self.cache_write_tokens[label] = self.cache_write_tokens.get(label, 0) + amount
 
+    def record_cost(self, *, input_usd: float = 0.0, output_usd: float = 0.0) -> None:
+        """Accumulate input/output USD; local/zero paths may pass 0/0 (#2189)."""
+        in_usd = max(0.0, float(input_usd or 0.0))
+        out_usd = max(0.0, float(output_usd or 0.0))
+        with self._lock:
+            self.cost_input_usd += in_usd
+            self.cost_output_usd += out_usd
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -793,6 +804,8 @@ class Metrics:
                 "gzip_bytes_before": self.gzip_bytes_before,
                 "gzip_bytes_after": self.gzip_bytes_after,
                 "cache_write_tokens": dict(self.cache_write_tokens),
+                "cost_input_usd": float(self.cost_input_usd),
+                "cost_output_usd": float(self.cost_output_usd),
                 "decision_classifier": dict(self.decision_classifier),
                 "decision_classifier_latency": {
                     "count": self.decision_classifier_latency.count,
