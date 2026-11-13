@@ -1524,6 +1524,8 @@ class Router:
         write_tokens = int(response.daari_meta.cache_write_tokens or 0)
         if bound is not None:
             bound.tool_cost_usd = float(getattr(response.daari_meta, "tool_cost_usd", 0.0) or 0.0)
+            usage = getattr(response.daari_meta, "tool_usage", None)
+            bound.tool_usage = dict(usage) if isinstance(usage, dict) and usage else None
             bound.cache_ttl = cache_ttl
             bound.cache_write_tokens = write_tokens
             bound.cached_tokens = int(response.daari_meta.cached_tokens or 0)

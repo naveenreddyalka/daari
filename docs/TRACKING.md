@@ -9094,6 +9094,17 @@ on Fable/Mythos (any) or Sonnet/Haiku/Opus ≥ 5.5 merges
 requests without thinking blocks stay untouched; client `anthropic-beta` is
 merged. Covered by `tests/unit/test_thinking_binding_drop_block.py`.
 
+### Server-side tool fees beyond web search ([#2197](https://github.com/naveenreddyalka/daari/issues/2197))
+
+<!-- tracking:#2197 -->
+**Status:** Done (2026-11-13). `pricing.server_tools` ships per-call defaults for
+`web_search` ($0.01), `web_fetch` ($0), `file_search` ($0.0025), and
+`code_execution` ($0); operator keys merge over defaults. Responses output
+items and Anthropic `server_tool_use` counts bill via `server_tool_fees`
+(web_search keeps the #1770 max-not-sum rule). Totals stay outside tier /
+region / speed multipliers; `daari_meta.tool_usage` + spend context carry
+per-tool counts. Covered by `tests/unit/test_server_tool_cost.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -167,34 +167,129 @@ def usage_cost_and_cache(
 
 WEB_SEARCH_USD = 0.01
 
+# Responses output item type → pricing.server_tools key (#2197).
+_OUTPUT_ITEM_TOOL_KEYS: dict[str, str] = {
+    "web_search_call": "web_search",
+    "web_fetch_call": "web_fetch",
+    "file_search_call": "file_search",
+    "code_interpreter_call": "code_execution",
+    "code_execution_call": "code_execution",
+}
 
-def web_search_fee_usd(data: dict[str, Any]) -> float:
-    """Bill Responses web_search_call and Anthropic web_search_requests once.
+# Anthropic usage.server_tool_use field → pricing.server_tools key.
+_ANTHROPIC_TOOL_REQUEST_KEYS: dict[str, str] = {
+    "web_search_requests": "web_search",
+    "web_fetch_requests": "web_fetch",
+    "file_search_requests": "file_search",
+    "code_execution_requests": "code_execution",
+}
 
-    Each search is $0.01. ``open_page`` and ``find_in_page`` are not searches.
-    A missing action counts as one search. When both shapes are present, bill
-    the larger count, not the sum (#1770).
-    """
-    output = data.get("output")
+
+def _positive_int(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return 0
+
+
+def _count_web_search_items(output: list[Any]) -> int:
+    """Billable web_search_call items: search / missing action only (#1770)."""
     item_count = 0
+    for item in output:
+        if not isinstance(item, dict) or item.get("type") != "web_search_call":
+            continue
+        action = item.get("action")
+        if action is None:
+            item_count += 1
+            continue
+        if not isinstance(action, dict):
+            continue
+        action_type = action.get("type")
+        if action_type in {None, "", "search"}:
+            item_count += 1
+    return item_count
+
+
+def count_server_tool_usage(data: dict[str, Any]) -> dict[str, int]:
+    """Count billable server-side tool calls from Responses + Anthropic shapes.
+
+    For web_search, when both Responses items and Anthropic
+    ``web_search_requests`` are present, bill the larger count (#1770). Other
+    tools use the same max-not-sum rule when both shapes appear.
+    """
+    item_counts: dict[str, int] = {}
+    output = data.get("output")
     if isinstance(output, list):
+        web_items = _count_web_search_items(output)
+        if web_items:
+            item_counts["web_search"] = web_items
         for item in output:
-            if not isinstance(item, dict) or item.get("type") != "web_search_call":
+            if not isinstance(item, dict):
                 continue
-            action = item.get("action")
-            if action is None:
-                item_count += 1
+            key = _OUTPUT_ITEM_TOOL_KEYS.get(str(item.get("type") or ""))
+            if key is None or key == "web_search":
                 continue
-            if not isinstance(action, dict):
-                continue
-            action_type = action.get("type")
-            if action_type in {None, "", "search"}:
-                item_count += 1
+            item_counts[key] = item_counts.get(key, 0) + 1
+
+    request_counts: dict[str, int] = {}
     usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
     server = usage.get("server_tool_use")
     server = server if isinstance(server, dict) else {}
-    requests = server.get("web_search_requests")
-    request_count = 0
-    if isinstance(requests, int) and not isinstance(requests, bool) and requests > 0:
-        request_count = requests
-    return max(item_count, request_count) * WEB_SEARCH_USD
+    for field, key in _ANTHROPIC_TOOL_REQUEST_KEYS.items():
+        n = _positive_int(server.get(field))
+        if n:
+            request_counts[key] = n
+
+    keys = set(item_counts) | set(request_counts)
+    return {
+        key: max(item_counts.get(key, 0), request_counts.get(key, 0)) for key in keys
+    }
+
+
+def resolve_server_tool_prices(pricing: Any = None) -> dict[str, float]:
+    """Shipped defaults merged with ``pricing.server_tools`` (operator wins)."""
+    from daari.config.settings import _DEFAULT_SERVER_TOOL_PRICES
+
+    prices = {str(k): float(v) for k, v in _DEFAULT_SERVER_TOOL_PRICES.items()}
+    configured = getattr(pricing, "server_tools", None) if pricing is not None else None
+    if isinstance(configured, dict):
+        for key, value in configured.items():
+            try:
+                prices[str(key)] = float(value)
+            except (TypeError, ValueError):
+                continue
+    return prices
+
+
+def server_tool_fees(
+    data: dict[str, Any],
+    *,
+    pricing: Any = None,
+) -> tuple[float, dict[str, int]]:
+    """Return (total_usd, tool_usage) for server-side tools (#2197).
+
+    Fees sit outside service-tier / region / speed multipliers. Unknown or
+    unpriced tool types contribute $0. ``tool_usage`` omits zero counts.
+    """
+    usage = count_server_tool_usage(data)
+    if not usage:
+        return 0.0, {}
+    prices = resolve_server_tool_prices(pricing)
+    total = 0.0
+    for tool, count in usage.items():
+        total += count * float(prices.get(tool, 0.0) or 0.0)
+    return total, usage
+
+
+def web_search_fee_usd(data: dict[str, Any], *, pricing: Any = None) -> float:
+    """Bill Responses web_search_call and Anthropic web_search_requests once.
+
+    Web-search only (legacy helper). ``open_page`` / ``find_in_page`` are not
+    searches. When both shapes are present, bill the larger count (#1770).
+    Prefer :func:`server_tool_fees` for multi-tool billing (#2197).
+    """
+    usage = count_server_tool_usage(data)
+    count = int(usage.get("web_search", 0) or 0)
+    if count <= 0:
+        return 0.0
+    prices = resolve_server_tool_prices(pricing)
+    return count * float(prices.get("web_search", WEB_SEARCH_USD) or WEB_SEARCH_USD)

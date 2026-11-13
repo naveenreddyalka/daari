@@ -207,9 +207,12 @@ class DaariMeta(BaseModel):
     # Kong-style input/output USD split next to cost_usd (#2182).
     cost_input_usd: float | None = None
     cost_output_usd: float | None = None
-    # Web-search call fee added on top of token cost when the provider did
-    # not send usage.cost (#1770). None when there is nothing to bill.
+    # Server-side tool fees added on top of token cost when the provider did
+    # not send usage.cost (#1770 / #2197). None when there is nothing to bill.
     tool_cost_usd: float | None = None
+    # Per-tool call counts billed into tool_cost_usd (#2197), e.g.
+    # {web_search: 2, file_search: 1}. None when empty.
+    tool_usage: dict[str, int] | None = None
     cached_tokens: int | None = None
     # Anthropic cache_creation_input_tokens / cache writes for cost_usd (#1105).
     cache_write_tokens: int | None = None

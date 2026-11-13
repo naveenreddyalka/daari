@@ -183,6 +183,8 @@ class SpendContext:
     fallback_per_1k: float = 0.002
     reported_cost: float | None = None
     tool_cost_usd: float = 0.0
+    # Per-tool counts that produced tool_cost_usd (#2197).
+    tool_usage: dict[str, int] | None = None
     cached_tokens: int = 0
     cache_write_tokens: int = 0
     cache_ttl: str | None = None

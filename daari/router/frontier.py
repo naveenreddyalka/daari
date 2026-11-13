@@ -11,8 +11,8 @@ from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
 from daari.gateway.provider_prefs import (
     as_openrouter_payload,
     is_openrouter_base,
+    server_tool_fees,
     usage_cost_and_cache,
-    web_search_fee_usd,
 )
 from daari.observability.tokens import nested_agent_usages, openai_token_usage
 from daari.router.anthropic_messages import (
@@ -776,7 +776,14 @@ class FrontierExecutor:
             data, prompt_chars, content
         )
         cost_usd, cached_tokens, cache_write_tokens = usage_cost_and_cache(data)
-        tool_cost = web_search_fee_usd(data)
+        pricing = None
+        try:
+            from daari.config.settings import get_settings
+
+            pricing = getattr(get_settings(), "pricing", None)
+        except Exception:
+            pricing = None
+        tool_cost, tool_usage = server_tool_fees(data, pricing=pricing)
         agent_usage = nested_agent_usages(data) or None
         provider_prefs = (
             as_openrouter_payload(request.provider) if request.provider is not None else None
@@ -801,6 +808,7 @@ class FrontierExecutor:
             usage_estimated=estimated,
             cost_usd=cost_usd,
             tool_cost_usd=tool_cost or None,
+            tool_usage=tool_usage or None,
             cached_tokens=cached_tokens,
             cache_write_tokens=cache_write_tokens or None,
             provider_prefs=provider_prefs,
