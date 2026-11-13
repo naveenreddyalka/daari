@@ -9083,6 +9083,17 @@ input/output split from `_ledger_record` and stream ledger paths; local/zero
 paths add 0/0; multipliers match `cost_breakdown()`. Covered by
 `tests/unit/test_cost_usd_metrics.py`.
 
+### Default drop_block thinking binding on preserved-thinking Claude ([#2196](https://github.com/naveenreddyalka/daari/issues/2196))
+
+<!-- tracking:#2196 -->
+**Status:** Done (2026-11-13). L6 Anthropic egress that replays thinking blocks
+on Fable/Mythos (any) or Sonnet/Haiku/Opus ≥ 5.5 merges
+`thinking-binding-controls-2026-08-01` and sets
+`thinking.block_binding.prefix_mismatch_behavior=drop_block` by default
+(`frontier.thinking_binding_drop_block`, kill-switchable). Older models and
+requests without thinking blocks stay untouched; client `anthropic-beta` is
+merged. Covered by `tests/unit/test_thinking_binding_drop_block.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -775,6 +775,20 @@ class FrontierSettings(RuntimeSettings):
     # Relevance-prune long context before L6 (Trust PRD T2c). Opt-in.
     compress_context: bool = False
     compress_target_ratio: float = 0.6
+    # Default drop_block on preserved-thinking Claude when replaying thinking
+    # blocks after prefix mutation (compress/compact/failover) (#2196).
+    thinking_binding_drop_block: bool = Field(
+        default=True,
+        description=(
+            "When true (default), L6 Anthropic requests that replay thinking "
+            "blocks on preserved-thinking Claude models (Fable/Mythos any; "
+            "Sonnet/Haiku/Opus ≥ 5.5) merge the thinking-binding-controls "
+            "beta and set thinking.block_binding.prefix_mismatch_behavior="
+            "drop_block so compress/compact/failover do not 400. Set false "
+            "to pin pre-binding API behavior. "
+            "Env: DAARI_FRONTIER__THINKING_BINDING_DROP_BLOCK."
+        ),
+    )
 
 
 class CategoryPolicy(BaseModel):

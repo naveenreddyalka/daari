@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from daari.gateway.internal import InternalRequest, Message
@@ -15,6 +16,12 @@ _ANTHROPIC_SAMPLING_KEYS = ("temperature", "top_p", "top_k")
 DEFAULT_MAX_TOKENS = 4096
 EFFORT_BETA = "effort-2025-11-24"
 THREAD_BETA = "message-threads-2026-08-12"
+# Preserved-thinking prefix-mismatch control (#2196 / Kong AI Gateway 2.3.0).
+THINKING_BINDING_BETA = "thinking-binding-controls-2026-08-01"
+_PRESERVED_FAMILY_VERSION = re.compile(
+    r"(sonnet|haiku|opus)-(\d+)(?:[-.](\d+))?",
+    re.IGNORECASE,
+)
 _THREAD_CREATE_IDS: set[str] = set()
 
 
@@ -231,24 +238,83 @@ def anthropic_headers_for_request(
     request: InternalRequest,
     *,
     model: str | None = None,
+    thinking_binding_drop_block: bool = True,
 ) -> dict[str, str]:
     """Build L6 Anthropic headers, forwarding client beta/version when set (#455).
 
     When ``output_config`` is present and the L6 model is Opus 4.5, inject
     ``effort-2025-11-24`` if the client did not already send it (#1230).
     Opus 4.6+ does not need the beta. Forwards ``anthropic-user-profile-id`` (#1844).
+    When replaying thinking blocks on preserved-thinking Claude models, merge
+    ``thinking-binding-controls-2026-08-01`` (#2196).
     """
     meta = request.meta
     beta = (meta.anthropic_beta or "").strip() or None
     effective_model = (model or request.model or "").strip()
     if request.sampling.output_config and _opus_45_needs_effort_beta(effective_model):
         beta = _merge_anthropic_beta(beta, EFFORT_BETA)
+    if (
+        thinking_binding_drop_block
+        and request_has_thinking_blocks(request)
+        and is_preserved_thinking_model(effective_model)
+    ):
+        beta = _merge_anthropic_beta(beta, THINKING_BINDING_BETA)
     return anthropic_headers(
         api_key,
         anthropic_beta=beta,
         anthropic_version=meta.anthropic_version,
         anthropic_user_profile_id=getattr(meta, "anthropic_user_profile_id", None),
     )
+
+
+def request_has_thinking_blocks(request: InternalRequest) -> bool:
+    """True when any assistant turn carries signed thinking blocks to replay."""
+    return any(bool(message.thinking_blocks) for message in request.messages)
+
+
+def is_preserved_thinking_model(model: str) -> bool:
+    """Fable/Mythos any version; Sonnet/Haiku/Opus ≥ 5.5 (#2196)."""
+    lowered = (model or "").lower().replace("_", "-")
+    if "fable" in lowered or "mythos" in lowered:
+        return True
+    for match in _PRESERVED_FAMILY_VERSION.finditer(lowered):
+        major = int(match.group(2))
+        minor = int(match.group(3) or 0)
+        if (major, minor) >= (5, 5):
+            return True
+    return False
+
+
+def apply_thinking_binding_drop_block(
+    payload: dict[str, Any],
+    model: str,
+    *,
+    enabled: bool = True,
+    has_thinking_blocks: bool = False,
+) -> None:
+    """Set ``thinking.block_binding.prefix_mismatch_behavior=drop_block`` (#2196).
+
+    Mutates ``payload`` in place. No-op when disabled, when the model is not
+    preserved-thinking, or when the request has no thinking blocks to replay.
+    """
+    if not enabled or not has_thinking_blocks:
+        return
+    if not is_preserved_thinking_model(model):
+        return
+    thinking = payload.get("thinking")
+    if isinstance(thinking, dict):
+        # Sonnet/Haiku 5.5 accept block_binding only with adaptive; leave
+        # effort=none → disabled alone (beta header still covers replay).
+        if str(thinking.get("type") or "").strip().lower() == "disabled":
+            return
+    else:
+        thinking = {"type": "adaptive"}
+        payload["thinking"] = thinking
+    binding = thinking.get("block_binding")
+    if not isinstance(binding, dict):
+        binding = {}
+        thinking["block_binding"] = binding
+    binding["prefix_mismatch_behavior"] = "drop_block"
 
 
 def _opus_45_needs_effort_beta(model: str) -> bool:

@@ -240,10 +240,15 @@ def _strip_adaptive_thinking_keys(
         return
     if str(thinking.get("type") or "").strip().lower() != "adaptive":
         return
-    extras = [key for key in thinking if key != "type"]
+    # Keep block_binding (#2196); strip legacy sampler-ish keys only.
+    keep = {"type", "block_binding"}
+    extras = [key for key in thinking if key not in keep]
     if not extras:
         return
-    payload["thinking"] = {"type": "adaptive"}
+    kept: dict[str, Any] = {"type": "adaptive"}
+    if isinstance(thinking.get("block_binding"), dict):
+        kept["block_binding"] = dict(thinking["block_binding"])
+    payload["thinking"] = kept
     for key in extras:
         if key not in result.dropped_params:
             result.dropped_params.append(key)

@@ -21,7 +21,9 @@ from daari.router.anthropic_messages import (
     anthropic_tool_event_from_sse_data,
     apply_anthropic_version_content_compat,
     apply_anthropic_version_sampling_compat,
+    apply_thinking_binding_drop_block,
     infer_frontier_kind,
+    request_has_thinking_blocks,
     text_delta_from_sse_data,
     text_from_anthropic_content,
     to_anthropic_payload,
@@ -257,6 +259,8 @@ class FrontierExecutor:
     # caching. Anthropic needs explicit cache_control; OpenAI caches stable
     # prefixes automatically, so no payload change is needed there.
     prompt_cache: bool = True
+    # Preserved-thinking drop_block default (#2196); mirrors frontier setting.
+    thinking_binding_drop_block: bool = True
     # Codex PAT (`at-…`) override host; empty string disables rewrite (#2112).
     codex_base_url: str | None = None
     transport: httpx.AsyncBaseTransport | None = None
@@ -467,6 +471,13 @@ class FrontierExecutor:
                         "request_id": getattr(request.meta, "request_id", None),
                     },
                 )
+        # After param_compat: adaptive strip / Haiku remap would wipe block_binding (#2196).
+        apply_thinking_binding_drop_block(
+            payload,
+            self.default_model,
+            enabled=self.thinking_binding_drop_block,
+            has_thinking_blocks=request_has_thinking_blocks(request),
+        )
         return payload
 
     def _run_param_compat(
@@ -559,7 +570,10 @@ class FrontierExecutor:
 
             headers = inject_trace_headers(
                 anthropic_headers_for_request(
-                    self.api_key, request, model=self.default_model
+                    self.api_key,
+                    request,
+                    model=self.default_model,
+                    thinking_binding_drop_block=self.thinking_binding_drop_block,
                 )
             )
             path = anthropic_messages_path(self.base_url)
@@ -690,7 +704,10 @@ class FrontierExecutor:
 
             headers = inject_trace_headers(
                 anthropic_headers_for_request(
-                    self.api_key, request, model=self.default_model
+                    self.api_key,
+                    request,
+                    model=self.default_model,
+                    thinking_binding_drop_block=self.thinking_binding_drop_block,
                 )
             )
             path = anthropic_messages_path(self.base_url)
