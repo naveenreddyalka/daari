@@ -173,6 +173,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `frontier.prompt_cache` | bool | `True` |  |
 | `frontier.compress_context` | bool | `False` |  |
 | `frontier.compress_target_ratio` | float | `0.6` |  |
+| `frontier.thinking_binding_drop_block` | bool | `True` | When true (default), L6 Anthropic requests that replay thinking blocks on preserved-thinking Claude models (Fable/Mythos any; Sonnet/Haiku/Opus ≥ 5.5) merge the thinking-binding-controls beta and set thinking.block_binding.prefix_mismatch_behavior=drop_block so compress/compact/failover do not 400. Set false to pin pre-binding API behavior. Env: DAARI_FRONTIER__THINKING_BINDING_DROP_BLOCK. |
 | `anthropic.user_profiles` | dict | `{}` | Map daari end-user / key_id / team_id / client_id to an Anthropic user-profile id. Injected as anthropic-user-profile-id on the L6 Anthropic hop when the client did not send one. |
 | `anthropic.thread_continue_soft` | bool | `False` | When true, thread.type=continue on local / non-Anthropic tiers is ignored with daari_meta.warning instead of HTTP 400 (#2093). |
 | `anthropic.analytics_api_key` | str | `''` | Admin / read:analytics key for Usage and Cost Analytics reconcile (#2033). Supports secret://. Empty falls back to the frontier API key used by enforcement-sync. |

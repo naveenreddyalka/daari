@@ -337,6 +337,9 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             api_key=key,
             provider=frontier.provider,
             prompt_cache=frontier.prompt_cache,
+            thinking_binding_drop_block=bool(
+                getattr(frontier, "thinking_binding_drop_block", True)
+            ),
             codex_base_url=getattr(frontier, "codex_base_url", None),
             timeout=timeout,
             retry=retry,
@@ -364,6 +367,9 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             api_key=keys[0] if keys else None,
             provider=entry.id,
             prompt_cache=frontier.prompt_cache,
+            thinking_binding_drop_block=bool(
+                getattr(frontier, "thinking_binding_drop_block", True)
+            ),
             codex_base_url=getattr(frontier, "codex_base_url", None),
             timeout=entry_timeout,
             retry=entry_retry,
