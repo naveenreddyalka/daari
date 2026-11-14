@@ -21,6 +21,7 @@ from daari.router.anthropic_messages import (
     anthropic_tool_event_from_sse_data,
     apply_anthropic_version_content_compat,
     apply_anthropic_version_sampling_compat,
+    apply_fable_mythos_52_thinking_strip,
     apply_thinking_binding_drop_block,
     infer_frontier_kind,
     request_has_thinking_blocks,
@@ -413,6 +414,10 @@ class FrontierExecutor:
 
     def _anthropic_payload(self, request: InternalRequest, *, stream: bool) -> dict[str, Any]:
         """Build L6 Anthropic Messages body with version + model param-compat (#1849)."""
+        # Mid-conversation leave from Fable/Mythos 5.2: drop their thinking first (#2205).
+        apply_fable_mythos_52_thinking_strip(
+            request, to_model=self.default_model, metrics=self.metrics
+        )
         payload = to_anthropic_payload(
             request,
             model=self.default_model,

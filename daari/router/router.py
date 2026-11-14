@@ -6041,20 +6041,26 @@ class Router:
                     )
                 if index + 1 < len(candidates):
                     hops += 1
+                    next_candidate = candidates[index + 1]
+                    # Remember 5.2 origin so the next Anthropic hop can strip (#2205).
+                    from daari.router.anthropic_messages import is_fable_mythos_52_model
+
+                    if is_fable_mythos_52_model(candidate):
+                        gen_request.meta.anthropic_prior_model = candidate
                     if hasattr(self.metrics, "record_virtual_model_failover"):
                         self.metrics.record_virtual_model_failover()
                     add_step(
                         "virtual_model_failover",
                         virtual_model=virtual_name,
                         failed_candidate=candidate,
-                        next_candidate=candidates[index + 1],
+                        next_candidate=next_candidate,
                     )
                     log_gateway_event(
                         "virtual_model_failover",
                         {
                             "virtual_model": virtual_name,
                             "failed_candidate": candidate,
-                            "next_candidate": candidates[index + 1],
+                            "next_candidate": next_candidate,
                             "detail": str(exc)[:200],
                         },
                     )
