@@ -7160,6 +7160,11 @@ class AppContext:
         metrics = Metrics()
         if bool(getattr(settings.observability, "team_metrics", False)):
             metrics.configure_team_metrics(enabled=True, allowed=frozenset())
+        if bool(getattr(settings.observability, "key_metrics", False)):
+            metrics.configure_key_metrics(
+                enabled=True,
+                max_keys=int(getattr(settings.observability, "key_metrics_max_keys", 100) or 100),
+            )
         mcp_providers = build_mcp_providers(
             settings.integrations.mcp_servers,
             egress_guardrails,

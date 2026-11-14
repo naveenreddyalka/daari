@@ -9116,6 +9116,15 @@ configured local models reserve $0. Prometheus
 `daari_budget_reservation_denied_total` (+ rejects kind `budget_reservation`).
 Covered by `tests/unit/test_budget_reserve_in_flight.py`.
 
+### Opt-in cardinality-capped per-key Prometheus label ([#2199](https://github.com/naveenreddyalka/daari/issues/2199))
+
+<!-- tracking:#2199 -->
+**Status:** Done (2026-11-14). `observability.key_metrics` (default false) adds a
+`key` (key_id) label on `daari_requests_total` / `daari_tokens_total` /
+`daari_cost_*_usd_total`; `key_metrics_max_keys` (default 100) caps distinct
+ids with `-overflow`; unauthenticated → `-`; latency stays key-less. Doctor tip
++ Grafana **Top keys** panel. Covered by `tests/unit/test_key_metrics.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
