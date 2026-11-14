@@ -23,6 +23,7 @@ from daari.router.anthropic_messages import (
     apply_anthropic_version_sampling_compat,
     apply_fable_mythos_52_thinking_strip,
     apply_thinking_binding_drop_block,
+    enforce_computer_toolset_for_52,
     infer_frontier_kind,
     request_has_thinking_blocks,
     text_delta_from_sse_data,
@@ -417,6 +418,12 @@ class FrontierExecutor:
         # Mid-conversation leave from Fable/Mythos 5.2: drop their thinking first (#2205).
         apply_fable_mythos_52_thinking_strip(
             request, to_model=self.default_model, metrics=self.metrics
+        )
+        # Legacy computer_* tools 400 on 5.2 outside Bedrock (#2206).
+        enforce_computer_toolset_for_52(
+            request.tools,
+            model=self.default_model,
+            base_url=self.effective_base_url(),
         )
         payload = to_anthropic_payload(
             request,

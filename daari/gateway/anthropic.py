@@ -41,6 +41,7 @@ from daari.gateway.provider_prefs import (
 )
 from daari.gateway.sampling import SamplingParams
 from daari.observability.tokens import estimate_tokens
+from daari.router.anthropic_messages import LegacyComputerToolRejected
 from daari.router.capabilities import UnsupportedCapability
 from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
 from daari.router.router import AppContext
@@ -85,6 +86,8 @@ def anthropic_tools_to_openai(tools: list[dict[str, Any]]) -> list[dict[str, Any
     """Anthropic {name, description, input_schema} -> OpenAI function-tool shape.
 
     The Ollama executor (and frontier providers) speak the OpenAI tools format.
+    Preserves Anthropic ``type`` on ``anthropic_type`` so L6 can gate legacy
+    computer_* tools on Fable/Mythos 5.2 (#2206).
     """
     converted: list[dict[str, Any]] = []
     for tool in tools:
@@ -98,6 +101,9 @@ def anthropic_tools_to_openai(tools: list[dict[str, Any]]) -> list[dict[str, Any
                 "parameters": tool.get("input_schema") or {"type": "object", "properties": {}},
             },
         }
+        anthropic_type = tool.get("type")
+        if isinstance(anthropic_type, str) and anthropic_type.strip():
+            entry["anthropic_type"] = anthropic_type.strip()
         cache_control = tool.get("cache_control")
         if isinstance(cache_control, dict):
             entry["cache_control"] = dict(cache_control)
@@ -746,6 +752,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                     },
                 )
             except ZdrUnavailable as exc:
+                raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
+            except LegacyComputerToolRejected as exc:
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
