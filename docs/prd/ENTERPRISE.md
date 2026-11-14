@@ -11,32 +11,31 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-14)
+## Where daari stands (verified in-tree, 2026-11-14 pm)
 
-**Loop velocity.** Overnight shipped server-tool billing, in-flight
-reservation, per-key Prom label, and the 5.2 catalog (#2277–#2280 →
-rows 346–348 + 350 condensed Shipped). The 5.2 catalog landing fired
-the ZDR-honesty watch trigger (→ 398).
+**Loop velocity.** Morning cut filed MCP re-mint / OCR billing /
+OpenRouter `reasoning` / ZDR honesty / overnight fence (395–399 →
+#2281–#2285). Overnight rows 346–348 + 350 remain Shipped
+(#2277–#2280).
 
-**Outward.** **LiteLLM 1.106.10** (11-14 00:34, maintenance patch):
-one backport — Google MCP servers re-auth when the access token
-expires (#41197/#51731) → mined as 395; floor 1.106.9→1.106.10 folds
-into the next compare touch (not its own issue). OpenRouter's newest
-OpenAPI diff: guardrail `ContentFilterReadEntry`, structured
-`/responses` 400 `error_data`, tool-search `catalog_index_note` →
-watch; the Nov-11 diff's `reasoning.{context,enabled,exclude,mode}`
-on ChatRequest was never converted → 397. Flat: Kong 2.3.1, Portkey
-2.33.1, Ollama 0.40.17-rc0, vLLM 0.33.0rc3, llama.cpp v1.0.0
-(b-tags only), OpenAI (11-05), Anthropic (11-12), MCP spec
-(docs-only), semantic-router/GPTCache/RouteLLM/OptiLLM.
+**Outward.** Landscape flat vs morning: LiteLLM still **1.106.10**
+stable + **1.108.8 LTS** + **1.111.0-dev.2** / **1.110.0-rc.2** (hold
+dev/rc — `total_timeout` already covered by daari's request deadline
+dial). OpenRouter newest OpenAPI undated block still watch:
+`ResponsesBadRequestResponse` / `error_data`, guardrail
+`ContentFilterReadEntry`, tool-search `catalog_index_note`,
+`web_fetch.retrieved_at`, OTEL destination `metricsEndpoint` (OTLP
+metrics already in-tree — never file). Portkey Enterprise **2.33.1**,
+Kong **2.3.1**, Ollama **0.40.17-rc0**, vLLM **0.33.0rc3**, llama.cpp
+**v1.0.0** (+ b12385 NVFP4 fix only). Anthropic Fable 5.2 fast ($16/$80)
+already GA in-tree.
 
-**Inward theme: credentials and costs that go stale quietly.** MCP
-egress returns the boot-minted `secret://` token raw — expired oauth
-Bearers until restart, the exact LiteLLM 1.106.10 class (→ 395). The
-frontier OCR leg (`mistral-ocr-latest`, paid per-page) bills $0 (→
-396). OpenRouter-dialect `reasoning` objects are silently dropped on
-chat/completions (→ 397). Slot-level `zdr: true` can assert ZDR for
-retention-required 5.2 models (→ 398).
+**Inward theme: modality deadlines and overnight FinOps scrape
+gaps.** Chat/audio/embed honor `X-Daari-Deadline-Ms`; OCR + image
+doors do not (→ 400). Server-tool fees hit the ledger but not Prom
+(→ 401). Reservation denials have a counter but no Grafana panel
+(→ 402). `budgets.reserve_in_flight` on with no USD windows is a
+silent no-op doctor misses (→ 403). Fence 404.
 
 ---
 
@@ -44,6 +43,11 @@ retention-required 5.2 models (→ 398).
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 400 | Honor `X-Daari-Deadline-Ms` / `request_deadline_seconds` on OCR + image routes | 3 | 2 | LiteLLM 1.111-dev `total_timeout` (proxy-wide) | One dial aborts every modality on-box; local vision OCR still $0 under the budget | Filed [#2287](https://github.com/naveenreddyalka/daari/issues/2287) |
+| 401 | Prometheus counters for server-side tool fee USD by tool type | 3 | 2 | Kong AI Gateway FinOps tool-category spend | Same-box scrape next to input/output USD; $0 tools stay flat | Filed [#2288](https://github.com/naveenreddyalka/daari/issues/2288) |
+| 402 | Grafana panel for `daari_budget_reservation_denied_total` | 2 | 1 | Portkey analytics / hand-rolled Prom | Pre-charge 402 pressure on the overview next to frontier spend | Filed [#2289](https://github.com/naveenreddyalka/daari/issues/2289) |
+| 403 | Doctor tip: `budgets.reserve_in_flight` on without USD budget windows | 2 | 1 | — (ops honesty) | Catch silent no-op pre-charge before production traffic | Filed [#2290](https://github.com/naveenreddyalka/daari/issues/2290) |
+| 404 | Integration fence for the 11-14 afternoon wave | 2 | 2 | — (testability) | Hermetic proof: modality deadline, tool-fee Prom, reservation panel, doctor tip | Filed [#2291](https://github.com/naveenreddyalka/daari/issues/2291) |
 | 395 | MCP egress must re-resolve `secret://` tokens near use (expired oauth re-mint) | 4 | 2 | LiteLLM 1.106.10 (#41197 backport) | Resident single-box daemon must not go stale after `expires_in`; refresh machinery already proven on the frontier pool | Filed [#2281](https://github.com/naveenreddyalka/daari/issues/2281) |
 | 396 | Bill the frontier OCR leg (`mistral-ocr-latest` per-page); local/vision stay $0 | 4 | 2 | Mistral per-page billing; LiteLLM catalog | The leg that costs money is the leg the same-box ledger must meter; closes an OCR budget bypass | Filed [#2282](https://github.com/naveenreddyalka/daari/issues/2282) |
 | 397 | Honor the OpenRouter `reasoning` object on chat/completions (effort/max_tokens/exclude/enabled) | 3 | 2 | OpenRouter (Nov-11 diff adds context/enabled/exclude/mode) | Drop-in base-URL migration keeps reasoning controls; local tiers honor them at $0 | Filed [#2283](https://github.com/naveenreddyalka/daari/issues/2283) |
@@ -79,16 +83,8 @@ retention-required 5.2 models (→ 398).
 | 367 | Streamed L0 hits must not drop cached `tool_calls` | 3 | 2 | LiteLLM 1.109.0 streamed-cache-hit fix | The $0 cache tier must be byte-faithful or agent loops can't trust it | Filed [#2234](https://github.com/naveenreddyalka/daari/issues/2234) |
 | 368 | compare-litellm: 1.109.0 stable floor + 1.108.5 LTS + disk-cache removal positioning | 3 | 1 | LiteLLM release notes | They removed disk caching; daari's L1 **is** a local diskcache — hard differentiator | Filed [#2235](https://github.com/naveenreddyalka/daari/issues/2235) |
 | 369 | Integration fence for the 11-10/11-11 overnight wave | 2 | 2 | — (testability) | Hermetic proof: cost-aware selection prefers $0 local; SLO panel pinned | Filed [#2236](https://github.com/naveenreddyalka/daari/issues/2236) |
-| 360 | Expand OpenAI residency 1.10× + docs to CA/SG/KR/GB/AE | 3 | 1 | OpenAI regional hosts + invoice uplift | Same-box ledger matches regional invoice; storage-vs-processing honesty next to the pin | Filed [#2220](https://github.com/naveenreddyalka/daari/issues/2220) |
-| 361 | Opt-in Anthropic `auto_caching` via top-level `cache_control` | 3 | 2 | Portkey 2.33.0 auto_caching | Agent loops get Claude automatic cache without a SaaS config plane | Filed [#2221](https://github.com/naveenreddyalka/daari/issues/2221) |
-| 362 | Opt-in failover on any HTTP 5xx incl. 501/522 | 3 | 2 | Kong 2.3.0 `http_5xx` failover_criteria | Local/frontier 5xx fail over on-box; no Cedar dep | Filed [#2222](https://github.com/naveenreddyalka/daari/issues/2222) |
-| 363 | Require Fable/Mythos 5.2-compatible advisor model | 3 | 2 | Anthropic 11-09 advisor pairing gate | Fail-fast before the cloud 400; agent loop stays on-box | Filed [#2223](https://github.com/naveenreddyalka/daari/issues/2223) |
-| 364 | Integration fence for the 11-10 evening wave | 2 | 2 | — (testability) | Hermetic proof: residency pins, auto_caching, 5xx failover, advisor gate | Filed [#2224](https://github.com/naveenreddyalka/daari/issues/2224) |
-| 355 | Round-trip OpenAI encrypted reasoning on `/v1/messages` across turns | 4 | 2 | LiteLLM 1.108.4 LTS reasoning fix | One box fronts both vendors; reasoning fidelity survives any executor, no SaaS middle layer | Filed [#2214](https://github.com/naveenreddyalka/daari/issues/2214) |
-| 356 | Honor `truncation` auto/disabled on `/v1/responses` | 3 | 2 | Ollama 0.40.16 honors it; OpenAI semantics | Local tiers hit context walls first; compact on-box, payload never leaves | Filed [#2215](https://github.com/naveenreddyalka/daari/issues/2215) |
-| 357 | Per-team frontier credential binding (team BYOK) | 4 | 3 | LiteLLM team BYOK (1.108.4 precedence fix) | Each team's L6 bills to their own invoice; shared local tiers stay $0 | Filed [#2216](https://github.com/naveenreddyalka/daari/issues/2216) |
-| 358 | Ripple Preview L4/L5 agentic-coding recipe (Ollama ≥ 0.40.16) | 3 | 1 | Ollama 0.40.16 `ripple-preview` | $0 on-box coding agent tier with honest 65B-dense VRAM guidance | Filed [#2217](https://github.com/naveenreddyalka/daari/issues/2217) |
-| 359 | Integration fence for the 11-09/11-10 overnight wave | 2 | 2 | — (testability) | Hermetic proof: IP deny/PATCH, residency 1.10×, effort lever, VK grace | Filed [#2218](https://github.com/naveenreddyalka/daari/issues/2218) |
+| 360–364 | Residency CA/SG/KR/GB/AE; auto_caching; any-5xx; Fable/Mythos advisor; evening fence | 2–3 | 1–2 | OpenAI / Portkey 2.33.0 / Kong 2.3.0 / Anthropic | Governance + residency dials on the same-box console | Filed (#2220–#2224) |
+| 355–359 | Encrypted reasoning round-trip; Responses `truncation`; team BYOK; Ripple recipe; overnight fence | 2–4 | 1–3 | LiteLLM 1.108.4 / Ollama 0.40.16 | Reasoning + tenant fidelity on-box | Filed (#2214–#2218) |
 | 346–348, 350 | Server-side tool billing + `tool_usage`; in-flight reservation; per-key Prom label; 5.2 catalog rates | 3–4 | 2–3 | Kong 2.3.0 / Anthropic list prices | FinOps truth on the same-box ledger and scrape | Shipped (#2277–#2280) |
 | 351 | Drop Fable/Mythos 5.2 thinking when failover switches to another model | 4 | 2 | Anthropic mid-conversation drop (11-09) | On-box switch owns the strip; agent loop survives without a cloud round-trip | Filed [#2205](https://github.com/naveenreddyalka/daari/issues/2205) |
 | 352 | Require `computer_toolset_20260801` on Fable/Mythos 5.2 (reject `computer_20251124`) | 3 | 2 | Anthropic 11-09 toolset gate | Gateway rewrite/fail-fast before the 400; Bedrock exception kept | Filed [#2206](https://github.com/naveenreddyalka/daari/issues/2206) |
@@ -150,8 +146,9 @@ headless-pod discovery; shadow rates; request-log retention); Opus
 hold for GA); vLLM 0.33/0.34 rc; **OpenRouter guardrail-policies
 API**; OpenRouter newest diff (guardrail `ContentFilterReadEntry`,
 structured `/responses` 400 `error_data`, tool-search
-`catalog_index_note`); LiteLLM 1.106.10 floor (fold into next compare
-touch, not its own issue); Kong Cedar/CEL/Token
+`catalog_index_note`, `web_fetch.retrieved_at`, OTEL destination
+`metricsEndpoint` — metrics already in-tree); LiteLLM 1.106.10 floor
+(fold into compare touch 393, not its own issue); Kong Cedar/CEL/Token
 Vault (new dep — human); Portkey MCP policies (Prisma AIRS-only);
 OpenAI Live/SIP / Realtime/WS; AutoTrust beyond Apple silicon;
 `gpt-6-cyber`; Agents `auto_review`; Anthropic watermark / Compliance
@@ -165,19 +162,17 @@ Responses WS; Prom exemplars + `gen_ai.agent.*`; SCIM + multi-issuer
 SSO; Kong Skills/A2A; certifi emSign; Ollama d1 GA; local
 message-thread analogue (after ask); A2A 1.1 RC (two-SDK gate).
 
-Verified fine this run (vs LiteLLM 1.106.10 / OpenRouter newest diff)
-— don't re-audit: `/v1/moderations` stays $0 honestly (OpenAI
-moderation endpoints are free upstream — never file); `/v1/embeddings`
-is local-only (Ollama embedder, tier `embed`) so $0 is honest;
-`resolve_l6_targets` → `pick_key()` → `current_secret` keeps every
-modality L6 credential fresh (the stale-token gap is MCP-egress-only,
-395); OTLP **metrics** export already exists (`otel.py`
-MeterProvider + PeriodicExportingMetricReader — OpenRouter
-metrics-destination parity, never file); Responses path already maps
-`reasoning.effort` (397 is chat/completions + exclude/max_tokens).
-Still parity: credential hygiene (378), request-deadline,
-mid-stream fallback continuation, session repin after failover,
-`prompt_cache_retention`, `redacted_thinking`.
+Verified fine this run (vs morning + OpenRouter undated diff) — don't
+re-audit: `/v1/moderations` stays $0 honestly; `/v1/embeddings` is
+local-only so $0 is honest; L6 `current_secret` freshness (stale gap
+is MCP-egress-only, 395); OTLP metrics export already exists (never
+file OpenRouter `metricsEndpoint`); Fable 5.2 fast rates already GA
+in-tree (`_ANTHROPIC_FAST_GA`); Responses already maps
+`reasoning.effort` (397 is chat/completions + exclude/max_tokens);
+chat/audio/embed/MCP already honor deadlines (400 is OCR+images only).
+Still parity: credential hygiene (378), session repin after failover,
+`redacted_thinking`; hold structured Responses `error_data` until a
+buyer asks (breaking vs FastAPI `detail`).
 
 ---
 
@@ -187,11 +182,13 @@ mid-stream fallback continuation, session repin after failover,
    abandoned-stream settlement (386); frontier OCR leg (396); image
    generations/edits (375); frontier ASR (376); Gemini 4 Carbon/Argon
    (371); daily `rpd`/`tpd` (372); residency uplift (360); per-team
-   BYOK (357); Grafana input/output panels (392).
+   BYOK (357); Grafana input/output panels (392); server-tool fee Prom
+   (401).
 2. **Nothing goes stale quietly** — MCP egress credential re-mint
-   (395); MCP cancellation notifications (385); session-pin isolation
-   (387); abort/`finish_reason` honesty (373); honest `stop_reason`
-   (365); ZDR honesty for retention-required models (398).
+   (395); modality deadlines on OCR/images (400); MCP cancellation
+   (385); session-pin isolation (387); abort/`finish_reason` honesty
+   (373); honest `stop_reason` (365); ZDR honesty (398); reservation
+   doctor tip (403).
 3. **Agent-loop / Responses / Extractions fidelity** — Extractions facade
    (390); OpenRouter `reasoning` object (397); skip failed
    `previous_response_id` turns (380); `max_tool_calls` honesty (381);
@@ -205,12 +202,22 @@ mid-stream fallback continuation, session repin after failover,
 5. **Local engine floor + survive the blip + honest compare** —
    llama.cpp v1.0.0 pin (388); LTS floor 1.108.8 compare (393; prior
    368/383; fold 1.106.10); offline Prom (279) + doctor (285);
-   hot-reload (6); failover panels (274); fences through 399; then
-   62–67.
+   reservation Grafana (402); hot-reload (6); failover panels (274);
+   fences through 404; then 62–67.
 
 ---
 
 ## Changelog
+
+- **2026-11-14 pm (modality deadline + overnight FinOps scrape)** —
+  Outward flat vs morning (LiteLLM 1.106.10 / 1.108.8 LTS;
+  OpenRouter `error_data` / `ContentFilterReadEntry` /
+  `catalog_index_note` / `retrieved_at` stay watch; Portkey 2.33.1;
+  Kong 2.3.1). Inward: OCR + image doors skip `X-Daari-Deadline-Ms`
+  (400); server-tool fees missing from Prom (401); reservation
+  counter lacks Grafana (402); `reserve_in_flight` without USD
+  windows is a silent no-op (403); fence 404. Morning 395–399 still
+  Filed.
 
 - **2026-11-14 (stale-credential + billing-truth cut; LiteLLM
   1.106.10)** — Outward: LiteLLM **1.106.10** maintenance patch (MCP
