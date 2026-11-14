@@ -32,6 +32,17 @@ def test_anthropic_capabilities_advertise_fast_mode_by_id():
     assert dated["beta_header"] is False
     assert dated["input_per_1m"] == pytest.approx(8.0)
 
+    fable = anthropic_capabilities("claude-fable-5-2")["speed"]["fast"]
+    assert fable["supported"] is True
+    assert fable["beta_header"] is False
+    assert fable["input_per_1m"] == pytest.approx(16.0)
+    assert fable["output_per_1m"] == pytest.approx(80.0)
+    fable_dated = anthropic_capabilities("claude-fable-5-2-20261109")["speed"]["fast"]
+    assert fable_dated["beta_header"] is False
+    assert fable_dated["input_per_1m"] == pytest.approx(16.0)
+    assert "speed" not in anthropic_capabilities("claude-mythos-5-2")
+    assert "speed" not in anthropic_capabilities("claude-fable-5-1")
+
     assert "speed" not in anthropic_capabilities("claude-haiku-4-5")
     assert "speed" not in anthropic_capabilities("claude-sonnet-5-5")
     assert "speed" not in anthropic_capabilities("daari")

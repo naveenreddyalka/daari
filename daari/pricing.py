@@ -34,11 +34,13 @@ _SERVICE_TIER_FACTORS = {
 # OpenAI Ultrafast is only published for these Responses models (#1519).
 _ULTRAFAST_MODELS = ("gpt-6.1-sol", "gpt-6-astra")
 
-# Anthropic fast mode (#1702). Opus 5.5 is GA; Opus 5 / 4.8 still need the beta.
+# Anthropic fast mode (#1702). Opus 5.5 and Fable 5.2 are GA (no beta header);
+# Opus 5 / 4.8 still need the beta. Fable 5.2: $16/$80 at speed=fast (#2204).
 ANTHROPIC_FAST_MODE_BETA = "fast-mode-2026-02-01"
-_ANTHROPIC_FAST_GA = "claude-opus-5-5"
+_ANTHROPIC_FAST_GA = frozenset({"claude-opus-5-5", "claude-fable-5-2"})
 _ANTHROPIC_FAST_MODELS = (
     "claude-opus-5-5",
+    "claude-fable-5-2",
     "claude-opus-5",
     "claude-opus-4.8",
     "claude-opus-4-8",
@@ -164,9 +166,10 @@ def resolve_anthropic_speed(
 ) -> AnthropicSpeedDecision:
     """Forward ``speed: fast`` only when the model publishes fast mode.
 
-    ``claude-opus-5-5`` is GA. ``claude-opus-5`` and ``claude-opus-4.8`` need
-    the ``fast-mode-2026-02-01`` beta header. Anything else is cleared so we
-    do not advertise a speed the provider will reject.
+    ``claude-opus-5-5`` and ``claude-fable-5-2`` are GA (no beta). ``claude-opus-5``
+    and ``claude-opus-4.8`` need the ``fast-mode-2026-02-01`` beta header.
+    Anything else is cleared so we do not advertise a speed the provider will
+    reject.
     """
     if speed is None or not str(speed).strip():
         return AnthropicSpeedDecision(speed=None)
@@ -176,7 +179,7 @@ def resolve_anthropic_speed(
     if key != "fast":
         return AnthropicSpeedDecision(speed=None, warning="fast_unsupported_speed")
     matched = matching_model_key(model or "", _ANTHROPIC_FAST_MODELS) if model else None
-    if matched == _ANTHROPIC_FAST_GA:
+    if matched in _ANTHROPIC_FAST_GA:
         return AnthropicSpeedDecision(speed="fast")
     if matched in _ANTHROPIC_FAST_PREVIEW:
         beta = anthropic_beta or ""
@@ -190,7 +193,7 @@ def anthropic_fast_mode_spec(model: str | None) -> dict[str, bool] | None:
     """Fast-mode catalog flags, or None when the id does not publish fast mode.
 
     ``beta_header`` is true for Opus 5 / 4.8 (need ``fast-mode-2026-02-01``)
-    and false for Opus 5.5, which is GA (#1740).
+    and false for Opus 5.5 / Fable 5.2, which are GA (#1740, #2204).
     """
     matched = matching_model_key(model or "", _ANTHROPIC_FAST_MODELS) if model else None
     if matched is None:

@@ -9125,6 +9125,14 @@ Covered by `tests/unit/test_budget_reserve_in_flight.py`.
 ids with `-overflow`; unauthenticated → `-`; latency stays key-less. Doctor tip
 + Grafana **Top keys** panel. Covered by `tests/unit/test_key_metrics.py`.
 
+### Claude Fable 5.2 and Mythos 5.2 catalog rates ([#2204](https://github.com/naveenreddyalka/daari/issues/2204))
+
+<!-- tracking:#2204 -->
+**Status:** Done (2026-11-14). `_DEFAULT_MODEL_PRICES` ships `claude-fable-5-2`
+and `claude-mythos-5-2` at $8/$40 (0.025× cache read, 2× 1h write); Fable 5.2
+GA fast mode at $16/$80 without beta; frontier caps + `line` fable/mythos.
+Covered by token-accounting, fast-mode, capabilities, and models-catalog pins.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

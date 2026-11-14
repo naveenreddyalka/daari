@@ -249,6 +249,9 @@ def test_resolve_price_covers_september_2026_frontier_lineup():
     expected = {
         # https://platform.claude.com/docs/en/models/fable-5-1/overview
         "claude-fable-5-1": (10.0, 50.0, 0.25),
+        # https://platform.claude.com/docs/en/release-notes/overview (#2204)
+        "claude-fable-5-2": (8.0, 40.0, 0.20),
+        "claude-mythos-5-2": (8.0, 40.0, 0.20),
         # https://platform.claude.com/docs/en/about-claude/pricing
         "claude-opus-5": (5.0, 25.0, 0.50),
         "claude-sonnet-5": (2.0, 10.0, 0.20),
@@ -295,6 +298,19 @@ def test_resolve_price_matches_dated_and_provider_prefixed_aliases():
     # Longer specific keys still win over a family prefix.
     luna = resolve_price("gpt-5.6-luna", settings.pricing, fallback_per_1k=0.002)
     assert luna.input_per_1m == pytest.approx(0.20)
+    # Fable/Mythos 5.2 must win over 5.1 for dated/vendor aliases (#2204).
+    fable52 = resolve_price(
+        "claude-fable-5-2-20261109", settings.pricing, fallback_per_1k=0.002
+    )
+    mythos52 = resolve_price(
+        "anthropic.claude-mythos-5-2", settings.pricing, fallback_per_1k=0.002
+    )
+    assert fable52.input_per_1m == pytest.approx(8.0)
+    assert fable52.output_per_1m == pytest.approx(40.0)
+    assert fable52.cached_input_per_1m == pytest.approx(0.20)
+    assert fable52.cache_write_1h_per_1m == pytest.approx(16.0)
+    assert mythos52.input_per_1m == pytest.approx(8.0)
+    assert mythos52.output_per_1m == pytest.approx(40.0)
 
 
 def test_doctor_does_not_warn_for_priced_september_2026_models():
@@ -304,12 +320,16 @@ def test_doctor_does_not_warn_for_priced_september_2026_models():
     settings.frontier.enabled = True
     for model in (
         "claude-fable-5-1",
+        "claude-fable-5-2",
+        "claude-mythos-5-2",
         "gpt-6-astra",
         "gpt-6.1-sol",
         "gpt-6.1-terra",
         "gemini-3.8-flash",
         "claude-fable-5-1-20260901",
         "anthropic.claude-fable-5-1",
+        "anthropic.claude-fable-5-2",
+        "claude-mythos-5-2-20261109",
     ):
         settings.frontier.model = model
         assert pricing_warnings(settings) == [], model
