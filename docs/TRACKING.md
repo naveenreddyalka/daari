@@ -9105,6 +9105,17 @@ items and Anthropic `server_tool_use` counts bill via `server_tool_fees`
 region / speed multipliers; `daari_meta.tool_usage` + spend context carry
 per-tool counts. Covered by `tests/unit/test_server_tool_cost.py`.
 
+### Opt-in in-flight budget reservation ([#2198](https://github.com/naveenreddyalka/daari/issues/2198))
+
+<!-- tracking:#2198 -->
+**Status:** Done (2026-11-14). `budgets.reserve_in_flight` (default false)
+pre-charges estimated request cost against active USD windows at admission;
+settled + reserved over the cap returns the existing `budget_exceeded` 402.
+Reservations release on completion, error, and stream abort. Local L1–L5 /
+configured local models reserve $0. Prometheus
+`daari_budget_reservation_denied_total` (+ rejects kind `budget_reservation`).
+Covered by `tests/unit/test_budget_reserve_in_flight.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

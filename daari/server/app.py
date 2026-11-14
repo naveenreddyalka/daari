@@ -225,6 +225,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.virtual_key_store = vk_store
     app.state.resolve_grace_cache = resolve_grace_cache
     app.state.rate_limiter = build_rate_limiter(resolved)
+    from daari.observability.budget_reserve import BudgetReservationLedger
+
+    app.state.budget_reservations = BudgetReservationLedger()
     from daari.auth.invalid_key_throttle import build_auth_throttle
     from daari.auth.key_lockout import build_key_lockout
     from daari.gateway.responses_job_cancel import configure_job_cancel_store
@@ -914,7 +917,134 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     store.touch_last_used(str(claims.key_id))
                 except Exception:
                     pass
-            response = await call_next(request)
+
+            reservation_id: str | None = None
+            reserve_ledger = getattr(request.app.state, "budget_reservations", None)
+            budgets_cfg = getattr(resolved, "budgets", None)
+            if (
+                bool(getattr(budgets_cfg, "reserve_in_flight", False))
+                and claims is not None
+                and claims.kind == "virtual"
+                and claims.virtual_key is not None
+                and statuses
+                and reserve_ledger is not None
+                and ledger is not None
+            ):
+                from daari.observability.budget_reserve import admission_reserve_amount
+
+                raw_body = b""
+                if request.method in {"POST", "PUT", "PATCH"}:
+                    raw_body = await request.body()
+                payload: dict = {}
+                if raw_body:
+                    try:
+                        parsed = json.loads(raw_body)
+                        if isinstance(parsed, dict):
+                            payload = parsed
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        payload = {}
+                model_name = request_model(payload)
+                tier_hdr = request.headers.get("x-daari-tier")
+                estimate = admission_reserve_amount(
+                    payload,
+                    model=model_name,
+                    settings=resolved,
+                    pricing=pricing,
+                    fallback_per_1k=fallback,
+                    tier_header=tier_hdr,
+                )
+                usd_windows = [
+                    (
+                        status.scope,
+                        (
+                            client
+                            if status.scope == "key"
+                            else (team.team_id if team is not None else client)
+                        ),
+                        status.window.duration,
+                        float(status.spend),
+                        float(status.limit),
+                    )
+                    for status in statuses
+                    if status.quota == "usd"
+                ]
+                if usd_windows:
+                    held = reserve_ledger.try_reserve(windows=usd_windows, amount=estimate)
+                    if held is None:
+                        metrics = getattr(
+                            getattr(request.app.state, "ctx", None), "metrics", None
+                        )
+                        if metrics is not None and hasattr(
+                            metrics, "record_budget_reservation_denied"
+                        ):
+                            metrics.record_budget_reservation_denied()
+                        # Pick the tightest USD window for the 402 shape.
+                        exceeded = min(
+                            (s for s in statuses if s.quota == "usd"),
+                            key=lambda s: float(s.remaining),
+                            default=None,
+                        )
+                        if exceeded is None:
+                            exceeded = next(s for s in statuses if s.quota == "usd")
+                        headers = budget_headers(exceeded)
+                        headers["Retry-After"] = str(retry_after_seconds(exceeded))
+                        from daari.enterprise.audit import record_budget_exceeded
+                        from daari.enterprise.postgres_audit import audit_log_from_settings
+
+                        record_budget_exceeded(
+                            audit_log_from_settings(resolved),
+                            key_id=getattr(key, "key_id", None) if key is not None else None,
+                            team_id=getattr(team, "team_id", None)
+                            if team is not None
+                            else None,
+                            scope=str(getattr(exceeded, "scope", None) or ""),
+                            window=str(getattr(exceeded, "window", None) or ""),
+                            remaining=getattr(exceeded, "remaining", None),
+                            limit=getattr(exceeded, "limit", None),
+                            quota="usd",
+                        )
+                        return JSONResponse(
+                            status_code=402,
+                            content={
+                                "error": budget_error(
+                                    client_id=client,
+                                    window=exceeded.window,
+                                    spend=exceeded.spend,
+                                    scope=exceeded.scope,
+                                    limit_usd=exceeded.limit,
+                                )
+                            },
+                            headers=headers,
+                        )
+                    reservation_id = held.reservation_id
+
+            def _release_reservation() -> None:
+                nonlocal reservation_id
+                if reservation_id and reserve_ledger is not None:
+                    reserve_ledger.release(reservation_id)
+                    reservation_id = None
+
+            try:
+                response = await call_next(request)
+            except Exception:
+                _release_reservation()
+                raise
+
+            # Hold the reservation through streaming body consumption (#2198).
+            if reservation_id and hasattr(response, "body_iterator"):
+                original_iter = response.body_iterator
+
+                async def _releasing_body():
+                    try:
+                        async for chunk in original_iter:
+                            yield chunk
+                    finally:
+                        _release_reservation()
+
+                response.body_iterator = _releasing_body()
+            else:
+                _release_reservation()
+
             extra_budget_headers = getattr(request.state, "budget_response_headers", None)
             if extra_budget_headers:
                 budget_response_headers.update(extra_budget_headers)

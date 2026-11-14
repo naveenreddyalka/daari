@@ -10,6 +10,10 @@ frontier:
   daily_budget_usd: 5
   monthly_budget_usd: 50
   soft_budget_ratio: 0.8
+
+budgets:
+  reserve_in_flight: false   # opt-in: pre-charge estimated cost at admission
+  default_output_tokens: 4096
 ```
 
 Soft warnings then hard stop. The same `frontier.soft_budget_ratio` (default
@@ -21,6 +25,21 @@ Responses when `X-Daari-Meta` is set). Prometheus increments
 bumps `daari_rejects_total{kind="budget"}` only. See
 [Response headers](../../reference/headers.md#budget-headers) and
 [metrics](../observability/metrics-prometheus.md).
+
+### In-flight reservation (opt-in)
+
+By default, virtual-key USD windows compare the cap against *settled* spend
+only — a parallel burst near the ceiling can overshoot before any response
+lands. Set `budgets.reserve_in_flight: true` to pre-charge an estimated cost at
+admission (prompt tokens at the model input rate; `max_tokens` /
+`max_completion_tokens` / `max_output_tokens`, or
+`budgets.default_output_tokens` when unset, at the output rate; unpriced models
+use `usage.frontier_price_per_1k_tokens`). Settled + reserved over the cap
+returns the same `budget_exceeded` `402` shape. The hold releases when the
+response completes, errors, or a stream aborts. Local tiers (L1–L5 header or
+configured local model ids) reserve `$0` so zero-cost traffic is not
+throttled. Denials increment `daari_budget_reservation_denied_total` and
+`daari_rejects_total{kind="budget_reservation"}`.
 
 ## Per-key budgets
 

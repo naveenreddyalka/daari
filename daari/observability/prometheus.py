@@ -730,6 +730,16 @@ def render_prometheus(
         for kind, count in rejects.items():
             lines.append(f"daari_rejects_total{_labels(kind=kind)} {int(count)}")
 
+    reservation_denied = int(snap.get("budget_reservation_denied") or 0)
+    if reservation_denied:
+        lines.append(
+            "# HELP daari_budget_reservation_denied_total "
+            "Admissions denied because settled plus in-flight reserved spend "
+            "would exceed a USD budget window (#2198)."
+        )
+        lines.append("# TYPE daari_budget_reservation_denied_total counter")
+        lines.append(f"daari_budget_reservation_denied_total {reservation_denied}")
+
     ttft_prefs = snap.get("ttft_preferences") or {}
     if ttft_prefs:
         lines.append(

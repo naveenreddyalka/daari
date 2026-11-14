@@ -102,6 +102,29 @@ class RateLimitSettings(BaseModel):
     )
 
 
+class BudgetsSettings(BaseModel):
+    """Virtual-key / team USD budget admission knobs (#2198)."""
+
+    reserve_in_flight: bool = Field(
+        default=False,
+        description=(
+            "When true, admission reserves estimated request cost against active "
+            "USD budget windows until the response settles (or fails/aborts). "
+            "Default false — settled spend only. Local L1–L5 / configured local "
+            "models reserve $0. Env: DAARI_BUDGETS__RESERVE_IN_FLIGHT."
+        ),
+    )
+    default_output_tokens: int = Field(
+        default=4096,
+        ge=1,
+        description=(
+            "Assumed output tokens for reservation when the request omits "
+            "max_tokens / max_completion_tokens / max_output_tokens. "
+            "Env: DAARI_BUDGETS__DEFAULT_OUTPUT_TOKENS."
+        ),
+    )
+
+
 class TlsSettings(BaseModel):
     """Native HTTPS / optional mTLS for ``daari serve`` (#932).
 
@@ -3159,6 +3182,7 @@ class Settings(BaseSettings):
     secrets: SecretsSettings = Field(default_factory=SecretsSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
+    budgets: BudgetsSettings = Field(default_factory=BudgetsSettings)
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     systemone: SystemOneSettings = Field(default_factory=SystemOneSettings)
