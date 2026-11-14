@@ -2134,6 +2134,27 @@ class ObservabilitySettings(RuntimeSettings):
             "Editable via GET/PATCH /v1/daari/config ownership (config editor)."
         ),
     )
+    # Opt-in ``key`` label on request / token / cost series (#2199).
+    key_metrics: bool = Field(
+        default=False,
+        description=(
+            "Opt-in key_id label on daari_requests_total, daari_tokens_total, and "
+            "daari_cost_*_usd_total (#2199). Off (default) keeps exposition "
+            "byte-identical — turn on only when per-key FinOps from /metrics is "
+            "worth the scrape cardinality. Empty/unauthenticated → '-'; beyond "
+            "observability.key_metrics_max_keys distinct ids aggregate under "
+            "'-overflow'. Latency histograms stay key-less."
+        ),
+    )
+    key_metrics_max_keys: int = Field(
+        default=100,
+        ge=0,
+        description=(
+            "Cardinality cap for observability.key_metrics (#2199). First-seen "
+            "key_ids up to this limit keep their label; further new keys share "
+            "'-overflow'. Default 100."
+        ),
+    )
     # Optional OTel export of RequestTrace steps (issue #115). Requires
     # opentelemetry-api; no-op when the package is missing.
     otel: bool = False

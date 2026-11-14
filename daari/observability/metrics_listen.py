@@ -102,6 +102,17 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
             sync_team_metrics_allowlist(ctx.metrics, store)
         except Exception:
             pass
+    key_metrics_on = bool(getattr(settings.observability, "key_metrics", False))
+    if key_metrics_on:
+        try:
+            ctx.metrics.configure_key_metrics(
+                enabled=True,
+                max_keys=int(
+                    getattr(settings.observability, "key_metrics_max_keys", 100) or 100
+                ),
+            )
+        except Exception:
+            pass
     if store is not None and limiter is not None and hasattr(limiter, "team_rate_gauges"):
         try:
             teams = listed_teams if listed_teams is not None else []
@@ -177,6 +188,7 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
         schema_ok=schema_ok,
         anthropic_enforced_profiles=anthropic_enforced_profiles,
         team_metrics=team_metrics_on,
+        key_metrics=key_metrics_on,
     )
 
 

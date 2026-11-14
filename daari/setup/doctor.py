@@ -141,6 +141,9 @@ def run_doctor(
     json_logs_tip = _check_structured_json_logs(cfg)
     if json_logs_tip is not None:
         results.append(json_logs_tip)
+    key_metrics_tip = _check_key_metrics(cfg)
+    if key_metrics_tip is not None:
+        results.append(key_metrics_tip)
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
     results.append(_check_postgres_tls(cfg, strict=strict))
@@ -4687,6 +4690,29 @@ def _check_structured_json_logs(settings: Settings) -> CheckResult | None:
             "observability.structured_json_logs emits gateway events as "
             "single-line JSON on stdout (containers/SIEM); "
             "~/.daari/cursor-requests.log is still written"
+        ),
+        optional=True,
+    )
+
+
+def _check_key_metrics(settings: Settings) -> CheckResult | None:
+    """Informational tip when per-key Prometheus labels are on (#2199).
+
+    Absent when disabled (default). When enabled, remind operators about the
+    cardinality tradeoff and the overflow cap.
+    """
+    obs = getattr(settings, "observability", None)
+    if obs is None or not bool(getattr(obs, "key_metrics", False)):
+        return None
+    max_keys = int(getattr(obs, "key_metrics_max_keys", 100) or 100)
+    return CheckResult(
+        name="key_metrics",
+        ok=True,
+        detail=(
+            f"observability.key_metrics adds a key_id label on request/token/cost "
+            f"series (cardinality tradeoff); cap={max_keys} "
+            f"(observability.key_metrics_max_keys), further keys share -overflow; "
+            f"latency histograms stay key-less"
         ),
         optional=True,
     )

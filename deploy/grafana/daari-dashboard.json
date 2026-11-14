@@ -1234,6 +1234,25 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 61,
+      "title": "Top keys (requests)",
+      "description": "Requires observability.key_metrics=true. topk by key_id on daari_requests_total; unauthenticated='-', overflow='-overflow' (#2199).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 248
+      },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (key) (rate(daari_requests_total[5m])))",
+          "legendFormat": "{{key}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

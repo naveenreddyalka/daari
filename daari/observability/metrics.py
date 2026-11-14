@@ -144,6 +144,38 @@ def team_metric_label(team: str | None, *, allowed: frozenset[str] | None = None
     return raw
 
 
+KEY_METRICS_OVERFLOW = "-overflow"
+KEY_METRICS_PLACEHOLDER = "-"
+DEFAULT_KEY_METRICS_MAX_KEYS = 100
+
+
+def key_metric_label(
+    key_id: str | None,
+    *,
+    max_keys: int = DEFAULT_KEY_METRICS_MAX_KEYS,
+    seen: dict[str, None] | None = None,
+) -> str:
+    """Bounded ``key`` label for opt-in request/token/cost series (#2199).
+
+    Empty / unauthenticated → ``"-"``. First-seen key_ids up to ``max_keys``
+    keep their id; further new ids aggregate under ``"-overflow"`` so scrapers
+    never mint unbounded series. ``seen`` is an insertion-ordered map of
+    accepted key_ids (mutated in place when provided).
+    """
+    raw = (key_id or "").strip()
+    if not raw:
+        return KEY_METRICS_PLACEHOLDER
+    cap = max(0, int(max_keys))
+    if seen is None:
+        return raw if cap > 0 else KEY_METRICS_OVERFLOW
+    if raw in seen:
+        return raw
+    if len(seen) >= cap:
+        return KEY_METRICS_OVERFLOW
+    seen[raw] = None
+    return raw
+
+
 def _team_from_spend_context() -> str:
     try:
         from daari.observability.spend import current_spend_context
@@ -152,6 +184,18 @@ def _team_from_spend_context() -> str:
         if ctx is None:
             return ""
         return str(getattr(ctx, "team_id", "") or "")
+    except Exception:
+        return ""
+
+
+def _key_from_spend_context() -> str:
+    try:
+        from daari.observability.spend import current_spend_context
+
+        ctx = current_spend_context()
+        if ctx is None:
+            return ""
+        return str(getattr(ctx, "key_id", "") or "")
     except Exception:
         return ""
 
@@ -327,6 +371,16 @@ class Metrics:
     # (tier, team) → count; (status, team) → count when team_metrics is on.
     team_requests: dict[tuple[str, str], int] = field(default_factory=dict)
     team_errors: dict[tuple[str, str], int] = field(default_factory=dict)
+    # Opt-in per-key request/token/cost counters (#2199). Off → no key dims.
+    key_metrics: bool = False
+    key_metrics_max_keys: int = DEFAULT_KEY_METRICS_MAX_KEYS
+    # Insertion-ordered accepted key_ids (cardinality cap).
+    key_seen: dict[str, None] = field(default_factory=dict)
+    # (tier, key) → count; (mod, tier, direction, key) → tokens; key → usd.
+    key_requests: dict[tuple[str, str], int] = field(default_factory=dict)
+    key_tokens: dict[tuple[str, str, str, str], int] = field(default_factory=dict)
+    key_cost_input_usd: dict[str, float] = field(default_factory=dict)
+    key_cost_output_usd: dict[str, float] = field(default_factory=dict)
     # Optional full-fleet inventory provider (set by AppContext) (#1932).
     breaker_inventory_fn: Callable[[], list[dict[str, Any]]] | None = field(
         default=None, repr=False
@@ -347,9 +401,27 @@ class Metrics:
             else:
                 self.team_allowlist = frozenset(str(t).strip() for t in allowed if str(t).strip())
 
+    def configure_key_metrics(
+        self,
+        *,
+        enabled: bool,
+        max_keys: int | None = None,
+    ) -> None:
+        """Enable/disable key-labeled series and set the cardinality cap (#2199)."""
+        with self._lock:
+            self.key_metrics = bool(enabled)
+            if max_keys is not None:
+                self.key_metrics_max_keys = max(0, int(max_keys))
+
     def _bound_team(self, team: str | None) -> str:
         raw = team if team is not None else _team_from_spend_context()
         return team_metric_label(raw, allowed=self.team_allowlist)
+
+    def _bound_key(self, key: str | None) -> str:
+        raw = key if key is not None else _key_from_spend_context()
+        return key_metric_label(
+            raw, max_keys=self.key_metrics_max_keys, seen=self.key_seen
+        )
 
     def record(
         self,
@@ -362,6 +434,7 @@ class Metrics:
         input_tokens: int = 0,
         output_tokens: int = 0,
         team: str | None = None,
+        key: str | None = None,
     ) -> None:
         mod = infer_modality(tier, modality)
         with self._lock:
@@ -374,8 +447,8 @@ class Metrics:
                 stats.observe_latency(latency_ms)
             if backend_id:
                 self.backends[backend_id] = self.backends.get(backend_id, 0) + 1
-            key = (mod, tier)
-            self.modality_requests[key] = self.modality_requests.get(key, 0) + 1
+            mkey = (mod, tier)
+            self.modality_requests[mkey] = self.modality_requests.get(mkey, 0) + 1
             if input_tokens:
                 tok_key = (mod, tier, "input")
                 self.tokens[tok_key] = self.tokens.get(tok_key, 0) + max(0, int(input_tokens))
@@ -386,6 +459,20 @@ class Metrics:
                 team_label = self._bound_team(team)
                 tkey = (tier, team_label)
                 self.team_requests[tkey] = self.team_requests.get(tkey, 0) + 1
+            if self.key_metrics:
+                key_label = self._bound_key(key)
+                kreq = (tier, key_label)
+                self.key_requests[kreq] = self.key_requests.get(kreq, 0) + 1
+                if input_tokens:
+                    ktok = (mod, tier, "input", key_label)
+                    self.key_tokens[ktok] = self.key_tokens.get(ktok, 0) + max(
+                        0, int(input_tokens)
+                    )
+                if output_tokens:
+                    ktok = (mod, tier, "output", key_label)
+                    self.key_tokens[ktok] = self.key_tokens.get(ktok, 0) + max(
+                        0, int(output_tokens)
+                    )
 
     def record_ttft(self, tier: str, *, ttft_ms: int) -> None:
         """Record stream time-to-first-token. Non-stream requests omit TTFT (#508)."""
@@ -734,13 +821,30 @@ class Metrics:
         with self._lock:
             self.cache_write_tokens[label] = self.cache_write_tokens.get(label, 0) + amount
 
-    def record_cost(self, *, input_usd: float = 0.0, output_usd: float = 0.0) -> None:
-        """Accumulate input/output USD; local/zero paths may pass 0/0 (#2189)."""
+    def record_cost(
+        self,
+        *,
+        input_usd: float = 0.0,
+        output_usd: float = 0.0,
+        key: str | None = None,
+    ) -> None:
+        """Accumulate input/output USD; local/zero paths may pass 0/0 (#2189).
+
+        When ``key_metrics`` is on, also attribute to a bounded ``key`` label (#2199).
+        """
         in_usd = max(0.0, float(input_usd or 0.0))
         out_usd = max(0.0, float(output_usd or 0.0))
         with self._lock:
             self.cost_input_usd += in_usd
             self.cost_output_usd += out_usd
+            if self.key_metrics:
+                key_label = self._bound_key(key)
+                self.key_cost_input_usd[key_label] = (
+                    self.key_cost_input_usd.get(key_label, 0.0) + in_usd
+                )
+                self.key_cost_output_usd[key_label] = (
+                    self.key_cost_output_usd.get(key_label, 0.0) + out_usd
+                )
 
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
@@ -839,4 +943,14 @@ class Metrics:
                     f"{status}:{team}": count
                     for (status, team), count in sorted(self.team_errors.items())
                 },
+                "key_requests": {
+                    f"{tier}:{key}": count
+                    for (tier, key), count in sorted(self.key_requests.items())
+                },
+                "key_tokens": {
+                    f"{mod}:{tier}:{direction}:{key}": count
+                    for (mod, tier, direction, key), count in sorted(self.key_tokens.items())
+                },
+                "key_cost_input_usd": dict(sorted(self.key_cost_input_usd.items())),
+                "key_cost_output_usd": dict(sorted(self.key_cost_output_usd.items())),
             }

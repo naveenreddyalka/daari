@@ -43,6 +43,7 @@ def render_prometheus(
     schema_ok: bool | None = None,
     anthropic_enforced_profiles: int | None = None,
     team_metrics: bool | None = None,
+    key_metrics: bool | None = None,
 ) -> str:
     """Render the current Metrics snapshot (plus optional gauges) as exposition text."""
     snap = metrics.snapshot(include_histograms=True)
@@ -53,10 +54,40 @@ def render_prometheus(
         if team_metrics is not None
         else bool(getattr(metrics, "team_metrics", False))
     )
+    # Opt-in key label on request/token/cost series (#2199). Latency stays key-less.
+    key_on = (
+        bool(key_metrics)
+        if key_metrics is not None
+        else bool(getattr(metrics, "key_metrics", False))
+    )
 
     lines.append("# HELP daari_requests_total Total requests handled, by tier.")
     lines.append("# TYPE daari_requests_total counter")
-    if team_on:
+    if key_on:
+        key_requests = snap.get("key_requests") or {}
+        if not key_requests and not snap["tiers"]:
+            lines.append(f'daari_requests_total{_labels(key="-")} 0')
+        elif not key_requests:
+            for tier, stats in snap["tiers"].items():
+                lines.append(
+                    f"daari_requests_total{_labels(tier=tier, key='-')} {stats['count']}"
+                )
+        else:
+            for key, count in sorted(key_requests.items()):
+                tier, _, key_id = str(key).partition(":")
+                if not tier:
+                    continue
+                lines.append(
+                    f"daari_requests_total{_labels(tier=tier, key=key_id or '-')} {int(count)}"
+                )
+        # Additive modality label stays key-less (cardinality guard companion to latency).
+        for key, count in (snap.get("modality_requests") or {}).items():
+            modality, _, tier = str(key).partition(":")
+            if modality and tier:
+                lines.append(
+                    f"daari_requests_total{_labels(tier=tier, modality=modality)} {int(count)}"
+                )
+    elif team_on:
         team_requests = snap.get("team_requests") or {}
         if not team_requests and not snap["tiers"]:
             lines.append(f'daari_requests_total{_labels(team="-")} 0')
@@ -102,7 +133,33 @@ def render_prometheus(
     tokens = snap.get("tokens") or {}
     lines.append("# HELP daari_tokens_total Tokens handled by modality, tier, and direction.")
     lines.append("# TYPE daari_tokens_total counter")
-    if not tokens:
+    if key_on:
+        key_tokens = snap.get("key_tokens") or {}
+        if not key_tokens and not tokens:
+            lines.append(f'daari_tokens_total{_labels(key="-")} 0')
+        elif not key_tokens:
+            for key, count in tokens.items():
+                parts = str(key).split(":")
+                if len(parts) != 3:
+                    continue
+                modality, tier, direction = parts
+                lines.append(
+                    f"daari_tokens_total"
+                    f"{_labels(modality=modality, tier=tier, direction=direction, key='-')} "
+                    f"{int(count)}"
+                )
+        else:
+            for key, count in key_tokens.items():
+                parts = str(key).split(":")
+                if len(parts) != 4:
+                    continue
+                modality, tier, direction, key_id = parts
+                lines.append(
+                    f"daari_tokens_total"
+                    f"{_labels(modality=modality, tier=tier, direction=direction, key=key_id)} "
+                    f"{int(count)}"
+                )
+    elif not tokens:
         lines.append("daari_tokens_total 0")
     else:
         for key, count in tokens.items():
@@ -232,14 +289,34 @@ def render_prometheus(
         "after service-tier / region / Anthropic speed multipliers)."
     )
     lines.append("# TYPE daari_cost_input_usd_total counter")
-    lines.append(f"daari_cost_input_usd_total {float(snap.get('cost_input_usd') or 0.0)}")
+    if key_on:
+        key_cost_in = snap.get("key_cost_input_usd") or {}
+        if not key_cost_in:
+            lines.append(f'daari_cost_input_usd_total{_labels(key="-")} 0.0')
+        else:
+            for key_id, amount in sorted(key_cost_in.items()):
+                lines.append(
+                    f"daari_cost_input_usd_total{_labels(key=str(key_id))} {float(amount)}"
+                )
+    else:
+        lines.append(f"daari_cost_input_usd_total {float(snap.get('cost_input_usd') or 0.0)}")
     lines.append(
         "# HELP daari_cost_output_usd_total "
         "Cumulative output-side USD after the same multipliers; "
         "sums with daari_cost_input_usd_total to priced spend."
     )
     lines.append("# TYPE daari_cost_output_usd_total counter")
-    lines.append(f"daari_cost_output_usd_total {float(snap.get('cost_output_usd') or 0.0)}")
+    if key_on:
+        key_cost_out = snap.get("key_cost_output_usd") or {}
+        if not key_cost_out:
+            lines.append(f'daari_cost_output_usd_total{_labels(key="-")} 0.0')
+        else:
+            for key_id, amount in sorted(key_cost_out.items()):
+                lines.append(
+                    f"daari_cost_output_usd_total{_labels(key=str(key_id))} {float(amount)}"
+                )
+    else:
+        lines.append(f"daari_cost_output_usd_total {float(snap.get('cost_output_usd') or 0.0)}")
 
     lines.append("# HELP daari_upstream_retries_total Transient upstream failures retried.")
     lines.append("# TYPE daari_upstream_retries_total counter")

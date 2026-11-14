@@ -113,6 +113,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             from daari.observability.metrics import sync_team_metrics_allowlist
 
             sync_team_metrics_allowlist(app.state.ctx.metrics, vk_store)
+        if bool(getattr(resolved.observability, "key_metrics", False)):
+            app.state.ctx.metrics.configure_key_metrics(
+                enabled=True,
+                max_keys=int(
+                    getattr(resolved.observability, "key_metrics_max_keys", 100) or 100
+                ),
+            )
         app.state.ctx.rate_limiter = getattr(app.state, "rate_limiter", None)
         from daari.providers.mcp_egress import wire_mcp_egress_rate_limiters
 
