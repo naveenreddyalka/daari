@@ -9143,6 +9143,16 @@ call (onto-5.2 and within-pair preserve; non-Anthropic targets unchanged).
 Soft-warning `fable_mythos_52_thinking_stripped`. Covered by
 `tests/unit/test_fable_mythos_52_thinking_strip.py`.
 
+### Require computer_toolset_20260801 on Fable/Mythos 5.2 ([#2206](https://github.com/naveenreddyalka/daari/issues/2206))
+
+<!-- tracking:#2206 -->
+**Status:** Done (2026-11-14). Non-Bedrock Anthropic egress for
+`claude-fable-5-2` / `claude-mythos-5-2` rejects legacy `computer_20251124` /
+`computer_20250124` with a clear 400 naming `computer_toolset_20260801`
+(not a compatible rename — schema + agent-loop change). Bedrock bases and
+non-5.2 models unchanged. Covered by
+`tests/unit/test_computer_toolset_52_gate.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

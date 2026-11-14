@@ -302,6 +302,65 @@ def is_fable_mythos_52_model(model: str) -> bool:
     return False
 
 
+# Legacy computer-use tool types rejected on Fable/Mythos 5.2 outside Bedrock (#2206).
+# Not a compatible rename to computer_toolset_20260801 (schema + agent-loop change),
+# so daari fail-fasts with a clear 400 rather than rewriting.
+LEGACY_COMPUTER_TOOL_TYPES = frozenset({"computer_20251124", "computer_20250124"})
+COMPUTER_TOOLSET_20260801 = "computer_toolset_20260801"
+
+
+class LegacyComputerToolRejected(ValueError):
+    """Request declared a legacy computer_* tool on Fable/Mythos 5.2 non-Bedrock."""
+
+
+def is_bedrock_anthropic_base(base_url: str) -> bool:
+    """True when L6 egress targets Amazon Bedrock (legacy computer tool still ok)."""
+    lowered = (base_url or "").strip().lower()
+    return "bedrock" in lowered
+
+
+def legacy_computer_tool_types(tools: list[Any] | None) -> list[str]:
+    """Return legacy computer tool type strings found on a tools list (#2206)."""
+    found: list[str] = []
+    for tool in tools or []:
+        if not isinstance(tool, dict):
+            continue
+        for key in ("type", "anthropic_type"):
+            raw = tool.get(key)
+            if isinstance(raw, str) and raw.strip() in LEGACY_COMPUTER_TOOL_TYPES:
+                token = raw.strip()
+                if token not in found:
+                    found.append(token)
+                break
+    return found
+
+
+def enforce_computer_toolset_for_52(
+    tools: list[Any] | None,
+    *,
+    model: str,
+    base_url: str = "",
+) -> None:
+    """Reject legacy computer_* tools on Fable/Mythos 5.2 non-Bedrock egress (#2206).
+
+    Raises ``LegacyComputerToolRejected`` naming ``computer_toolset_20260801``.
+    No-op for non-5.2 models, Bedrock bases, or requests without legacy tools.
+    """
+    if not is_fable_mythos_52_model(model):
+        return
+    if is_bedrock_anthropic_base(base_url):
+        return
+    legacy = legacy_computer_tool_types(tools)
+    if not legacy:
+        return
+    shown = ", ".join(legacy)
+    raise LegacyComputerToolRejected(
+        f"{shown} is not supported on {model} outside Amazon Bedrock; "
+        f"declare type {COMPUTER_TOOLSET_20260801} instead "
+        f"(and update the agent loop for the toolset)."
+    )
+
+
 def _looks_like_claude_model(model: str) -> bool:
     lowered = (model or "").lower()
     return any(
