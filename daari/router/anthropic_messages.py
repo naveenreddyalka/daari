@@ -285,6 +285,103 @@ def is_preserved_thinking_model(model: str) -> bool:
     return False
 
 
+_FABLE_MYTHOS_52_KEYS = ("claude-fable-5-2", "claude-mythos-5-2")
+
+
+def is_fable_mythos_52_model(model: str) -> bool:
+    """True for ``claude-fable-5-2`` / ``claude-mythos-5-2`` (incl. aliases) (#2205)."""
+    if not model or not str(model).strip():
+        return False
+    from daari.pricing import _model_id_candidates
+
+    for candidate in _model_id_candidates(str(model).strip()):
+        norm = candidate.lower().replace("_", "-").replace(".", "-")
+        for key in _FABLE_MYTHOS_52_KEYS:
+            if norm == key or norm.startswith(f"{key}-"):
+                return True
+    return False
+
+
+def _looks_like_claude_model(model: str) -> bool:
+    lowered = (model or "").lower()
+    return any(
+        token in lowered for token in ("claude", "anthropic", "fable", "mythos")
+    )
+
+
+def should_strip_fable_mythos_52_thinking(*, from_model: str, to_model: str) -> bool:
+    """Strip when leaving the Fable/Mythos 5.2 pair for another Claude id (#2205).
+
+    Onto-5.2 and within-pair (fable↔mythos 5.2) preserve thinking. Non-Anthropic
+    targets are left to existing scrub / param_compat paths.
+    """
+    if not is_fable_mythos_52_model(from_model):
+        return False
+    if is_fable_mythos_52_model(to_model):
+        return False
+    if not _looks_like_claude_model(to_model):
+        return False
+    return True
+
+
+def _52_thinking_source_models(request: InternalRequest) -> list[str]:
+    """Prior model meta plus any ``model`` field on replayed thinking blocks."""
+    sources: list[str] = []
+    prior = getattr(request.meta, "anthropic_prior_model", None)
+    if isinstance(prior, str) and prior.strip():
+        sources.append(prior.strip())
+    for message in request.messages:
+        for block in message.thinking_blocks or []:
+            if not isinstance(block, dict):
+                continue
+            block_model = block.get("model")
+            if isinstance(block_model, str) and block_model.strip():
+                sources.append(block_model.strip())
+    return sources
+
+
+def apply_fable_mythos_52_thinking_strip(
+    request: InternalRequest,
+    *,
+    to_model: str,
+    metrics: Any = None,
+) -> bool:
+    """Clear 5.2 thinking / redacted_thinking on assistant turns when required (#2205).
+
+    Mutates ``request.messages`` in place so the next upstream Anthropic call
+    matches Anthropic's documented drop. Returns True when any blocks were removed.
+    """
+    sources = _52_thinking_source_models(request)
+    if not any(
+        should_strip_fable_mythos_52_thinking(from_model=src, to_model=to_model)
+        for src in sources
+    ):
+        return False
+    if not request_has_thinking_blocks(request):
+        return False
+    stripped = False
+    for message in request.messages:
+        if message.role != "assistant" or not message.thinking_blocks:
+            continue
+        message.thinking_blocks = []
+        stripped = True
+    if not stripped:
+        return False
+    if metrics is not None and hasattr(metrics, "record_soft_warning"):
+        metrics.record_soft_warning("fable_mythos_52_thinking_stripped")
+    from daari.gateway.request_log import log_gateway_event
+
+    log_gateway_event(
+        "fable_mythos_52_thinking_stripped",
+        {
+            "to_model": to_model,
+            "from_models": sources,
+            "request_id": getattr(request.meta, "request_id", None),
+        },
+    )
+    return True
+
+
 def apply_thinking_binding_drop_block(
     payload: dict[str, Any],
     model: str,

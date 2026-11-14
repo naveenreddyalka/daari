@@ -117,6 +117,8 @@ class RequestMeta(BaseModel):
     # Client anthropic-beta / anthropic-version forwarded on the L6 Anthropic leg (#455).
     anthropic_beta: str | None = None
     anthropic_version: str | None = None
+    # Prior Anthropic model id when failover / mid-conversation switch left 5.2 (#2205).
+    anthropic_prior_model: str | None = None
     # Anthropic message-threads create/continue body (#2093). None when omitted.
     anthropic_thread: dict | None = None
     # Soft-ignored continue on local tiers (anthropic.thread_continue_soft) (#2093).

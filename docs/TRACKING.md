@@ -9133,6 +9133,16 @@ and `claude-mythos-5-2` at $8/$40 (0.025× cache read, 2× 1h write); Fable 5.2
 GA fast mode at $16/$80 without beta; frontier caps + `line` fable/mythos.
 Covered by token-accounting, fast-mode, capabilities, and models-catalog pins.
 
+### Drop Fable/Mythos 5.2 thinking on model-switch failover ([#2205](https://github.com/naveenreddyalka/daari/issues/2205))
+
+<!-- tracking:#2205 -->
+**Status:** Done (2026-11-14). When failover / mid-conversation leaves
+`claude-fable-5-2` / `claude-mythos-5-2` for another Claude id, assistant
+thinking / redacted_thinking blocks are cleared before the next Anthropic
+call (onto-5.2 and within-pair preserve; non-Anthropic targets unchanged).
+Soft-warning `fable_mythos_52_thinking_stripped`. Covered by
+`tests/unit/test_fable_mythos_52_thinking_strip.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

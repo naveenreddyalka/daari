@@ -217,6 +217,12 @@ class FrontierPool:
                     retried=is_retryable(exc),
                     breaker=slot.breaker.state,
                 )
+                # Leaving a Fable/Mythos 5.2 slot: next Claude hop must strip (#2205).
+                from daari.router.anthropic_messages import is_fable_mythos_52_model
+
+                failed_model = getattr(slot.executor, "default_model", "") or ""
+                if is_fable_mythos_52_model(failed_model):
+                    request.meta.anthropic_prior_model = failed_model
                 continue
             finally:
                 if regional_base != original_base and hasattr(slot.executor, "base_url"):
@@ -285,6 +291,11 @@ class FrontierPool:
                     error_type=type(exc).__name__,
                     error=str(exc)[:200],
                 )
+                from daari.router.anthropic_messages import is_fable_mythos_52_model
+
+                failed_model = getattr(slot.executor, "default_model", "") or ""
+                if is_fable_mythos_52_model(failed_model):
+                    request.meta.anthropic_prior_model = failed_model
                 continue
 
         raise RuntimeError(
