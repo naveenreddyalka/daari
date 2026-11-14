@@ -59,6 +59,10 @@ def test_anthropic_model_line_explicit_map() -> None:
     assert anthropic_model_line("claude-haiku-4-5") == "haiku"
     assert anthropic_model_line("claude-fable-5-1") == "fable"
     assert anthropic_model_line("claude-fable-5-1-20260901") == "fable"
+    assert anthropic_model_line("claude-fable-5-2") == "fable"
+    assert anthropic_model_line("anthropic.claude-fable-5-2") == "fable"
+    assert anthropic_model_line("claude-mythos-5-2") == "mythos"
+    assert anthropic_model_line("claude-mythos-5-2-20261109") == "mythos"
     # Local / unknown: null — never invent from free-form id tokens.
     assert anthropic_model_line("daari") is None
     assert anthropic_model_line("llama3.2:3b") is None

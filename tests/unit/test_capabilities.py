@@ -91,6 +91,8 @@ def test_known_frontier_models_declare_provider_capabilities():
 
     expected = {
         "claude-fable-5-1",
+        "claude-fable-5-2",
+        "claude-mythos-5-2",
         "claude-opus-5",
         "claude-sonnet-5",
         "claude-sonnet-5-5",
@@ -109,6 +111,8 @@ def test_known_frontier_models_declare_provider_capabilities():
     bedrock = known_model_capabilities("anthropic.claude-fable-5-1")
     assert "vision" in dated
     assert "long_context" in bedrock
+    assert "tools" in known_model_capabilities("anthropic.claude-fable-5-2")
+    assert "long_context" in known_model_capabilities("claude-mythos-5-2-20261109")
 
 
 @pytest.mark.asyncio

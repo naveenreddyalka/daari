@@ -1671,6 +1671,23 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cached_input_per_1m": 0.25,
         "cache_write_1h_per_1m": 20.00,
     },
+    # Claude Fable 5.2 / Mythos 5.2 (2026-11-09): $8/$40; same 0.025× cache
+    # read ($0.20) and 2× 1h write ($16) as the Fable 5.1 table.
+    # Longer keys must win over claude-fable-5-1 for dated/vendor ids.
+    # https://platform.claude.com/docs/en/release-notes/overview
+    # https://platform.claude.com/docs/en/about-claude/pricing
+    "claude-fable-5-2": {
+        "input_per_1m": 8.00,
+        "output_per_1m": 40.00,
+        "cached_input_per_1m": 0.20,
+        "cache_write_1h_per_1m": 16.00,
+    },
+    "claude-mythos-5-2": {
+        "input_per_1m": 8.00,
+        "output_per_1m": 40.00,
+        "cached_input_per_1m": 0.20,
+        "cache_write_1h_per_1m": 16.00,
+    },
     "claude-opus-5": {
         "input_per_1m": 5.00,
         "output_per_1m": 25.00,

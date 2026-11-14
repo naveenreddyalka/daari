@@ -1,5 +1,6 @@
 """G5: /v1/models cards include local + L6 capability tags."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from daari.config.settings import Settings
@@ -60,13 +61,23 @@ def test_l6_cards_include_known_frontier_capabilities():
                 "enabled": True,
                 "providers": [
                     {"id": "anthropic", "model": "claude-fable-5-1"},
+                    {"id": "anthropic", "model": "claude-fable-5-2"},
+                    {"id": "anthropic", "model": "claude-mythos-5-2"},
                 ],
             }
         }
     )
     cards = openai_model_cards(settings)
-    card = next(item for item in cards if item["id"] == "claude-fable-5-1")
-    assert {"tools", "json", "vision", "long_context"} <= set(card["capabilities"])
+    for model_id in ("claude-fable-5-1", "claude-fable-5-2", "claude-mythos-5-2"):
+        card = next(item for item in cards if item["id"] == model_id)
+        assert {"tools", "json", "vision", "long_context"} <= set(card["capabilities"]), model_id
+    fable52 = next(item for item in cards if item["id"] == "claude-fable-5-2")
+    assert fable52["speed"]["fast"]["supported"] is True
+    assert fable52["speed"]["fast"]["beta_header"] is False
+    assert fable52["speed"]["fast"]["input_per_1m"] == pytest.approx(16.0)
+    assert fable52["speed"]["fast"]["output_per_1m"] == pytest.approx(80.0)
+    mythos = next(item for item in cards if item["id"] == "claude-mythos-5-2")
+    assert "speed" not in mythos
 
 
 def test_l6_cards_include_zdr_when_configured():

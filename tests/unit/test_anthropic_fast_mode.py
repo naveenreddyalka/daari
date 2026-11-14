@@ -38,6 +38,24 @@ def test_opus_55_forwards_fast_without_beta():
     assert payload["speed"] == "fast"
 
 
+def test_fable_52_forwards_fast_without_beta():
+    """Fable 5.2 GA fast mode — no beta header (#2204)."""
+    decision = resolve_anthropic_speed(
+        model="claude-fable-5-2", speed="fast", anthropic_beta=None
+    )
+    assert decision.speed == "fast"
+    assert decision.warning is None
+    dated = resolve_anthropic_speed(
+        model="claude-fable-5-2-20261109", speed="fast", anthropic_beta=None
+    )
+    assert dated.speed == "fast"
+    payload = to_anthropic_payload(
+        _request(model="claude-fable-5-2", speed=decision.speed),
+        model="claude-fable-5-2",
+    )
+    assert payload["speed"] == "fast"
+
+
 def test_opus_5_requires_fast_mode_beta():
     blocked = resolve_anthropic_speed(model="claude-opus-5", speed="fast", anthropic_beta=None)
     assert blocked.speed is None
