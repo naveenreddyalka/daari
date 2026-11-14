@@ -273,6 +273,8 @@ class Metrics:
     # requested:served → count when Phonon coerces response_format (#1961).
     tts_phonon_format_coerced: dict[str, int] = field(default_factory=dict)
     rejects: dict[str, int] = field(default_factory=dict)
+    # In-flight budget reservation denials (#2198).
+    budget_reservation_denied: int = 0
     ttft_preferences: dict[str, int] = field(default_factory=dict)
     mcp_tool_calls: dict[str, int] = field(default_factory=dict)
     mcp_tasks: dict[str, int] = field(default_factory=dict)
@@ -492,6 +494,14 @@ class Metrics:
         """Hard 402/429/410 deny (budget, request_quota, rate_limit, body_too_large, retired)."""
         with self._lock:
             self.rejects[kind] = self.rejects.get(kind, 0) + 1
+
+    def record_budget_reservation_denied(self) -> None:
+        """Admission denied because settled + reserved would exceed a USD cap (#2198)."""
+        with self._lock:
+            self.budget_reservation_denied += 1
+            self.rejects["budget_reservation"] = (
+                self.rejects.get("budget_reservation", 0) + 1
+            )
 
     def record_ttft_preference(self, *, from_tier: str, to_tier: str) -> None:
         """TTFT-aware routing rewrote the heuristic pick (#539)."""
@@ -777,6 +787,7 @@ class Metrics:
                 "admission_priority": dict(self.admission_priority),
                 "tts_phonon_format_coerced": dict(self.tts_phonon_format_coerced),
                 "rejects": dict(self.rejects),
+                "budget_reservation_denied": self.budget_reservation_denied,
                 "ttft_preferences": dict(self.ttft_preferences),
                 "mcp_tool_calls": dict(self.mcp_tool_calls),
                 "mcp_tasks": dict(self.mcp_tasks),
