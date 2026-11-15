@@ -62,11 +62,23 @@ def test_tool_choice_parallel_and_service_tier():
     assert params.service_tier == "flex"
 
 
-def test_truncation_is_logged(monkeypatch):
+def test_unsupported_truncation_is_logged(monkeypatch):
     events: list[tuple[str, dict]] = []
     monkeypatch.setattr(
         "daari.gateway.request_log.log_gateway_event",
         lambda event, payload: events.append((event, payload)),
     )
-    SamplingParams.from_responses_body({"truncation": "auto"})
+    params = SamplingParams.from_responses_body({"truncation": "middle_out"})
+    assert params.truncation is None
     assert any(name == "responses_truncation_ignored" for name, _ in events)
+
+
+def test_supported_truncation_is_kept(monkeypatch):
+    events: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda event, payload: events.append((event, payload)),
+    )
+    params = SamplingParams.from_responses_body({"truncation": "auto"})
+    assert params.truncation == "auto"
+    assert not any(name == "responses_truncation_ignored" for name, _ in events)

@@ -1313,6 +1313,16 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             from daari.gateway.transcriptions import inject_inline_audio_transcripts
 
             internal = await inject_inline_audio_transcripts(internal, ctx.settings)
+            from daari.gateway.responses_truncation import apply_responses_truncation
+
+            internal, truncation_error = apply_responses_truncation(
+                internal,
+                context_windows=getattr(ctx.router, "context_windows", None),
+                metrics=getattr(ctx, "metrics", None) or getattr(ctx.router, "metrics", None),
+            )
+            if truncation_error is not None:
+                return truncation_error
+            messages = list(internal.messages)
             input_chars = sum(len(message.content or "") for message in internal.messages)
             log_gateway_event(
                 "responses_request",

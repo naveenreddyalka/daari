@@ -155,8 +155,13 @@ Responses-native sampling maps onto the same `SamplingParams` as chat:
 (including `name`/`strict`), plus `tool_choice`, `parallel_tool_calls`, and
 `service_tier`. `prompt_cache_key`, `prompt_cache_retention`, and
 `prompt_cache_options` forward on OpenAI-compatible L6; local tiers name them
-in `daari_meta.dropped_params` / `x-daari-dropped-params`. Unsupported
-`truncation` is logged (`responses_truncation_ignored`) rather than 422'd.
+in `daari_meta.dropped_params` / `x-daari-dropped-params`. Responses
+`truncation: "auto"` compacts oversized input against the serving tier's
+known context window (compact-to-fit telemetry on `daari_meta`);
+`truncation: "disabled"` (or omitted) returns OpenAI-shaped 400
+`context_length_exceeded` instead of silent trim. OpenAI Responses upstream
+hops forward the client's `truncation` unchanged. Unsupported values are
+logged (`responses_truncation_ignored`) rather than 422'd.
 `POST /v1/responses/input_tokens` is a local estimate (`estimate_tokens` on
 instructions + input messages + tools), matching Anthropic
 `/v1/messages/count_tokens` — not an L6 round-trip.
