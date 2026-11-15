@@ -1118,7 +1118,9 @@ class RoutingSettings(RuntimeSettings):
             "When true, parse the W3C baggage request header and union each "
             "member key as a baggage:<key> tag with X-Daari-Tags / metadata.tags "
             "(#2153). Values are not copied into tags (cardinality). Malformed "
-            "members are dropped. Default off. Documented next to X-Daari-Tags."
+            "members are dropped. Default off. Documented next to X-Daari-Tags. "
+            "Editable via GET/PATCH /v1/daari/config ownership (config editor) "
+            "(#2207)."
         ),
     )
     # Cap the local tier chosen for chat/Ask requests (L3|L4|L5). None keeps

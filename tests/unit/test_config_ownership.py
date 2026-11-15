@@ -45,6 +45,7 @@ _MCP_LEAVES = (
 _OBS_JSON_LOGS = "observability.structured_json_logs"
 _OBS_TEAM_METRICS = "observability.team_metrics"
 _OBS_OTEL_TAGS = "observability.otel_include_request_tags"
+_ROUTING_BAGGAGE_TO_TAGS = "routing.baggage_to_tags"
 _GUARD_LOG_BLOCKED = "guardrails.log_blocked_content"
 _SEC_OFFLINE_MODE = "security.offline_mode"
 _SEC_OFFLINE_ALLOW_HOSTS = "security.offline_allow_hosts"
@@ -71,6 +72,7 @@ def _base_live() -> dict:
             "signal_overrides": [],
             "virtual_models": {},
             "virtual_model_latency_slo_ms": {},
+            "baggage_to_tags": False,
         },
         "frontier": {
             "daily_budget_usd": 1.0,
@@ -462,6 +464,22 @@ def test_ownership_fields_include_otel_include_request_tags():
     assert meta[_OBS_OTEL_TAGS]["file_value"] is False
 
 
+def test_ownership_fields_include_baggage_to_tags():
+    """routing.baggage_to_tags is an ownership leaf (#2207)."""
+    live = _base_live()
+    live["routing"]["baggage_to_tags"] = True
+    file_doc = {"routing": {"baggage_to_tags": False}}
+    meta = ownership_fields(
+        live,
+        file_doc=file_doc,
+        runtime_overrides={_ROUTING_BAGGAGE_TO_TAGS},
+    )
+    assert _ROUTING_BAGGAGE_TO_TAGS in meta
+    assert meta[_ROUTING_BAGGAGE_TO_TAGS]["editable"] is True
+    assert meta[_ROUTING_BAGGAGE_TO_TAGS]["source"] == "runtime"
+    assert meta[_ROUTING_BAGGAGE_TO_TAGS]["file_value"] is False
+
+
 def test_ownership_fields_include_log_blocked_content():
     """guardrails.log_blocked_content is an ownership leaf (#2187)."""
     live = _base_live()
@@ -528,6 +546,7 @@ def test_live_config_payload_matches_editor_shape(settings):
     assert payload["routing"]["compact_to_fit"]["max_messages"] == 32
     assert payload["routing"]["compact_to_fit"]["max_tokens"] == 0
     assert payload["routing"]["signal_overrides"] == []
+    assert payload["routing"]["baggage_to_tags"] is False
     assert set(payload["integrations"]["mcp_oauth"]) == {"local_as", "protected_resource"}
     assert "signing_secret" not in payload["integrations"]["mcp_oauth"]
     assert set(payload["integrations"]["mcp_policy"]) == {"require_key_access_defined"}
@@ -799,6 +818,59 @@ async def test_patch_otel_include_request_tags_round_trip_hot_apply(
 
 
 @pytest.mark.asyncio
+async def test_patch_baggage_to_tags_round_trip_hot_apply(
+    settings, tmp_path, monkeypatch
+):
+    """PATCH routing.baggage_to_tags applies without restart (#2207)."""
+    settings.observability.config_editor = True
+    assert settings.routing.baggage_to_tags is False
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump({"routing": {"baggage_to_tags": False}}),
+        encoding="utf-8",
+    )
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        got = await client.get("/v1/daari/config")
+        assert got.status_code == 200
+        body = got.json()
+        assert _ROUTING_BAGGAGE_TO_TAGS in body["ownership"]
+        assert body["ownership"][_ROUTING_BAGGAGE_TO_TAGS]["editable"] is True
+        assert body["routing"]["baggage_to_tags"] is False
+
+        bad = await client.patch(
+            "/v1/daari/config",
+            json={"routing": {"baggage_to_tags": "yes"}},
+        )
+        assert bad.status_code == 400
+        assert settings.routing.baggage_to_tags is False
+
+        on = await client.patch(
+            "/v1/daari/config",
+            json={"routing": {"baggage_to_tags": True}, "persist": True},
+        )
+        assert on.status_code == 200
+        payload = on.json()
+        assert payload["routing"]["baggage_to_tags"] is True
+        assert payload["ownership"][_ROUTING_BAGGAGE_TO_TAGS]["source"] == "file"
+        written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert written["routing"]["baggage_to_tags"] is True
+        assert settings.routing.baggage_to_tags is True
+
+        off = await client.patch(
+            "/v1/daari/config",
+            json={"routing": {"baggage_to_tags": False}},
+        )
+        assert off.status_code == 200
+        assert settings.routing.baggage_to_tags is False
+
+
+@pytest.mark.asyncio
 async def test_patch_log_blocked_content_round_trip_hot_apply(
     settings, tmp_path, monkeypatch
 ):
@@ -1053,6 +1125,7 @@ def test_docs_pin_classifier_mcp_config_ownership():
         _OBS_JSON_LOGS,
         _OBS_TEAM_METRICS,
         _OBS_OTEL_TAGS,
+        _ROUTING_BAGGAGE_TO_TAGS,
         _GUARD_LOG_BLOCKED,
         _SIGNAL_OVERRIDES,
         _SEC_OFFLINE_MODE,
@@ -1067,6 +1140,7 @@ def test_docs_pin_classifier_mcp_config_ownership():
     assert "signal_overrides" in http_api
     assert "virtual_models" in http_api
     assert "virtual_model_latency_slo_ms" in http_api
+    assert "baggage_to_tags" in http_api
     assert "require_key_access_defined" in http_api or "mcp_policy" in http_api
     assert "structured_json_logs" in http_api
     assert "team_metrics" in http_api

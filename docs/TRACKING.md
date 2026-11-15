@@ -9153,6 +9153,14 @@ Soft-warning `fable_mythos_52_thinking_stripped`. Covered by
 non-5.2 models unchanged. Covered by
 `tests/unit/test_computer_toolset_52_gate.py`.
 
+### Config ownership + PATCH for routing.baggage_to_tags ([#2207](https://github.com/naveenreddyalka/daari/issues/2207))
+
+<!-- tracking:#2207 -->
+**Status:** Done (2026-11-15). `routing.baggage_to_tags` is an ownership leaf;
+GET inventory + PATCH bool (default false). Hot-applies to settings without
+restart so subsequent requests pick up the mesh-identity → tags bridge.
+Covered by `tests/unit/test_config_ownership.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
