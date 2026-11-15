@@ -440,6 +440,10 @@ class FrontierExecutor:
         if isinstance(effort, str) and effort.strip():
             payload["reasoning"] = {"effort": effort.strip()}
         payload.update(sampling)
+        # Responses-only: forward client truncation unchanged (#2215).
+        truncation = getattr(request.sampling, "truncation", None)
+        if truncation in {"auto", "disabled"}:
+            payload["truncation"] = truncation
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         if request.tools:

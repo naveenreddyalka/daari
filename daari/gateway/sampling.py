@@ -379,6 +379,9 @@ class SamplingParams(BaseModel):
     prompt_cache_options: dict[str, Any] | None = None
     # Responses multi-agent beta (#1478). Forwarded on L6; fail-closed locally.
     multi_agent: dict[str, Any] | None = None
+    # Responses truncation auto|disabled (#2215). Enforced locally; forwarded on
+    # OpenAI Responses upstream hops only (not chat completions).
+    truncation: str | None = None
 
     @classmethod
     def from_openai_body(cls, body: dict[str, Any]) -> SamplingParams:
@@ -553,18 +556,25 @@ class SamplingParams(BaseModel):
 
         truncation = body.get("truncation")
         if truncation is not None:
-            from daari.gateway.request_log import log_gateway_event
+            if truncation in {"auto", "disabled"}:
+                mapped["truncation"] = truncation
+            else:
+                from daari.gateway.request_log import log_gateway_event
 
-            log_gateway_event(
-                "responses_truncation_ignored",
-                {"truncation": truncation},
-            )
+                log_gateway_event(
+                    "responses_truncation_ignored",
+                    {"truncation": truncation},
+                )
+                mapped.pop("truncation", None)
 
         # multi_agent is Responses-native; keep it even if chat body ignored it.
         if "multi_agent" in body and "multi_agent" not in mapped:
             mapped["multi_agent"] = body.get("multi_agent")
 
-        return cls.from_openai_body(mapped)
+        params = cls.from_openai_body(mapped)
+        if truncation in {"auto", "disabled"}:
+            params.truncation = truncation
+        return params
 
     @classmethod
     def from_ollama_options(cls, options: dict[str, Any] | None) -> SamplingParams:

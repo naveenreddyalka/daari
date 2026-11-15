@@ -9170,6 +9170,15 @@ Covered by `tests/unit/test_config_ownership.py`.
 non-stream). OpenAI-opaque blocks are dropped on Anthropic and local tiers.
 Covered by `tests/unit/test_openai_encrypted_reasoning_messages.py`.
 
+### Responses truncation auto/disabled ([#2215](https://github.com/naveenreddyalka/daari/issues/2215))
+
+<!-- tracking:#2215 -->
+**Status:** Done (2026-11-15). `POST /v1/responses` honors `truncation`:
+`auto` engages compact-to-fit against the serving tier window (reports via
+`daari_meta.compact_to_fit`); `disabled`/omitted returns OpenAI-shaped 400
+`context_length_exceeded`. OpenAI Responses upstream hops forward the value
+unchanged. Covered by `tests/unit/test_responses_truncation.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
