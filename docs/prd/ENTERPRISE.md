@@ -11,34 +11,28 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-15)
+## Where daari stands (verified in-tree, 2026-11-15 pm)
 
-**Loop velocity.** Overnight shipped the thinking strip on failover,
-the 5.2 computer-toolset gate, `baggage_to_tags` ownership, and
-encrypted reasoning on `/v1/messages` (rows 351–353 + 355 → PRs
-#2293–#2296). The 11-14 waves (395–404) remain Filed.
+**Loop velocity.** Afternoon shipped Responses `truncation`
+auto/disabled (row 356 → PR #2302). Overnight 351–353 + 355 remain
+Shipped (#2293–#2296). Morning cut (405–408) still Filed; 11-14 waves
+(395–404) still Filed.
 
-**Outward.** **LiteLLM 1.108.9 LTS** (11-14 pm) is the only mover:
-mixed reasoning/answer preservation on Responses (#51356 → mined as
-406), Kimi K3 dropped `reasoning_content` (#51748 → direction for
-407), chat→Responses `cache_control` breakpoints (N/A — daari
-preserves block `cache_control` on `/v1/messages` #434; auto dial is
-2221), Bedrock/Vertex backports daari does not front. 1.110.0-rc.3 +
-1.111.0-dev.3/4 held for stable (new watch rows below). OpenAI/
-Anthropic news flat (11-05 / 11-12), but the Aug-21 OpenAI entry
-matters now: **GPT-5.6 Sol promo $4/$20 expires 2026-11-21** → 405.
-Portkey **2.33.1**, Kong **2.3.1**, Ollama **0.40.17-rc0**, vLLM
-**0.33.0rc3**, llama.cpp **v1.0.0** (daily b-tags), MCP 2026-07-28,
-OpenRouter newest diff unchanged (watch).
+**Outward.** Landscape flat vs morning: LiteLLM **1.108.9 LTS**
+stable; **1.111.0-dev.4** / **1.110.0-rc.3** still pre-release.
+Converted from watch: #51683 tool-call midstream replay → 409 (defect
+is live in daari today under `stream_fallback_continue`). Remainder of
+1.111-dev held (key-expiry emails already in-tree; spend-log token
+redaction N/A — spend rows have no free-text prompts). Portkey
+**2.33.1**, Kong **2.3.1**, Ollama **0.40.17-rc0**, vLLM **0.33.0rc3**,
+llama.cpp **v1.0.0**, OpenRouter newest diff, OpenAI/Anthropic — no
+new GA movers. Sol promo still expires **2026-11-21** (405).
 
-**Inward theme: reasoning truth.** Nothing tree-wide ever sets
-`InternalResponse.reasoning_content` — Ollama `message.thinking` and
-OpenAI-compat `reasoning_content` are dropped by every executor, so
-the Responses reasoning item is dead code for live generation (407).
-The frontier Responses path flattens multi-item output to one
-reasoning blob + one message, losing interleaving (406). Pricing has
-zero time-awareness while the Sol promo lapses in days (405). Fence
-the overnight wave (408).
+**Inward theme: midstream tool-call safety + truncation ops.** Opt-in
+`stream_fallback_continue` treats delivered `tool_calls` as
+`content_sent` and will hop after flushing them (409). Truncation
+shipped without Prom/stats (412). Operator surfaces for the dial
+(410–411); fence 413.
 
 ---
 
@@ -46,6 +40,11 @@ the overnight wave (408).
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 409 | `stream_fallback_continue` must refuse after delivered tool_calls (chat + Responses) | 5 | 2 | LiteLLM 1.111-dev #51683 | Local agent loops must not double-fire shell tools across a midstream hop | Filed [#2303](https://github.com/naveenreddyalka/daari/issues/2303) |
+| 410 | Grafana panel for `daari_stream_fallback_continue_total` | 2 | 1 | Portkey analytics / hand-rolled Prom | Same-box scrape shows whether the opt-in dial is firing | Filed [#2304](https://github.com/naveenreddyalka/daari/issues/2304) |
+| 411 | Doctor tip when `routing.stream_fallback_continue` is on | 2 | 1 | — (ops honesty) | Catch the sharp edge before production agent traffic | Filed [#2305](https://github.com/naveenreddyalka/daari/issues/2305) |
+| 412 | Prom/stats counters for Responses `truncation` auto + rejected | 3 | 1 | LiteLLM spend dashboards / Kong FinOps | Prove the just-shipped dial from the same-box scrape | Filed [#2306](https://github.com/naveenreddyalka/daari/issues/2306) |
+| 413 | Integration fence for the 11-15 evening truncation + midstream-safety wave | 2 | 2 | — (testability) | Hermetic proof: tool-call refuse, Grafana, doctor, truncation counters | Filed [#2307](https://github.com/naveenreddyalka/daari/issues/2307) |
 | 405 | Time-bounded catalog rates: `effective_to` promo windows + baseline fallback (Sol $4/$20 → $5/$30 on 11-21; Gemini 12-01 step-up class) | 4 | 2 | Kong 2.3.0 dynamic-pricing `effective_to`/`baseline_price` | Honest ledger through published price changes with no redeploy and no SaaS price feed | Filed [#2297](https://github.com/naveenreddyalka/daari/issues/2297) |
 | 406 | Preserve every reasoning item + upstream output order on the frontier Responses path | 4 | 3 | LiteLLM 1.108.9 LTS (#51356 backport) | Byte-faithful item order on one box fronting local + frontier; encrypted replay keeps positional binding | Filed [#2298](https://github.com/naveenreddyalka/daari/issues/2298) |
 | 407 | Surface local-tier thinking: capture Ollama `message.thinking` / OpenAI-compat `reasoning_content`, emit on chat + Responses + Messages | 4 | 3 | llama.cpp / vLLM emit it; LiteLLM relays it (1.108.9 #51748) | Local reasoning models are the pitch — daari pays the thinking tokens and must stop discarding the text | Filed [#2299](https://github.com/naveenreddyalka/daari/issues/2299) |
@@ -91,7 +90,8 @@ the overnight wave (408).
 | 368 | compare-litellm: 1.109.0 stable floor + 1.108.5 LTS + disk-cache removal positioning | 3 | 1 | LiteLLM release notes | They removed disk caching; daari's L1 **is** a local diskcache — hard differentiator | Filed [#2235](https://github.com/naveenreddyalka/daari/issues/2235) |
 | 369 | Integration fence for the 11-10/11-11 overnight wave | 2 | 2 | — (testability) | Hermetic proof: cost-aware selection prefers $0 local; SLO panel pinned | Filed [#2236](https://github.com/naveenreddyalka/daari/issues/2236) |
 | 360–364 | Residency CA/SG/KR/GB/AE; auto_caching; any-5xx; Fable/Mythos advisor; evening fence | 2–3 | 1–2 | OpenAI / Portkey 2.33.0 / Kong 2.3.0 / Anthropic | Governance + residency dials on the same-box console | Filed (#2220–#2224) |
-| 356–359 | Responses `truncation`; team BYOK; Ripple recipe; overnight fence | 2–4 | 1–3 | LiteLLM 1.108.4 / Ollama 0.40.16 | Tenant + truncation fidelity on-box | Filed (#2215–#2218) |
+| 356 | Responses `truncation` auto/disabled | 3 | 2 | LiteLLM 1.108.4 | On-box compact vs honest 400 against serving window | Shipped (#2302) |
+| 357–359 | Team BYOK; Ripple recipe; overnight fence | 2–4 | 1–3 | Ollama 0.40.16 | Tenant + local catalog on-box | Filed (#2216–#2218) |
 | 351–353, 355 | 5.2 thinking strip on failover; computer-toolset gate; `baggage_to_tags` PATCH; encrypted reasoning on `/v1/messages` | 3–4 | 1–2 | Anthropic 11-09 gates / LiteLLM 1.108.4 | Switch-owned strip + reasoning fidelity on-box | Shipped (#2293–#2296) |
 | 346–348, 350 | Server-side tool billing + `tool_usage`; in-flight reservation; per-key Prom label; 5.2 catalog rates | 3–4 | 2–3 | Kong 2.3.0 / Anthropic list prices | FinOps truth on the same-box ledger and scrape | Shipped (#2277–#2280) |
 | 354 | Integration fence for the 11-09 afternoon wave | 2 | 2 | — (testability) | Hermetic proof: baggage tags, service-tier Grafana, 5.2 catalog smoke | Filed [#2208](https://github.com/naveenreddyalka/daari/issues/2208) |
@@ -137,52 +137,42 @@ the overnight wave (408).
 | 8 | Full DCR; A2A; Realtime/WS; OpenAI Live; stdio MCP; M365; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM | Demand-triggered | Watch |
 
 Watch rows (do not file yet): **MCP file-uploads** draft
-(`io.modelcontextprotocol/files`, blog 11-10 — no reference impl; ~EOY);
-**LiteLLM 1.111.0-dev.4** (11-15 — hold for stable: Responses fallback
-replaying already-delivered tool calls #51683 — audit daari
-`stream_fallback_continue` when it goes stable; key-expiry warning
-emails #51482; `redact_tokens_in_spend_logs`; customer org/team/member
-admin UI; prior-dev remainder: customer budgets + portal,
-`fallback_on_saturation`, annual budget reset, per-model tpm/rpm maps,
-OpenSearch pass-through, encrypted-content boundary #50750);
-**1.110.0-rc.3** (hold — Agent Skills Hub, Rust-only router, Responses
-named-SSE / no Chat `[DONE]`, response-id ownership 403); 1.108.7
-remainder (Gemini batches + Azure gpt-image edits — buyer ask); 1.109.0
-remainder (K8s headless-pod discovery; shadow rates; request-log
-retention); Opus 4.8 fast-mode removal 11-30; Ollama 0.40.17-rc0 (MLX
-concurrent gen — hold for GA); vLLM 0.33/0.34 rc; **OpenRouter
-guardrail-policies API**; OpenRouter newest diff (guardrail
-`ContentFilterReadEntry`, structured `/responses` 400 `error_data`,
-tool-search `catalog_index_note`, `web_fetch.retrieved_at`, OTEL
-destination `metricsEndpoint` — metrics already in-tree); LiteLLM LTS
-floor **1.108.9** + stable 1.106.10 (fold both into compare touch 393,
-not their own issues); Kong Cedar/CEL/Token
-Vault (new dep — human); Portkey MCP policies (Prisma AIRS-only);
-OpenAI Live/SIP / Realtime/WS; AutoTrust beyond Apple silicon;
-`gpt-6-cyber`; Agents `auto_review`; Anthropic watermark / Compliance
-API / hosted skills; CMA-as-provider (buyer ask); minute-grain spend;
-fleet Redis EWMA; MCP SEP-3398; OpenAI org external keys;
-`between_tools`; `gpt-6-rosalind`; Claude Code `groups` /
-`guardrail_trace`; OpenRouter private-provider CRUD; LiteLLM Admin
-Chat / Lens / ID-JAG; llama.cpp `/v1/realtime`; Portkey JWT/WIF;
-Prisma AIRS Agent Identity; Claude-on-GCP IAM (new dep); Open
+(`io.modelcontextprotocol/files` — no reference impl; ~EOY);
+**LiteLLM 1.111.0-dev.4** remainder (hold for stable: customer
+org/team/member admin UI; budgets + portal; `fallback_on_saturation`;
+annual budget reset; per-model tpm/rpm maps; OpenSearch pass-through;
+encrypted-content boundary #50750; #51487 early stream close — daari
+`async with` already exits on `[DONE]`); key-expiry emails already
+in-tree (#1546); spend-log token redaction N/A (no free-text spend
+rows); **1.110.0-rc.3** (Agent Skills Hub, Rust-only router, Responses
+named-SSE / no Chat `[DONE]`, response-id ownership 403); 1.108.7/1.109
+remainder (buyer-ask batches/edits; K8s discovery; shadow rates);
+Opus 4.8 fast-mode removal 11-30; Ollama 0.40.17-rc0 (MLX concurrent —
+hold for GA); vLLM 0.33/0.34 rc; **OpenRouter guardrail-policies API**;
+OpenRouter newest (`ContentFilterReadEntry`, Responses `error_data`,
+`catalog_index_note`, `web_fetch.retrieved_at`, OTEL `metricsEndpoint`
+— metrics already in-tree); LTS floor **1.108.9** + 1.106.10 (fold into
+compare 393); Kong Cedar/CEL/Token Vault (new dep — human); Portkey
+MCP policies (Prisma AIRS-only); OpenAI Live/SIP / Realtime/WS;
+AutoTrust beyond Apple silicon; `gpt-6-cyber` / `gpt-6-rosalind`;
+Agents `auto_review`; Anthropic watermark / Compliance API / hosted
+skills; CMA-as-provider; minute-grain spend; fleet Redis EWMA; MCP
+SEP-3398; OpenAI org external keys; `between_tools`; Claude Code
+`groups` / `guardrail_trace`; OpenRouter private-provider CRUD;
+LiteLLM Admin Chat / Lens / ID-JAG; llama.cpp `/v1/realtime`; Portkey
+JWT/WIF; Prisma AIRS Agent Identity; Claude-on-GCP IAM (new dep); Open
 Responses WS; Prom exemplars + `gen_ai.agent.*`; SCIM + multi-issuer
 SSO; Kong Skills/A2A; certifi emSign; Ollama d1 GA; local
 message-thread analogue (after ask); A2A 1.1 RC (two-SDK gate).
 
-Verified fine this run (LiteLLM 1.108.9 mining) — don't re-audit:
-block-level `cache_control` already preserved on `/v1/messages` + tools
-(#434 — the 1.108.9 chat→Responses bridge backport is N/A; top-level
-auto dial is 2221/361); `reasoning_effort` already forwarded to
-OpenAI-compat local backends (sampling allowlist) — 407 is
-response-side only; 1.107.0-rc.4 is a legacy-rc courtesy tag (no new
-surface). Prior standing: `/v1/moderations` + `/v1/embeddings` $0
-honest; L6 `current_secret` freshness (stale gap is MCP-egress-only,
-395); OTLP metrics export exists; Fable 5.2 fast rates GA in-tree;
-chat/audio/embed/MCP honor deadlines (400 is OCR+images only);
-credential hygiene (378), session repin after failover,
-`redacted_thinking`; hold structured Responses `error_data` until a
-buyer asks (breaking vs FastAPI `detail`).
+Verified fine this run — don't re-audit: #51683 class converted (409);
+block-level `cache_control` on `/v1/messages` (#434); `reasoning_effort`
+forwarded to OpenAI-compat locals (407 is response-side only);
+key-expiry doctor/Prom/webhook already shipped; moderations/embeddings
+$0 honest; L6 `current_secret` freshness (stale gap is MCP-egress 395);
+OTLP metrics exist; Fable 5.2 rates GA; chat/audio/embed/MCP deadlines
+(400 is OCR+images only); credential hygiene (378); session repin;
+`redacted_thinking`; hold Responses `error_data` until buyer ask.
 
 ---
 
@@ -194,47 +184,49 @@ buyer asks (breaking vs FastAPI `detail`).
    generations/edits (375); frontier ASR (376); Gemini 4 Carbon/Argon
    (371); daily `rpd`/`tpd` (372); residency uplift (360); per-team
    BYOK (357); Grafana input/output panels (392); server-tool fee Prom
-   (401).
+   (401); truncation Prom (412).
 2. **Nothing goes stale quietly** — MCP egress credential re-mint
    (395); modality deadlines on OCR/images (400); MCP cancellation
    (385); session-pin isolation (387); abort/`finish_reason` honesty
    (373); honest `stop_reason` (365); ZDR honesty (398); reservation
-   doctor tip (403).
-3. **Agent-loop / Responses / Extractions fidelity** — Responses
+   doctor tip (403); stream_fallback doctor tip (411).
+3. **Agent-loop / Responses / Extractions fidelity** — refuse
+   midstream continue after delivered tool_calls (409); Responses
    output-order + reasoning-item fidelity (406); surface local-tier
    thinking (407); Extractions facade (390); OpenRouter `reasoning`
    object (397); skip failed `previous_response_id` turns (380);
    `max_tool_calls` honesty (381); streamed cache tool_calls (367);
-   `allowed_tools` (377); advisor (363); `truncation` (356).
+   `allowed_tools` (377); advisor (363). Truncation auto/disabled
+   shipped (356).
 4. **CMA, containment, and routing like Auto Router** — Managed
    Agents → daari recipe (382); credential hygiene fence (378); scan
    tool_call args (366); coding-router (370); auto_caching (361);
    any-5xx (362); Ripple (358).
 5. **Local engine floor + survive the blip + honest compare** —
-   llama.cpp v1.0.0 pin (388); LTS floor 1.108.8 compare (393; prior
-   368/383; fold 1.106.10); offline Prom (279) + doctor (285);
-   reservation Grafana (402); hot-reload (6); failover panels (274);
-   fences through 408; then 62–67.
+   llama.cpp v1.0.0 pin (388); LTS floor 1.108.9 compare (393; fold
+   1.106.10); stream_fallback Grafana (410); offline Prom (279) +
+   doctor (285); reservation Grafana (402); hot-reload (6); failover
+   panels (274); fences through 413; then 62–67.
 
 ---
 
 ## Changelog
 
+- **2026-11-15 pm (midstream tool-call safety; truncation ops)** —
+  Outward flat vs morning (1.108.9 LTS; 1.111.0-dev.4 / 1.110.0-rc.3
+  still pre-release). Converted LiteLLM #51683 class now: daari's
+  `stream_fallback_continue` will hop after flushing delivered
+  `tool_calls` (409). Operator surfaces for the dial (410–411);
+  Prom/stats for just-shipped Responses truncation (412); fence 413.
+  Row 356 Shipped (#2302). Watch pruned: #51683 removed; key-expiry
+  emails + spend-log redaction marked N/A / already shipped.
+
 - **2026-11-15 (reasoning truth + Sol promo deadline; LiteLLM 1.108.9
-  LTS mined)** — Outward: **LiteLLM 1.108.9 LTS** (mixed
-  reasoning/answer preservation #51356 → 406; Kimi K3
-  `reasoning_content` drop #51748 → direction for 407; chat→Responses
-  `cache_control` bridge verified N/A); 1.110.0-rc.3 + 1.111.0-dev.3/4
-  held (watch refreshed: #51683 fallback tool-call replay, key-expiry
-  warnings); everything else flat (Kong 2.3.1, Portkey 2.33.1, Ollama
-  0.40.17-rc0, vLLM 0.33.0rc3, llama.cpp b-tags, MCP 2026-07-28,
-  OpenAI 11-05 / Anthropic 11-12). Inward: **GPT-5.6 Sol promo $4/$20
-  expires 11-21 and pricing has zero time-awareness** (405); nothing
-  ever sets `InternalResponse.reasoning_content` — local thinking
-  discarded by every executor (407); frontier Responses output
-  flattened to one reasoning blob (406); fence 408. Overnight rows
-  351–353 + 355 Shipped (#2293–#2296); LTS floor 1.108.9 folds into
-  compare touch 393.
+  LTS mined)** — Outward: **1.108.9 LTS** (#51356 → 406; #51748 →
+  direction for 407; chat→Responses `cache_control` N/A). Inward: Sol
+  promo expiry 11-21 (405); local thinking discarded (407); Responses
+  output flattened (406); fence 408. Overnight 351–353 + 355 Shipped
+  (#2293–#2296).
 
 - **2026-11-14 pm (modality deadline + overnight FinOps scrape)** —
   Outward flat vs morning (LiteLLM 1.106.10 / 1.108.8 LTS;
