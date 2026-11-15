@@ -2993,6 +2993,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 }
                 ctx.settings.routing.virtual_model_latency_slo_ms = slo_map
                 ctx.router.virtual_model_latency_slo_ms = dict(slo_map)
+            if "baggage_to_tags" in routing:
+                ctx.settings.routing.baggage_to_tags = bool(routing["baggage_to_tags"])
             for key in ("daily_budget_usd", "monthly_budget_usd", "soft_budget_ratio"):
                 if key in frontier:
                     setattr(ctx.settings.frontier, key, frontier[key])

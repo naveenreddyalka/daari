@@ -51,3 +51,11 @@ def test_http_api_pins_config_ownership_offline_mode() -> None:
     assert "ownership" in text.lower()
     assert "offline_mode" in text
     assert "offline_allow_hosts" in text
+
+
+def test_http_api_pins_config_ownership_baggage_to_tags() -> None:
+    """http-api names routing.baggage_to_tags ownership leaf (#2207)."""
+    text = HTTP_API.read_text(encoding="utf-8")
+    assert "/v1/daari/config" in text
+    assert "ownership" in text.lower()
+    assert "baggage_to_tags" in text

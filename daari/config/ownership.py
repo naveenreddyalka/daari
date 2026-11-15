@@ -31,6 +31,7 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("routing", "decision_classifier", "timeout_seconds"),
     ("routing", "decision_classifier", "agent_turns"),
     ("routing", "stream_fallback_continue"),
+    ("routing", "baggage_to_tags"),
     ("routing", "compact_to_fit", "enabled"),
     ("routing", "compact_to_fit", "max_messages"),
     ("routing", "compact_to_fit", "max_tokens"),
@@ -211,6 +212,7 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
                     getattr(s.routing, "virtual_model_latency_slo_ms", None) or {}
                 ).items()
             },
+            "baggage_to_tags": bool(getattr(s.routing, "baggage_to_tags", False)),
         },
         "frontier": {
             "daily_budget_usd": s.frontier.daily_budget_usd,

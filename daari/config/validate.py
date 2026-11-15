@@ -472,6 +472,8 @@ def validated_routing(
             patch["virtual_model_latency_slo_ms"],
             known_virtual_models=known,
         )
+    if "baggage_to_tags" in patch:
+        out["baggage_to_tags"] = _bool(patch["baggage_to_tags"], "baggage_to_tags")
     return out
 
 

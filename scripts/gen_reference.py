@@ -180,6 +180,7 @@ def render_api_reference() -> str:
             "replacement), `routing.virtual_models` (full map replacement), "
             "`routing.virtual_model_latency_slo_ms` (full map replacement; keys must "
             "exist in `virtual_models`; ignored by selection in ordered mode), "
+            "`routing.baggage_to_tags`, "
             "`systemone.base_url`, "
             "`observability.structured_json_logs`, "
             "`observability.team_metrics`, "
