@@ -4522,12 +4522,32 @@ class Router:
                         # L6 returned tools — emit Anthropic tool_use blocks (#934).
                         meta = served.daari_meta.model_dump()
                         yield message_start
+                        block_offset = 0
+                        enc = getattr(served, "reasoning_encrypted", None)
+                        if isinstance(enc, str) and enc.strip():
+                            from daari.router.openai_encrypted_reasoning import (
+                                pack_encrypted_reasoning_block,
+                            )
+
+                            yield sse(
+                                "content_block_start",
+                                {
+                                    "type": "content_block_start",
+                                    "index": 0,
+                                    "content_block": pack_encrypted_reasoning_block(
+                                        enc.strip()
+                                    ),
+                                    "daari_meta": meta,
+                                },
+                            )
+                            yield block_stop(0)
+                            block_offset = 1
                         for index, call in enumerate(_openai_tool_call_deltas(served.tool_calls)):
                             yield sse(
                                 "content_block_start",
                                 {
                                     "type": "content_block_start",
-                                    "index": index,
+                                    "index": index + block_offset,
                                     "content_block": {
                                         "type": "tool_use",
                                         "id": call["id"],
@@ -4541,7 +4561,7 @@ class Router:
                                 "content_block_delta",
                                 {
                                     "type": "content_block_delta",
-                                    "index": index,
+                                    "index": index + block_offset,
                                     "delta": {
                                         "type": "input_json_delta",
                                         "partial_json": call["function"]["arguments"],
@@ -4549,7 +4569,7 @@ class Router:
                                     "daari_meta": meta,
                                 },
                             )
-                            yield block_stop(index)
+                            yield block_stop(index + block_offset)
                         yield sse(
                             "message_delta",
                             {

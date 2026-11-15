@@ -30,6 +30,13 @@ from daari.router.anthropic_messages import (
     text_from_anthropic_content,
     to_anthropic_payload,
 )
+from daari.router.openai_encrypted_reasoning import (
+    messages_to_responses_input,
+    reasoning_encrypted_from_responses_output,
+    text_from_responses_output,
+    tool_calls_from_responses_output,
+    wants_openai_encrypted_reasoning,
+)
 from daari.router.param_compat import (
     FrontierParamCompat,
     FrontierParamCompatResult,
@@ -413,6 +420,42 @@ class FrontierExecutor:
         self._run_param_compat(payload, has_tools=bool(request.tools))
         return payload
 
+    def _openai_responses_payload(
+        self, request: InternalRequest, *, stream: bool
+    ) -> dict[str, Any]:
+        """Responses body that requests + replays ``reasoning.encrypted_content`` (#2214)."""
+        payload: dict[str, Any] = {
+            "model": self.default_model,
+            "input": messages_to_responses_input(request.messages),
+            "stream": stream,
+            "store": False,
+            "include": ["reasoning.encrypted_content"],
+        }
+        sampling = request.sampling.openai_payload()
+        # Chat-only knobs that Responses rejects or ignores.
+        for key in ("stream_options", "n", "logprobs", "top_logprobs"):
+            sampling.pop(key, None)
+        # reasoning_effort → nested reasoning.effort for Responses.
+        effort = sampling.pop("reasoning_effort", None)
+        if isinstance(effort, str) and effort.strip():
+            payload["reasoning"] = {"effort": effort.strip()}
+        payload.update(sampling)
+        if request.temperature is not None:
+            payload["temperature"] = request.temperature
+        if request.tools:
+            # OpenAI function tools on Responses use a flatter shape when possible;
+            # pass through chat tools and let the API coerce common forms.
+            payload["tools"] = request.tools
+        if request.provider is not None and (
+            self.provider == "openrouter" or is_openrouter_base(self.base_url)
+        ):
+            payload["provider"] = as_openrouter_payload(request.provider)
+        self._run_param_compat(payload, has_tools=bool(request.tools))
+        return payload
+
+    def _uses_openai_responses_encrypted(self, request: InternalRequest) -> bool:
+        return not self._is_anthropic() and wants_openai_encrypted_reasoning(request)
+
     def _anthropic_payload(self, request: InternalRequest, *, stream: bool) -> dict[str, Any]:
         """Build L6 Anthropic Messages body with version + model param-compat (#1849)."""
         # Mid-conversation leave from Fable/Mythos 5.2: drop their thinking first (#2205).
@@ -576,6 +619,7 @@ class FrontierExecutor:
         self.last_fast_degraded = False
         self.last_service_tier_degraded = False
 
+        uses_responses = False
         if self._is_anthropic():
             payload = self._anthropic_payload(request, stream=True)
             from daari.observability.otel import inject_trace_headers
@@ -589,6 +633,11 @@ class FrontierExecutor:
                 )
             )
             path = anthropic_messages_path(self.base_url)
+        elif self._uses_openai_responses_encrypted(request):
+            uses_responses = True
+            payload = self._openai_responses_payload(request, stream=True)
+            headers = self._openai_headers_for_request(request)
+            path = "/responses"
         else:
             payload = self._openai_payload(request, stream=True)
             headers = self._openai_headers_for_request(request)
@@ -685,6 +734,49 @@ class FrontierExecutor:
                         chunk = json.loads(data)
                     except ValueError:
                         continue
+                    if uses_responses and isinstance(chunk, dict):
+                        event_type = chunk.get("type")
+                        if event_type == "response.output_item.done":
+                            item = chunk.get("item") or {}
+                            if (
+                                isinstance(item, dict)
+                                and item.get("type") == "reasoning"
+                                and isinstance(item.get("encrypted_content"), str)
+                                and item["encrypted_content"].strip()
+                            ):
+                                yield {
+                                    "reasoning_encrypted": item["encrypted_content"].strip()
+                                }
+                            elif isinstance(item, dict) and item.get("type") == "function_call":
+                                yield {
+                                    "tool_calls": [
+                                        {
+                                            "id": item.get("call_id")
+                                            or item.get("id")
+                                            or "call_unknown",
+                                            "type": "function",
+                                            "function": {
+                                                "name": item.get("name") or "",
+                                                "arguments": item.get("arguments")
+                                                or "{}",
+                                            },
+                                        }
+                                    ]
+                                }
+                            continue
+                        if event_type == "response.output_text.delta":
+                            delta_text = chunk.get("delta")
+                            if isinstance(delta_text, str) and delta_text:
+                                yield delta_text
+                            continue
+                        if event_type == "response.completed":
+                            usage = chunk.get("response", {}).get("usage")
+                            if isinstance(usage, dict):
+                                _remember_openai_stream_usage(
+                                    self, {"usage": usage, "choices": []}
+                                )
+                            continue
+                        continue
                     if isinstance(chunk, dict):
                         _remember_openai_stream_usage(self, chunk)
                     for choice in chunk.get("choices", []):
@@ -710,6 +802,7 @@ class FrontierExecutor:
         model = self.default_model
         started = time.perf_counter()
         anthropic = self._is_anthropic()
+        uses_responses = False
         if anthropic:
             payload = self._anthropic_payload(request, stream=False)
             from daari.observability.otel import inject_trace_headers
@@ -723,6 +816,11 @@ class FrontierExecutor:
                 )
             )
             path = anthropic_messages_path(self.base_url)
+        elif self._uses_openai_responses_encrypted(request):
+            uses_responses = True
+            payload = self._openai_responses_payload(request, stream=False)
+            headers = self._openai_headers_for_request(request)
+            path = "/responses"
         else:
             payload = self._openai_payload(request, stream=False)
             headers = self._openai_headers_for_request(request)
@@ -775,9 +873,15 @@ class FrontierExecutor:
             timeout=timeout,
             metrics=self.metrics,
         )
+        reasoning_encrypted = None
         if anthropic:
             content = text_from_anthropic_content(data.get("content"))
             tool_calls = _tool_calls_from_anthropic_content(data.get("content"))
+        elif uses_responses:
+            output = data.get("output")
+            content = text_from_responses_output(output)
+            tool_calls = tool_calls_from_responses_output(output)
+            reasoning_encrypted = reasoning_encrypted_from_responses_output(output)
         else:
             message = data.get("choices", [{}])[0].get("message", {})
             content = message.get("content", "") or ""
@@ -852,4 +956,5 @@ class FrontierExecutor:
             model=model,
             tool_calls=tool_calls if tool_calls else None,
             daari_meta=meta,
+            reasoning_encrypted=reasoning_encrypted,
         )

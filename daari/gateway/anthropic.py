@@ -303,7 +303,8 @@ class AnthropicMessageResponse(BaseModel):
     type: str = "message"
     role: str = "assistant"
     model: str
-    content: list[AnthropicTextBlock]
+    # Text plus optional redacted_thinking for OpenAI encrypted reasoning (#2214).
+    content: list[Any]
     stop_reason: str = "end_turn"
     stop_sequence: str | None = None
     usage: dict[str, Any] = Field(default_factory=lambda: {"input_tokens": 0, "output_tokens": 0})
@@ -845,10 +846,19 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             if isinstance(reported_speed, str) and reported_speed.strip():
                 usage["speed"] = reported_speed.strip().lower()
             message_id = f"msg_{uuid.uuid4().hex[:12]}"
+            from daari.router.openai_encrypted_reasoning import (
+                anthropic_content_with_encrypted_reasoning,
+            )
+
+            # Pack OpenAI encrypted reasoning as redacted_thinking for replay (#2214).
+            content_blocks = anthropic_content_with_encrypted_reasoning(
+                result.content or "",
+                reasoning_encrypted=getattr(result, "reasoning_encrypted", None),
+            )
             payload = AnthropicMessageResponse(
                 id=message_id,
                 model=result.model,
-                content=[AnthropicTextBlock(text=result.content)],
+                content=content_blocks,  # type: ignore[arg-type]
                 usage=usage,
                 daari_meta=result.daari_meta.model_dump(exclude_none=True),
             ).model_dump(exclude_none=True)

@@ -723,10 +723,20 @@ def _conversation_message(message: Message) -> dict[str, Any]:
 
 
 def _thinking_prefix(message: Message) -> list[dict[str, Any]]:
-    """Replay signed thinking blocks ahead of text/tool_use on assistant turns."""
+    """Replay signed thinking blocks ahead of text/tool_use on assistant turns.
+
+    OpenAI-opaque encrypted reasoning (``daari_encrypted_reasoning:``) is never
+    forwarded to Anthropic — only native thinking / redacted_thinking (#2214).
+    """
     if message.role != "assistant" or not message.thinking_blocks:
         return []
-    return [dict(block) for block in message.thinking_blocks]
+    from daari.router.openai_encrypted_reasoning import is_openai_encrypted_reasoning_block
+
+    return [
+        dict(block)
+        for block in message.thinking_blocks
+        if isinstance(block, dict) and not is_openai_encrypted_reasoning_block(block)
+    ]
 
 
 def _assistant_tool_content(message: Message) -> list[dict[str, Any]]:

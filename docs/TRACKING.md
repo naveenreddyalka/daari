@@ -9161,6 +9161,15 @@ GET inventory + PATCH bool (default false). Hot-applies to settings without
 restart so subsequent requests pick up the mesh-identity → tags bridge.
 Covered by `tests/unit/test_config_ownership.py`.
 
+### OpenAI encrypted reasoning on /v1/messages ([#2214](https://github.com/naveenreddyalka/daari/issues/2214))
+
+<!-- tracking:#2214 -->
+**Status:** Done (2026-11-15). Messages→OpenAI frontier hops use Responses with
+`include=[reasoning.encrypted_content]`; encrypted payloads round-trip as
+`redacted_thinking` blocks signed `daari_encrypted_reasoning:` (stream +
+non-stream). OpenAI-opaque blocks are dropped on Anthropic and local tiers.
+Covered by `tests/unit/test_openai_encrypted_reasoning_messages.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
