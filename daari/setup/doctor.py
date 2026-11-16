@@ -138,6 +138,9 @@ def run_doctor(
     compact_tip = _check_compact_to_fit(cfg)
     if compact_tip is not None:
         results.append(compact_tip)
+    stream_fallback_tip = _check_stream_fallback_continue(cfg)
+    if stream_fallback_tip is not None:
+        results.append(stream_fallback_tip)
     json_logs_tip = _check_structured_json_logs(cfg)
     if json_logs_tip is not None:
         results.append(json_logs_tip)
@@ -4669,6 +4672,27 @@ def _check_compact_to_fit(settings: Settings) -> CheckResult | None:
             "before L6 frontier; system messages and tool-call payloads are kept, "
             "and over-cap history fail-closes oversized. Successful trims record "
             "tokens_before / tokens_after and increment compact_to_fit_tokens_dropped"
+        ),
+        optional=True,
+    )
+
+
+def _check_stream_fallback_continue(settings: Settings) -> CheckResult | None:
+    """Informational tip when midstream stream fallback continue is on (#2305).
+
+    Absent when disabled (default). When enabled, remind operators that
+    continuation is text-only and hops after delivered tool_calls fail closed.
+    """
+    routing = getattr(settings, "routing", None)
+    if routing is None or not bool(getattr(routing, "stream_fallback_continue", False)):
+        return None
+    return CheckResult(
+        name="stream_fallback_continue",
+        ok=True,
+        detail=(
+            "routing.stream_fallback_continue is on — midstream continuation after "
+            "a dying hop is text-only; after any tool_calls delta was delivered the "
+            "hop fails closed with stream_incomplete (no next-tier continue)"
         ),
         optional=True,
     )

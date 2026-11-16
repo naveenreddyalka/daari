@@ -9187,6 +9187,14 @@ unchanged. Covered by `tests/unit/test_responses_truncation.py`.
 and does not hop to the next local tier or L6 (LiteLLM #51683 class). Covered by
 `tests/unit/test_stream_fallback_continue.py`.
 
+### Doctor tip for stream_fallback_continue ([#2305](https://github.com/naveenreddyalka/daari/issues/2305))
+
+<!-- tracking:#2305 -->
+**Status:** Done (2026-11-16). `daari doctor` tips when
+`routing.stream_fallback_continue` is on (text-only midstream continue; fail
+closed after tool_calls). Quiet when off. Covered by
+`tests/unit/test_doctor_stream_fallback_continue.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
