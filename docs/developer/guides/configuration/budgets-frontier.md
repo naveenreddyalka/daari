@@ -452,9 +452,11 @@ see [virtual keys](../features/virtual-keys.md#service-tier-allowlists).
 
 OpenAI regional processing (data residency) adds a further **1.10×** uplift on
 models released on or after 2026-03-05 when a key/team `region_pin` is `us`,
-`eu`, `au`, `in`, or `jp`; unset pin bills the standard (or Fast/Ultrafast) rate
-with no residency premium (`daari doctor` pricing notes). FedRAMP routing is
-not invented here.
+`eu`, `au`, `in`, `jp`, `ca`, `sg`, `kr`, `gb`, or `ae`; unset pin bills the
+standard (or Fast/Ultrafast) rate with no residency premium (`daari doctor`
+pricing notes). CA/SG/KR/GB (like AU/IN/JP) are storage-only honesty —
+processing may leave the region; AE offers regional processing for a listed
+chat/Responses/embeddings subset. FedRAMP routing is not invented here.
 
 ### Anthropic cache_control TTL write rates
 

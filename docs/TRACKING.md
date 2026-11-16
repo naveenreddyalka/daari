@@ -9212,6 +9212,15 @@ refs. Covered by `tests/unit/test_team_frontier_byok.py`.
 preview tag may change at GA). Doctor tips when configured on an older Ollama.
 Covered by `tests/unit/test_ripple_l5_recipe.py`.
 
+### Frontier: OpenAI CA/SG/KR/GB/AE residency pins + 1.10× ([#2220](https://github.com/naveenreddyalka/daari/issues/2220))
+
+<!-- tracking:#2220 -->
+**Status:** Done (2026-11-16). `_REGIONAL_PROCESSING_PINS` adds `ca`/`sg`/`kr`/
+`gb`/`ae` (same 1.10× model-gate as us/eu/au/in/jp). Data-residency guide
+documents the five hosts with storage-vs-processing honesty (CA/SG/KR/GB
+storage-only; AE processing for listed chat/Responses/embeddings); budgets-
+frontier uplift sentence updated. Covered by `tests/unit/test_regional_pricing.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

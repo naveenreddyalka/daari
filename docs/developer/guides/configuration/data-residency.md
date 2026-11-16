@@ -11,7 +11,7 @@ pattern as [`provider.zdr`](budgets-frontier.md#providers--fallback).
 ## Slot declaration
 
 Each frontier provider may declare a free-form `region` label (`us`, `eu`,
-`au`, `in`, `jp`, …):
+`au`, `in`, `jp`, `ca`, `sg`, `kr`, `gb`, `ae`, …):
 
 ```yaml
 frontier:
@@ -43,15 +43,34 @@ frontier:
       model: gpt-6-luna
       api_key_env: OPENAI_API_KEY
       region: jp
+    - id: openai-ca
+      base_url: https://ca.api.openai.com/v1
+      model: gpt-6-luna
+      api_key_env: OPENAI_API_KEY
+      region: ca
+    - id: openai-sg
+      base_url: https://sg.api.openai.com/v1
+      model: gpt-6-luna
+      api_key_env: OPENAI_API_KEY
+      region: sg
+    - id: openai-ae
+      base_url: https://ae.api.openai.com/v1
+      model: gpt-6-luna
+      api_key_env: OPENAI_API_KEY
+      region: ae
 ```
 
 OpenRouter's [US / EU in-region routing](https://openrouter.ai/blog/announcements/us-in-region-routing/)
 endpoints decrypt and serve entirely in-region on Business/Enterprise plans.
-OpenAI's AU / IN / JP data-residency hosts (`au.api.openai.com`,
-`in.api.openai.com`, `jp.api.openai.com`) store in-region; processing for those
-regions may still leave the region — pin them only when that honesty matches
-your review. daari never silently routes a pinned request to an unlabeled or
-mismatched slot.
+OpenAI's AU / IN / JP / CA / SG / KR / GB data-residency hosts
+(`au.api.openai.com`, `in.api.openai.com`, `jp.api.openai.com`,
+`ca.api.openai.com`, `sg.api.openai.com`, `kr.api.openai.com`,
+`gb.api.openai.com`) store in-region; processing for those regions may still
+leave the region — pin them only when that honesty matches your review. The
+UAE host (`ae.api.openai.com`) offers regional *processing* for a listed
+chat / Responses / embeddings model subset; other product surfaces may still
+leave the region. daari never silently routes a pinned request to an unlabeled
+or mismatched slot.
 
 ## Key / team pin
 
@@ -72,9 +91,9 @@ L6 responses that used a regional slot set `daari_meta.region` and the
 `x-daari-region` response header so logs and SIEM pipelines can prove residency
 per request.
 
-Pinned `us`/`eu`/`au`/`in`/`jp` traffic on OpenAI models released on or after
-2026-03-05 also bills at **1.10×** the standard (or Fast/Ultrafast) rate so
-`cost_usd` matches the regional invoice (see
+Pinned `us`/`eu`/`au`/`in`/`jp`/`ca`/`sg`/`kr`/`gb`/`ae` traffic on OpenAI
+models released on or after 2026-03-05 also bills at **1.10×** the standard (or
+Fast/Ultrafast) rate so `cost_usd` matches the regional invoice (see
 [budgets and frontier](budgets-frontier.md#service-tier-pricing)).
 
 ## Next
