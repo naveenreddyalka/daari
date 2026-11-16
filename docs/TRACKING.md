@@ -9179,6 +9179,14 @@ Covered by `tests/unit/test_openai_encrypted_reasoning_messages.py`.
 `context_length_exceeded`. OpenAI Responses upstream hops forward the value
 unchanged. Covered by `tests/unit/test_responses_truncation.py`.
 
+### stream_fallback_continue refuses after tool_calls ([#2303](https://github.com/naveenreddyalka/daari/issues/2303))
+
+<!-- tracking:#2303 -->
+**Status:** Done (2026-11-16). Opt-in midstream continue is text-only: after any
+`tool_calls` delta was delivered, daari fails closed with `stream_incomplete`
+and does not hop to the next local tier or L6 (LiteLLM #51683 class). Covered by
+`tests/unit/test_stream_fallback_continue.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -164,8 +164,11 @@ the client. Off keeps today's in-band `stream_incomplete` signal on the last
 hop. On, daari flushes the partial, trips the dead slot's breaker, rewrites the
 transcript with the assistant partial plus a short continue instruction, and
 keeps the same SSE response id while streaming the next tier/slot (local first,
-frontier last). `no_frontier` / `X-Daari-No-Frontier` still block L6; an
-exhausted chain ends with `stream_incomplete`. Continuations increment
+frontier last). Midstream continue is **text-only**: if any `tool_calls` delta
+was already delivered, daari fails closed with `stream_incomplete` and does not
+start a continuation hop (LiteLLM #51683 / #2303). `no_frontier` /
+`X-Daari-No-Frontier` still block L6; an exhausted chain ends with
+`stream_incomplete`. Continuations increment
 `daari_stream_fallback_continue_total` and log `stream_fallback_continue`.
 That override logs `session_pin_override` with reason `cloud_fenced` and the
 next reply re-pins the tier that actually served. Hits log `session_pin`; overrides log

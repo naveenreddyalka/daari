@@ -21,15 +21,20 @@ from daari.router.router import OllamaExecutor, Router
 from tests.conftest import NoopEmbedder
 
 
+_DEMO_TOOLS = [{"type": "function", "function": {"name": "read_file", "parameters": {}}}]
+
+
 def _req(
     text: str = "explain quantum decoherence",
     *,
     no_frontier: bool = False,
     tier: str = "L4",
+    tools: list | None = None,
 ) -> InternalRequest:
     return InternalRequest(
         messages=[Message(role="user", content=text)],
         model="daari",
+        tools=tools,
         meta=RequestMeta(no_frontier=no_frontier, tier_override=tier),
     )
 
@@ -47,10 +52,33 @@ class _DyingL4(OllamaExecutor):
         raise RuntimeError("L4 died mid-stream")
 
 
+class _DyingL4AfterToolCalls(OllamaExecutor):
+    """Emits a tool_calls delta then dies — LiteLLM #51683 / daari #2303 class."""
+
+    async def execute(self, request, model=None, **kwargs):  # type: ignore[override]
+        return InternalResponse(
+            content="",
+            model=self.default_model,
+            daari_meta=DaariMeta(tier="L4", executor="ollama", provider_id="ollama"),
+        )
+
+    async def stream(self, request, **kwargs):  # type: ignore[override]
+        yield {
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {"function": {"name": "read_file", "arguments": {"path": "a.py"}}}
+                ],
+            }
+        }
+        raise RuntimeError("L4 died after tool_calls")
+
+
 class _HealthyL3(OllamaExecutor):
     def __init__(self) -> None:
         super().__init__(base_url="http://l3", default_model="llama3.2:3b")
         self.seen_messages: list[list[Message]] = []
+        self.stream_calls = 0
 
     async def execute(self, request, model=None, **kwargs):  # type: ignore[override]
         return InternalResponse(
@@ -60,6 +88,7 @@ class _HealthyL3(OllamaExecutor):
         )
 
     async def stream(self, request, **kwargs):  # type: ignore[override]
+        self.stream_calls += 1
         self.seen_messages.append(list(request.messages))
         yield {"message": {"content": "CONTINUED"}}
         yield {"done": True}
@@ -206,3 +235,29 @@ async def test_stream_fallback_continue_respects_no_frontier(tmp_path, captured_
     errors = _openai_errors(body)
     assert errors and errors[-1]["error"]["type"] == "stream_incomplete"
     assert "L6-CONTINUE" not in _openai_text(body)
+
+
+@pytest.mark.asyncio
+async def test_stream_fallback_continue_refuses_after_tool_calls(
+    tmp_path, captured_events
+):
+    """#2303 / LiteLLM #51683: never midstream-continue after tool_calls were delivered."""
+    l4 = _DyingL4AfterToolCalls(base_url="http://l4", default_model="qwen2.5:14b")
+    l3 = _HealthyL3()
+    router = _router(tmp_path, l4=l4, l3=l3, stream_fallback_continue=True)
+    body = await _collect(router.stream_openai_chunks(_req(tools=_DEMO_TOOLS)))
+    assert l3.stream_calls == 0, "must not start a second-tier hop after tool_calls"
+    assert router.metrics.stream_fallback_continue == 0
+    assert "stream_fallback_continue" not in [name for name, _ in captured_events]
+    errors = _openai_errors(body)
+    assert errors and errors[-1]["error"]["type"] == "stream_incomplete"
+    # Pending tool_calls chunk flushed at most once before the incomplete frame.
+    tool_deltas = 0
+    for line in body.splitlines():
+        if not line.startswith("data: ") or line.endswith("[DONE]"):
+            continue
+        payload = json.loads(line[len("data: ") :])
+        for choice in payload.get("choices", []):
+            if choice.get("delta", {}).get("tool_calls"):
+                tool_deltas += 1
+    assert tool_deltas == 1
