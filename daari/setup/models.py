@@ -36,6 +36,18 @@ MIMO_RECIPE_NOTE = (
     f"Pull with: ollama pull {MIMO_MODEL}"
 )
 
+# Ricursive Ripple Preview — optional L5 / high-memory L4 agentic coding
+# (Ollama ≥ 0.40.16; 65B dense, ~40 GB+ quantized) (#2217).
+RIPPLE_MODEL = "ripple-preview"
+RIPPLE_OLLAMA_FLOOR = (0, 40, 16)
+RIPPLE_RECIPE_NOTE = (
+    "Optional Ripple Preview L5 agentic-coding recipe "
+    f"(models.l5={RIPPLE_MODEL}; high-memory L4 also fine). "
+    "65B dense — plan ~40 GB+ VRAM/RAM quantized. Preview tag may change at GA. "
+    "Requires Ollama ≥ 0.40.16. "
+    f"Pull with: ollama pull {RIPPLE_MODEL}"
+)
+
 # Liquid AI LFM3 — optional 256K local agent L3 (Ollama ≥ 0.40.12; GA on all OS in 0.40.13) (#1984, #2012).
 LFM3_MODEL = "lfm3"
 LFM3_OLLAMA_FLOOR = (0, 40, 12)
@@ -300,6 +312,33 @@ def apply_mimo_l4_recipe(
             changed=changed,
         )
     return write_models_config(MIMO_MODEL, tier="l4", config_path=path)
+
+
+def apply_ripple_l5_recipe(
+    *,
+    config_path: Path | None = None,
+    dry_run: bool = False,
+) -> ModelSetupResult:
+    """Set ``models.l5`` to Ripple Preview without pulling weights (#2217)."""
+    path = config_path or Path.home() / ".daari" / "config.yaml"
+    if dry_run:
+        current_l5: str | None = None
+        if path.is_file():
+            with path.open(encoding="utf-8") as handle:
+                loaded = yaml.safe_load(handle) or {}
+            if isinstance(loaded, dict):
+                models = loaded.get("models") or {}
+                if isinstance(models, dict):
+                    raw = models.get("l5")
+                    current_l5 = str(raw) if raw is not None else None
+        changed = current_l5 != RIPPLE_MODEL
+        return ModelSetupResult(
+            tier="l5",
+            model=RIPPLE_MODEL,
+            config_path=path,
+            changed=changed,
+        )
+    return write_models_config(RIPPLE_MODEL, tier="l5", config_path=path)
 
 
 def apply_nemotron_bolt_l3_recipe(
@@ -664,6 +703,7 @@ def setup_models_interactive(
     list_only: bool = False,
     flint: bool = False,
     mimo: bool = False,
+    ripple: bool = False,
     nemotron_bolt: bool = False,
     lfm3: bool = False,
     lfm3_vl: bool = False,
@@ -707,6 +747,15 @@ def setup_models_interactive(
             typer.echo(f"Dry-run: would set models.l4 = {MIMO_MODEL} in {path}")
         else:
             typer.echo(f"Set models.l4 = {MIMO_MODEL} in {path}")
+        return result
+
+    if ripple:
+        typer.echo(RIPPLE_RECIPE_NOTE)
+        result = apply_ripple_l5_recipe(config_path=path, dry_run=dry_run)
+        if dry_run:
+            typer.echo(f"Dry-run: would set models.l5 = {RIPPLE_MODEL} in {path}")
+        else:
+            typer.echo(f"Set models.l5 = {RIPPLE_MODEL} in {path}")
         return result
 
     if nemotron_bolt:

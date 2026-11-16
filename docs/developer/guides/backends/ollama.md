@@ -44,6 +44,11 @@ Optional **MiMo V2.6** L4 code/agent recipe (Ollama ≥ 0.40.15):
 Pull later with `ollama pull mimo-v2.6`. Ollama 0.40.15 also adds YaRN long-context
 support for Qwen3 / Qwen3.5 family tags (docs note only; routing unchanged).
 
+Optional **Ripple Preview** L5 agentic-coding recipe (Ollama ≥ 0.40.16):
+`daari setup models --ripple` sets `models.l5=ripple-preview` without pulling
+weights (high-memory L4 is also fine). 65B dense — plan ~40 GB+ quantized.
+Preview tag may change at GA. Pull later with `ollama pull ripple-preview`.
+
 Optional **Nemotron 3.5 Bolt E4B** L3 VLM recipe (Ollama ≥ 0.40.10):
 `daari setup models --nemotron-bolt` sets `models.l3=nemotron-3.5-bolt:e4b`
 without pulling weights. Pull later with `ollama pull nemotron-3.5-bolt:e4b`.

@@ -3674,6 +3674,14 @@ def setup_models(
             "(models.l4=mimo-v2.6; Ollama ≥ 0.40.15)."
         ),
     ),
+    ripple: bool = typer.Option(
+        False,
+        "--ripple",
+        help=(
+            "Apply optional Ripple Preview L5 agentic-coding recipe "
+            "(models.l5=ripple-preview; Ollama ≥ 0.40.16; ~40 GB+ quantized)."
+        ),
+    ),
     nemotron_bolt: bool = typer.Option(
         False,
         "--nemotron-bolt",
@@ -3741,6 +3749,7 @@ def setup_models(
         list_only=list_models,
         flint=flint,
         mimo=mimo,
+        ripple=ripple,
         nemotron_bolt=nemotron_bolt,
         lfm3=lfm3,
         lfm3_vl=lfm3_vl,
