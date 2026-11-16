@@ -795,6 +795,18 @@ class FrontierSettings(RuntimeSettings):
     # Mark the stable system prefix for provider-side prompt caching
     # (Anthropic cache_control; OpenAI caches automatically). Trust PRD T2a.
     prompt_cache: bool = True
+    # Opt-in Anthropic top-level auto caching (#2221 / Portkey 2.33.0 parity).
+    auto_caching: bool = Field(
+        default=False,
+        description=(
+            "When true, Anthropic-bound L6 payloads get top-level "
+            "cache_control: {type: ephemeral} (Portkey 2.33.0 auto caching). "
+            "A caller-supplied top-level cache_control is preserved and not "
+            "overwritten. Block-level prompt_cache marking is unchanged. "
+            "Default off. YAML / env DAARI_FRONTIER__AUTO_CACHING only "
+            "(not config-editor ownership)."
+        ),
+    )
     # Relevance-prune long context before L6 (Trust PRD T2c). Opt-in.
     compress_context: bool = False
     compress_target_ratio: float = 0.6

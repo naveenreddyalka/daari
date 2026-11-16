@@ -9221,6 +9221,14 @@ documents the five hosts with storage-vs-processing honesty (CA/SG/KR/GB
 storage-only; AE processing for listed chat/Responses/embeddings); budgets-
 frontier uplift sentence updated. Covered by `tests/unit/test_regional_pricing.py`.
 
+### Frontier: Anthropic auto_caching top-level cache_control ([#2221](https://github.com/naveenreddyalka/daari/issues/2221))
+
+<!-- tracking:#2221 -->
+**Status:** Done (2026-11-16). Opt-in `frontier.auto_caching` injects top-level
+`cache_control: {type: ephemeral}` on Anthropic-bound L6 payloads; client-
+supplied top-level wins; block-level `prompt_cache` unchanged; non-Anthropic
+paths do not leak the field. Covered by `tests/unit/test_anthropic_auto_caching.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

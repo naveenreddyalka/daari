@@ -173,6 +173,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `frontier.slim_prompts` | bool | `True` |  |
 | `frontier.max_history_messages` | int | `8` |  |
 | `frontier.prompt_cache` | bool | `True` |  |
+| `frontier.auto_caching` | bool | `False` | When true, Anthropic-bound L6 payloads get top-level cache_control: {type: ephemeral} (Portkey 2.33.0 auto caching). A caller-supplied top-level cache_control is preserved and not overwritten. Block-level prompt_cache marking is unchanged. Default off. YAML / env DAARI_FRONTIER__AUTO_CACHING only (not config-editor ownership). |
 | `frontier.compress_context` | bool | `False` |  |
 | `frontier.compress_target_ratio` | float | `0.6` |  |
 | `frontier.thinking_binding_drop_block` | bool | `True` | When true (default), L6 Anthropic requests that replay thinking blocks on preserved-thinking Claude models (Fable/Mythos any; Sonnet/Haiku/Opus ≥ 5.5) merge the thinking-binding-controls beta and set thinking.block_binding.prefix_mismatch_behavior=drop_block so compress/compact/failover do not 400. Set false to pin pre-binding API behavior. Env: DAARI_FRONTIER__THINKING_BINDING_DROP_BLOCK. |

@@ -145,6 +145,8 @@ class ResponsesRequest(BaseModel):
     prompt_cache_key: str | None = None
     prompt_cache_retention: str | None = None
     prompt_cache_options: dict[str, Any] | None = None
+    # Anthropic top-level cache_control when Responses bridge to Claude (#2221).
+    cache_control: dict[str, Any] | None = None
     # Stable end-user id for spend attribution / chargeback (#1172).
     user: str | None = None
     # gpt-6.1-sol / GPT-5.6 Responses multi-agent beta (#1478).
