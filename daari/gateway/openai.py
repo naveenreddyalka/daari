@@ -179,6 +179,8 @@ class ChatCompletionRequest(BaseModel):
     # OpenAI/OpenRouter service_tier (flex|standard|priority|fast). Same #161
     # pattern — declare so it reaches SamplingParams (#1005).
     service_tier: str | None = None
+    # Anthropic top-level cache_control when L6 bridges OpenAI→Claude (#2221).
+    cache_control: Any | None = None
 
 
 def _to_internal_messages(messages: list[ChatMessage]) -> list[Message]:

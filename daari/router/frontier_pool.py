@@ -95,6 +95,7 @@ class FrontierPool:
     api_key: str | None = None
     provider: str = "pool"
     prompt_cache: bool = True
+    auto_caching: bool = False
     _last_executor: FrontierExecutor | None = field(default=None, init=False, repr=False)
 
     @property
@@ -120,6 +121,7 @@ class FrontierPool:
             api_key=executor.api_key,
             provider=executor.provider,
             prompt_cache=executor.prompt_cache,
+            auto_caching=getattr(executor, "auto_caching", False),
         )
 
     async def execute(
@@ -379,6 +381,7 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             api_key=key,
             provider=frontier.provider,
             prompt_cache=frontier.prompt_cache,
+            auto_caching=bool(getattr(frontier, "auto_caching", False)),
             thinking_binding_drop_block=bool(
                 getattr(frontier, "thinking_binding_drop_block", True)
             ),
@@ -409,6 +412,7 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             api_key=keys[0] if keys else None,
             provider=entry.id,
             prompt_cache=frontier.prompt_cache,
+            auto_caching=bool(getattr(frontier, "auto_caching", False)),
             thinking_binding_drop_block=bool(
                 getattr(frontier, "thinking_binding_drop_block", True)
             ),
@@ -441,4 +445,5 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
         api_key=first.api_key if first else None,
         provider="pool",
         prompt_cache=frontier.prompt_cache,
+        auto_caching=bool(getattr(frontier, "auto_caching", False)),
     )

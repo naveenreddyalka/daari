@@ -268,6 +268,8 @@ class FrontierExecutor:
     # caching. Anthropic needs explicit cache_control; OpenAI caches stable
     # prefixes automatically, so no payload change is needed there.
     prompt_cache: bool = True
+    # Portkey-style Anthropic top-level auto caching (#2221).
+    auto_caching: bool = False
     # Preserved-thinking drop_block default (#2196); mirrors frontier setting.
     thinking_binding_drop_block: bool = True
     # Codex PAT (`at-…`) override host; empty string disables rewrite (#2112).
@@ -477,6 +479,7 @@ class FrontierExecutor:
             model=self.default_model,
             stream=stream,
             prompt_cache=self.prompt_cache,
+            auto_caching=self.auto_caching,
         )
         # Bridge OpenAI reasoning_effort into param_compat for Claude 5.5 none→
         # thinking disabled (#2188). Stripped again after compat (not an Anthropic field).

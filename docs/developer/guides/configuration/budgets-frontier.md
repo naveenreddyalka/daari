@@ -467,6 +467,14 @@ remains `{type: ephemeral}` (5-minute). When the request asks for `ttl: 1h`,
 `cache_write_1h_per_1m` (2× base input on the shipped Claude table). Missing
 TTL or `5m` keeps today's rate (write tokens at `input_per_1m`).
 
+Set `frontier.auto_caching: true` to inject Anthropic's top-level
+`cache_control: {type: ephemeral}` on Claude-bound L6 hops (Messages,
+OpenAI→Anthropic chat completions, and Responses bridged to Claude) without
+hand-marking every system block. A request that already sends top-level
+`cache_control` keeps that value; block-level breakpoints and
+`frontier.prompt_cache` last-system marking still apply. Non-Anthropic
+executors never see the field.
+
 ## Providers / fallback
 
 Configure `frontier.providers` (ordered list) for OpenAI-compatible bases, Anthropic, OpenRouter, etc. Circuit breakers and key rotation ship with the L6 pool. Each entry may set `timeout_s`, `retry_attempts`, and `retry_backoff_s`; unset fields inherit `upstream.frontier_timeout_seconds` / `upstream.retry`. A provider's exhausted retries advance the chain, and one slot's timeout does not consume the next slot's budget. `POST /v1/daari/route/preview` and `daari route preview` show the resolved policy on `policy` / `chain`. A provider whose `provider` is `anthropic`/`claude`, or whose `base_url` contains `anthropic.com`, is sent native Messages API payloads (`POST …/messages`, `x-api-key`) rather than an OpenAI `/chat/completions` body.

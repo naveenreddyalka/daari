@@ -625,6 +625,7 @@ def to_anthropic_payload(
     model: str,
     stream: bool = False,
     prompt_cache: bool = False,
+    auto_caching: bool = False,
 ) -> dict[str, Any]:
     system_blocks: list[dict[str, Any]] = []
     converted: list[dict[str, Any]] = []
@@ -712,6 +713,12 @@ def to_anthropic_payload(
     thread = getattr(request.meta, "anthropic_thread", None)
     if isinstance(thread, dict) and thread.get("type") in {"create", "continue"}:
         payload["thread"] = dict(thread)
+    # Top-level Anthropic auto caching (#2221): client-supplied wins over dial.
+    client_cc = getattr(request.sampling, "cache_control", None)
+    if isinstance(client_cc, dict) and client_cc:
+        payload["cache_control"] = dict(client_cc)
+    elif auto_caching:
+        payload["cache_control"] = {"type": "ephemeral"}
     return payload
 
 

@@ -377,6 +377,9 @@ class SamplingParams(BaseModel):
     prompt_cache_key: str | None = None
     prompt_cache_retention: str | None = None
     prompt_cache_options: dict[str, Any] | None = None
+    # Anthropic top-level cache_control (#2221). Forwarded on Anthropic L6 only;
+    # never leaked to OpenAI / local payloads. Client value beats frontier.auto_caching.
+    cache_control: dict[str, Any] | None = None
     # Responses multi-agent beta (#1478). Forwarded on L6; fail-closed locally.
     multi_agent: dict[str, Any] | None = None
     # Responses truncation auto|disabled (#2215). Enforced locally; forwarded on
@@ -463,6 +466,7 @@ class SamplingParams(BaseModel):
             prompt_cache_key=_normalize_str(body.get("prompt_cache_key")),
             prompt_cache_retention=_normalize_str(body.get("prompt_cache_retention")),
             prompt_cache_options=_normalize_dict(body.get("prompt_cache_options")),
+            cache_control=_normalize_dict(body.get("cache_control")),
             multi_agent=_normalize_dict(body.get("multi_agent")),
         )
 
@@ -523,6 +527,7 @@ class SamplingParams(BaseModel):
             output_config=output_config,
             metadata=_normalize_dict(body.get("metadata")),
             reasoning_effort=effort,
+            cache_control=_normalize_dict(body.get("cache_control")),
         )
 
     @classmethod
@@ -805,6 +810,8 @@ class SamplingParams(BaseModel):
             notes.append("prompt_cache_retention is not available from local models")
         if self.prompt_cache_options:
             notes.append("prompt_cache_options are not available from local models")
+        if self.cache_control:
+            notes.append("cache_control is not available from local models")
         if _thinking_type(self.thinking) == "between_tools":
             notes.append(
                 "thinking.type between_tools is not available on local models; "
@@ -857,6 +864,8 @@ class SamplingParams(BaseModel):
             names.append("prompt_cache_retention")
         if self.prompt_cache_options:
             names.append("prompt_cache_options")
+        if self.cache_control:
+            names.append("cache_control")
         if _thinking_type(self.thinking) == "between_tools":
             names.append("thinking.between_tools")
         return names

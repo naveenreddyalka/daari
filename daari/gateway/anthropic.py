@@ -281,6 +281,9 @@ class AnthropicRequest(BaseModel):
     mcp_servers: list[Any] | None = None
     # Anthropic message-threads public beta create/continue (#2093).
     thread: dict[str, Any] | None = None
+    # Top-level Anthropic auto caching marker (#2221). Client value beats
+    # frontier.auto_caching when both are present.
+    cache_control: Any | None = None
 
     @field_validator("thread", mode="before")
     @classmethod
