@@ -3118,13 +3118,22 @@ class Router:
                                     tier, warm_models=self._warm_models
                                 )
                             )
+                        # Text-only midstream continue (#2003). After any
+                        # tool_calls delta, refuse continue and fail closed
+                        # like last-tier incomplete (LiteLLM #51683 / #2303).
                         can_midstream_continue = (
                             content_sent
+                            and not tool_calls_sent
                             and getattr(self, "stream_fallback_continue", False)
                             and (
                                 tier_index < len(tier_chain) - 1
                                 or self._can_stream_continue_frontier(stream_request)
                             )
+                        )
+                        refuse_after_tool_calls = (
+                            content_sent
+                            and tool_calls_sent
+                            and getattr(self, "stream_fallback_continue", False)
                         )
                         if more_hosts:
                             add_step(
@@ -3174,19 +3183,9 @@ class Router:
                                 # Fall through after this host attempt to L6
                                 # continuation (local chain exhausted).
                                 pass
-                        elif tier_index < len(tier_chain) - 1:
-                            from daari.router.failover import is_context_length_error
-
-                            if is_context_length_error(exc):
-                                add_step(
-                                    "context_length_failover",
-                                    from_tier=tier,
-                                    to_tier=tier_chain[tier_index + 1],
-                                    reason="context_too_long",
-                                )
-                            else:
-                                add_step("fallback", from_tier=tier, error=str(exc)[:120])
-                        elif content_sent:
+                        elif refuse_after_tool_calls or (
+                            content_sent and tier_index >= len(tier_chain) - 1
+                        ):
                             for chunk in pending_chunks:
                                 yield chunk
                             log_gateway_event(
@@ -3196,6 +3195,11 @@ class Router:
                                     "ollama_model": ollama_model,
                                     "error": str(exc)[:300],
                                     "partial_chars": tier_completion_chars,
+                                    **(
+                                        {"refuse_after_tool_calls": True}
+                                        if refuse_after_tool_calls
+                                        else {}
+                                    ),
                                 },
                             )
                             yield _openai_stream_error_frame(
@@ -3220,6 +3224,18 @@ class Router:
                                 )
                             finish_trace(None)
                             return
+                        elif tier_index < len(tier_chain) - 1:
+                            from daari.router.failover import is_context_length_error
+
+                            if is_context_length_error(exc):
+                                add_step(
+                                    "context_length_failover",
+                                    from_tier=tier,
+                                    to_tier=tier_chain[tier_index + 1],
+                                    reason="context_too_long",
+                                )
+                            else:
+                                add_step("fallback", from_tier=tier, error=str(exc)[:120])
                         else:
                             yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
                             yield "data: [DONE]\n\n"
