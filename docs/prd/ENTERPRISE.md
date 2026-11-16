@@ -11,28 +11,30 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-15 pm)
+## Where daari stands (verified in-tree, 2026-11-16)
 
-**Loop velocity.** Afternoon shipped Responses `truncation`
-auto/disabled (row 356 → PR #2302). Overnight 351–353 + 355 remain
-Shipped (#2293–#2296). Morning cut (405–408) still Filed; 11-14 waves
-(395–404) still Filed.
+**Loop velocity.** Overnight shipped the midstream tool-call refuse
+(409 → PR #2309), its doctor tip (411 → PR #2310), **team BYOK**
+(357 → PR #2311: key-over-team binding, `secret://`, fail-closed 502,
+redacted admin reads, doctor tips), and the Ripple Preview L5 recipe
+(358 → PR #2312). 11-15 cuts (405–408, 410, 412–413) still Filed.
 
-**Outward.** Landscape flat vs morning: LiteLLM **1.108.9 LTS**
-stable; **1.111.0-dev.4** / **1.110.0-rc.3** still pre-release.
-Converted from watch: #51683 tool-call midstream replay → 409 (defect
-is live in daari today under `stream_fallback_continue`). Remainder of
-1.111-dev held (key-expiry emails already in-tree; spend-log token
-redaction N/A — spend rows have no free-text prompts). Portkey
-**2.33.1**, Kong **2.3.1**, Ollama **0.40.17-rc0**, vLLM **0.33.0rc3**,
-llama.cpp **v1.0.0**, OpenRouter newest diff, OpenAI/Anthropic — no
-new GA movers. Sol promo still expires **2026-11-21** (405).
+**Outward.** Flat: LiteLLM **1.108.9 LTS** / 1.111.0-dev.4 /
+1.110.0-rc.3 unchanged; Portkey **2.33.1**; Kong **2.3.1**; Ollama
+**0.40.17-rc0**; vLLM **0.33.0rc3**; llama.cpp **v1.0.0** (b-tags
+only); MCP spec 2026-07-28; OpenRouter newest diff matches watch;
+OpenAI/Anthropic news carry no gateway surface. Sol promo still
+expires **2026-11-21** (405).
 
-**Inward theme: midstream tool-call safety + truncation ops.** Opt-in
-`stream_fallback_continue` treats delivered `tool_calls` as
-`content_sent` and will hop after flushing them (409). Truncation
-shipped without Prom/stats (412). Operator surfaces for the dial
-(410–411); fence 413.
+**Inward theme: team-BYOK follow-through — tenant credentials
+everywhere money moves.** #2311 binds L6 on the router path only
+(`_key_for_slot`): the modality doors — images, ASR, OCR, moderations,
+rerank, decisions — resolve via `resolve_l6_targets()` and still sign
+with the **global** key, ignoring pool pins too (414). The spend
+ledger has no credential-source column (415), so analytics reconcile
+(#2033) inflates drift the moment a tenant binds a key (416). No
+Prom/stats for binding outcomes incl. fail-closed 502s (417); fence
+the overnight wave (418).
 
 ---
 
@@ -40,9 +42,13 @@ shipped without Prom/stats (412). Operator surfaces for the dial
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 409 | `stream_fallback_continue` must refuse after delivered tool_calls (chat + Responses) | 5 | 2 | LiteLLM 1.111-dev #51683 | Local agent loops must not double-fire shell tools across a midstream hop | Filed [#2303](https://github.com/naveenreddyalka/daari/issues/2303) |
+| 414 | Team/key BYOK must sign the modality + passthrough L6 doors (images, ASR, OCR, moderations, rerank, decisions) — binding and pool pin currently ignored there | 4 | 3 | LiteLLM per-deployment keys / Kong upstream credentials | Tenant credential everywhere money moves, enforced at one box's edge; local legs stay $0 | Filed [#2313](https://github.com/naveenreddyalka/daari/issues/2313) |
+| 415 | Spend ledger records `credential_source` (global/team/key) + frontier slot on every billed row; `daari report` split | 4 | 2 | LiteLLM key-alias spend tags; Kong AI Gateway FinOps | Same-box ledger mirrors each provider invoice without SaaS export | Filed [#2314](https://github.com/naveenreddyalka/daari/issues/2314) |
+| 416 | Analytics reconcile excludes tenant-credential spend (false drift vs global-org analytics after BYOK) | 3 | 2 | — (no gateway ships ledger-vs-invoice drift detection) | On-box billing truth stays honest under multi-credential tenancy | Filed [#2315](https://github.com/naveenreddyalka/daari/issues/2315) |
+| 417 | Prom/stats counters for frontier binding outcomes (signed / pin_unmatched / unresolvable incl. fail-closed 502) | 2 | 1 | Portkey analytics / hand-rolled Prom | Same-box scrape proves tenant isolation without exporting tenant traffic | Filed [#2316](https://github.com/naveenreddyalka/daari/issues/2316) |
+| 418 | Integration fence for the 11-15/11-16 overnight team-BYOK + Ripple wave | 2 | 2 | — (testability) | Hermetic proof: binding precedence, fail-closed 502, redaction, doctor, recipe | Filed [#2317](https://github.com/naveenreddyalka/daari/issues/2317) |
+| 409, 411 | `stream_fallback_continue` refuses after delivered tool_calls; doctor tip for the dial | 2–5 | 1–2 | LiteLLM 1.111-dev #51683 | Local agent loops must not double-fire shell tools across a midstream hop | Shipped (#2309, #2310) |
 | 410 | Grafana panel for `daari_stream_fallback_continue_total` | 2 | 1 | Portkey analytics / hand-rolled Prom | Same-box scrape shows whether the opt-in dial is firing | Filed [#2304](https://github.com/naveenreddyalka/daari/issues/2304) |
-| 411 | Doctor tip when `routing.stream_fallback_continue` is on | 2 | 1 | — (ops honesty) | Catch the sharp edge before production agent traffic | Filed [#2305](https://github.com/naveenreddyalka/daari/issues/2305) |
 | 412 | Prom/stats counters for Responses `truncation` auto + rejected | 3 | 1 | LiteLLM spend dashboards / Kong FinOps | Prove the just-shipped dial from the same-box scrape | Filed [#2306](https://github.com/naveenreddyalka/daari/issues/2306) |
 | 413 | Integration fence for the 11-15 evening truncation + midstream-safety wave | 2 | 2 | — (testability) | Hermetic proof: tool-call refuse, Grafana, doctor, truncation counters | Filed [#2307](https://github.com/naveenreddyalka/daari/issues/2307) |
 | 405 | Time-bounded catalog rates: `effective_to` promo windows + baseline fallback (Sol $4/$20 → $5/$30 on 11-21; Gemini 12-01 step-up class) | 4 | 2 | Kong 2.3.0 dynamic-pricing `effective_to`/`baseline_price` | Honest ledger through published price changes with no redeploy and no SaaS price feed | Filed [#2297](https://github.com/naveenreddyalka/daari/issues/2297) |
@@ -91,7 +97,8 @@ shipped without Prom/stats (412). Operator surfaces for the dial
 | 369 | Integration fence for the 11-10/11-11 overnight wave | 2 | 2 | — (testability) | Hermetic proof: cost-aware selection prefers $0 local; SLO panel pinned | Filed [#2236](https://github.com/naveenreddyalka/daari/issues/2236) |
 | 360–364 | Residency CA/SG/KR/GB/AE; auto_caching; any-5xx; Fable/Mythos advisor; evening fence | 2–3 | 1–2 | OpenAI / Portkey 2.33.0 / Kong 2.3.0 / Anthropic | Governance + residency dials on the same-box console | Filed (#2220–#2224) |
 | 356 | Responses `truncation` auto/disabled | 3 | 2 | LiteLLM 1.108.4 | On-box compact vs honest 400 against serving window | Shipped (#2302) |
-| 357–359 | Team BYOK; Ripple recipe; overnight fence | 2–4 | 1–3 | Ollama 0.40.16 | Tenant + local catalog on-box | Filed (#2216–#2218) |
+| 357–358 | Team BYOK; Ripple recipe | 2–4 | 1–3 | Ollama 0.40.16 | Tenant + local catalog on-box | Shipped (#2311, #2312) |
+| 359 | Integration fence for the 11-09/11-10 overnight wave | 2 | 2 | — (testability) | Hermetic proof of that wave's governance dials | Filed [#2218](https://github.com/naveenreddyalka/daari/issues/2218) |
 | 351–353, 355 | 5.2 thinking strip on failover; computer-toolset gate; `baggage_to_tags` PATCH; encrypted reasoning on `/v1/messages` | 3–4 | 1–2 | Anthropic 11-09 gates / LiteLLM 1.108.4 | Switch-owned strip + reasoning fidelity on-box | Shipped (#2293–#2296) |
 | 346–348, 350 | Server-side tool billing + `tool_usage`; in-flight reservation; per-key Prom label; 5.2 catalog rates | 3–4 | 2–3 | Kong 2.3.0 / Anthropic list prices | FinOps truth on the same-box ledger and scrape | Shipped (#2277–#2280) |
 | 354 | Integration fence for the 11-09 afternoon wave | 2 | 2 | — (testability) | Hermetic proof: baggage tags, service-tier Grafana, 5.2 catalog smoke | Filed [#2208](https://github.com/naveenreddyalka/daari/issues/2208) |
@@ -165,88 +172,81 @@ Responses WS; Prom exemplars + `gen_ai.agent.*`; SCIM + multi-issuer
 SSO; Kong Skills/A2A; certifi emSign; Ollama d1 GA; local
 message-thread analogue (after ask); A2A 1.1 RC (two-SDK gate).
 
-Verified fine this run — don't re-audit: #51683 class converted (409);
-block-level `cache_control` on `/v1/messages` (#434); `reasoning_effort`
-forwarded to OpenAI-compat locals (407 is response-side only);
-key-expiry doctor/Prom/webhook already shipped; moderations/embeddings
-$0 honest; L6 `current_secret` freshness (stale gap is MCP-egress 395);
-OTLP metrics exist; Fable 5.2 rates GA; chat/audio/embed/MCP deadlines
-(400 is OCR+images only); credential hygiene (378); session repin;
-`redacted_thinking`; hold Responses `error_data` until buyer ask.
+Verified fine this run — don't re-audit: Opus 4.8 fast-mode removal
+(11-30) already handled — #2053 warn/reject/degrade machinery in
+`daari/pricing.py` is seeded with the removal date; chat-path BYOK
+signs via `_key_for_slot` + `_slots_for_request` (414 is modality
+doors only); #2311 shipped doctor tips + fail-closed 502 + redacted
+admin reads (fence 418 pins them); block-level `cache_control` on
+`/v1/messages` (#434); `reasoning_effort` forwarded to OpenAI-compat
+locals (407 is response-side only); moderations/embeddings $0 honest;
+chat/audio/embed/MCP deadlines (400 is OCR+images only); hold
+Responses `error_data` until buyer ask.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Billing truth everywhere money moves** — time-bounded promo
-   rates before Sol lapses 11-21 (405); refused-leg sum (391);
-   abandoned-stream settlement (386); frontier OCR leg (396); image
-   generations/edits (375); frontier ASR (376); Gemini 4 Carbon/Argon
-   (371); daily `rpd`/`tpd` (372); residency uplift (360); per-team
-   BYOK (357); Grafana input/output panels (392); server-tool fee Prom
-   (401); truncation Prom (412).
+1. **Billing truth everywhere money moves** — BYOK on the modality
+   doors (414); ledger credential attribution (415); reconcile
+   honesty under tenancy (416); time-bounded promo rates before Sol
+   lapses 11-21 (405); refused-leg sum (391); abandoned-stream
+   settlement (386); frontier OCR leg (396); image generations/edits
+   (375); frontier ASR (376); Gemini 4 Carbon/Argon (371); daily
+   `rpd`/`tpd` (372); residency uplift (360); Grafana input/output
+   panels (392); server-tool fee Prom (401); truncation Prom (412).
+   Team BYOK core shipped (357).
 2. **Nothing goes stale quietly** — MCP egress credential re-mint
    (395); modality deadlines on OCR/images (400); MCP cancellation
    (385); session-pin isolation (387); abort/`finish_reason` honesty
    (373); honest `stop_reason` (365); ZDR honesty (398); reservation
-   doctor tip (403); stream_fallback doctor tip (411).
-3. **Agent-loop / Responses / Extractions fidelity** — refuse
-   midstream continue after delivered tool_calls (409); Responses
+   doctor tip (403). stream_fallback doctor tip shipped (411).
+3. **Agent-loop / Responses / Extractions fidelity** — Responses
    output-order + reasoning-item fidelity (406); surface local-tier
    thinking (407); Extractions facade (390); OpenRouter `reasoning`
    object (397); skip failed `previous_response_id` turns (380);
    `max_tool_calls` honesty (381); streamed cache tool_calls (367);
-   `allowed_tools` (377); advisor (363). Truncation auto/disabled
-   shipped (356).
+   `allowed_tools` (377); advisor (363). Midstream tool-call refuse
+   (409) and truncation auto/disabled (356) shipped.
 4. **CMA, containment, and routing like Auto Router** — Managed
    Agents → daari recipe (382); credential hygiene fence (378); scan
    tool_call args (366); coding-router (370); auto_caching (361);
-   any-5xx (362); Ripple (358).
+   any-5xx (362). Ripple recipe shipped (358).
 5. **Local engine floor + survive the blip + honest compare** —
    llama.cpp v1.0.0 pin (388); LTS floor 1.108.9 compare (393; fold
-   1.106.10); stream_fallback Grafana (410); offline Prom (279) +
-   doctor (285); reservation Grafana (402); hot-reload (6); failover
-   panels (274); fences through 413; then 62–67.
+   1.106.10); binding-outcome Prom (417); stream_fallback Grafana
+   (410); offline Prom (279) + doctor (285); reservation Grafana
+   (402); hot-reload (6); failover panels (274); fences through 418;
+   then 62–67.
 
 ---
 
 ## Changelog
 
-- **2026-11-15 pm (midstream tool-call safety; truncation ops)** —
-  Outward flat vs morning (1.108.9 LTS; 1.111.0-dev.4 / 1.110.0-rc.3
-  still pre-release). Converted LiteLLM #51683 class now: daari's
-  `stream_fallback_continue` will hop after flushing delivered
-  `tool_calls` (409). Operator surfaces for the dial (410–411);
-  Prom/stats for just-shipped Responses truncation (412); fence 413.
-  Row 356 Shipped (#2302). Watch pruned: #51683 removed; key-expiry
-  emails + spend-log redaction marked N/A / already shipped.
+- **2026-11-16 (team-BYOK follow-through: tenant credentials
+  everywhere money moves)** — Outward flat (LiteLLM 1.108.9 LTS /
+  1.111.0-dev.4 unchanged; Portkey 2.33.1; Kong 2.3.1; OpenRouter
+  diff matches watch). Inward audit of just-shipped #2311: modality
+  doors ignore the binding and pool pin (414); ledger lacks
+  credential attribution (415); analytics reconcile false-drifts
+  under tenancy (416); no binding-outcome Prom/stats (417); fence
+  418. Overnight 409 + 411 Shipped (#2309–#2310), 357–358 Shipped
+  (#2311–#2312). Verified fine: Opus 4.8 fast-mode sunset already
+  seeded in #2053 machinery — never file.
 
-- **2026-11-15 (reasoning truth + Sol promo deadline; LiteLLM 1.108.9
-  LTS mined)** — Outward: **1.108.9 LTS** (#51356 → 406; #51748 →
-  direction for 407; chat→Responses `cache_control` N/A). Inward: Sol
-  promo expiry 11-21 (405); local thinking discarded (407); Responses
-  output flattened (406); fence 408. Overnight 351–353 + 355 Shipped
-  (#2293–#2296).
+- **2026-11-15 → 11-15 pm** — Condensed: LiteLLM 1.108.9 LTS mined
+  (Responses output-order 406, local thinking 407); Sol promo
+  deadline converted (405); fence 408. Evening: #51683 class →
+  midstream tool-call refuse (409), dial surfaces (410–411),
+  truncation Prom (412), fence 413; row 356 Shipped (#2302);
+  overnight 351–353 + 355 Shipped (#2293–#2296).
 
-- **2026-11-14 pm (modality deadline + overnight FinOps scrape)** —
-  Outward flat vs morning (LiteLLM 1.106.10 / 1.108.8 LTS;
-  OpenRouter `error_data` / `ContentFilterReadEntry` /
-  `catalog_index_note` / `retrieved_at` stay watch; Portkey 2.33.1;
-  Kong 2.3.1). Inward: OCR + image doors skip `X-Daari-Deadline-Ms`
-  (400); server-tool fees missing from Prom (401); reservation
-  counter lacks Grafana (402); `reserve_in_flight` without USD
-  windows is a silent no-op (403); fence 404. Morning 395–399 still
-  Filed.
-
-- **2026-11-14 (stale-credential + billing-truth cut; LiteLLM
-  1.106.10)** — Outward: LiteLLM **1.106.10** maintenance patch (MCP
-  re-auth on token expiry) → mined as 395; OpenRouter Nov-11
-  `reasoning.*` ChatRequest fields converted (397); newest OpenRouter
-  diff → watch. Inward: MCP egress returns the boot-minted
-  `secret://` token raw (395); frontier OCR leg bills $0 (396);
-  slot-level `zdr` can cover retention-required 5.2 models — watch
-  trigger fired when #2280 merged (398); fence 399. Overnight rows
-  346–348 + 350 Shipped (#2277–#2280).
+- **2026-11-14 → 11-14 pm** — Condensed: LiteLLM 1.106.10 mined (MCP
+  egress re-mint 395); frontier OCR leg billing (396); OpenRouter
+  `reasoning` object (397); ZDR honesty (398); modality deadlines
+  (400); server-tool fee Prom (401); reservation Grafana + doctor
+  (402–403); fences 399/404. Overnight 346–348 + 350 Shipped
+  (#2277–#2280).
 
 - **2026-11-13 → 11-13 pm** — Condensed: llama.cpp v1.0.0 (MCP
   cancellation 385, guide 388); abandoned-stream + session-pin
