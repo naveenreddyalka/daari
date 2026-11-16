@@ -77,6 +77,7 @@ _LOCAL_CAPABILITIES: dict[str, frozenset[str]] = {
     "lfm3-omni": frozenset({"tools", "json", "vision", "audio"}),
     "lfm3-vl": frozenset({"tools", "json", "vision"}),
     "mimo-v2.6": frozenset({"tools", "json"}),
+    "ripple-preview": frozenset({"tools", "json"}),
 }
 
 

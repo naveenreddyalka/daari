@@ -546,6 +546,46 @@ def _ollama_flint_warning(http: httpx.Client, base: str, l4_model: str) -> Check
     )
 
 
+def _ollama_ripple_warning(
+    http: httpx.Client,
+    base: str,
+    *,
+    l4_model: str,
+    l5_model: str,
+) -> CheckResult | None:
+    """Tip when Ripple Preview is configured but Ollama is older than 0.40.16 (#2217)."""
+    from daari.setup.models import RIPPLE_MODEL, RIPPLE_OLLAMA_FLOOR
+
+    configured = None
+    for raw in (l5_model, l4_model):
+        name = (raw or "").strip()
+        if name == RIPPLE_MODEL or name.startswith(f"{RIPPLE_MODEL}:"):
+            configured = name
+            break
+    if configured is None:
+        return None
+    version = _ollama_version_payload(http, base)
+    if version is None:
+        return CheckResult(
+            name="ollama_ripple",
+            ok=False,
+            detail=(f"models tier={configured} needs Ollama ≥ 0.40.16 (Ripple Preview)"),
+            optional=True,
+        )
+    raw, parsed = version
+    if parsed >= RIPPLE_OLLAMA_FLOOR:
+        return None
+    return CheckResult(
+        name="ollama_ripple",
+        ok=False,
+        detail=(
+            f"Ollama {raw} — models tier={configured} needs Ollama ≥ 0.40.16 "
+            "(Ripple Preview agentic-coding recipe)"
+        ),
+        optional=True,
+    )
+
+
 def _ollama_nemotron_bolt_warning(
     http: httpx.Client,
     base: str,
@@ -708,6 +748,11 @@ def _check_ollama(
         flint_warning = _ollama_flint_warning(http, base, l4_model)
         if flint_warning is not None:
             results.append(flint_warning)
+        ripple_warning = _ollama_ripple_warning(
+            http, base, l4_model=l4_model, l5_model=l5_model
+        )
+        if ripple_warning is not None:
+            results.append(ripple_warning)
         bolt_warning = _ollama_nemotron_bolt_warning(http, base, l3_model, l3_present=l3_present)
         if bolt_warning is not None:
             results.append(bolt_warning)

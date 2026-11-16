@@ -9204,6 +9204,14 @@ with the bound credential, unbound falls back to the global key; admin reads
 redact the secret; doctor tips on unresolvable bindings; fail closed on bad
 refs. Covered by `tests/unit/test_team_frontier_byok.py`.
 
+### Ripple Preview L5 agentic-coding recipe ([#2217](https://github.com/naveenreddyalka/daari/issues/2217))
+
+<!-- tracking:#2217 -->
+**Status:** Done (2026-11-16). `daari setup models --ripple` sets
+`models.l5=ripple-preview` (Ollama ≥ 0.40.16; 65B dense / ~40 GB+ quantized;
+preview tag may change at GA). Doctor tips when configured on an older Ollama.
+Covered by `tests/unit/test_ripple_l5_recipe.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
