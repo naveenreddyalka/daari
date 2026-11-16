@@ -27,7 +27,31 @@ from daari.router.circuit_breaker import CircuitBreaker, counts_as_hard_provider
 from daari.router.retry import RetryPolicy, is_retryable, resolve_upstream_policy, status_of
 from daari.router.frontier import FrontierExecutor
 from daari.router.http_pool import pool_limits_from_settings
+from daari.auth.frontier_binding import FrontierBindingError, resolve_bound_key
 from daari.security.secret_refs import SecretRefError, current_secret
+
+
+def _slots_for_request(request: InternalRequest, slots: list[ProviderSlot]) -> list[ProviderSlot]:
+    """Apply optional named frontier_pool pin from team/key BYOK (#2216)."""
+    pin = getattr(request.meta, "frontier_pool", None)
+    if not pin:
+        return slots
+    wanted = str(pin).strip()
+    matched = [slot for slot in slots if slot.id == wanted]
+    if not matched:
+        raise FrontierBindingError(
+            f"frontier_pool {wanted!r} is not a configured provider slot",
+            status_code=502,
+        )
+    return matched
+
+
+def _key_for_slot(slot: ProviderSlot, request: InternalRequest) -> str | None:
+    """Resolve per-attempt key; team/key BYOK overrides slot rotation (#2216)."""
+    bound = getattr(request.meta, "frontier_api_key", None)
+    if bound:
+        return resolve_bound_key(bound)
+    return slot.pick_key()
 
 
 @dataclass
@@ -115,6 +139,7 @@ class FrontierPool:
         region_pin = getattr(request.meta, "region_pin", None)
         require_region_slot(region_pin, slots)
         slots = filter_slots_for_region(region_pin, slots)
+        slots = _slots_for_request(request, slots)
         from daari.auth.model_access import model_permitted
 
         key_patterns = getattr(request.meta, "key_model_patterns", None)
@@ -149,7 +174,10 @@ class FrontierPool:
                 )
                 continue
             try:
-                key = slot.pick_key()
+                key = _key_for_slot(slot, request)
+            except FrontierBindingError:
+                # Bound credential must not fall back to the shared global key.
+                raise
             except SecretRefError as exc:
                 # Token refresh failed: fail closed on this provider and let
                 # the next slot try rather than sending an expired credential.
@@ -250,13 +278,16 @@ class FrontierPool:
         region_pin = getattr(request.meta, "region_pin", None)
         require_region_slot(region_pin, slots)
         slots = filter_slots_for_region(region_pin, slots)
+        slots = _slots_for_request(request, slots)
 
         errors: list[str] = []
         for slot in slots:
             if not slot.breaker.allow():
                 continue
             try:
-                key = slot.pick_key()
+                key = _key_for_slot(slot, request)
+            except FrontierBindingError:
+                raise
             except SecretRefError as exc:
                 slot.breaker.record_failure()
                 errors.append(f"{slot.id}:SecretRefError")

@@ -9195,6 +9195,15 @@ and does not hop to the next local tier or L6 (LiteLLM #51683 class). Covered by
 closed after tool_calls). Quiet when off. Covered by
 `tests/unit/test_doctor_stream_fallback_continue.py`.
 
+### Per-team frontier credential binding (team BYOK) ([#2216](https://github.com/naveenreddyalka/daari/issues/2216))
+
+<!-- tracking:#2216 -->
+**Status:** Done (2026-11-16). Teams and virtual keys accept opt-in
+`frontier_api_key` / `frontier_pool` bindings (plain or `secret://`); L6 signs
+with the bound credential, unbound falls back to the global key; admin reads
+redact the secret; doctor tips on unresolvable bindings; fail closed on bad
+refs. Covered by `tests/unit/test_team_frontier_byok.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -3499,32 +3499,52 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.patch("/v1/daari/keys/{key_id}")
         async def daari_keys_patch(request: Request, key_id: str) -> dict[str, Any]:
-            """Update redacted key fields (currently ``allowed_ips``) (#2154)."""
+            """Update redacted key fields (``allowed_ips``, frontier BYOK) (#2154/#2216)."""
             ctx: AppContext = request.app.state.ctx
             role = _require_admin_role(request, ctx)
             try:
                 body = await request.json()
             except Exception as exc:
                 raise HTTPException(status_code=400, detail="JSON body required") from exc
-            if not isinstance(body, dict) or "allowed_ips" not in body:
-                raise HTTPException(status_code=400, detail="allowed_ips is required")
-            raw_ips = body.get("allowed_ips")
-            # Empty list or null clears the allowlist (unrestricted).
-            if raw_ips is None or raw_ips == []:
-                ips: list[str] | None = None
-            elif isinstance(raw_ips, list):
-                ips = [str(item) for item in raw_ips]
-            else:
+            patchable = {"allowed_ips", "frontier_api_key", "frontier_pool"}
+            if not isinstance(body, dict) or not patchable.intersection(body):
                 raise HTTPException(
-                    status_code=400, detail="allowed_ips must be a list of IP or CIDR strings"
+                    status_code=400,
+                    detail="allowed_ips, frontier_api_key, or frontier_pool is required",
                 )
             store = getattr(request.app.state, "virtual_key_store", None) or getattr(
                 ctx, "virtual_key_store", None
             )
             if store is None:
                 raise HTTPException(status_code=503, detail="virtual key store is not configured")
+            updated = False
+            actions: list[str] = []
             try:
-                updated = store.update_ip_access(key_id, allowed_ips=ips)
+                if "allowed_ips" in body:
+                    raw_ips = body.get("allowed_ips")
+                    if raw_ips is None or raw_ips == []:
+                        ips: list[str] | None = None
+                    elif isinstance(raw_ips, list):
+                        ips = [str(item) for item in raw_ips]
+                    else:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="allowed_ips must be a list of IP or CIDR strings",
+                        )
+                    if not store.update_ip_access(key_id, allowed_ips=ips):
+                        raise HTTPException(status_code=404, detail=f"key {key_id} not found")
+                    updated = True
+                    actions.append("admin.keys.patch_ips")
+                if "frontier_api_key" in body or "frontier_pool" in body:
+                    bind_kwargs: dict[str, Any] = {}
+                    if "frontier_api_key" in body:
+                        bind_kwargs["frontier_api_key"] = body.get("frontier_api_key")
+                    if "frontier_pool" in body:
+                        bind_kwargs["frontier_pool"] = body.get("frontier_pool")
+                    if not store.update_frontier_binding(key_id, **bind_kwargs):
+                        raise HTTPException(status_code=404, detail=f"key {key_id} not found")
+                    updated = True
+                    actions.append("admin.keys.patch_frontier")
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             if not updated:
@@ -3536,12 +3556,26 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if key is None:
                 raise HTTPException(status_code=404, detail=f"key {key_id} not found")
             row = redact_key(key)
-            audit_log_from_settings(ctx.settings).record(
-                actor=request.headers.get("x-daari-actor", "api"),
-                role=role,
-                action="admin.keys.patch_ips",
-                detail={"key_id": key_id, "allowed_ips": row.get("allowed_ips")},
-            )
+            audit = audit_log_from_settings(ctx.settings)
+            actor = request.headers.get("x-daari-actor", "api")
+            if "admin.keys.patch_ips" in actions:
+                audit.record(
+                    actor=actor,
+                    role=role,
+                    action="admin.keys.patch_ips",
+                    detail={"key_id": key_id, "allowed_ips": row.get("allowed_ips")},
+                )
+            if "admin.keys.patch_frontier" in actions:
+                audit.record(
+                    actor=actor,
+                    role=role,
+                    action="admin.keys.patch_frontier",
+                    detail={
+                        "key_id": key_id,
+                        "frontier_api_key": row.get("frontier_api_key"),
+                        "frontier_pool": row.get("frontier_pool"),
+                    },
+                )
             return row
 
         @router.get("/v1/daari/teams")
@@ -3588,31 +3622,52 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.patch("/v1/daari/teams/{team_id}")
         async def daari_teams_patch(request: Request, team_id: str) -> dict[str, Any]:
-            """Update redacted team fields (currently ``allowed_ips``) (#2154)."""
+            """Update redacted team fields (``allowed_ips``, frontier BYOK) (#2154/#2216)."""
             ctx: AppContext = request.app.state.ctx
             role = _require_admin_role(request, ctx)
             try:
                 body = await request.json()
             except Exception as exc:
                 raise HTTPException(status_code=400, detail="JSON body required") from exc
-            if not isinstance(body, dict) or "allowed_ips" not in body:
-                raise HTTPException(status_code=400, detail="allowed_ips is required")
-            raw_ips = body.get("allowed_ips")
-            if raw_ips is None or raw_ips == []:
-                ips: list[str] | None = None
-            elif isinstance(raw_ips, list):
-                ips = [str(item) for item in raw_ips]
-            else:
+            patchable = {"allowed_ips", "frontier_api_key", "frontier_pool"}
+            if not isinstance(body, dict) or not patchable.intersection(body):
                 raise HTTPException(
-                    status_code=400, detail="allowed_ips must be a list of IP or CIDR strings"
+                    status_code=400,
+                    detail="allowed_ips, frontier_api_key, or frontier_pool is required",
                 )
             store = getattr(request.app.state, "virtual_key_store", None) or getattr(
                 ctx, "virtual_key_store", None
             )
             if store is None:
                 raise HTTPException(status_code=503, detail="virtual key store is not configured")
+            updated = False
+            actions: list[str] = []
             try:
-                updated = store.update_team_ip_access(team_id, allowed_ips=ips)
+                if "allowed_ips" in body:
+                    raw_ips = body.get("allowed_ips")
+                    if raw_ips is None or raw_ips == []:
+                        ips: list[str] | None = None
+                    elif isinstance(raw_ips, list):
+                        ips = [str(item) for item in raw_ips]
+                    else:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="allowed_ips must be a list of IP or CIDR strings",
+                        )
+                    if not store.update_team_ip_access(team_id, allowed_ips=ips):
+                        raise HTTPException(status_code=404, detail=f"team {team_id} not found")
+                    updated = True
+                    actions.append("admin.teams.patch_ips")
+                if "frontier_api_key" in body or "frontier_pool" in body:
+                    bind_kwargs: dict[str, Any] = {}
+                    if "frontier_api_key" in body:
+                        bind_kwargs["frontier_api_key"] = body.get("frontier_api_key")
+                    if "frontier_pool" in body:
+                        bind_kwargs["frontier_pool"] = body.get("frontier_pool")
+                    if not store.update_team_frontier_binding(team_id, **bind_kwargs):
+                        raise HTTPException(status_code=404, detail=f"team {team_id} not found")
+                    updated = True
+                    actions.append("admin.teams.patch_frontier")
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             if not updated:
@@ -3624,12 +3679,26 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if team is None:
                 raise HTTPException(status_code=404, detail=f"team {team_id} not found")
             row = redact_team(team)
-            audit_log_from_settings(ctx.settings).record(
-                actor=request.headers.get("x-daari-actor", "api"),
-                role=role,
-                action="admin.teams.patch_ips",
-                detail={"team_id": team_id, "allowed_ips": row.get("allowed_ips")},
-            )
+            audit = audit_log_from_settings(ctx.settings)
+            actor = request.headers.get("x-daari-actor", "api")
+            if "admin.teams.patch_ips" in actions:
+                audit.record(
+                    actor=actor,
+                    role=role,
+                    action="admin.teams.patch_ips",
+                    detail={"team_id": team_id, "allowed_ips": row.get("allowed_ips")},
+                )
+            if "admin.teams.patch_frontier" in actions:
+                audit.record(
+                    actor=actor,
+                    role=role,
+                    action="admin.teams.patch_frontier",
+                    detail={
+                        "team_id": team_id,
+                        "frontier_api_key": row.get("frontier_api_key"),
+                        "frontier_pool": row.get("frontier_pool"),
+                    },
+                )
             return row
 
         @router.post("/v1/org-learning/sync")

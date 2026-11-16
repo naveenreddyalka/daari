@@ -138,6 +138,11 @@ class RequestMeta(BaseModel):
     # Inbound Authorization bearer for MCP egress OBO token exchange (#1319).
     # Never logged; excluded from L0/L1 cache keys (explicit field lists).
     authorization_bearer: str | None = None
+    # Opt-in team/key BYOK frontier credential (#2216). Plain or secret:// ref;
+    # never logged. Unset keeps the global frontier key.
+    frontier_api_key: str | None = None
+    # Optional named frontier.providers slot id for this tenant (#2216).
+    frontier_pool: str | None = None
 
 
 class InternalRequest(BaseModel):

@@ -339,6 +339,9 @@ class Team:
     degrade_disallowed_service_tier: bool = False
     # Client IP / CIDR allowlist (#2144). None = unrestricted. Mirrored in metadata.
     allowed_ips: tuple[str, ...] | None = None
+    # Opt-in team BYOK frontier credential (#2216). Mirrored in metadata.
+    frontier_api_key: str | None = None
+    frontier_pool: str | None = None
     # Temporary budget boosts and other team-scoped extras (#936).
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -400,6 +403,9 @@ class VirtualKey:
     degrade_disallowed_service_tier: bool = False
     # Client IP / CIDR allowlist (#2144). None = unrestricted. Mirrored in metadata.
     allowed_ips: tuple[str, ...] | None = None
+    # Opt-in key BYOK frontier credential (#2216). Mirrored in metadata; wins over team.
+    frontier_api_key: str | None = None
+    frontier_pool: str | None = None
 
     @property
     def signal_overrides(self) -> tuple[Any, ...]:
@@ -711,6 +717,8 @@ class VirtualKeyStore:
         allowed_service_tiers: list[str] | tuple[str, ...] | None = None,
         degrade_disallowed_service_tier: bool = False,
         allowed_ips: list[str] | tuple[str, ...] | None = None,
+        frontier_api_key: str | None = None,
+        frontier_pool: str | None = None,
     ) -> Team:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -720,6 +728,7 @@ class VirtualKeyStore:
             encode_model_max_budget,
             windows_from_flat,
         )
+        from daari.auth.frontier_binding import binding_from_meta, write_binding_to_meta
         from daari.auth.ip_access import ips_from_meta, write_ips_to_meta
         from daari.auth.service_tier_access import (
             coerce_tiers,
@@ -766,6 +775,13 @@ class VirtualKeyStore:
 
         ips = coerce_ips(allowed_ips)
         meta = write_ips_to_meta(meta, allowed_ips=ips)
+        if frontier_api_key is not None or frontier_pool is not None:
+            meta = write_binding_to_meta(
+                meta,
+                frontier_api_key=frontier_api_key,
+                frontier_pool=frontier_pool,
+            )
+        bound_key, bound_pool = binding_from_meta(meta)
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
@@ -778,6 +794,7 @@ class VirtualKeyStore:
             ).fetchone()
             if existing:
                 existing_meta = _parse_metadata(existing[10]) if len(existing) > 10 else {}
+                existing_key, existing_pool = binding_from_meta(existing_meta)
                 return Team(
                     team_id=existing[0],
                     name=name,
@@ -794,6 +811,8 @@ class VirtualKeyStore:
                     allowed_service_tiers=tiers_from_meta(existing_meta),
                     degrade_disallowed_service_tier=degrade_from_meta(existing_meta),
                     allowed_ips=ips_from_meta(existing_meta),
+                    frontier_api_key=existing_key,
+                    frontier_pool=existing_pool,
                     metadata=existing_meta,
                     tpd=int(existing[11] or 0) if len(existing) > 11 else 0,
                 )
@@ -836,6 +855,8 @@ class VirtualKeyStore:
             allowed_service_tiers=tiers,
             degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
             allowed_ips=ips,
+            frontier_api_key=bound_key,
+            frontier_pool=bound_pool,
             metadata=meta,
         )
 
@@ -957,10 +978,12 @@ class VirtualKeyStore:
                 ).fetchone()
         if row is None:
             return None
+        from daari.auth.frontier_binding import binding_from_meta
         from daari.auth.ip_access import ips_from_meta
         from daari.auth.service_tier_access import degrade_from_meta, tiers_from_meta
 
         team_meta = _parse_metadata(row[11]) if len(row) > 11 else {}
+        bound_key, bound_pool = binding_from_meta(team_meta)
         return Team(
             team_id=row[0],
             name=row[1],
@@ -977,6 +1000,8 @@ class VirtualKeyStore:
             allowed_service_tiers=tiers_from_meta(team_meta),
             degrade_disallowed_service_tier=degrade_from_meta(team_meta),
             allowed_ips=ips_from_meta(team_meta),
+            frontier_api_key=bound_key,
+            frontier_pool=bound_pool,
             metadata=team_meta,
             tpd=int(row[12] or 0) if len(row) > 12 else 0,
         )
@@ -985,6 +1010,7 @@ class VirtualKeyStore:
         """All teams with budget/rate metadata (#616)."""
         if not self.enabled:
             return []
+        from daari.auth.frontier_binding import binding_from_meta
         from daari.auth.ip_access import ips_from_meta
         from daari.auth.service_tier_access import degrade_from_meta, tiers_from_meta
 
@@ -998,6 +1024,7 @@ class VirtualKeyStore:
         out: list[Team] = []
         for row in rows:
             team_meta = _parse_metadata(row[11]) if len(row) > 11 else {}
+            bound_key, bound_pool = binding_from_meta(team_meta)
             out.append(
                 Team(
                     team_id=row[0],
@@ -1015,6 +1042,8 @@ class VirtualKeyStore:
                     allowed_service_tiers=tiers_from_meta(team_meta),
                     degrade_disallowed_service_tier=degrade_from_meta(team_meta),
                     allowed_ips=ips_from_meta(team_meta),
+                    frontier_api_key=bound_key,
+                    frontier_pool=bound_pool,
                     metadata=team_meta,
                     tpd=int(row[12] or 0) if len(row) > 12 else 0,
                 )
@@ -1119,6 +1148,8 @@ class VirtualKeyStore:
         allowed_service_tiers: list[str] | tuple[str, ...] | None = None,
         degrade_disallowed_service_tier: bool = False,
         allowed_ips: list[str] | tuple[str, ...] | None = None,
+        frontier_api_key: str | None = None,
+        frontier_pool: str | None = None,
     ) -> CreatedKey:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -1127,6 +1158,7 @@ class VirtualKeyStore:
             encode_model_max_budget,
             windows_from_flat,
         )
+        from daari.auth.frontier_binding import binding_from_meta, write_binding_to_meta
         from daari.auth.ip_access import coerce_ips, write_ips_to_meta
         from daari.auth.service_tier_access import coerce_tiers, write_tiers_to_meta
         from daari.router.signals import encode_signal_overrides
@@ -1172,6 +1204,13 @@ class VirtualKeyStore:
         )
         ips = coerce_ips(allowed_ips)
         meta = write_ips_to_meta(meta, allowed_ips=ips)
+        if frontier_api_key is not None or frontier_pool is not None:
+            meta = write_binding_to_meta(
+                meta,
+                frontier_api_key=frontier_api_key,
+                frontier_pool=frontier_pool,
+            )
+        bound_key, bound_pool = binding_from_meta(meta)
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
         scope = normalize_cache_scope(cache_scope)
@@ -1241,6 +1280,8 @@ class VirtualKeyStore:
                 allowed_service_tiers=tiers,
                 degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
                 allowed_ips=ips,
+                frontier_api_key=bound_key,
+                frontier_pool=bound_pool,
             ),
             plaintext=plaintext,
         )
@@ -1564,6 +1605,68 @@ class VirtualKeyStore:
             )
             return cur.rowcount > 0
 
+    def update_frontier_binding(
+        self,
+        key_id: str,
+        *,
+        frontier_api_key: str | None | object = _UNSET,
+        frontier_pool: str | None | object = _UNSET,
+    ) -> bool:
+        """Replace a key's frontier BYOK binding. Omitted sides stay unchanged (#2216)."""
+        if not self.enabled:
+            return False
+        from daari.auth.frontier_binding import write_binding_to_meta
+
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT metadata_json FROM virtual_keys WHERE key_id = ? AND revoked_at IS NULL",
+                (key_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            meta = write_binding_to_meta(
+                _parse_metadata(row[0]),
+                frontier_api_key=frontier_api_key,
+                frontier_pool=frontier_pool,
+                unset_sentinel=_UNSET,
+            )
+            cur = conn.execute(
+                "UPDATE virtual_keys SET metadata_json = ? WHERE key_id = ? AND revoked_at IS NULL",
+                (json.dumps(meta), key_id),
+            )
+            return cur.rowcount > 0
+
+    def update_team_frontier_binding(
+        self,
+        team_id: str,
+        *,
+        frontier_api_key: str | None | object = _UNSET,
+        frontier_pool: str | None | object = _UNSET,
+    ) -> bool:
+        """Replace a team's frontier BYOK binding. Omitted sides stay unchanged (#2216)."""
+        if not self.enabled:
+            return False
+        from daari.auth.frontier_binding import write_binding_to_meta
+
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT metadata_json FROM teams WHERE team_id = ?",
+                (team_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            meta = write_binding_to_meta(
+                _parse_metadata(row[0] if len(row) else None),
+                frontier_api_key=frontier_api_key,
+                frontier_pool=frontier_pool,
+                unset_sentinel=_UNSET,
+            )
+            cur = conn.execute(
+                "UPDATE teams SET metadata_json = ? WHERE team_id = ?",
+                (json.dumps(meta), team_id),
+            )
+            return cur.rowcount > 0
+
     def update_signal_overrides(
         self,
         key_id: str,
@@ -1759,6 +1862,7 @@ class VirtualKeyStore:
         prio = priority
         if prio is None and isinstance(parsed, dict):
             prio = parsed.get("priority")
+        from daari.auth.frontier_binding import binding_from_meta
         from daari.auth.ip_access import ips_from_meta
         from daari.auth.service_tier_access import degrade_from_meta, tiers_from_meta
 
@@ -1767,6 +1871,7 @@ class VirtualKeyStore:
             if max_in_flight is not None
             else _max_in_flight_from_meta(parsed)
         )
+        bound_key, bound_pool = binding_from_meta(parsed if isinstance(parsed, dict) else {})
         return VirtualKey(
             key_id=row[0],
             name=row[1],
@@ -1799,6 +1904,8 @@ class VirtualKeyStore:
             allowed_service_tiers=tiers_from_meta(parsed),
             degrade_disallowed_service_tier=degrade_from_meta(parsed),
             allowed_ips=ips_from_meta(parsed),
+            frontier_api_key=bound_key,
+            frontier_pool=bound_pool,
         )
 
     def list(self) -> list[VirtualKey]:
