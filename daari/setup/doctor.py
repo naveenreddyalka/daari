@@ -114,6 +114,9 @@ def run_doctor(
     agent_access_tip = _check_agent_access_default_deny(cfg)
     if agent_access_tip is not None:
         results.append(agent_access_tip)
+    team_byok_tip = _check_team_frontier_bindings(cfg)
+    if team_byok_tip is not None:
+        results.append(team_byok_tip)
     registry_tip = _check_mcp_registry(cfg)
     if registry_tip is not None:
         results.append(registry_tip)
@@ -4497,6 +4500,55 @@ def _check_agent_access_default_deny(settings: Settings) -> CheckResult | None:
             "server.virtual_keys.agent_access_default_deny: no virtual keys or "
             "teams have an agent grant (metadata.agents_access / allowed_agents); "
             "multi_agent.enabled returns 403 for ungranted keys; master key unchanged"
+        ),
+        optional=True,
+    )
+
+
+def _check_team_frontier_bindings(settings: Settings) -> CheckResult | None:
+    """Tip when a team/key BYOK frontier binding fails to resolve (#2216)."""
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return None
+    try:
+        from daari.auth.frontier_binding import FrontierBindingError, resolve_bound_key
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+        from daari.security.secret_refs import is_secret_ref
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception:
+        return None
+    bad: list[str] = []
+    try:
+        for team in store.list_teams():
+            raw = getattr(team, "frontier_api_key", None)
+            if not raw:
+                continue
+            if not is_secret_ref(raw) and str(raw).strip():
+                continue
+            try:
+                resolve_bound_key(raw)
+            except FrontierBindingError:
+                bad.append(f"team {team.name}")
+        for key in store.list():
+            raw = getattr(key, "frontier_api_key", None)
+            if not raw or not is_secret_ref(raw):
+                continue
+            try:
+                resolve_bound_key(raw)
+            except FrontierBindingError:
+                bad.append(f"key {key.name}")
+    except Exception:
+        return None
+    if not bad:
+        return None
+    shown = ", ".join(bad[:6])
+    extra = f" (+{len(bad) - 6} more)" if len(bad) > 6 else ""
+    return CheckResult(
+        name="team_frontier_bindings",
+        ok=False,
+        detail=(
+            f"frontier BYOK binding failed to resolve for {shown}{extra} — "
+            "L6 for those tenants fails closed until the secret:// ref is fixed"
         ),
         optional=True,
     )

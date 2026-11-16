@@ -56,6 +56,9 @@ class AuthClaims:
     selected_team_id: str | None = None
     # Team-scoped signal_overrides stamped at resolve / team select (#2050).
     team_signal_overrides: list[Any] | None = None
+    # Team BYOK frontier binding (#2216).
+    team_frontier_api_key: str | None = None
+    team_frontier_pool: str | None = None
     # True when claims came from resolve-grace cache during a PG blip (#2163).
     grace_served: bool = False
 
@@ -178,6 +181,25 @@ def apply_auth_claims_to_meta(
         team_id = selected
     if not getattr(meta, "team_id", None) and team_id:
         meta.team_id = team_id
+    # Key / team BYOK frontier binding (#2216). Key wins over team.
+    if getattr(meta, "frontier_api_key", None) is None and getattr(meta, "frontier_pool", None) is None:
+        from daari.auth.frontier_binding import effective_binding
+
+        vk = getattr(claims, "virtual_key", None)
+        key_api = getattr(vk, "frontier_api_key", None) if vk is not None else None
+        key_pool = getattr(vk, "frontier_pool", None) if vk is not None else None
+        team_api = getattr(claims, "team_frontier_api_key", None)
+        team_pool = getattr(claims, "team_frontier_pool", None)
+        bound_key, bound_pool = effective_binding(
+            key_api_key=key_api,
+            key_pool=key_pool,
+            team_api_key=team_api,
+            team_pool=team_pool,
+        )
+        if bound_key:
+            meta.frontier_api_key = bound_key
+        if bound_pool:
+            meta.frontier_pool = bound_pool
     # Key / team signal_overrides (#2050). Empty list is intentional clear.
     if getattr(meta, "key_signal_overrides", None) is None:
         vk = getattr(claims, "virtual_key", None)
@@ -271,6 +293,8 @@ def apply_selected_team(
     claims.team_allowed_models = team.allowed_models
     claims.team_model_groups = team.model_groups
     claims.team_signal_overrides = list(team.signal_overrides or ())
+    claims.team_frontier_api_key = getattr(team, "frontier_api_key", None)
+    claims.team_frontier_pool = getattr(team, "frontier_pool", None)
     team_scope = team.cache_scope
     key_scope = getattr(claims.virtual_key, "cache_scope", "global") if claims.virtual_key else "global"
     claims.cache_scope = effective_cache_scope(key_scope, team_scope)
@@ -297,6 +321,8 @@ def _claims_from_virtual_key(
     team_allowed = None
     team_groups = None
     team_signal_overrides = None
+    team_frontier_api_key = None
+    team_frontier_pool = None
     team_scope = "global"
     if key.team_id and store is not None:
         try:
@@ -310,6 +336,8 @@ def _claims_from_virtual_key(
             team_groups = team.model_groups
             team_scope = team.cache_scope
             team_signal_overrides = list(team.signal_overrides or ())
+            team_frontier_api_key = getattr(team, "frontier_api_key", None)
+            team_frontier_pool = getattr(team, "frontier_pool", None)
     return AuthClaims(
         kind="virtual",
         key_id=key.key_id,
@@ -326,6 +354,8 @@ def _claims_from_virtual_key(
         team_model_groups=team_groups,
         cache_scope=effective_cache_scope(key.cache_scope, team_scope),
         team_signal_overrides=team_signal_overrides,
+        team_frontier_api_key=team_frontier_api_key,
+        team_frontier_pool=team_frontier_pool,
         grace_served=grace_served,
     )
 

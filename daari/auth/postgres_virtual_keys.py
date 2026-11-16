@@ -250,6 +250,8 @@ class PostgresVirtualKeyStore:
         allowed_service_tiers: list[str] | tuple[str, ...] | None = None,
         degrade_disallowed_service_tier: bool = False,
         allowed_ips: list[str] | tuple[str, ...] | None = None,
+        frontier_api_key: str | None = None,
+        frontier_pool: str | None = None,
     ) -> Team:
         if self._inner is not None:
             return self._inner.create_team(
@@ -274,6 +276,8 @@ class PostgresVirtualKeyStore:
                 allowed_service_tiers=allowed_service_tiers,
                 degrade_disallowed_service_tier=degrade_disallowed_service_tier,
                 allowed_ips=allowed_ips,
+                frontier_api_key=frontier_api_key,
+                frontier_pool=frontier_pool,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -326,6 +330,15 @@ class PostgresVirtualKeyStore:
         )
         ips = coerce_ips(allowed_ips)
         meta = write_ips_to_meta(meta, allowed_ips=ips)
+        from daari.auth.frontier_binding import binding_from_meta, write_binding_to_meta
+
+        if frontier_api_key is not None or frontier_pool is not None:
+            meta = write_binding_to_meta(
+                meta,
+                frontier_api_key=frontier_api_key,
+                frontier_pool=frontier_pool,
+            )
+        bound_key, bound_pool = binding_from_meta(meta)
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
@@ -342,6 +355,7 @@ class PostgresVirtualKeyStore:
                     existing_meta = (
                         _parse_metadata(existing[10]) if len(existing) > 10 else {}
                     )
+                    existing_key, existing_pool = binding_from_meta(existing_meta)
                     return Team(
                         team_id=existing[0],
                         name=name,
@@ -360,6 +374,8 @@ class PostgresVirtualKeyStore:
                         allowed_service_tiers=tiers_from_meta(existing_meta),
                         degrade_disallowed_service_tier=degrade_from_meta(existing_meta),
                         allowed_ips=ips_from_meta(existing_meta),
+                        frontier_api_key=existing_key,
+                        frontier_pool=existing_pool,
                         metadata=existing_meta,
                     )
                 cur.execute(
@@ -400,6 +416,8 @@ class PostgresVirtualKeyStore:
             allowed_service_tiers=tiers,
             degrade_disallowed_service_tier=bool(degrade_disallowed_service_tier),
             allowed_ips=ips,
+            frontier_api_key=bound_key,
+            frontier_pool=bound_pool,
             metadata=meta,
         )
 
@@ -532,10 +550,12 @@ class PostgresVirtualKeyStore:
                 row = cur.fetchone()
         if row is None:
             return None
+        from daari.auth.frontier_binding import binding_from_meta
         from daari.auth.ip_access import ips_from_meta
         from daari.auth.service_tier_access import degrade_from_meta, tiers_from_meta
 
         team_meta = _parse_metadata(row[11]) if len(row) > 11 else {}
+        bound_key, bound_pool = binding_from_meta(team_meta)
         return Team(
             team_id=row[0],
             name=row[1],
@@ -552,6 +572,8 @@ class PostgresVirtualKeyStore:
             allowed_service_tiers=tiers_from_meta(team_meta),
             degrade_disallowed_service_tier=degrade_from_meta(team_meta),
             allowed_ips=ips_from_meta(team_meta),
+            frontier_api_key=bound_key,
+            frontier_pool=bound_pool,
             metadata=team_meta,
         )
 
@@ -560,6 +582,7 @@ class PostgresVirtualKeyStore:
             return self._inner.list_teams()
         if not self.enabled:
             return []
+        from daari.auth.frontier_binding import binding_from_meta
         from daari.auth.ip_access import ips_from_meta
         from daari.auth.service_tier_access import degrade_from_meta, tiers_from_meta
 
@@ -574,6 +597,7 @@ class PostgresVirtualKeyStore:
         out: list[Team] = []
         for row in rows:
             team_meta = _parse_metadata(row[11]) if len(row) > 11 else {}
+            bound_key, bound_pool = binding_from_meta(team_meta)
             out.append(
                 Team(
                     team_id=row[0],
@@ -591,6 +615,8 @@ class PostgresVirtualKeyStore:
                     allowed_service_tiers=tiers_from_meta(team_meta),
                     degrade_disallowed_service_tier=degrade_from_meta(team_meta),
                     allowed_ips=ips_from_meta(team_meta),
+                    frontier_api_key=bound_key,
+                    frontier_pool=bound_pool,
                     metadata=team_meta,
                 )
             )
@@ -715,6 +741,8 @@ class PostgresVirtualKeyStore:
         allowed_service_tiers: list[str] | tuple[str, ...] | None = None,
         degrade_disallowed_service_tier: bool = False,
         allowed_ips: list[str] | tuple[str, ...] | None = None,
+        frontier_api_key: str | None = None,
+        frontier_pool: str | None = None,
     ) -> CreatedKey:
         if self._inner is not None:
             return self._inner.create(
@@ -746,6 +774,8 @@ class PostgresVirtualKeyStore:
                 allowed_service_tiers=allowed_service_tiers,
                 degrade_disallowed_service_tier=degrade_disallowed_service_tier,
                 allowed_ips=allowed_ips,
+                frontier_api_key=frontier_api_key,
+                frontier_pool=frontier_pool,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -1303,6 +1333,84 @@ class PostgresVirtualKeyStore:
                     "UPDATE virtual_keys SET metadata_json = %s"
                     " WHERE key_id = %s AND revoked_at IS NULL",
                     (json.dumps(meta), key_id),
+                )
+                updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+
+    def update_frontier_binding(
+        self,
+        key_id: str,
+        *,
+        frontier_api_key: str | None | object = _UNSET,
+        frontier_pool: str | None | object = _UNSET,
+    ) -> bool:
+        if self._inner is not None:
+            return self._inner.update_frontier_binding(
+                key_id, frontier_api_key=frontier_api_key, frontier_pool=frontier_pool
+            )
+        if not self.enabled:
+            return False
+        from daari.auth.frontier_binding import write_binding_to_meta
+
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata_json FROM virtual_keys"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (key_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return False
+                meta = write_binding_to_meta(
+                    _parse_metadata(row[0]),
+                    frontier_api_key=frontier_api_key,
+                    frontier_pool=frontier_pool,
+                    unset_sentinel=_UNSET,
+                )
+                cur.execute(
+                    "UPDATE virtual_keys SET metadata_json = %s"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (json.dumps(meta), key_id),
+                )
+                updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+
+    def update_team_frontier_binding(
+        self,
+        team_id: str,
+        *,
+        frontier_api_key: str | None | object = _UNSET,
+        frontier_pool: str | None | object = _UNSET,
+    ) -> bool:
+        if self._inner is not None:
+            return self._inner.update_team_frontier_binding(
+                team_id, frontier_api_key=frontier_api_key, frontier_pool=frontier_pool
+            )
+        if not self.enabled:
+            return False
+        from daari.auth.frontier_binding import write_binding_to_meta
+
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata_json FROM teams WHERE team_id = %s",
+                    (team_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return False
+                meta = write_binding_to_meta(
+                    _parse_metadata(row[0] if len(row) else None),
+                    frontier_api_key=frontier_api_key,
+                    frontier_pool=frontier_pool,
+                    unset_sentinel=_UNSET,
+                )
+                cur.execute(
+                    "UPDATE teams SET metadata_json = %s WHERE team_id = %s",
+                    (json.dumps(meta), team_id),
                 )
                 updated = cur.rowcount > 0
             conn.commit()

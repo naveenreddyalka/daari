@@ -177,12 +177,20 @@ def redact_key(key: Any, *, spend: list[dict[str, Any]] | None = None) -> dict[s
         "allowed_ips": list(getattr(key, "allowed_ips", None) or ())
         if getattr(key, "allowed_ips", None) is not None
         else None,
+        "frontier_api_key": _redact_frontier_binding(getattr(key, "frontier_api_key", None)),
+        "frontier_pool": getattr(key, "frontier_pool", None) or None,
         "signal_overrides": [
             rule.model_dump() if hasattr(rule, "model_dump") else dict(rule)
             for rule in (getattr(key, "signal_overrides", None) or ())
         ],
         "spend": list(spend or []),
     }
+
+
+def _redact_frontier_binding(raw: Any) -> str | None:
+    from daari.auth.frontier_binding import redact_binding_value
+
+    return redact_binding_value(str(raw) if raw is not None else None)
 
 
 def redact_team(
@@ -213,6 +221,8 @@ def redact_team(
         "allowed_ips": list(getattr(team, "allowed_ips", None) or ())
         if getattr(team, "allowed_ips", None) is not None
         else None,
+        "frontier_api_key": _redact_frontier_binding(getattr(team, "frontier_api_key", None)),
+        "frontier_pool": getattr(team, "frontier_pool", None) or None,
         "signal_overrides": [
             rule.model_dump() if hasattr(rule, "model_dump") else dict(rule)
             for rule in (getattr(team, "signal_overrides", None) or ())
