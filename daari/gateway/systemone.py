@@ -639,7 +639,7 @@ async def _post_systemone(
     settings: Any | None = None,
 ) -> httpx.Response:
     from daari.router.circuit_breaker import counts_as_hard_provider_failure
-    from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
+    from daari.router.retry import RetryPolicy, is_retryable_status, run_upstream
 
     policy = (
         retry
@@ -653,7 +653,9 @@ async def _post_systemone(
         response = await _shared_client().post(
             url, json=payload, timeout=timeout, headers=auth or None
         )
-        if response.status_code in RETRYABLE_STATUS:
+        if is_retryable_status(
+            response.status_code, failover_on_http_5xx=policy.failover_on_http_5xx
+        ):
             response.raise_for_status()
         return response
 

@@ -12,7 +12,7 @@ from daari.gateway.provider_prefs import (
     filter_slots_for_region,
     require_region_slot,
 )
-from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
+from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, is_retryable_status, run_upstream
 
 
 @dataclass(frozen=True)
@@ -108,7 +108,9 @@ async def post_l6(
 
     async def attempt() -> httpx.Response:
         response = await client.post(url, headers=headers, json=payload, timeout=timeout)
-        if response.status_code in RETRYABLE_STATUS:
+        if is_retryable_status(
+            response.status_code, failover_on_http_5xx=policy.failover_on_http_5xx
+        ):
             response.raise_for_status()
         return response
 

@@ -244,7 +244,16 @@ class FrontierPool:
                     error_type=type(exc).__name__,
                     error=str(exc)[:200],
                     status=status_of(exc),
-                    retried=is_retryable(exc),
+                    retried=is_retryable(
+                        exc,
+                        failover_on_http_5xx=bool(
+                            getattr(
+                                getattr(slot.executor, "retry", None),
+                                "failover_on_http_5xx",
+                                False,
+                            )
+                        ),
+                    ),
                     breaker=slot.breaker.state,
                 )
                 # Leaving a Fable/Mythos 5.2 slot: next Claude hop must strip (#2205).
