@@ -11,34 +11,28 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-17)
+## Where daari stands (verified in-tree, 2026-11-17 pm)
 
-**Loop velocity.** Overnight shipped three: opt-in **any-5xx
-failover** (362 → PR #2327, Kong `http_5xx` parity), **Fable/Mythos
-5.2 advisor gate** (363 → PR #2328), and **honest `stop_reason`**
-for `pause_turn`/`max_tokens`/`refusal` on `/v1/messages` + chat
-(365 → PR #2329). 11-16 cuts (414–423) still Filed.
+**Loop velocity.** Morning cut filed truncation-honesty + vLLM
+0.34 docs (424–428). Overnight 362/363/365 still Shipped
+(#2327–#2329). Sol promo still expires **2026-11-21** (405).
 
-**Outward.** **vLLM 0.34.0 GA** (11-16 23:22 UTC) — the day's one
-real release: Model Runner V2 only, default `--block-size` 64,
-extensible KV cache on by default (TPOT trade-off + opt-outs), ROCm
-10-only, checkpoint/restore endpoints, cache-aware admission, local
-ASR models (Nemotron-3.5-Transcribe, Canary-1B-v2), Ripple-65B
-parsers. **GPT-6.1 Terra GA'd in ChatGPT Work/Codex/API today** —
-catalog already carries `gpt-6.1-terra` at the matching $1/$5 rates
-(added 10-26, no action). LiteLLM flat at 1.108.10 LTS; Portkey
-2.33.1; Kong 2.3.1; Ollama 0.40.17-rc1; OpenRouter diff matches
-watch. Sol promo still expires **2026-11-21** (405).
+**Outward (pm).** Landscape flat vs morning: LiteLLM 1.108.10 LTS /
+1.111.0-dev.4; Portkey 2.33.1; Kong 2.3.1; Ollama 0.40.17-rc1;
+vLLM 0.34.0; llama.cpp b12483 (k-pool only — no guide bump).
+**New today:** Anthropic watermark sampling caveat widened to six
+models (Opus 4.6/4.5/3, Sonnet 4.6/4.5, Haiku 4.5). OpenRouter
+11-16 announcements (HF Inference Providers routing + scoped
+management keys) still need the compare-doc touch parked this
+morning. GPT-6.1 Terra catalog already current.
 
-**Inward theme: truncation honesty must reach the cache, the stream,
-and Responses.** #2329 made `finish_reason` honest, but cache puts
-never gate on it — truncated/paused/refused turns are written to
-L0/L1 and replayed at $0 (424); frontier streamed legs hardcode
-terminal `stop`/`tool_calls`, losing upstream `max_tokens`/
-`pause_turn` (425); `/v1/responses` hardcodes `status: "completed"`
-and never emits `incomplete` + `incomplete_details` (426); the vLLM
-guide tops out at 0.33 upgrade notes (427); fence the overnight wave
-(428).
+**Inward theme: prove the dials we just shipped.** any-5xx has no
+doctor tip (429) and `upstream_retries` does not isolate http_5xx
+hops (430); honest `stop_reason` has no Prom/stats breakdown
+(431); compare-openrouter omits HF + scoped keys (432);
+watermark six-model list is undocumented next to omit-inject
+honesty (433). Truncation end-to-end (424–426) + vLLM pin (427)
+remain the morning queue.
 
 ---
 
@@ -46,6 +40,11 @@ guide tops out at 0.33 upgrade notes (427); fence the overnight wave
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 429 | Doctor tip when `upstream.retry.failover_on_http_5xx` is on — silent today while peer dials already tip | 2 | 1 | — (ops honesty) | Single-box preflight before broad 5xx hopping burns retries on permanent 501s | Filed [#2336](https://github.com/naveenreddyalka/daari/issues/2336) |
+| 430 | Prom/stats for http_5xx failover hops by status — `upstream_retries` does not isolate the Kong-style dial | 3 | 2 | Kong AI Gateway FinOps / Portkey analytics | Prove dial pressure from the same-box scrape; local legs stay flat | Filed [#2337](https://github.com/naveenreddyalka/daari/issues/2337) |
+| 431 | Prom/stats for `finish_reason` / `stop_reason` outcomes (`stop`, `length`, `pause_turn`, `refusal`, `tool_calls`) | 3 | 2 | LiteLLM spend dashboards / Portkey | Outcome pressure next to cache + spend on one scrape across local + frontier | Filed [#2338](https://github.com/naveenreddyalka/daari/issues/2338) |
+| 432 | compare-openrouter: HF Inference Providers routing + scoped management keys (11-16 announcements) | 2 | 1 | OpenRouter announcements | Honest marketplace vs on-box positioning; session pins ≈ HF affinity without claiming HF broker | Filed [#2339](https://github.com/naveenreddyalka/daari/issues/2339) |
+| 433 | Claude text-watermark sampling caveat — six-model list + daari omit-inject honesty (no detector claim) | 3 | 1 | Anthropic text-watermark docs | Compliance buyers see omit-inject as the local-first guarantee; detection stays Anthropic-side | Filed [#2340](https://github.com/naveenreddyalka/daari/issues/2340) |
 | 424 | Never cache truncated/paused/refused turns — L0/L1/org/agent-prefix puts gate on tier+content only, not `finish_reason`; L0 stream replay even rewrites to `stop` | 4 | 2 | — (GPTCache/LiteLLM cache blindly too) | The $0 cache tier is the headline; a hit must always be a complete turn or agent loops can't trust it | Filed [#2330](https://github.com/naveenreddyalka/daari/issues/2330) |
 | 425 | Frontier streamed legs surface honest `finish_reason` — `frontier.stream()` yields text only; terminal chunks hardcode `stop`/`tool_calls` (local streams already honest) | 4 | 3 | LiteLLM / OpenRouter relay upstream finish_reason verbatim | One box fronts local + frontier; truncation honesty must survive the stream abstraction on the legs that cost money | Filed [#2331](https://github.com/naveenreddyalka/daari/issues/2331) |
 | 426 | `/v1/responses` honest `status: "incomplete"` + `incomplete_details` (`max_output_tokens` / `content_filter`) — today every build hardcodes `completed` | 4 | 2 | OpenAI native; LiteLLM bridge relays it | Local tiers truncate too (`num_predict`); one honest incomplete contract across local + frontier, durable in the on-box store | Filed [#2332](https://github.com/naveenreddyalka/daari/issues/2332) |
@@ -166,47 +165,41 @@ org/team/member admin UI; budgets + portal; `fallback_on_saturation`;
 annual budget reset; per-model tpm/rpm maps; OpenSearch pass-through;
 encrypted-content boundary #50750; #51487 early stream close — daari
 `async with` already exits on `[DONE]`); key-expiry emails already
-in-tree (#1546); spend-log token redaction N/A (no free-text spend
-rows); **1.110.0-rc.3** (Agent Skills Hub, Rust-only router, Responses
-named-SSE / no Chat `[DONE]`, response-id ownership 403); 1.108.7/1.109
-remainder (buyer-ask batches/edits; K8s discovery; shadow rates);
-Opus 4.8 fast-mode removal 11-30; Ollama 0.40.17-rc1 (MLX concurrent —
-hold for GA); **vLLM 0.34 remainder** (checkpoint/restore ops recipe,
+in-tree (#1546); spend-log token redaction N/A; **1.110.0-rc.3**
+(Agent Skills Hub, Rust-only router, Responses named-SSE / no Chat
+`[DONE]`, response-id ownership 403); 1.108.7/1.109 remainder
+(buyer-ask batches/edits; K8s discovery; shadow rates); Opus 4.8
+fast-mode removal 11-30; Ollama 0.40.17-rc1 (MLX concurrent — hold
+for GA); **vLLM 0.34 remainder** (checkpoint/restore ops recipe,
 cache-aware admission lever, Mistral Large 4 / MiniMax-M3.1 — buyer
-ask; 427 covers docs); **HF Inference Providers now route via
-OpenRouter** (11-17; `X-HF-Session-Id` cache-aware affinity ≈ shipped
-#361 — compare note on next touch); Anthropic text watermark now on
-Opus 4.6/4.5, Sonnet 4.5, Haiku 4.5 (11-16; non-default samplers drop
-it — daari never injects samplers on client legs, 5.2 strips are
-param_compat-owned); **OpenRouter guardrail-policies API**;
+ask; 427 covers docs); **OpenRouter guardrail-policies API**;
 OpenRouter newest (`ContentFilterReadEntry`, Responses `error_data`,
 `catalog_index_note`, `web_fetch.retrieved_at`, OTEL `metricsEndpoint`
-— metrics already in-tree); LTS floor **1.108.10** (422; fold older
-1.108.7–1.108.9 + 1.106.10 compare pins); Kong Cedar/CEL/Token Vault
-(new dep — human); Portkey
-MCP policies (Prisma AIRS-only); OpenAI Live/SIP / Realtime/WS;
-AutoTrust beyond Apple silicon; `gpt-6-cyber` / `gpt-6-rosalind`;
-Agents `auto_review`; Anthropic watermark / Compliance API / hosted
-skills; CMA-as-provider; minute-grain spend; fleet Redis EWMA; MCP
+— metrics already in-tree); LTS floor **1.108.10** (422); Kong
+Cedar/CEL/Token Vault (new dep — human); Portkey MCP policies
+(Prisma AIRS-only); OpenAI Live/SIP / Realtime/WS; AutoTrust beyond
+Apple silicon; `gpt-6-cyber` / `gpt-6-rosalind`; Agents `auto_review`;
+Anthropic Compliance API / hosted skills / detector (private
+preview); CMA-as-provider; minute-grain spend; fleet Redis EWMA; MCP
 SEP-3398; OpenAI org external keys; `between_tools`; Claude Code
 `groups` / `guardrail_trace`; OpenRouter private-provider CRUD;
 LiteLLM Admin Chat / Lens / ID-JAG; llama.cpp `/v1/realtime`; Portkey
-JWT/WIF; Prisma AIRS Agent Identity; Claude-on-GCP IAM (new dep); Open
-Responses WS; Prom exemplars + `gen_ai.agent.*`; SCIM + multi-issuer
-SSO; Kong Skills/A2A; certifi emSign; Ollama d1 GA; local
-message-thread analogue (after ask); A2A 1.1 RC (two-SDK gate).
+JWT/WIF; Prisma AIRS Agent Identity; Claude-on-GCP IAM (new dep);
+Open Responses WS; Prom exemplars + `gen_ai.agent.*`; SCIM +
+multi-issuer SSO; Kong Skills/A2A; certifi emSign; Ollama d1 GA;
+local message-thread analogue (after ask); A2A 1.1 RC (two-SDK gate).
 
-Verified fine this run — don't re-audit: `gpt-6.1-terra` already in
-catalog at the GA $1/$5 rates (settings.py ~L1796, added 10-26) +
-param_compat sampler strip — today's GA needs nothing; moderations
-door passes `omni-moderation-csam-latest` through (model passthrough
-+ disallow/retire checks only); local stream path captures Ollama
-`done_reason` / OpenAI-compat `finish_reason` honestly (~L4383, 425
-is frontier legs only); `upstream_retries` counter exists (#159 —
-no new 5xx metric needed); daari never injects temperature/top_p/
-top_k on client-facing legs (watermark-safe); Opus 4.8 sunset seeded
+Verified fine this run — don't re-audit: `gpt-6.1-terra` catalog at
+GA $1/$5 (settings.py ~L1796); moderations door passes
+`omni-moderation-csam-latest`; local stream captures Ollama
+`done_reason` / OpenAI-compat `finish_reason` (~L4383; 425 is
+frontier-only); daari never injects temperature/top_p/top_k on
+client legs (433 docs the six-model caveat; omit-inject already
+true); `upstream_retries` (#159) still exists — 430 adds
+http_5xx isolation on top, not a duplicate; Opus 4.8 sunset seeded
 in #2053; chat-path BYOK via `_key_for_slot` (414 is modality doors
-only); hold Responses `error_data` until buyer ask.
+only); hold Responses `error_data` until buyer ask; HF Inference
+Providers / scoped management keys → 432 (filed this cut).
 
 ---
 
@@ -223,13 +216,14 @@ only); hold Responses `error_data` until buyer ask.
 2. **Truncation honesty end-to-end** — never cache truncated turns
    (424); frontier stream terminal honesty (425); Responses
    `incomplete` status (426); abort/missing `finish_reason` (373);
-   streamed cache tool_calls (367). Non-stream `stop_reason` (365)
-   shipped — the contract now exists; make every surface keep it.
-3. **Nothing goes stale quietly** — auto_caching doctor + Prom
-   (419–420); MCP egress re-mint (395); modality deadlines (400);
-   MCP cancellation (385); session-pin isolation (387); ZDR (398);
-   reservation doctor tip (403). stream_fallback doctor (411) +
-   any-5xx dial (362) + advisor gate (363) shipped.
+   streamed cache tool_calls (367); finish_reason Prom (431).
+   Non-stream `stop_reason` (365) shipped — keep every surface honest.
+3. **Nothing goes stale quietly** — any-5xx doctor + Prom (429–430);
+   auto_caching doctor + Prom (419–420); MCP egress re-mint (395);
+   modality deadlines (400); MCP cancellation (385); session-pin
+   isolation (387); ZDR (398); reservation doctor tip (403).
+   stream_fallback doctor (411) + any-5xx dial (362) + advisor gate
+   (363) shipped.
 4. **Agent-loop / Responses / Extractions fidelity + CMA** —
    Responses output-order + reasoning items (406); local-tier
    thinking (407); Extractions (390); OpenRouter `reasoning` (397);
@@ -238,7 +232,8 @@ only); hold Responses `error_data` until buyer ask.
    hygiene fence (378); scan tool_call args (366); coding-router
    (370).
 5. **Local engine floor + survive the blip + honest compare** —
-   vLLM 0.34.0 pin (427); llama.cpp v1.0.0 pin (388); LTS floor
+   vLLM 0.34.0 pin (427); watermark omit-inject docs (433); HF /
+   scoped-keys compare (432); llama.cpp v1.0.0 pin (388); LTS floor
    **1.108.10** (422); binding Prom (417); stream_fallback Grafana
    (410); offline Prom/doctor (279/285); reservation Grafana (402);
    hot-reload (6); failover panels (274); fences through 428; then
@@ -248,32 +243,25 @@ only); hold Responses `error_data` until buyer ask.
 
 ## Changelog
 
-- **2026-11-17 (truncation honesty + vLLM 0.34.0 GA)** — Outward:
-  **vLLM 0.34.0 GA** (MRV2-only, block-size 64, extensible KV cache
-  default, checkpoint/restore, local ASR, Ripple parsers); GPT-6.1
-  Terra GA (catalog already current); HF Inference Providers →
-  OpenRouter; Anthropic watermark widened; LiteLLM/Portkey/Kong/
-  Ollama/OpenRouter flat. Inward: overnight 362–363 + 365 Shipped
-  (#2327–#2329) → cache put gate on `finish_reason` (424), frontier
-  stream terminal honesty (425), Responses `incomplete` (426), vLLM
-  0.34 docs (427), fence (428).
+- **2026-11-17 pm (prove shipped dials + watermark/HF docs)** —
+  Outward flat vs morning (LiteLLM/Portkey/Kong/Ollama/vLLM);
+  Anthropic watermark caveat → six models; OpenRouter HF Inference
+  Providers + scoped management keys still compare-only. Inward:
+  any-5xx doctor (429), http_5xx Prom (430), finish_reason Prom
+  (431), compare HF/scoped keys (432), watermark omit-inject docs
+  (433). Morning truncation cut (424–428) unchanged.
 
-- **2026-11-16** — Condensed: auto_caching + residency ops honesty +
-  LTS 1.108.10 compare (419–423); team-BYOK follow-through
-  (414–418); overnight 409/411 + 357–358 Shipped (#2309–#2312);
-  afternoon 360–361 Shipped (#2319–#2320).
+- **2026-11-17 (truncation honesty + vLLM 0.34.0 GA)** — Condensed:
+  vLLM 0.34.0 GA mined; GPT-6.1 Terra catalog already current;
+  overnight 362–363 + 365 Shipped → 424–428 Filed.
 
-- **2026-11-15 → 11-14** — Condensed: LiteLLM 1.108.9 mined (406–408);
-  midstream tool-call safety (409–413); 1.106.10 MCP re-mint + OCR
-  billing + OpenRouter reasoning + ZDR + modality deadlines
-  (395–404); 351–353/355/356 Shipped.
+- **2026-11-16 → 11-14** — Condensed: auto_caching + residency ops
+  (419–423); team-BYOK follow-through (414–418); midstream
+  tool-call safety (409–413); LiteLLM 1.108.9 mined (406–408);
+  MCP re-mint + OCR + reasoning + ZDR + deadlines (395–404).
 
-- **2026-11-13 → 11-11** — Condensed: llama.cpp v1.0.0 + Extractions
-  + refused-leg (385–394); LiteLLM 1.108.6/1.108.7 security + CMA
-  (375–384); coding-router / Gemini 4 / daily limits (370–374);
-  LiteLLM 1.109.0 fidelity (365–369).
-
-- **2026-11-10 → 10-28** — Condensed: Kong 2.3.0 / Fable 5.2 /
-  residency-auto_caching wave (345–364); MCP egress + cost (335–344);
-  Auto-Router + observe (326–334); through Apache 2.0 and this PRD's
-  creation. #2141 needs human close.
+- **2026-11-13 → 10-28** — Condensed: Extractions / refused-leg /
+  llama.cpp v1.0.0 (385–394); CMA + 1.108.6/7 (375–384);
+  coding-router / Gemini 4 / daily limits (370–374); Kong 2.3.0 /
+  Fable 5.2 / MCP egress / Auto-Router through Apache 2.0 and this
+  PRD's creation. #2141 needs human close.
