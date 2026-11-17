@@ -740,6 +740,7 @@ def _openai_completion_body(
     daari_meta: dict[str, Any] | None,
     include_daari_meta: bool,
     usage: tuple[int, int, bool] | None = None,
+    finish_reason: str | None = None,
 ) -> dict[str, Any]:
     prompt_chars = sum(len(message.content or "") for message in body.messages)
     if usage is not None:
@@ -758,7 +759,7 @@ def _openai_completion_body(
         choices=[
             ChatCompletionChoice(
                 message=ChatMessage(role="assistant", content=result_content),
-                finish_reason="stop",
+                finish_reason=finish_reason or "stop",
             )
         ],
         usage={
@@ -1328,6 +1329,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 daari_meta=result.daari_meta.model_dump(exclude_none=True),
                 include_daari_meta=include_daari_meta,
                 usage=response_token_usage(result, prompt_chars),
+                finish_reason=result.finish_reason,
             )
             if idem_slot is not None:
                 idem_slot.complete(

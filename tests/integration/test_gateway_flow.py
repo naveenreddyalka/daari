@@ -5077,3 +5077,130 @@ async def test_baggage_to_tags_on_chat(settings, monkeypatch):
     assert response.status_code == 200
     assert seen
     assert seen[0].meta.tags == ["baggage:env", "baggage:team", "canary", "eval"]
+
+
+@pytest.mark.asyncio
+async def test_messages_maps_finish_reason_to_stop_reason(app, monkeypatch):
+    """Non-stream /v1/messages maps length→max_tokens; L6 pause_turn passes (#2232)."""
+
+    async def truncated(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="cut off",
+            model="llama3.2:3b",
+            finish_reason="length",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama:l3",
+                latency_ms=1,
+            ),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router, "route", truncated)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/messages",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "write a lot"}],
+                "max_tokens": 8,
+            },
+        )
+    assert response.status_code == 200
+    assert response.json()["stop_reason"] == "max_tokens"
+
+    async def paused(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="server paused",
+            model="claude-sonnet-4-0",
+            finish_reason="pause_turn",
+            daari_meta=DaariMeta(
+                tier="L6",
+                executor="frontier",
+                provider_id="anthropic",
+                latency_ms=10,
+            ),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router, "route", paused)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/messages",
+            json={
+                "model": "claude-sonnet-4-0",
+                "messages": [{"role": "user", "content": "long tool turn"}],
+                "max_tokens": 256,
+            },
+        )
+    assert response.status_code == 200
+    assert response.json()["stop_reason"] == "pause_turn"
+
+
+@pytest.mark.asyncio
+async def test_chat_finish_reason_length_from_anthropic_truncation(app, monkeypatch):
+    """OpenAI chat reports finish_reason length when L6 Anthropic truncated (#2232)."""
+
+    async def truncated_l6(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="truncated",
+            model="claude-sonnet-4-0",
+            finish_reason="length",
+            daari_meta=DaariMeta(
+                tier="L6",
+                executor="frontier",
+                provider_id="anthropic",
+                latency_ms=12,
+            ),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router, "route", truncated_l6)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "hello"}],
+                "stream": False,
+            },
+            headers={"X-Daari-Meta": "true"},
+        )
+    assert response.status_code == 200
+    assert response.json()["choices"][0]["finish_reason"] == "length"
+
+
+@pytest.mark.asyncio
+async def test_messages_stream_stop_reason_from_finish_reason(app, monkeypatch):
+    """Streamed message_delta uses max_tokens when the backend truncated (#2232)."""
+
+    async def fake_stream(_request: InternalRequest):
+        yield {"message": {"role": "assistant", "content": "hi"}}
+        yield {
+            "message": {"role": "assistant", "content": "hi"},
+            "done": True,
+            "done_reason": "length",
+        }
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/messages",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 8,
+                "stream": True,
+            },
+        )
+    assert response.status_code == 200
+    deltas = []
+    for line in response.text.splitlines():
+        if not line.startswith("data: "):
+            continue
+        event = json.loads(line[6:])
+        if event.get("type") == "message_delta":
+            deltas.append(event)
+    assert deltas
+    assert deltas[-1]["delta"]["stop_reason"] == "max_tokens"

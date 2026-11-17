@@ -9245,6 +9245,15 @@ tools whose `model` is not `claude-fable-5-2` / `claude-mythos-5-2` with HTTP 40
 before L6 egress; absent or already-5.2 advisors and non-5.2 executors unchanged.
 Covered by `tests/unit/test_advisor_model_52_gate.py`.
 
+### Honest stop_reason on /v1/messages ([#2232](https://github.com/naveenreddyalka/daari/issues/2232))
+
+<!-- tracking:#2232 -->
+**Status:** Done (2026-11-17). Frontier Anthropic maps upstream `stop_reason` onto
+`InternalResponse.finish_reason` (`end_turn`→`stop`, `max_tokens`→`length`,
+`tool_use`→`tool_calls`; `pause_turn`/`refusal` preserved). Non-stream and
+streamed `/v1/messages` map back; OpenAI chat reports `length` on L6 truncation.
+Covered by `tests/unit/test_stop_reason_honesty.py` and gateway-flow cases.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
