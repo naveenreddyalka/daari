@@ -863,10 +863,13 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 result.content or "",
                 reasoning_encrypted=getattr(result, "reasoning_encrypted", None),
             )
+            from daari.router.anthropic_messages import finish_reason_to_anthropic_stop
+
             payload = AnthropicMessageResponse(
                 id=message_id,
                 model=result.model,
                 content=content_blocks,  # type: ignore[arg-type]
+                stop_reason=finish_reason_to_anthropic_stop(result.finish_reason),
                 usage=usage,
                 daari_meta=result.daari_meta.model_dump(exclude_none=True),
             ).model_dump(exclude_none=True)

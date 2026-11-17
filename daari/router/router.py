@@ -3985,8 +3985,15 @@ class Router:
         def sse(event_type: str, payload: dict[str, Any]) -> str:
             return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
 
-        def terminal_events(text: str, tier_label: str | None) -> list[str]:
+        def terminal_events(
+            text: str,
+            tier_label: str | None,
+            *,
+            finish_reason: str | None = None,
+        ) -> list[str]:
             """A complete single-text-block Anthropic message."""
+            from daari.router.anthropic_messages import finish_reason_to_anthropic_stop
+
             event_meta = {
                 "tier": tier_label,
                 "executor": tier_label,
@@ -4039,7 +4046,10 @@ class Router:
                     "message_delta",
                     {
                         "type": "message_delta",
-                        "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                        "delta": {
+                            "stop_reason": finish_reason_to_anthropic_stop(finish_reason),
+                            "stop_sequence": None,
+                        },
                         "usage": self._anthropic_stream_usage(
                             tier_label,
                             prompt_tokens=input_tokens,
@@ -4276,6 +4286,7 @@ class Router:
                 completion_chars = 0
                 tier_text_parts = []
                 reported_usage = None
+                stream_finish_reason = "stop"
                 pre_token_failover = False
                 attempt_failed = False
                 try:
@@ -4369,6 +4380,18 @@ class Router:
                                 )
                             )
                         if event.get("done"):
+                            # Ollama done_reason / OpenAI finish_reason → honest stop (#2232).
+                            raw_done = event.get("done_reason") or event.get("finish_reason")
+                            if isinstance(raw_done, str) and raw_done.strip():
+                                token = raw_done.strip().lower()
+                                if token in {"length", "max_tokens"}:
+                                    stream_finish_reason = "length"
+                                elif token in {"tool_calls", "tool_use"}:
+                                    stream_finish_reason = "tool_calls"
+                                elif token in {"pause_turn", "refusal"}:
+                                    stream_finish_reason = token
+                                else:
+                                    stream_finish_reason = "stop"
                             break
                 except Exception as exc:
                     from daari.router.deadline import reraise_deadline
@@ -4466,9 +4489,13 @@ class Router:
                 continue
 
             streamed_text = "".join(tier_text_parts)
+            local_finish = (
+                "tool_calls" if tool_use_sent else stream_finish_reason
+            )
             served = InternalResponse(
                 content=streamed_text,
                 model=model_name,
+                finish_reason=local_finish,
                 daari_meta=DaariMeta(
                     tier=tier,
                     cache_hit=False,
@@ -4586,11 +4613,20 @@ class Router:
                                 },
                             )
                             yield block_stop(index + block_offset)
+                        from daari.router.anthropic_messages import (
+                            finish_reason_to_anthropic_stop,
+                        )
+
                         yield sse(
                             "message_delta",
                             {
                                 "type": "message_delta",
-                                "delta": {"stop_reason": "tool_use", "stop_sequence": None},
+                                "delta": {
+                                    "stop_reason": finish_reason_to_anthropic_stop(
+                                        served.finish_reason or "tool_calls"
+                                    ),
+                                    "stop_sequence": None,
+                                },
                                 "usage": self._anthropic_stream_usage(
                                     served.daari_meta.tier or tier,
                                     prompt_tokens=input_tokens,
@@ -4642,6 +4678,10 @@ class Router:
                     served = served.model_copy(update={"content": scanner.scanned_text})
                     outcome.note(served.daari_meta.tier or tier)
                     self._finish_session_pin(request, served)
+                    from daari.router.anthropic_messages import (
+                        finish_reason_to_anthropic_stop,
+                    )
+
                     for event in out_events:
                         yield event
                     yield block_stop(0)
@@ -4649,7 +4689,12 @@ class Router:
                         "message_delta",
                         {
                             "type": "message_delta",
-                            "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                            "delta": {
+                                "stop_reason": finish_reason_to_anthropic_stop(
+                                    served.finish_reason
+                                ),
+                                "stop_sequence": None,
+                            },
                             "usage": self._anthropic_stream_usage(
                                 served.daari_meta.tier or tier,
                                 prompt_tokens=input_tokens,
@@ -4688,7 +4733,11 @@ class Router:
             if served.content != streamed_text and not tool_use_sent:
                 outcome.note(served.daari_meta.tier or tier)
                 self._finish_session_pin(request, served)
-                for event in terminal_events(served.content, served.daari_meta.tier or tier):
+                for event in terminal_events(
+                    served.content,
+                    served.daari_meta.tier or tier,
+                    finish_reason=served.finish_reason,
+                ):
                     yield event
                 latency_ms = int((time.perf_counter() - stream_started) * 1000)
                 record_served(served, latency_ms)
@@ -4730,12 +4779,19 @@ class Router:
                 yield chunk
             if text_block_open:
                 yield block_stop(block_index)
+            from daari.router.anthropic_messages import finish_reason_to_anthropic_stop
+
+            stream_stop = finish_reason_to_anthropic_stop(
+                "tool_calls"
+                if tool_use_sent and (served.finish_reason or "stop") == "stop"
+                else served.finish_reason
+            )
             yield sse(
                 "message_delta",
                 {
                     "type": "message_delta",
                     "delta": {
-                        "stop_reason": "tool_use" if tool_use_sent else "end_turn",
+                        "stop_reason": stream_stop,
                         "stop_sequence": None,
                     },
                     # Cumulative per the Anthropic contract: the single delta

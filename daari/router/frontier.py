@@ -884,18 +884,37 @@ class FrontierExecutor:
             metrics=self.metrics,
         )
         reasoning_encrypted = None
+        finish_reason = "stop"
         if anthropic:
             content = text_from_anthropic_content(data.get("content"))
             tool_calls = _tool_calls_from_anthropic_content(data.get("content"))
+            from daari.router.anthropic_messages import anthropic_stop_to_finish_reason
+
+            finish_reason = anthropic_stop_to_finish_reason(data.get("stop_reason"))
+            if tool_calls and finish_reason == "stop":
+                finish_reason = "tool_calls"
         elif uses_responses:
             output = data.get("output")
             content = text_from_responses_output(output)
             tool_calls = tool_calls_from_responses_output(output)
             reasoning_encrypted = reasoning_encrypted_from_responses_output(output)
+            if tool_calls:
+                finish_reason = "tool_calls"
+            status = data.get("status")
+            if status == "incomplete":
+                incomplete = data.get("incomplete_details") or {}
+                if incomplete.get("reason") == "max_output_tokens":
+                    finish_reason = "length"
         else:
-            message = data.get("choices", [{}])[0].get("message", {})
+            choice = (data.get("choices") or [{}])[0]
+            message = choice.get("message", {})
             content = message.get("content", "") or ""
             tool_calls = message.get("tool_calls")
+            finish_reason = (
+                "tool_calls"
+                if tool_calls
+                else (choice.get("finish_reason") or "stop")
+            )
         latency_ms = int((time.perf_counter() - started) * 1000)
         prompt_chars = sum(len(message.content or "") for message in request.messages)
         input_tokens, output_tokens, estimated = openai_token_usage(
@@ -964,6 +983,7 @@ class FrontierExecutor:
         return InternalResponse(
             content=content or "",
             model=model,
+            finish_reason=finish_reason,
             tool_calls=tool_calls if tool_calls else None,
             daari_meta=meta,
             reasoning_encrypted=reasoning_encrypted,

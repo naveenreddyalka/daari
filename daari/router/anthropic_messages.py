@@ -82,6 +82,39 @@ def clear_anthropic_thread_creates() -> None:
     _THREAD_CREATE_IDS.clear()
 
 
+def anthropic_stop_to_finish_reason(stop_reason: str | None) -> str:
+    """Map Anthropic ``stop_reason`` onto OpenAI-shaped ``finish_reason`` (#2232).
+
+    ``pause_turn`` and ``refusal`` are preserved so agent loops can tell a
+    paused/refused turn from a finished ``end_turn``.
+    """
+    raw = (stop_reason or "").strip()
+    if not raw:
+        return "stop"
+    if raw in {"pause_turn", "refusal"}:
+        return raw
+    return {
+        "end_turn": "stop",
+        "max_tokens": "length",
+        "tool_use": "tool_calls",
+        "stop_sequence": "stop",
+    }.get(raw, "stop")
+
+
+def finish_reason_to_anthropic_stop(finish_reason: str | None) -> str:
+    """Map internal ``finish_reason`` back to Anthropic ``stop_reason`` (#2232)."""
+    raw = (finish_reason or "").strip()
+    if not raw:
+        return "end_turn"
+    if raw in {"pause_turn", "refusal"}:
+        return raw
+    return {
+        "stop": "end_turn",
+        "length": "max_tokens",
+        "tool_calls": "tool_use",
+    }.get(raw, "end_turn")
+
+
 def effective_anthropic_version(version: str | None) -> str:
     """Client header when set; otherwise the outbound default."""
     return (version or "").strip() or ANTHROPIC_VERSION
