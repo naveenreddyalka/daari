@@ -41,7 +41,10 @@ from daari.gateway.provider_prefs import (
 )
 from daari.gateway.sampling import SamplingParams
 from daari.observability.tokens import estimate_tokens
-from daari.router.anthropic_messages import LegacyComputerToolRejected
+from daari.router.anthropic_messages import (
+    AdvisorModelRejected,
+    LegacyComputerToolRejected,
+)
 from daari.router.capabilities import UnsupportedCapability
 from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
 from daari.router.router import AppContext
@@ -758,6 +761,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             except ZdrUnavailable as exc:
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except LegacyComputerToolRejected as exc:
+                raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
+            except AdvisorModelRejected as exc:
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
