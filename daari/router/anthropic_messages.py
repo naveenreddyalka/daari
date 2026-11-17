@@ -361,6 +361,64 @@ def enforce_computer_toolset_for_52(
     )
 
 
+# Advisor tool: Fable/Mythos 5.2 executors accept only 5.2 advisors (#2223).
+ADVISOR_TOOL_TYPE = "advisor_20260301"
+ALLOWED_52_ADVISOR_IDS = ("claude-fable-5-2", "claude-mythos-5-2")
+
+
+class AdvisorModelRejected(ValueError):
+    """Request declared a non-5.2 advisor on a Fable/Mythos 5.2 executor."""
+
+
+def _is_advisor_tool(tool: dict[str, Any]) -> bool:
+    for key in ("type", "anthropic_type"):
+        raw = tool.get(key)
+        if isinstance(raw, str) and raw.strip() == ADVISOR_TOOL_TYPE:
+            return True
+    return False
+
+
+def advisor_tool_models(tools: list[Any] | None) -> list[str]:
+    """Return advisor ``model`` values found on a tools list (#2223)."""
+    found: list[str] = []
+    for tool in tools or []:
+        if not isinstance(tool, dict):
+            continue
+        if not _is_advisor_tool(tool):
+            continue
+        raw = tool.get("model")
+        if isinstance(raw, str) and raw.strip():
+            found.append(raw.strip())
+    return found
+
+
+def enforce_advisor_model_for_52(
+    tools: list[Any] | None,
+    *,
+    model: str,
+) -> None:
+    """Reject non-5.2 advisors when the executor is Fable/Mythos 5.2 (#2223).
+
+    Raises ``AdvisorModelRejected`` naming the required advisor IDs. No-op when
+    the executor is not 5.2, no advisor tool is present, or every advisor model
+    is already Fable/Mythos 5.2.
+    """
+    if not is_fable_mythos_52_model(model):
+        return
+    bad: list[str] = []
+    for advisor in advisor_tool_models(tools):
+        if not is_fable_mythos_52_model(advisor):
+            bad.append(advisor)
+    if not bad:
+        return
+    allowed = " or ".join(ALLOWED_52_ADVISOR_IDS)
+    shown = ", ".join(bad)
+    raise AdvisorModelRejected(
+        f"advisor model {shown} is not compatible with executor {model}; "
+        f"set the advisor tool model to {allowed}"
+    )
+
+
 def _looks_like_claude_model(model: str) -> bool:
     lowered = (model or "").lower()
     return any(

@@ -9237,6 +9237,14 @@ false) treats any HTTP 500–599 as retryable/failover-eligible (Kong `http_5xx`
 parity), including 501/522. Default allowlist unchanged; 429/529 still do not
 open the circuit. Covered by `tests/unit/test_upstream_retry.py`.
 
+### Require Fable/Mythos 5.2-compatible advisor model ([#2223](https://github.com/naveenreddyalka/daari/issues/2223))
+
+<!-- tracking:#2223 -->
+**Status:** Done (2026-11-17). Fable/Mythos 5.2 executors reject `advisor_20260301`
+tools whose `model` is not `claude-fable-5-2` / `claude-mythos-5-2` with HTTP 400
+before L6 egress; absent or already-5.2 advisors and non-5.2 executors unchanged.
+Covered by `tests/unit/test_advisor_model_52_gate.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

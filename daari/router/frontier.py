@@ -23,6 +23,7 @@ from daari.router.anthropic_messages import (
     apply_anthropic_version_sampling_compat,
     apply_fable_mythos_52_thinking_strip,
     apply_thinking_binding_drop_block,
+    enforce_advisor_model_for_52,
     enforce_computer_toolset_for_52,
     infer_frontier_kind,
     request_has_thinking_blocks,
@@ -474,6 +475,8 @@ class FrontierExecutor:
             model=self.default_model,
             base_url=self.effective_base_url(),
         )
+        # Fable/Mythos 5.2 executor accepts only 5.2 advisors (#2223).
+        enforce_advisor_model_for_52(request.tools, model=self.default_model)
         payload = to_anthropic_payload(
             request,
             model=self.default_model,

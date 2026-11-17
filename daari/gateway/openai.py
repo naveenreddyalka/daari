@@ -66,6 +66,10 @@ from daari.router.router import AppContext
 from daari.router.capabilities import UnsupportedCapability
 from daari.gateway.sampling import WebSearchUnavailable
 from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
+from daari.router.anthropic_messages import (
+    AdvisorModelRejected,
+    LegacyComputerToolRejected,
+)
 
 OPENAI_SSE_HEADERS = {
     "Cache-Control": "no-cache",
@@ -1263,6 +1267,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     idem_slot.abandon()
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except RegionUnavailable as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
+                raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
+            except (LegacyComputerToolRejected, AdvisorModelRejected) as exc:
                 if idem_slot is not None:
                     idem_slot.abandon()
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
