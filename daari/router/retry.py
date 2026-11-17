@@ -91,11 +91,19 @@ def status_of(exc: BaseException) -> int | None:
     return int(status) if isinstance(status, int) else None
 
 
-def is_retryable(exc: BaseException) -> bool:
+def is_retryable_status(status: int, *, failover_on_http_5xx: bool = False) -> bool:
+    """True when this HTTP status is eligible for retry / failover."""
+    if status in RETRYABLE_STATUS:
+        return True
+    # Kong http_5xx parity (#2222): opt-in any 5xx, including 501/522.
+    return bool(failover_on_http_5xx and 500 <= status <= 599)
+
+
+def is_retryable(exc: BaseException, *, failover_on_http_5xx: bool = False) -> bool:
     """True when another attempt could plausibly succeed."""
     status = status_of(exc)
     if status is not None:
-        return status in RETRYABLE_STATUS
+        return is_retryable_status(status, failover_on_http_5xx=failover_on_http_5xx)
     return isinstance(exc, RETRYABLE_EXCEPTIONS)
 
 
@@ -136,6 +144,7 @@ class RetryPolicy:
     base_delay: float = 0.2
     max_delay: float = 5.0
     jitter: float = 0.5
+    failover_on_http_5xx: bool = False
     _random: random.Random = field(default_factory=random.Random, repr=False)
 
     def __post_init__(self) -> None:
@@ -143,6 +152,7 @@ class RetryPolicy:
         self.base_delay = max(0.0, float(self.base_delay))
         self.max_delay = max(0.0, float(self.max_delay))
         self.jitter = min(1.0, max(0.0, float(self.jitter)))
+        self.failover_on_http_5xx = bool(self.failover_on_http_5xx)
 
     @property
     def enabled(self) -> bool:
@@ -155,6 +165,9 @@ class RetryPolicy:
             base_delay=getattr(retry_settings, "base_delay_ms", 200) / 1000,
             max_delay=getattr(retry_settings, "max_delay_ms", 5000) / 1000,
             jitter=getattr(retry_settings, "jitter", 0.5),
+            failover_on_http_5xx=bool(
+                getattr(retry_settings, "failover_on_http_5xx", False)
+            ),
         )
 
     def snapshot(self) -> dict[str, float | int]:
@@ -202,6 +215,9 @@ def resolve_upstream_policy(
             ),
             max_delay=getattr(retry_settings, "max_delay_ms", 5000) / 1000,
             jitter=getattr(retry_settings, "jitter", 0.5),
+            failover_on_http_5xx=bool(
+                getattr(retry_settings, "failover_on_http_5xx", False)
+            ),
         )
     return timeout, policy
 
@@ -297,7 +313,12 @@ async def with_retries(
         try:
             return await operation()
         except BaseException as exc:  # noqa: BLE001 — re-raised below
-            if not is_retryable(exc) or attempt >= policy.attempts:
+            if (
+                not is_retryable(
+                    exc, failover_on_http_5xx=policy.failover_on_http_5xx
+                )
+                or attempt >= policy.attempts
+            ):
                 raise
             delay = retry_after_seconds(exc)
             if delay is None:

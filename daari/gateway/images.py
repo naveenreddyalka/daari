@@ -109,7 +109,7 @@ async def post_images_multipart(
     metrics: Any | None = None,
 ) -> httpx.Response:
     """Multipart POST for /images/edits (and similar) with retry (#1097)."""
-    from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
+    from daari.router.retry import RetryPolicy, is_retryable_status, run_upstream
 
     policy = (
         retry
@@ -121,7 +121,9 @@ async def post_images_multipart(
         response = await _shared_client().post(
             url, headers=headers, data=form, files=files, timeout=timeout
         )
-        if response.status_code in RETRYABLE_STATUS:
+        if is_retryable_status(
+            response.status_code, failover_on_http_5xx=policy.failover_on_http_5xx
+        ):
             response.raise_for_status()
         return response
 

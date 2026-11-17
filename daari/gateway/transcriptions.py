@@ -232,7 +232,7 @@ async def post_transcription(
     retry: Any | None = None,
     metrics: Any | None = None,
 ) -> httpx.Response:
-    from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
+    from daari.router.retry import RetryPolicy, is_retryable_status, run_upstream
 
     files = {
         "file": (
@@ -251,7 +251,9 @@ async def post_transcription(
         response = await _shared_client().post(
             url, headers=headers, data=form, files=files, timeout=timeout
         )
-        if response.status_code in RETRYABLE_STATUS:
+        if is_retryable_status(
+            response.status_code, failover_on_http_5xx=policy.failover_on_http_5xx
+        ):
             response.raise_for_status()
         return response
 

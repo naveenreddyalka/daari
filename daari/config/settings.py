@@ -1472,6 +1472,15 @@ class UpstreamRetrySettings(BaseModel):
             "together instead of returning them in lockstep."
         ),
     )
+    failover_on_http_5xx: bool = Field(
+        default=False,
+        description=(
+            "When true, treat any HTTP 500–599 as retryable/failover-eligible "
+            "(Kong http_5xx parity), including statuses outside the default "
+            "allowlist such as 501 or 522. Default false keeps the conservative "
+            "RETRYABLE_STATUS set so permanent 501s are not retried."
+        ),
+    )
 
 
 class UpstreamSettings(BaseModel):

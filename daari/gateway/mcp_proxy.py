@@ -193,7 +193,7 @@ async def _upstream_request(
     metrics: Any | None = None,
 ) -> httpx.Response:
     """HTTP via ``run_upstream`` so transient 5xx retries with per-attempt traces (#1476)."""
-    from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
+    from daari.router.retry import RetryPolicy, is_retryable_status, run_upstream
 
     policy = (
         retry
@@ -205,7 +205,9 @@ async def _upstream_request(
         response = await _shared_client().request(
             method, url, params=params, json=json_body, timeout=timeout
         )
-        if response.status_code in RETRYABLE_STATUS:
+        if is_retryable_status(
+            response.status_code, failover_on_http_5xx=policy.failover_on_http_5xx
+        ):
             response.raise_for_status()
         return response
 

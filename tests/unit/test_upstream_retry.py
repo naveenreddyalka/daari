@@ -251,3 +251,89 @@ class TestPolicyFromSettings:
 def test_budget_exhausted_error_is_exported():
     """The pool needs a way to tell "retries done" from "do not retry"."""
     assert issubclass(RetryBudgetExhausted, Exception)
+
+
+class TestFailoverOnHttp5xx:
+    """Kong-style opt-in: any 5xx is retryable when the dial is on (#2222)."""
+
+    @pytest.mark.parametrize("code", [501, 507, 522])
+    def test_dial_off_leaves_non_allowlist_5xx_non_retryable(self, code):
+        assert is_retryable(_status_error(code)) is False
+        assert is_retryable(_status_error(code), failover_on_http_5xx=False) is False
+
+    @pytest.mark.parametrize("code", [501, 507, 522])
+    def test_dial_on_makes_any_5xx_retryable(self, code):
+        assert is_retryable(_status_error(code), failover_on_http_5xx=True) is True
+
+    def test_dial_on_does_not_retry_4xx(self):
+        assert is_retryable(_status_error(400), failover_on_http_5xx=True) is False
+        assert is_retryable(_status_error(404), failover_on_http_5xx=True) is False
+
+    def test_settings_default_is_off(self):
+        from daari.config.settings import Settings
+
+        settings = Settings()
+        assert settings.upstream.retry.failover_on_http_5xx is False
+        policy = RetryPolicy.from_settings(settings.upstream.retry)
+        assert policy.failover_on_http_5xx is False
+
+    def test_policy_from_settings_carries_dial(self):
+        from daari.config.settings import Settings
+
+        settings = Settings.model_validate(
+            {"upstream": {"retry": {"failover_on_http_5xx": True}}}
+        )
+        policy = RetryPolicy.from_settings(settings.upstream.retry)
+        assert policy.failover_on_http_5xx is True
+
+    @pytest.mark.asyncio
+    async def test_dial_off_does_not_retry_501(self):
+        attempts: list[int] = []
+
+        async def not_implemented():
+            attempts.append(1)
+            raise _status_error(501)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await with_retries(
+                not_implemented,
+                policy=RetryPolicy(
+                    attempts=3, base_delay=0.0, max_delay=0.0, jitter=0.0
+                ),
+                sleep=lambda _: None,
+            )
+        assert len(attempts) == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("code", [501, 522])
+    async def test_dial_on_retries_501_and_522(self, code):
+        attempts: list[int] = []
+
+        async def flaky():
+            attempts.append(1)
+            if len(attempts) < 3:
+                raise _status_error(code)
+            return "ok"
+
+        result = await with_retries(
+            flaky,
+            policy=RetryPolicy(
+                attempts=3,
+                base_delay=0.0,
+                max_delay=0.0,
+                jitter=0.0,
+                failover_on_http_5xx=True,
+            ),
+            sleep=lambda _: None,
+        )
+        assert result == "ok"
+        assert len(attempts) == 3
+
+    def test_exhausted_501_still_counts_as_hard_provider_failure(self):
+        from daari.router.circuit_breaker import counts_as_hard_provider_failure
+
+        assert counts_as_hard_provider_failure(_status_error(501)) is True
+        assert counts_as_hard_provider_failure(_status_error(522)) is True
+        assert counts_as_hard_provider_failure(_status_error(503)) is True
+        assert counts_as_hard_provider_failure(_status_error(429)) is False
+        assert counts_as_hard_provider_failure(_status_error(529)) is False

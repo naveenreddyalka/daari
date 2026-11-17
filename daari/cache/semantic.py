@@ -269,7 +269,7 @@ class OllamaEmbedder:
     ) -> list[list[float] | None] | None:
         """POST /api/embed with input[]. None means the server needs the legacy path."""
         from daari.router.deadline import nonstream_timeout
-        from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
+        from daari.router.retry import RetryPolicy, is_retryable_status, run_upstream
 
         try:
             timeout = nonstream_timeout(self.timeout, "embed")
@@ -292,7 +292,10 @@ class OllamaEmbedder:
                     headers=inject_trace_headers(),
                     timeout=timeout,
                 )
-                if response.status_code in RETRYABLE_STATUS:
+                if is_retryable_status(
+                    response.status_code,
+                    failover_on_http_5xx=policy.failover_on_http_5xx,
+                ):
                     response.raise_for_status()
                 return response
 
@@ -322,7 +325,7 @@ class OllamaEmbedder:
 
     async def _embed_http(self, text: str, *, model: str) -> list[float] | None:
         from daari.router.deadline import nonstream_timeout
-        from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
+        from daari.router.retry import RetryPolicy, is_retryable_status, run_upstream
 
         try:
             timeout = nonstream_timeout(self.timeout, "embed")
@@ -345,7 +348,10 @@ class OllamaEmbedder:
                     headers=inject_trace_headers(),
                     timeout=timeout,
                 )
-                if response.status_code in RETRYABLE_STATUS:
+                if is_retryable_status(
+                    response.status_code,
+                    failover_on_http_5xx=policy.failover_on_http_5xx,
+                ):
                     response.raise_for_status()
                 return response
 

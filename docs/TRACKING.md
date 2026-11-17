@@ -9229,6 +9229,14 @@ frontier uplift sentence updated. Covered by `tests/unit/test_regional_pricing.p
 supplied top-level wins; block-level `prompt_cache` unchanged; non-Anthropic
 paths do not leak the field. Covered by `tests/unit/test_anthropic_auto_caching.py`.
 
+### Opt-in failover on any HTTP 5xx ([#2222](https://github.com/naveenreddyalka/daari/issues/2222))
+
+<!-- tracking:#2222 -->
+**Status:** Done (2026-11-17). `upstream.retry.failover_on_http_5xx` (default
+false) treats any HTTP 500–599 as retryable/failover-eligible (Kong `http_5xx`
+parity), including 501/522. Default allowlist unchanged; 429/529 still do not
+open the circuit. Covered by `tests/unit/test_upstream_retry.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
