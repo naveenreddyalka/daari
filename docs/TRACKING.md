@@ -9273,6 +9273,15 @@ also skip legacy tool-bearing entries so a text-only replay cannot drop tools.
 Pure-text `stream_cache_hit` unchanged. Covered by
 `tests/unit/test_stream_l0_tool_calls.py`.
 
+### Docs: LiteLLM 1.109.0 GA floor + 1.108.5 LTS; disk-cache positioning ([#2235](https://github.com/naveenreddyalka/daari/issues/2235))
+
+<!-- tracking:#2235 -->
+**Status:** Done (2026-11-18). `compare-litellm.md` stable comparison floor is
+**1.109.0** (2026-11-11 tag); live LTS patch **1.108.5** (2026-11-10); five
+action-required migration items listed as upgrade-cost evidence; disk-cache
+backend removal vs daari diskcache L0/L1 noted with LiteLLM [#48114](https://github.com/BerriAI/litellm/pull/48114).
+Covered by `tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
