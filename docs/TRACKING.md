@@ -9302,6 +9302,15 @@ comment documents intro $2/$10 through 2026-11-30 + AI Studio pricing URL.
 Bare and `models/`-prefixed ids covered by token-accounting, capabilities, and
 models-catalog pins.
 
+### Client credential-field hygiene vs LiteLLM #51254 ([#2252](https://github.com/naveenreddyalka/daari/issues/2252))
+
+<!-- tracking:#2252 -->
+**Status:** Done (2026-11-18). Hermetic chat + Messages ASGI pins prove
+credential smuggle fields never reach OpenAI/Anthropic upstream payloads and
+never trigger `secret://` resolution; compare-litellm floor is **1.109.1** /
+LTS **1.108.6** with a hygiene row citing #51254. Covered by
+`tests/unit/test_client_credential_hygiene.py` and compare-litellm pins.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
