@@ -158,6 +158,9 @@ def run_doctor(
     results.append(_check_egress_tls_trust(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
     results.append(_check_virtual_models(cfg))
+    coding_router_tip = _check_coding_router_compose(cfg)
+    if coding_router_tip is not None:
+        results.append(coding_router_tip)
     results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
     body_cap_tip = _check_body_cap_below_provider(cfg)
@@ -3575,6 +3578,45 @@ def _check_virtual_models(settings: Settings) -> CheckResult:
         name="virtual_models",
         ok=False,
         detail="; ".join(findings),
+        optional=True,
+    )
+
+
+_CODE_SIGNAL_CATEGORIES = frozenset({"code", "code_gen", "code_explain"})
+
+
+def _check_coding_router_compose(settings: Settings) -> CheckResult | None:
+    """Informational tip: code signal_overrides without virtual_models (#2238)."""
+    routing = getattr(settings, "routing", None)
+    if routing is None:
+        return None
+    mapping = getattr(routing, "virtual_models", None) or {}
+    if mapping:
+        return None
+    rules = getattr(routing, "signal_overrides", None) or []
+    has_code_rule = False
+    for rule in rules:
+        match = getattr(rule, "match", None)
+        if match is None and isinstance(rule, dict):
+            match = rule.get("match")
+        match = match or {}
+        match_cat = match.get("category") if isinstance(match, dict) else None
+        lever_cat = getattr(rule, "category", None)
+        if lever_cat is None and isinstance(rule, dict):
+            lever_cat = rule.get("category")
+        if match_cat in _CODE_SIGNAL_CATEGORIES or lever_cat in _CODE_SIGNAL_CATEGORIES:
+            has_code_rule = True
+            break
+    if not has_code_rule:
+        return None
+    return CheckResult(
+        name="coding_router_compose",
+        ok=True,
+        detail=(
+            "routing.signal_overrides has a code-category rule but "
+            "routing.virtual_models is empty — coding-router compose incomplete; "
+            "see docs/developer/tutorials/coding-router.md"
+        ),
         optional=True,
     )
 
