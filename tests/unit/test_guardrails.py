@@ -179,6 +179,7 @@ class TestSettings:
     def test_defaults_off(self):
         assert Settings().guardrails.enabled is False
         assert Settings().guardrails.scan_tool_results is False
+        assert Settings().guardrails.scan_system is False
 
     def test_engine_from_settings(self):
         settings = Settings()
@@ -191,6 +192,7 @@ class TestSettings:
         assert engine is not None and engine.enabled
         assert engine.max_prompt_chars == 100
         assert engine.scan_tool_results is False
+        assert engine.scan_system is False
 
 
 LEAKED_AWS = "AKIAIOSFODNN7EXAMPLE"
@@ -327,6 +329,144 @@ class TestScanToolResults:
             metrics.guardrails.get("block:secret") == 1
             or metrics.guardrails.get("block:deny") == 1
         )
+
+
+def _assistant_tool_args_turn(secret: str) -> InternalRequest:
+    import json
+
+    args = json.dumps({"path": "/tmp/keys", "token": secret})
+    return InternalRequest(
+        messages=[
+            Message(role="system", content="you are helpful"),
+            Message(role="user", content="read the key file"),
+            Message(
+                role="assistant",
+                content=None,
+                tool_calls=[
+                    {
+                        "id": "c1",
+                        "function": {"name": "read", "arguments": args},
+                    }
+                ],
+            ),
+            Message(role="tool", content="ok", tool_call_id="c1"),
+        ],
+        model="daari",
+        tools=[{"type": "function", "function": {"name": "read"}}],
+    )
+
+
+class TestScanToolCallArguments:
+    """When scan_tool_results is on, assistant tool_calls.arguments are scanned (#2233)."""
+
+    def test_default_off_leaves_tool_call_secret(self):
+        engine = GuardrailEngine(
+            enabled=True,
+            output_rules=[GuardrailRule(name="secrets", kind="secret", action="redact")],
+        )
+        request = _assistant_tool_args_turn(LEAKED_AWS)
+        result = engine.check_tool_results(request)
+        assert not result.tripped
+        args = request.messages[2].tool_calls[0]["function"]["arguments"]
+        assert LEAKED_AWS in args
+
+    def test_redact_rewrites_tool_call_arguments_as_valid_json(self):
+        import json
+
+        engine = GuardrailEngine(
+            enabled=True,
+            scan_tool_results=True,
+            output_rules=[GuardrailRule(name="secrets", kind="secret", action="redact")],
+        )
+        request = _assistant_tool_args_turn(LEAKED_AWS)
+        result = engine.check_tool_results(request)
+        assert result.tripped
+        assert not result.blocked
+        args = request.messages[2].tool_calls[0]["function"]["arguments"]
+        assert LEAKED_AWS not in args
+        assert "<aws_key>" in args
+        parsed = json.loads(args)
+        assert parsed["token"] == "<aws_key>"
+        assert parsed["path"] == "/tmp/keys"
+        assert any(h.stage == "tool_arguments" for h in result.hits)
+
+    def test_block_on_tool_call_arguments(self):
+        engine = GuardrailEngine(
+            enabled=True,
+            scan_tool_results=True,
+            output_rules=[
+                GuardrailRule(name="secrets", kind="secret", action="block")
+            ],
+            block_message="tool args blocked",
+        )
+        result = engine.check_tool_results(_assistant_tool_args_turn(LEAKED_AWS))
+        assert result.blocked
+        assert any(h.stage == "tool_arguments" for h in result.hits)
+
+
+class TestScanSystem:
+    """Opt-in guardrails.scan_system includes system prompts (#2233)."""
+
+    def test_default_skips_system_secret(self):
+        engine = GuardrailEngine(
+            enabled=True,
+            input_rules=[GuardrailRule(name="secrets", kind="secret", action="block")],
+        )
+        request = InternalRequest(
+            messages=[
+                Message(role="system", content=f"key={LEAKED_AWS}"),
+                Message(role="user", content="hello"),
+            ],
+            model="daari",
+        )
+        result = engine.check_input(request)
+        assert not result.blocked
+        assert not result.tripped
+
+    def test_scan_system_blocks_and_stages(self):
+        engine = GuardrailEngine(
+            enabled=True,
+            scan_system=True,
+            input_rules=[GuardrailRule(name="secrets", kind="secret", action="block")],
+            block_message="system blocked",
+        )
+        request = InternalRequest(
+            messages=[
+                Message(role="system", content=f"key={LEAKED_AWS}"),
+                Message(role="user", content="hello"),
+            ],
+            model="daari",
+        )
+        result = engine.check_input(request)
+        assert result.blocked
+        assert any(h.stage == "system" for h in result.hits)
+
+    def test_scan_system_redact_rewrites_system_message(self):
+        engine = GuardrailEngine(
+            enabled=True,
+            scan_system=True,
+            input_rules=[GuardrailRule(name="secrets", kind="secret", action="redact")],
+        )
+        request = InternalRequest(
+            messages=[
+                Message(role="system", content=f"key={LEAKED_AWS}"),
+                Message(role="user", content="hello"),
+            ],
+            model="daari",
+        )
+        result = engine.check_input(request)
+        assert result.tripped
+        assert not result.blocked
+        assert LEAKED_AWS not in (request.messages[0].content or "")
+        assert "<aws_key>" in (request.messages[0].content or "")
+        assert any(h.stage == "system" for h in result.hits)
+
+    def test_engine_from_settings_carries_scan_system(self):
+        settings = Settings()
+        settings.guardrails = GuardrailSettings(enabled=True, scan_system=True)
+        engine = engine_from_settings(settings)
+        assert engine is not None
+        assert engine.scan_system is True
 
 
 class TestPerRuleDenialMessage:

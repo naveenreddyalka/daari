@@ -163,8 +163,11 @@ class GuardrailEngine:
     # buffered = collect then scan (default); incremental = holdback window (#375).
     stream_mode: Literal["buffered", "incremental"] = "buffered"
     stream_holdback_chars: int = 256
-    # When on, scan role=tool messages with output rules before the model hop (#387).
+    # When on, scan role=tool messages and assistant tool_calls arguments
+    # with input+output rules before the model hop (#387, #2233).
     scan_tool_results: bool = False
+    # When on, include system message content in the input scan (#2233).
+    scan_system: bool = False
     # When on, block events carry secret-redacted capped text (#2183).
     log_blocked_content: bool = False
     # Settings + optional sync httpx client for kind=decision (#1589).
@@ -301,49 +304,182 @@ class GuardrailEngine:
             rule, stage=stage, probability=probability, action=action
         )
 
-    def check_input(self, request: InternalRequest) -> GuardrailResult:
-        text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
-        result = self.check_input_text(text)
-        result.request = request
-        return result
-
-    async def check_input_async(self, request: InternalRequest) -> GuardrailResult:
-        text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
-        result = await self.check_input_text_async(text)
-        result.request = request
-        return result
-
-    def check_tool_results(self, request: InternalRequest) -> GuardrailResult:
-        """Scan OpenAI `role=tool` / Anthropic-converted tool_result messages.
-
-        Opt-in via `scan_tool_results`. Uses output-style rules (secrets/PII/deny)
-        so a leaked secret in a tool payload is redacted or blocked before execute
-        and before cache keys are computed. System/user/assistant are untouched.
-        """
-        result = GuardrailResult(request=request)
-        if not self.enabled or not self.scan_tool_results:
-            return result
-        rewritten_any = False
-        for index, message in enumerate(request.messages):
-            if message.role != "tool":
-                continue
-            text = message.content or ""
-            # Input deny/injection on tool payload (parity with MCP args path).
-            inbound = self.check_input_text(text)
+    def _merge_text_scan(
+        self,
+        result: GuardrailResult,
+        *,
+        inbound: GuardrailResult | None = None,
+        outbound: GuardrailResult | None = None,
+    ) -> bool:
+        """Fold inbound/outbound hits into ``result``. Returns True if blocked."""
+        if inbound is not None:
             if inbound.hits:
                 result.hits.extend(inbound.hits)
                 result.warning = result.warning or inbound.warning
             if inbound.blocked:
                 result.blocked = True
                 result.block_message = inbound.block_message or self.denial_message()
-                return result
-            rewritten, outbound = self.check_output_text(text)
+                return True
+        if outbound is not None:
             if outbound.hits:
                 result.hits.extend(outbound.hits)
                 result.warning = result.warning or outbound.warning
             if outbound.blocked:
                 result.blocked = True
                 result.block_message = outbound.block_message or self.denial_message()
+                return True
+        return False
+
+    def _scan_message_text(
+        self, text: str, *, stage: str
+    ) -> tuple[str, GuardrailResult, GuardrailResult]:
+        """Input then output rules over ``text`` with a shared surface stage."""
+        inbound = self.check_input_text(text, stage=stage)
+        if inbound.blocked:
+            return text, inbound, GuardrailResult()
+        working = inbound.rewritten if inbound.rewritten is not None else text
+        rewritten, outbound = self.check_output_text(working, stage=stage)
+        return rewritten, inbound, outbound
+
+    @staticmethod
+    def _tool_call_arguments_text(arguments: Any) -> str:
+        if isinstance(arguments, str):
+            return arguments
+        if arguments is None:
+            return ""
+        import json
+
+        try:
+            return json.dumps(arguments)
+        except (TypeError, ValueError):
+            return str(arguments)
+
+    def check_input(self, request: InternalRequest) -> GuardrailResult:
+        result = GuardrailResult(request=request)
+        if not self.enabled:
+            return result
+        if self.scan_system:
+            rewritten_any = False
+            for index, message in enumerate(request.messages):
+                if message.role != "system":
+                    continue
+                text = message.content or ""
+                inbound = self.check_input_text(text, stage="system")
+                if self._merge_text_scan(result, inbound=inbound):
+                    return result
+                rewritten = inbound.rewritten if inbound.rewritten is not None else text
+                if rewritten != text:
+                    request.messages[index] = message.model_copy(
+                        update={"content": rewritten}
+                    )
+                    rewritten_any = True
+            if rewritten_any:
+                result.request = request
+        text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
+        main = self.check_input_text(text)
+        if main.hits:
+            result.hits.extend(main.hits)
+            result.warning = result.warning or main.warning
+        if main.blocked:
+            result.blocked = True
+            result.block_message = main.block_message or self.denial_message()
+            return result
+        if main.rewritten is not None:
+            result.rewritten = main.rewritten
+        result.request = request
+        return result
+
+    async def check_input_async(self, request: InternalRequest) -> GuardrailResult:
+        result = GuardrailResult(request=request)
+        if not self.enabled:
+            return result
+        if self.scan_system:
+            rewritten_any = False
+            for index, message in enumerate(request.messages):
+                if message.role != "system":
+                    continue
+                text = message.content or ""
+                inbound = await self.check_input_text_async(text, stage="system")
+                if self._merge_text_scan(result, inbound=inbound):
+                    return result
+                rewritten = inbound.rewritten if inbound.rewritten is not None else text
+                if rewritten != text:
+                    request.messages[index] = message.model_copy(
+                        update={"content": rewritten}
+                    )
+                    rewritten_any = True
+            if rewritten_any:
+                result.request = request
+        text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
+        main = await self.check_input_text_async(text)
+        if main.hits:
+            result.hits.extend(main.hits)
+            result.warning = result.warning or main.warning
+        if main.blocked:
+            result.blocked = True
+            result.block_message = main.block_message or self.denial_message()
+            return result
+        if main.rewritten is not None:
+            result.rewritten = main.rewritten
+        result.request = request
+        return result
+
+    def check_tool_results(self, request: InternalRequest) -> GuardrailResult:
+        """Scan tool payloads and assistant ``tool_calls`` arguments.
+
+        Opt-in via `scan_tool_results`. Uses input+output rules (secrets/PII/deny)
+        so a leaked secret in a tool payload or replayed function arguments is
+        redacted or blocked before execute and before cache keys are computed.
+        Hits on arguments use stage ``tool_arguments`` (#2233).
+        """
+        result = GuardrailResult(request=request)
+        if not self.enabled or not self.scan_tool_results:
+            return result
+        rewritten_any = False
+        for index, message in enumerate(request.messages):
+            if message.role == "assistant" and message.tool_calls:
+                new_calls: list[Any] = []
+                calls_changed = False
+                for call in message.tool_calls:
+                    if not isinstance(call, dict):
+                        new_calls.append(call)
+                        continue
+                    call_copy = dict(call)
+                    fn = call_copy.get("function")
+                    if not isinstance(fn, dict):
+                        new_calls.append(call_copy)
+                        continue
+                    fn_copy = dict(fn)
+                    raw_args = fn_copy.get("arguments")
+                    text = self._tool_call_arguments_text(raw_args)
+                    rewritten, inbound, outbound = self._scan_message_text(
+                        text, stage="tool_arguments"
+                    )
+                    if self._merge_text_scan(result, inbound=inbound, outbound=outbound):
+                        return result
+                    if rewritten != text:
+                        fn_copy["arguments"] = rewritten
+                        call_copy["function"] = fn_copy
+                        calls_changed = True
+                    else:
+                        call_copy["function"] = fn_copy
+                    new_calls.append(call_copy)
+                if calls_changed:
+                    request.messages[index] = message.model_copy(
+                        update={"tool_calls": new_calls}
+                    )
+                    rewritten_any = True
+                continue
+            if message.role != "tool":
+                continue
+            text = message.content or ""
+            # Input deny/injection on tool payload (parity with MCP args path).
+            inbound = self.check_input_text(text)
+            if self._merge_text_scan(result, inbound=inbound):
+                return result
+            working = inbound.rewritten if inbound.rewritten is not None else text
+            rewritten, outbound = self.check_output_text(working)
+            if self._merge_text_scan(result, outbound=outbound):
                 return result
             if rewritten != text:
                 request.messages[index] = message.model_copy(update={"content": rewritten})
@@ -353,7 +489,7 @@ class GuardrailEngine:
         return result
 
     def check_input_text(
-        self, text: str, *, skip_decision: bool = False
+        self, text: str, *, skip_decision: bool = False, stage: str = "input"
     ) -> GuardrailResult:
         """Run the input rules over raw text (chat prompts, MCP tool arguments).
 
@@ -375,7 +511,7 @@ class GuardrailEngine:
 
         if self.max_prompt_chars > 0 and len(rewritten) > self.max_prompt_chars:
             hit = GuardrailHit(
-                stage="input",
+                stage=stage,
                 rule="max_length",
                 action="block",
                 detail=f"{len(rewritten)}>{self.max_prompt_chars}",
@@ -389,7 +525,7 @@ class GuardrailEngine:
             if rule.kind == "secret" or rule.name == "secrets":
                 rewritten, blocked = _apply_secret_patterns(
                     rewritten,
-                    stage="input",
+                    stage=stage,
                     action=rule.action,
                     result=result,
                     rule=rule,
@@ -403,7 +539,7 @@ class GuardrailEngine:
                 continue
             if re.search(rule.pattern, rewritten, re.I):
                 hit = GuardrailHit(
-                    stage="input",
+                    stage=stage,
                     rule=rule.name,
                     action=rule.action,
                     detail=rule.pattern,
@@ -422,7 +558,7 @@ class GuardrailEngine:
             for rule in self.input_rules:
                 if rule.kind != "decision":
                     continue
-                hit = self._apply_decision_rule(rewritten, rule, stage="input")
+                hit = self._apply_decision_rule(rewritten, rule, stage=stage)
                 if hit is None:
                     continue
                 result.hits.append(hit)
@@ -436,7 +572,7 @@ class GuardrailEngine:
         for pattern in _INJECTION_PATTERNS:
             if pattern.search(rewritten):
                 hit = GuardrailHit(
-                    stage="input",
+                    stage=stage,
                     rule="prompt_injection",
                     action=self.injection_action,
                     detail=pattern.pattern,
@@ -452,16 +588,18 @@ class GuardrailEngine:
         result.rewritten = rewritten
         return result
 
-    async def check_input_text_async(self, text: str) -> GuardrailResult:
+    async def check_input_text_async(
+        self, text: str, *, stage: str = "input"
+    ) -> GuardrailResult:
         """Async input path: decision rules are offloaded off the event loop (#1610)."""
-        result = self.check_input_text(text, skip_decision=True)
+        result = self.check_input_text(text, skip_decision=True, stage=stage)
         if not self.enabled or result.blocked:
             return result
         rewritten = result.rewritten if result.rewritten is not None else text
         for rule in self.input_rules:
             if rule.kind != "decision":
                 continue
-            hit = await self._apply_decision_rule_async(rewritten, rule, stage="input")
+            hit = await self._apply_decision_rule_async(rewritten, rule, stage=stage)
             if hit is None:
                 continue
             result.hits.append(hit)
@@ -491,7 +629,7 @@ class GuardrailEngine:
         return result
 
     def check_output_text(
-        self, text: str, *, skip_decision: bool = False
+        self, text: str, *, skip_decision: bool = False, stage: str = "output"
     ) -> tuple[str, GuardrailResult]:
         """Run the output rules over raw text. Returns (rewritten_text, result);
         a block returns `block_message` as the text."""
@@ -503,7 +641,7 @@ class GuardrailEngine:
             if rule.kind == "secret" or rule.name == "secrets":
                 rewritten, blocked = _apply_secret_patterns(
                     rewritten,
-                    stage="output",
+                    stage=stage,
                     action=rule.action,
                     result=result,
                     rule=rule,
@@ -514,7 +652,7 @@ class GuardrailEngine:
                 scrubbed, counts = scrub_pii(rewritten)
                 if counts:
                     hit = GuardrailHit(
-                        stage="output",
+                        stage=stage,
                         rule="pii",
                         action=rule.action,
                         detail=",".join(f"{k}:{v}" for k, v in counts.items()),
@@ -529,7 +667,7 @@ class GuardrailEngine:
                         rewritten = scrubbed
             if rule.kind == "deny" and rule.pattern and re.search(rule.pattern, rewritten, re.I):
                 hit = GuardrailHit(
-                    stage="output",
+                    stage=stage,
                     rule=rule.name,
                     action=rule.action,
                     detail=rule.pattern,
@@ -543,7 +681,7 @@ class GuardrailEngine:
                 if rule.action == "redact":
                     rewritten = re.sub(rule.pattern, "<redacted>", rewritten, flags=re.I)
             if rule.kind == "decision" and not skip_decision:
-                hit = self._apply_decision_rule(rewritten, rule, stage="output")
+                hit = self._apply_decision_rule(rewritten, rule, stage=stage)
                 if hit is None:
                     continue
                 result.hits.append(hit)
@@ -554,15 +692,17 @@ class GuardrailEngine:
                     result.warning = f"guardrail:{rule.name}{suffix}"
         return rewritten, result
 
-    async def check_output_text_async(self, text: str) -> tuple[str, GuardrailResult]:
+    async def check_output_text_async(
+        self, text: str, *, stage: str = "output"
+    ) -> tuple[str, GuardrailResult]:
         """Async output path with decision rules offloaded (#1610)."""
-        rewritten, result = self.check_output_text(text, skip_decision=True)
+        rewritten, result = self.check_output_text(text, skip_decision=True, stage=stage)
         if not self.enabled or result.blocked:
             return rewritten, result
         for rule in self.output_rules:
             if rule.kind != "decision":
                 continue
-            hit = await self._apply_decision_rule_async(rewritten, rule, stage="output")
+            hit = await self._apply_decision_rule_async(rewritten, rule, stage=stage)
             if hit is None:
                 continue
             result.hits.append(hit)
@@ -750,6 +890,7 @@ def engine_from_block(block: Any, *, settings: Any = None) -> GuardrailEngine | 
     stream_mode = getattr(block, "stream_mode", "buffered") or "buffered"
     holdback = int(getattr(block, "stream_holdback_chars", 256) or 256)
     scan_tool = bool(getattr(block, "scan_tool_results", False))
+    scan_system = bool(getattr(block, "scan_system", False))
     log_blocked = bool(getattr(block, "log_blocked_content", False))
     return GuardrailEngine(
         enabled=True,
@@ -761,6 +902,7 @@ def engine_from_block(block: Any, *, settings: Any = None) -> GuardrailEngine | 
         stream_mode=stream_mode,  # type: ignore[arg-type]
         stream_holdback_chars=max(0, holdback),
         scan_tool_results=scan_tool,
+        scan_system=scan_system,
         log_blocked_content=log_blocked,
         settings=settings,
     )
