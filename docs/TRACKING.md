@@ -9254,6 +9254,16 @@ Covered by `tests/unit/test_advisor_model_52_gate.py`.
 streamed `/v1/messages` map back; OpenAI chat reports `length` on L6 truncation.
 Covered by `tests/unit/test_stop_reason_honesty.py` and gateway-flow cases.
 
+### Guardrails scan tool_call arguments + opt-in system ([#2233](https://github.com/naveenreddyalka/daari/issues/2233))
+
+<!-- tracking:#2233 -->
+**Status:** Done (2026-11-18). When `guardrails.scan_tool_results` is on, assistant
+`tool_calls.function.arguments` are scanned with the same input+output rules as
+`role=tool` payloads (stage=`tool_arguments`; redact keeps valid JSON). New
+opt-in `guardrails.scan_system` (default off) includes system message content in
+the input scan (stage=`system`); PII scrub still skips system prompts. Covered by
+`tests/unit/test_guardrails.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

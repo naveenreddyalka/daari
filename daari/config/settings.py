@@ -2357,14 +2357,27 @@ class GuardrailSettings(BaseModel):
         ),
     )
     # Off by default: chat tool payloads reach the model unchecked (MCP has its
-    # own path). When on, role=tool / tool_result content is scanned with output
-    # rules before execute; cache keys use the redacted text (#387).
+    # own path). When on, role=tool / tool_result content and assistant
+    # tool_calls.function.arguments are scanned with input+output rules before
+    # execute; cache keys use the redacted text (#387, #2233).
     scan_tool_results: bool = Field(
         default=False,
         description=(
-            "When true, scan OpenAI role=tool and Anthropic tool_result message "
-            "contents with output rules (secrets/PII/deny) before the model hop. "
-            "System/user/assistant messages are unchanged. Default off."
+            "When true, scan OpenAI role=tool / Anthropic tool_result contents "
+            "and assistant tool_calls.function.arguments with input+output "
+            "rules (secrets/PII/deny) before the model hop. Redact rewrites "
+            "in place (arguments stay valid JSON when they were). Default off."
+        ),
+    )
+    # Off by default: system prompts are the operator's own text and stay out
+    # of the input scan (PII scrub still skips them). When on, system message
+    # content is scanned with input rules; hits use stage=system (#2233).
+    scan_system: bool = Field(
+        default=False,
+        description=(
+            "When true, include system message content in the input guardrail "
+            "scan (stage=system). Default off — system prompts remain operator "
+            "text; daari PII scrub still skips them regardless."
         ),
     )
     # Kong 2.3.0 log_blocked_content parity (#2183). Off by default so events

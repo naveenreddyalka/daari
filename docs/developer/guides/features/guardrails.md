@@ -20,10 +20,15 @@ guardrails:
   stream_mode: incremental
   stream_holdback_chars: 256
   # Off by default. When on, OpenAI role=tool / Anthropic tool_result contents
-  # are scanned with output rules (secrets/PII) before the model hop; redact
-  # rewrites in place (cache keys use scrubbed text), block refuses the turn.
-  # System/user/assistant are unchanged. MCP tools/call scanning is separate.
+  # and assistant tool_calls.function.arguments are scanned with input+output
+  # rules (secrets/PII) before the model hop; redact rewrites in place
+  # (arguments stay valid JSON when they were; cache keys use scrubbed text),
+  # block refuses the turn. Hits on arguments use stage=tool_arguments (#2233).
+  # MCP tools/call scanning is separate.
   scan_tool_results: true
+  # Off by default. When on, system message content is included in the input
+  # scan (stage=system). PII scrub still skips system prompts (#2233).
+  scan_system: false
   input_rules:
     - name: no_account_numbers
       pattern: '\d{3}-\d{2}-\d{4}'
