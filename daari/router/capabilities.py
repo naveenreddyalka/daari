@@ -22,6 +22,8 @@ KNOWN_CAPABILITIES = ("tools", "json", "vision", "audio", "long_context")
 # GPT-6.1 Sol: same capability set (coding/professional; tools + vision).
 # Gemini 3.8 Flash: tools, JSON, native image/audio/video, 1M context
 # (https://ai.google.dev/gemini-api/docs/latest-model).
+# Gemini 4 Carbon / Argon: same multimodal set (images/audio/video/PDF) +
+# 1M context (https://aistudio.google.com/learn/gemini-4-carbon-developer-guide).
 _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
     name: frozenset({"tools", "json", "vision", "long_context"})
     for name in (
@@ -44,6 +46,8 @@ _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
         "gpt-5.6-terra",
         "gpt-5.6-luna",
         "gemini-3.8-flash",
+        "gemini-4-carbon",
+        "gemini-4-argon",
         "grok-4.7",
     )
 }
@@ -63,6 +67,8 @@ for _audio_model in (
     "gpt-5.6-terra",
     "gpt-5.6-luna",
     "gemini-3.8-flash",
+    "gemini-4-carbon",
+    "gemini-4-argon",
     "gpt-4o",
     "gpt-4o-mini",
     "gpt-4o-audio-preview",
