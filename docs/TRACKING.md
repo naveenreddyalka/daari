@@ -9292,6 +9292,16 @@ composes `virtual_models` + `virtual_model_selection: cost` + code
 doctor informational tip when a code-category signal rule exists but
 `virtual_models` is empty. Covered by `tests/unit/test_coding_router_recipe.py`.
 
+### Gemini 4 Carbon and Argon catalog rates ([#2239](https://github.com/naveenreddyalka/daari/issues/2239))
+
+<!-- tracking:#2239 -->
+**Status:** Done (2026-11-18). `_DEFAULT_MODEL_PRICES` ships `gemini-4-carbon`
+and `gemini-4-argon` at post-intro standard $4/$20 (cache read $0.20); dict
+comment documents intro $2/$10 through 2026-11-30 + AI Studio pricing URL.
+`_FRONTIER_CAPABILITIES` lists both with tools/json/vision/audio/long_context.
+Bare and `models/`-prefixed ids covered by token-accounting, capabilities, and
+models-catalog pins.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

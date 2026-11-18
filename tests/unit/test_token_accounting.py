@@ -266,6 +266,10 @@ def test_resolve_price_covers_september_2026_frontier_lineup():
         "gpt-5.6-luna": (0.20, 1.20, 0.02),
         # https://ai.google.dev/gemini-api/docs/pricing — intro rate through 2026-12-31
         "gemini-3.8-flash": (0.75, 3.75, 0.075),
+        # https://aistudio.google.com/docs/pricing — post-intro standard from 2026-12-01
+        # (intro $2/$10/$0.10 cache through 2026-11-30)
+        "gemini-4-carbon": (4.0, 20.0, 0.20),
+        "gemini-4-argon": (4.0, 20.0, 0.20),
     }
     for model, (inp, out, cached) in expected.items():
         price = resolve_price(model, settings.pricing, fallback_per_1k=0.002)
@@ -289,12 +293,24 @@ def test_resolve_price_matches_dated_and_provider_prefixed_aliases():
     gemini = resolve_price(
         "models/gemini-3.8-flash", settings.pricing, fallback_per_1k=0.002
     )
-    for price in (dated, bedrock, regional, gemini):
+    carbon = resolve_price(
+        "models/gemini-4-carbon", settings.pricing, fallback_per_1k=0.002
+    )
+    argon = resolve_price(
+        "models/gemini-4-argon", settings.pricing, fallback_per_1k=0.002
+    )
+    for price in (dated, bedrock, regional, gemini, carbon, argon):
         assert price.is_fallback is False
     assert dated.cached_input_per_1m == pytest.approx(0.25)
     assert bedrock.input_per_1m == pytest.approx(10.0)
     assert regional.output_per_1m == pytest.approx(50.0)
     assert gemini.input_per_1m == pytest.approx(0.75)
+    assert carbon.input_per_1m == pytest.approx(4.0)
+    assert carbon.output_per_1m == pytest.approx(20.0)
+    assert carbon.cached_input_per_1m == pytest.approx(0.20)
+    assert argon.input_per_1m == pytest.approx(4.0)
+    assert argon.output_per_1m == pytest.approx(20.0)
+    assert argon.cached_input_per_1m == pytest.approx(0.20)
     # Longer specific keys still win over a family prefix.
     luna = resolve_price("gpt-5.6-luna", settings.pricing, fallback_per_1k=0.002)
     assert luna.input_per_1m == pytest.approx(0.20)
@@ -326,6 +342,10 @@ def test_doctor_does_not_warn_for_priced_september_2026_models():
         "gpt-6.1-sol",
         "gpt-6.1-terra",
         "gemini-3.8-flash",
+        "gemini-4-carbon",
+        "gemini-4-argon",
+        "models/gemini-4-carbon",
+        "models/gemini-4-argon",
         "claude-fable-5-1-20260901",
         "anthropic.claude-fable-5-1",
         "anthropic.claude-fable-5-2",
