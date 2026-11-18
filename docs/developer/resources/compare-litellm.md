@@ -61,8 +61,8 @@ LiteLLM [v1.106.0](https://github.com/BerriAI/litellm/releases/tag/v1.106.0)
 27 Oct 2026 and
 [1.106.4](https://github.com/BerriAI/litellm/releases/tag/v1.106.4) on
 25 Oct 2026; also backported as 1.103.9 / 1.104.7 / 1.105.5). The **current
-stable comparison floor** is **[1.109.0](https://github.com/BerriAI/litellm/releases/tag/v1.109.0)**
-(2026-11-11) — see below. The 1.106 cut includes a native
+stable comparison floor** is **[1.109.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.1)**
+(2026-11-12) — see below. The 1.106 cut includes a native
 [decision-model guardrail](https://docs.litellm.ai/docs/proxy/guardrails/decision_model)
 (`guardrail: decision_model`): yes/no questions against any `/v1/decisions`
 model, blocking or logging at a probability threshold.
@@ -95,7 +95,7 @@ PyPI quarantined the version; the Docker image was removed from Docker Hub /
 GHCR. Indicators include `/tmp/.pc_once_*` and `/tmp/remote_code_loader.lock`.
 
 **Do not** `pip install litellm==1.107.0` or pull `litellm/litellm:1.107.0`.
-Stay on LiteLLM **1.109.0** (or skip LiteLLM entirely). Treat 1.107.0 as
+Stay on LiteLLM **1.109.1** (or skip LiteLLM entirely). Treat 1.107.0 as
 unsafe / do-not-install — not a feature comparison bar. Do **not** advertise
 compromised 1.107 watchables as safe.
 
@@ -114,15 +114,18 @@ LTS GA cut was
 **[v1.108.0](https://github.com/BerriAI/litellm/releases/tag/v1.108.0)**
 (2026-11-04); **1.108.2** was the fixes-only LTS patch (including spend/key
 401s while Postgres restarts). The **live LTS patch** is now
-**[v1.108.5](https://github.com/BerriAI/litellm/releases/tag/v1.108.5)**
-(2026-11-10). The earlier RC
+**[v1.108.6](https://github.com/BerriAI/litellm/releases/tag/v1.108.6)**
+(2026-11-12; carries the [#51254](https://github.com/BerriAI/litellm/pull/51254)
+credential-field hygiene fix; prior live patch was
+**[v1.108.5](https://github.com/BerriAI/litellm/releases/tag/v1.108.5)** on
+2026-11-10). The earlier RC
 [v1.108.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.108.0-rc.1)
 (29 Oct 2026) was a **parity** cut of the 1.106.x gzip / off-loop compression
 fixes onto the 1.108 train — not a feature ship — and is superseded by the
 stable tags. **1.106.7** remains the final 1.106.x patch; do **not** treat
 compromised **1.107.0** as a support window. The **stable comparison floor**
-moved to **[1.109.0](https://github.com/BerriAI/litellm/releases/tag/v1.109.0)**
-(see below); keep 1.108.5 for LTS-pin buyers only.
+moved to **[1.109.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.1)**
+(see below); keep 1.108.6 for LTS-pin buyers only.
 
 **LTS pilot and Tuesday cadence are live** (not pending): LiteLLM pauses the
 usual four-most-recent-stable-lines patch window on this 1.108 LTS line, and
@@ -132,18 +135,32 @@ competitor ops context, not a daari upgrade path: daari is local-first with
 **no LiteLLM runtime** dependency and no weekly proxy release train to pin
 against.
 
-## LiteLLM 1.109.0 GA
+## LiteLLM 1.109 GA
 
 LiteLLM
+**[v1.109.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.1)**
+(2026-11-12) is **GA** and the current **stable comparison floor** (emergency
+credential-field hygiene; see
+[#51254](https://github.com/BerriAI/litellm/pull/51254)). Prior
 **[v1.109.0](https://github.com/BerriAI/litellm/releases/tag/v1.109.0)**
-(2026-11-11) is **GA** and the current **stable comparison floor**. Earlier
+(2026-11-11) and earlier
 [v1.109.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-rc.1),
 [v1.109.0-dev.2](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.2),
 and
 [v1.109.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.1)
 builds are superseded. The live LTS patch on the prior line remains
-**[1.108.5](https://github.com/BerriAI/litellm/releases/tag/v1.108.5)**
-(2026-11-10). Feature notes and daari's stance:
+**[1.108.6](https://github.com/BerriAI/litellm/releases/tag/v1.108.6)**
+(2026-11-12). Feature notes and daari's stance:
+
+- **Client credential-field hygiene** — LiteLLM #51254 blocked client bodies
+  from overriding admin deployment credential fields (`tenant_id`,
+  `client_id`, `client_secret`, …) and smuggling `os.environ/` / `oidc/` /
+  `secret://` refs into credential resolution. daari is immune by design:
+  upstream payloads are built from an explicit allowlist
+  (`SamplingParams.openai_payload` / Anthropic bridge), `secret://` refs
+  resolve only from operator-owned `Settings` at boot/refresh, and admin
+  config PATCH is a validated whitelist with no credential fields. Fenced by
+  `tests/unit/test_client_credential_hygiene.py`.
 
 - **Mid-stream fallback continuation** — LiteLLM can keep a streaming chat
   going on a configured fallback mid-answer. daari ships the same on-box via
@@ -214,7 +231,7 @@ factual packaging difference, not a claim that LiteLLM cannot cache.
 LiteLLM
 [v1.110.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.110.0-dev.1)
 (2026-11-07) is **prerelease watch only** — do **not** promote 1.110 to the
-GA floor (stable comparison remains **1.109.0**). Watchables on this channel
+GA floor (stable comparison remains **1.109.1**). Watchables on this channel
 include provider-reported `usage.cost`, tenant session affinity, and
 Lens-split Helm; daari does **not** claim Lens / hosted Helm parity. Treat
 1.110-dev as competitor ops context, not a support window.
