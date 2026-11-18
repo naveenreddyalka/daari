@@ -61,8 +61,8 @@ LiteLLM [v1.106.0](https://github.com/BerriAI/litellm/releases/tag/v1.106.0)
 27 Oct 2026 and
 [1.106.4](https://github.com/BerriAI/litellm/releases/tag/v1.106.4) on
 25 Oct 2026; also backported as 1.103.9 / 1.104.7 / 1.105.5). The **current
-stable comparison floor** is **[1.108.2 GA / LTS](https://github.com/BerriAI/litellm/releases/tag/v1.108.2)**
-(2026-11-06) — see below. The 1.106 cut includes a native
+stable comparison floor** is **[1.109.0](https://github.com/BerriAI/litellm/releases/tag/v1.109.0)**
+(2026-11-11) — see below. The 1.106 cut includes a native
 [decision-model guardrail](https://docs.litellm.ai/docs/proxy/guardrails/decision_model)
 (`guardrail: decision_model`): yes/no questions against any `/v1/decisions`
 model, blocking or logging at a probability threshold.
@@ -95,31 +95,34 @@ PyPI quarantined the version; the Docker image was removed from Docker Hub /
 GHCR. Indicators include `/tmp/.pc_once_*` and `/tmp/remote_code_loader.lock`.
 
 **Do not** `pip install litellm==1.107.0` or pull `litellm/litellm:1.107.0`.
-Stay on LiteLLM **1.108.2** (or skip LiteLLM entirely). Treat 1.107.0 as
+Stay on LiteLLM **1.109.0** (or skip LiteLLM entirely). Treat 1.107.0 as
 unsafe / do-not-install — not a feature comparison bar. Do **not** advertise
 compromised 1.107 watchables as safe.
 
 daari does **not** depend on LiteLLM at runtime; the local-first install path
 never pulled the poisoned artifact.
 
-## LiteLLM 1.108.2 GA (LTS)
+## LiteLLM 1.108 LTS (history)
 
 LiteLLM
 **[v1.108.2](https://github.com/BerriAI/litellm/releases/tag/v1.108.2)**
-(2026-11-06) is **GA / LTS** and the current **stable comparison floor** on
-the one-month
+(2026-11-06) was **GA / LTS** on the one-month
 [LTS pilot](https://docs.litellm.ai/docs/enterprise/lts_pilot) line
 ([version support](https://docs.litellm.ai/docs/enterprise/version_support);
 [blog](https://docs.litellm.ai/blog/release-cadence-and-lts-pilot)). The prior
 LTS GA cut was
 **[v1.108.0](https://github.com/BerriAI/litellm/releases/tag/v1.108.0)**
-(2026-11-04); **1.108.2** is the fixes-only LTS patch (including spend/key
-401s while Postgres restarts). The earlier RC
+(2026-11-04); **1.108.2** was the fixes-only LTS patch (including spend/key
+401s while Postgres restarts). The **live LTS patch** is now
+**[v1.108.5](https://github.com/BerriAI/litellm/releases/tag/v1.108.5)**
+(2026-11-10). The earlier RC
 [v1.108.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.108.0-rc.1)
 (29 Oct 2026) was a **parity** cut of the 1.106.x gzip / off-loop compression
 fixes onto the 1.108 train — not a feature ship — and is superseded by the
 stable tags. **1.106.7** remains the final 1.106.x patch; do **not** treat
-compromised **1.107.0** as a support window.
+compromised **1.107.0** as a support window. The **stable comparison floor**
+moved to **[1.109.0](https://github.com/BerriAI/litellm/releases/tag/v1.109.0)**
+(see below); keep 1.108.5 for LTS-pin buyers only.
 
 **LTS pilot and Tuesday cadence are live** (not pending): LiteLLM pauses the
 usual four-most-recent-stable-lines patch window on this 1.108 LTS line, and
@@ -129,16 +132,18 @@ competitor ops context, not a daari upgrade path: daari is local-first with
 **no LiteLLM runtime** dependency and no weekly proxy release train to pin
 against.
 
-## LiteLLM 1.109.0-rc.1 watch
+## LiteLLM 1.109.0 GA
 
 LiteLLM
-[v1.109.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-rc.1)
-is a **prerelease** watch — do **not** promote 1.109 or 1.109-rc to the GA
-floor (stable comparison remains **1.108.2 GA / LTS**). Earlier
-[v1.109.0-dev.2](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.2)
-/
+**[v1.109.0](https://github.com/BerriAI/litellm/releases/tag/v1.109.0)**
+(2026-11-11) is **GA** and the current **stable comparison floor**. Earlier
+[v1.109.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-rc.1),
+[v1.109.0-dev.2](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.2),
+and
 [v1.109.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.1)
-builds are superseded by the RC. Watchables and daari's stance:
+builds are superseded. The live LTS patch on the prior line remains
+**[1.108.5](https://github.com/BerriAI/litellm/releases/tag/v1.108.5)**
+(2026-11-10). Feature notes and daari's stance:
 
 - **Mid-stream fallback continuation** — LiteLLM can keep a streaming chat
   going on a configured fallback mid-answer. daari ships the same on-box via
@@ -165,8 +170,8 @@ builds are superseded by the RC. Watchables and daari's stance:
   strips deprecated `speed` with soft_warning `deprecated_speed_degraded`
   instead of hard-failing after the removal date.
 - **`LITELLM_OFFLINE_MODE`** — one switch to disable outbound fetches; daari is
-  already local-first by default, so this is a naming/ergonomics watch rather
-  than a missing trust floor.
+  already local-first by default, so this is naming/ergonomics rather than a
+  missing trust floor.
 - **`agent_access_default_deny`** — keys with no agent grants reach no agents;
   daari mirrors this on-box via opt-in
   `server.virtual_keys.agent_access_default_deny` (default false): virtual keys
@@ -179,14 +184,39 @@ builds are superseded by the RC. Watchables and daari's stance:
 - **Admin Chat UI / model hub** — cloud control-plane surface; non-goal for
   daari (no Lens / hosted hub parity claimed).
 
+### 1.109.0 action-required upgrade costs
+
+v1.109.0 ships five **action-required** migration items — honest upgrade-cost
+evidence for buyers comparing a LiteLLM bump to staying on daari local-first
+(or skipping LiteLLM):
+
+1. **Fallback targets must be lists** — string fallback targets are no longer
+   accepted; configs must use list form.
+2. **Disk cache backend removed** — `cache_params.type: disk` stops proxy
+   startup ([#48114](https://github.com/BerriAI/litellm/pull/48114)); Redis or
+   in-memory only.
+3. **Hard RPM caps** need
+   `optional_pre_call_checks: ["enforce_model_rate_limits"]` or they do not
+   enforce.
+4. **Gemini 3.6 / 3.5** refuse sampling params unless `drop_params` is set.
+5. **Lens** moved to its own Helm chart (no longer bundled with the proxy
+   chart).
+
+**Disk cache vs daari L1:** LiteLLM removed the on-disk cache backend entirely
+([#48114](https://github.com/BerriAI/litellm/pull/48114)), so a single-box
+LiteLLM deploy that relied on `type: disk` must add Redis or accept
+in-memory-only. daari's $0 L0/L1 path remains a local **diskcache** by design
+— exact + semantic hits survive process restarts without Redis. That is a
+factual packaging difference, not a claim that LiteLLM cannot cache.
+
 ## LiteLLM 1.110.0-dev.1 watch
 
 LiteLLM
 [v1.110.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.110.0-dev.1)
-(2026-11-07) is **prerelease watch only** — do **not** promote 1.110 or
-1.109-rc to the GA floor (stable comparison remains **1.108.2 GA / LTS**).
-Watchables on this channel include provider-reported `usage.cost`, tenant
-session affinity, and Lens-split Helm; daari does **not** claim Lens / hosted
-Helm parity. Treat 1.110-dev as competitor ops context, not a support window.
+(2026-11-07) is **prerelease watch only** — do **not** promote 1.110 to the
+GA floor (stable comparison remains **1.109.0**). Watchables on this channel
+include provider-reported `usage.cost`, tenant session affinity, and
+Lens-split Helm; daari does **not** claim Lens / hosted Helm parity. Treat
+1.110-dev as competitor ops context, not a support window.
 
 Measured on the same Ollama corpus: [benchmark vs LiteLLM](benchmark-vs-litellm.md). Short matrix: [compare](compare.md).

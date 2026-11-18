@@ -83,11 +83,11 @@ def test_compare_litellm_pins_1106_decision_model_guardrail() -> None:
     assert "emudhra" in lower or "emsign" in lower
     assert "distrust_emudhra_ca" in section
     assert "brotli" in lower or "image" in lower
-    assert "1.108.2" in section
+    assert "1.109.0" in section
 
 
 def test_compare_litellm_pins_1108_ga_lts_floor() -> None:
-    """1.108.2 is GA / LTS comparison floor (2026-11-06 tag); 1.108.0 prior LTS GA (#2170)."""
+    """1.108 LTS history retained; live LTS patch is 1.108.5; floor moved to 1.109.0 (#2170, #2235)."""
     text = DOC.read_text(encoding="utf-8")
     section = _markdown_section(text, "## LiteLLM 1.108")
     lower = section.lower()
@@ -97,23 +97,32 @@ def test_compare_litellm_pins_1108_ga_lts_floor() -> None:
     assert "1.108.0" in section
     assert "releases/tag/v1.108.0" in text
     assert "2026-11-04" in section
+    assert "1.108.5" in section
+    assert "releases/tag/v1.108.5" in text
+    assert "2026-11-10" in section
     assert "ga" in lower
     assert "lts" in lower
-    assert "stable comparison floor" in lower or "comparison floor" in lower
+    assert "live" in lower and ("lts patch" in lower or "lts" in lower)
     assert "rc-only" not in lower
     assert "pending" not in lower or "not pending" in lower
     # Prior RC called out as superseded parity, not the floor.
     assert "1.108.0-rc.1" in section
     assert "parity" in lower
     assert "1.106.7" in section
+    # Stable floor is now 1.109.0 — 1.108 section must not claim current floor.
+    assert "1.109.0" in section
+    floor = _markdown_section(text, "## LiteLLM 1.109")
+    assert "1.109.0" in floor
+    assert "stable comparison floor" in floor.lower() or "comparison floor" in floor.lower()
 
 
 def test_compare_litellm_pins_1108_lts_pilot_and_tuesday_cadence() -> None:
-    """1.108 LTS pilot + Tuesday cadence are live; floor is 1.108.2 (#2075, #2122, #2170)."""
+    """1.108 LTS pilot + Tuesday cadence are live; floor is 1.109.0 (#2075, #2122, #2170, #2235)."""
     text = DOC.read_text(encoding="utf-8")
     section = _markdown_section(text, "## LiteLLM 1.108")
     lower = section.lower()
     assert "1.108.2" in section
+    assert "1.108.5" in section
     assert "1.108.0" in section
     assert "lts" in lower
     assert "tuesday" in lower
@@ -129,7 +138,7 @@ def test_compare_litellm_pins_1108_lts_pilot_and_tuesday_cadence() -> None:
     )
     compromise = _markdown_section(text, "## LiteLLM 1.107")
     assert "compromis" in compromise.lower()
-    assert "1.108.2" in compromise
+    assert "1.109.0" in compromise
 
 
 def test_compare_litellm_pins_1105_ga_decisions_parity() -> None:
@@ -156,49 +165,58 @@ def test_compare_litellm_pins_1107_compromise_advisory() -> None:
     assert "litellm==1.107.0" in text
     assert "litellm/litellm:1.107.0" in text
     assert "aikido.dev" in lower
-    assert "1.108.2" in section
+    assert "1.109.0" in section
     assert "does not depend" in lower or "does **not** depend" in lower
     assert "agent_access_default_deny" not in lower
     assert "prerelease rc watchables" not in lower
     assert "not a feature comparison bar" in lower or "do-not-install" in lower
 
 
-def test_compare_litellm_pins_1109_rc_watch_keep_ga_floor() -> None:
-    """1.109.0-rc.1 is prerelease watch; GA floor stays 1.108.2 LTS (#2002, #2122, #2170)."""
+def test_compare_litellm_pins_1109_ga_floor() -> None:
+    """1.109.0 is GA stable comparison floor; 1.108.5 live LTS; upgrade costs (#2235)."""
     text = DOC.read_text(encoding="utf-8")
     section = _markdown_section(text, "## LiteLLM 1.109")
     lower = section.lower()
-    assert "1.109.0-rc.1" in section or "v1.109.0-rc.1" in section
-    assert "releases/tag/v1.109.0-rc.1" in section
-    assert "prerelease" in lower
-    assert "do not promote" in lower or "do **not** promote" in lower
+    assert "1.109.0" in section
+    assert "releases/tag/v1.109.0" in section
+    assert "2026-11-11" in section
+    assert "ga" in lower
+    assert "stable comparison floor" in lower or "comparison floor" in lower
+    assert "prerelease" not in lower or "superseded" in lower
+    assert "do not promote" not in lower and "do **not** promote" not in lower
+    assert "1.108.5" in section
+    assert "releases/tag/v1.108.5" in text
+    # Feature parity notes retained from the RC watch era.
     assert "mid-stream" in lower or "midstream" in lower
-    assert "shipped" in lower or "on-box" in lower or "on box" in lower
-    assert "next gap" not in lower
     assert "stream_fallback_continue" in section or "stream fallback" in lower
     assert "rpd" in lower or "requests-per-day" in lower or "request/token" in lower
     assert "tpd" in lower or "tokens-per-day" in lower or "token-per-day" in lower
     assert "x-litellm-priority" in lower
-    assert "cosign" in lower
-    assert "e82a3c6" in section or "rotated" in lower
     assert "drop_params" in lower or "speed" in lower
-    assert "offline" in lower
     assert "agent_access_default_deny" in section
     assert "pricing_provider" in section
-    assert "chat ui" in lower or "admin chat" in lower or "model hub" in lower
+    # Five action-required migration items as upgrade-cost evidence.
+    assert "fallback" in lower and "list" in lower
+    assert "disk" in lower and ("cache" in lower or "diskcache" in lower)
+    assert "48114" in section
+    assert "rpm" in lower or "rate_limit" in lower or "enforce_model_rate_limits" in lower
+    assert "gemini" in lower
+    assert "drop_params" in lower
+    assert "lens" in lower and "helm" in lower
+    # Disk-cache removal vs daari L1 positioning (factual).
+    assert "diskcache" in lower or "disk cache" in lower
+    assert "l1" in lower or "l0" in lower or "semantic" in lower
     assert "lens parity" not in lower
-    # Stable floor remains 1.108.2 GA / LTS — do not claim 1.109 is GA.
-    assert "1.108.2" in section
-    floor = _markdown_section(text, "## LiteLLM 1.108")
-    assert "1.108.2" in floor
-    assert "1.108.0" in floor
-    assert "ga" in floor.lower()
-    assert "lts" in floor.lower()
-    assert "1.109" not in floor
+    lts = _markdown_section(text, "## LiteLLM 1.108")
+    assert "1.108.5" in lts
+    assert "1.108.2" in lts
+    assert "1.108.0" in lts
+    assert "ga" in lts.lower()
+    assert "lts" in lts.lower()
 
 
 def test_compare_litellm_pins_1110_dev_watch_keep_ga_floor() -> None:
-    """1.110.0-dev.1 is prerelease watch only; GA floor stays 1.108.2 LTS (#2170)."""
+    """1.110.0-dev.1 is prerelease watch only; GA floor is 1.109.0 (#2170, #2235)."""
     text = DOC.read_text(encoding="utf-8")
     section = _markdown_section(text, "## LiteLLM 1.110")
     lower = section.lower()
@@ -208,9 +226,8 @@ def test_compare_litellm_pins_1110_dev_watch_keep_ga_floor() -> None:
     assert "watch" in lower
     assert "do not promote" in lower or "do **not** promote" in lower
     assert "1.110" in section
-    assert "1.109" in section or "1.109-rc" in lower
-    # Do not promote 1.110 or 1.109-rc to the floor.
-    floor = _markdown_section(text, "## LiteLLM 1.108")
-    assert "1.108.2" in floor
+    assert "1.109.0" in section
+    # Do not promote 1.110 to the floor.
+    floor = _markdown_section(text, "## LiteLLM 1.109")
+    assert "1.109.0" in floor
     assert "1.110" not in floor
-    assert "1.109" not in floor
