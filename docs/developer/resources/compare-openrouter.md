@@ -70,6 +70,9 @@ Operators who still want cloud may point the single L6 slot at
 `openrouter/auto` or `openrouter/auto-code`; local tiers remain the default
 path, and budgets / audit stay on the same box.
 
+One-page compose for a coding-agent daily driver:
+[coding-router tutorial](../tutorials/coding-router.md).
+
 ## Private Endpoints vs local tiers
 
 OpenRouter [Private Endpoints](https://openrouter.ai/blog/announcements/private-endpoints/)

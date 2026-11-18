@@ -9282,6 +9282,16 @@ action-required migration items listed as upgrade-cost evidence; disk-cache
 backend removal vs daari diskcache L0/L1 noted with LiteLLM [#48114](https://github.com/BerriAI/litellm/pull/48114).
 Covered by `tests/unit/test_compare_litellm_1104.py`.
 
+### Coding-router recipe (Auto Code twin) ([#2238](https://github.com/naveenreddyalka/daari/issues/2238))
+
+<!-- tracking:#2238 -->
+**Status:** Done (2026-11-18). Tutorial `docs/developer/tutorials/coding-router.md`
+composes `virtual_models` + `virtual_model_selection: cost` + code
+`signal_overrides` / `reasoning_effort` + optional
+`virtual_model_latency_slo_ms`; compare-openrouter Auto Code section links it;
+doctor informational tip when a code-category signal rule exists but
+`virtual_models` is empty. Covered by `tests/unit/test_coding_router_recipe.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
