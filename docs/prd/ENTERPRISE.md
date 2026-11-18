@@ -11,28 +11,30 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-17 pm)
+## Where daari stands (verified in-tree, 2026-11-18)
 
-**Loop velocity.** Morning cut filed truncation-honesty + vLLM
-0.34 docs (424–428). Overnight 362/363/365 still Shipped
-(#2327–#2329). Sol promo still expires **2026-11-21** (405).
+**Loop velocity.** Overnight shipped 366–368 + 370 (#2342–#2345):
+tool_call-argument guardrails, L0 tool_calls cache exclusion,
+1.109.0 compare floor, coding-router recipe. Sol promo expires
+**2026-11-21 — 3 days** (405 / #2297 still open).
 
-**Outward (pm).** Landscape flat vs morning: LiteLLM 1.108.10 LTS /
-1.111.0-dev.4; Portkey 2.33.1; Kong 2.3.1; Ollama 0.40.17-rc1;
-vLLM 0.34.0; llama.cpp b12483 (k-pool only — no guide bump).
-**New today:** Anthropic watermark sampling caveat widened to six
-models (Opus 4.6/4.5/3, Sonnet 4.6/4.5, Haiku 4.5). OpenRouter
-11-16 announcements (HF Inference Providers routing + scoped
-management keys) still need the compare-doc touch parked this
-morning. GPT-6.1 Terra catalog already current.
+**Outward.** **LiteLLM v1.110.0 went STABLE 11-18 01:36 UTC** — the
+Python router core is deleted (Rust core only), SpendLogs ledger is
+the default accounting path, Agent Skills Hub, FIPS mode,
+deprecation alerts with `successor_model` + per-key daily requests,
+per-key/team prompt-storage off, typed overload envelopes
+(503 `server_is_overloaded` / 529 `overloaded_error`). **1.108.11
+is the live LTS** (11-17); 1.111.0-rc.1 cut 11-18 (hold for
+stable). Portkey 2.33.1, Kong 2.3.1, Ollama 0.40.17-rc1, vLLM
+0.34.0, MCP spec 2026-07-28 all flat.
 
-**Inward theme: prove the dials we just shipped.** any-5xx has no
-doctor tip (429) and `upstream_retries` does not isolate http_5xx
-hops (430); honest `stop_reason` has no Prom/stats breakdown
-(431); compare-openrouter omits HF + scoped keys (432);
-watermark six-model list is undocumented next to omit-inject
-honesty (433). Truncation end-to-end (424–426) + vLLM pin (427)
-remain the morning queue.
+**Inward theme: mine 1.110.0 stable.** Lifecycle has zero
+`successor` handling and no tenant exposure report (434); no
+per-key/team `zero_retention` dial though prompts persist in the
+responses store `_conversation` and cache puts (435); exhausted
+429/529 collapses to a generic 503 string with no typed envelope
+or Retry-After (436); compare floor is a day stale again (437);
+the overnight wave is unit-only (438).
 
 ---
 
@@ -40,6 +42,11 @@ remain the morning queue.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 434 | Lifecycle `successor_model` + `deprecation_source` + per-key/team deprecation exposure report from the on-box ledger | 3 | 2 | LiteLLM 1.110.0 (`successor_model`, alerts w/ daily requests by key, owner emails) | Ledger already holds per-tenant model usage — exposure report is one local query, no email infra, nothing leaves the box | Filed [#2346](https://github.com/naveenreddyalka/daari/issues/2346) |
+| 435 | Per-key/team `zero_retention` dial — tenant prompt content persists in responses-store `_conversation` + L0/org/semantic cache puts with no opt-out | 4 | 3 | LiteLLM 1.110.0 per-key/team prompt-storage off + `latest_turn` | One box owns every store; "no tenant bytes at rest" is enforceable and provable at one edge (distinct from 398's provider-side ZDR) | Filed [#2347](https://github.com/naveenreddyalka/daari/issues/2347) |
+| 436 | Typed overload envelopes: exhausted 429/529 answers generic 503 string — no `server_is_overloaded` / `overloaded_error`, no Retry-After | 3 | 2 | LiteLLM 1.110.0 (503 typed + faithful 529 on /v1/messages) | Router already classifies overload internally (circuit breaker skips 429/529) — surface the same truth so SDK backoff works against local tiers too | Filed [#2348](https://github.com/naveenreddyalka/daari/issues/2348) |
+| 437 | compare-litellm: 1.110.0 stable floor + 1.108.11 LTS; Rust-only router (Python core deleted) + ledger-default positioning | 2 | 1 | LiteLLM release notes | Pure-Python single-process router stays pdb-debuggable and on-site patchable; honest floors keep the compare credible | Filed [#2349](https://github.com/naveenreddyalka/daari/issues/2349) |
+| 438 | Integration fence for the 11-17/11-18 overnight guardrails + L0 tool_calls + coding-router wave | 2 | 2 | — (testability) | Hermetic proof: tool_call-arg block, L0 miss on tool_calls, doctor recipe finding | Filed [#2350](https://github.com/naveenreddyalka/daari/issues/2350) |
 | 429 | Doctor tip when `upstream.retry.failover_on_http_5xx` is on — silent today while peer dials already tip | 2 | 1 | — (ops honesty) | Single-box preflight before broad 5xx hopping burns retries on permanent 501s | Filed [#2336](https://github.com/naveenreddyalka/daari/issues/2336) |
 | 430 | Prom/stats for http_5xx failover hops by status — `upstream_retries` does not isolate the Kong-style dial | 3 | 2 | Kong AI Gateway FinOps / Portkey analytics | Prove dial pressure from the same-box scrape; local legs stay flat | Filed [#2337](https://github.com/naveenreddyalka/daari/issues/2337) |
 | 431 | Prom/stats for `finish_reason` / `stop_reason` outcomes (`stop`, `length`, `pause_turn`, `refusal`, `tool_calls`) | 3 | 2 | LiteLLM spend dashboards / Portkey | Outcome pressure next to cache + spend on one scrape across local + frontier | Filed [#2338](https://github.com/naveenreddyalka/daari/issues/2338) |
@@ -98,15 +105,12 @@ remain the morning queue.
 | 377 | Honor `tool_choice: allowed_tools` (nested + flat) across Anthropic + local backends | 3 | 2 | LiteLLM 1.108.6 LTS (#49043/#50467) | One tool-governance contract at the edge for every executor | Filed [#2251](https://github.com/naveenreddyalka/daari/issues/2251) |
 | 378 | Prove + fence client credential-field hygiene (immune to the litellm#51254 class); floors 1.109.1/1.108.6 | 3 | 1 | LiteLLM (after its emergency patch) | Allowlist payloads never needed the patch — argue it with a test | Filed [#2252](https://github.com/naveenreddyalka/daari/issues/2252) |
 | 379 | Integration fence for the 11-11/11-12 overnight wave | 2 | 2 | — (testability) | Hermetic proof: MCP egress fidelity, cost split, forensics, patterns | Filed [#2253](https://github.com/naveenreddyalka/daari/issues/2253) |
-| 370 | Coding-router recipe (virtual_models + code signals + cost/SLO/effort) | 4 | 2 | OpenRouter Auto Code (hosted) | $0 local-first coding compose on-box; marketplace stays optional L6 | Filed [#2238](https://github.com/naveenreddyalka/daari/issues/2238) |
+| 370 | Coding-router recipe (virtual_models + code signals + cost/SLO/effort) | 4 | 2 | OpenRouter Auto Code (hosted) | $0 local-first coding compose on-box; marketplace stays optional L6 | Shipped (#2345) |
 | 371 | Ship Gemini 4 Carbon + Argon catalog rates + capabilities | 4 | 2 | Google AI Studio / LiteLLM day-0 | Honest on-box ledger vs Gemini invoice incl. Dec 1 step-up | Filed [#2239](https://github.com/naveenreddyalka/daari/issues/2239) |
 | 372 | Per-model daily `rpd`/`tpd` + virtual-model failover on exhaust | 3 | 2 | LiteLLM 1.109.0 deployment daily limits | Burn one L6 daily quota; walk continues on local peers | Filed [#2240](https://github.com/naveenreddyalka/daari/issues/2240) |
 | 373 | Streams that `abort` or omit `finish_reason` fail visibly + failover | 4 | 2 | LiteLLM 1.109.0 stream-failure visibility | On-box failover salvages cancelled/truncated turns | Filed [#2241](https://github.com/naveenreddyalka/daari/issues/2241) |
 | 374 | Integration fence for the 11-11 afternoon wave | 2 | 2 | — (testability) | Hermetic proof: coding compose, Carbon rates, daily skip, abort | Filed [#2242](https://github.com/naveenreddyalka/daari/issues/2242) |
-| 365 | Honest `stop_reason` on `/v1/messages` (capture `pause_turn`/`max_tokens`/`refusal`) | 4 | 2 | LiteLLM 1.109.0 pause_turn + length fixes | One box fronts local + frontier; truncation and pauses surface truthfully on one contract | Shipped (#2329) |
-| 366 | Guardrails scan assistant `tool_calls` arguments (+ opt-in system scan) | 4 | 2 | LiteLLM 1.109.0 hide-secrets surface fix | Secrets scrubbed on-box before any byte leaves; #2186 patterns need the surface | Filed [#2233](https://github.com/naveenreddyalka/daari/issues/2233) |
-| 367 | Streamed L0 hits must not drop cached `tool_calls` | 3 | 2 | LiteLLM 1.109.0 streamed-cache-hit fix | The $0 cache tier must be byte-faithful or agent loops can't trust it | Filed [#2234](https://github.com/naveenreddyalka/daari/issues/2234) |
-| 368 | compare-litellm: 1.109.0 stable floor + 1.108.5 LTS + disk-cache removal positioning | 3 | 1 | LiteLLM release notes | They removed disk caching; daari's L1 **is** a local diskcache — hard differentiator | Filed [#2235](https://github.com/naveenreddyalka/daari/issues/2235) |
+| 365–368 | Honest `stop_reason`; tool_call-arg guardrails; L0 keeps/excludes `tool_calls`; 1.109.0 compare floor | 3–4 | 1–2 | LiteLLM 1.109.0 fixes | Truncation + secret honesty on one box | Shipped (#2329, #2342–#2344) |
 | 369 | Integration fence for the 11-10/11-11 overnight wave | 2 | 2 | — (testability) | Hermetic proof: cost-aware selection prefers $0 local; SLO panel pinned | Filed [#2236](https://github.com/naveenreddyalka/daari/issues/2236) |
 | 360–361 | Residency CA/SG/KR/GB/AE 1.10×; Anthropic auto_caching | 2–3 | 1–2 | OpenAI / Portkey 2.33.0 | Governance + cache dials on the same-box console | Shipped (#2319, #2320) |
 | 362–363 | any-5xx failover; Fable/Mythos 5.2 advisor gate | 2–3 | 1–2 | Kong 2.3.0 / Anthropic | Failover + advisor honesty | Shipped (#2327, #2328) |
@@ -160,15 +164,19 @@ remain the morning queue.
 
 Watch rows (do not file yet): **MCP file-uploads** draft
 (`io.modelcontextprotocol/files` — no reference impl; ~EOY);
-**LiteLLM 1.111.0-dev.4** remainder (hold for stable: customer
-org/team/member admin UI; budgets + portal; `fallback_on_saturation`;
-annual budget reset; per-model tpm/rpm maps; OpenSearch pass-through;
-encrypted-content boundary #50750; #51487 early stream close — daari
-`async with` already exits on `[DONE]`); key-expiry emails already
-in-tree (#1546); spend-log token redaction N/A; **1.110.0-rc.3**
-(Agent Skills Hub, Rust-only router, Responses named-SSE / no Chat
-`[DONE]`, response-id ownership 403); 1.108.7/1.109 remainder
-(buyer-ask batches/edits; K8s discovery; shadow rates); Opus 4.8
+**LiteLLM 1.110.0 stable mined this run (434–437)** — remainder on
+watch: Agent Skills Hub (open #1954 adjacency), FIPS mode (row 8),
+per-key/team deployment weights (tiers ≠ deployments; buyer ask),
+Switchyard stage router, `latest_turn` spend-log mode (435 covers
+the stores that matter), empty-output cache gate #50057 (fold into
+open #2330 — same put sites); **1.111.0-rc.1** (hold for stable:
+per-model tpm/rpm budget maps ≈ open #2240, principal-attribute
+access groups, OpenSearch pass-through, customer portal beta,
+transcription seconds billing ≈ open #2250, refused-leg billing
+#50735 ≈ open #2272, subagent tier-pin isolation #50741 ≈ open
+#2267, encrypted-content boundary #50750); key-expiry emails
+already in-tree (#1546); 1.108.7/1.109 remainder (buyer-ask
+batches/edits; K8s discovery; shadow rates); Opus 4.8
 fast-mode removal 11-30; Ollama 0.40.17-rc1 (MLX concurrent — hold
 for GA); **vLLM 0.34 remainder** (checkpoint/restore ops recipe,
 cache-aware admission lever, Mistral Large 4 / MiniMax-M3.1 — buyer
@@ -189,71 +197,76 @@ Open Responses WS; Prom exemplars + `gen_ai.agent.*`; SCIM +
 multi-issuer SSO; Kong Skills/A2A; certifi emSign; Ollama d1 GA;
 local message-thread analogue (after ask); A2A 1.1 RC (two-SDK gate).
 
-Verified fine this run — don't re-audit: `gpt-6.1-terra` catalog at
-GA $1/$5 (settings.py ~L1796); moderations door passes
-`omni-moderation-csam-latest`; local stream captures Ollama
-`done_reason` / OpenAI-compat `finish_reason` (~L4383; 425 is
-frontier-only); daari never injects temperature/top_p/top_k on
-client legs (433 docs the six-model caveat; omit-inject already
-true); `upstream_retries` (#159) still exists — 430 adds
-http_5xx isolation on top, not a duplicate; Opus 4.8 sunset seeded
-in #2053; chat-path BYOK via `_key_for_slot` (414 is modality doors
-only); hold Responses `error_data` until buyer ask; HF Inference
-Providers / scoped management keys → 432 (filed this cut).
+Verified fine this run — don't re-audit: **response-id ownership
+already gated** (response_store `owner_key_id` +
+`response_visible_to_caller` + tenancy-denied audit on both
+`previous_response_id` paths, responses.py ~L1013/~L1228 — LiteLLM
+1.110.0 #49402 parity exists, never file); **Responses named-SSE
+framing + `sequence_number` + `id:` resume already emitted**
+(`_sse_with_sequence` responses.py ~L600 — their #47980/#44944
+parity, never file); request_log is metadata-only (no prompt
+content — 435 reframes prompt-storage-off onto the stores that
+hold content); 429/529 already transient-classed internally
+(circuit_breaker.py L19–25; 436 is the client envelope only);
+Opus 4.8 sunset seeded in #2053; `upstream_retries` (#159) exists
+— 430 adds http_5xx isolation, not a duplicate.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Billing truth everywhere money moves** — BYOK modality doors
-   (414); ledger credential attribution (415); reconcile under
-   tenancy (416); regional uplift on the scrape (421); time-bounded
-   promo rates before Sol lapses 11-21 (405); refused-leg sum (391);
+1. **Billing + tenancy truth everywhere money and data move** —
+   BYOK modality doors (414); ledger credential attribution (415);
+   reconcile under tenancy (416); **per-tenant zero_retention
+   (435)**; regional uplift on the scrape (421); time-bounded promo
+   rates before Sol lapses **11-21** (405); refused-leg sum (391);
    abandoned-stream settlement (386); frontier OCR/image/ASR (396,
    375, 376); Gemini 4 Carbon/Argon (371); daily `rpd`/`tpd` (372);
    Grafana input/output (392); tool-fee Prom (401); truncation Prom
-   (412). Team BYOK core + residency pricing shipped (357, 360).
-2. **Truncation honesty end-to-end** — never cache truncated turns
-   (424); frontier stream terminal honesty (425); Responses
-   `incomplete` status (426); abort/missing `finish_reason` (373);
-   streamed cache tool_calls (367); finish_reason Prom (431).
-   Non-stream `stop_reason` (365) shipped — keep every surface honest.
-3. **Nothing goes stale quietly** — any-5xx doctor + Prom (429–430);
+   (412).
+2. **Honest terminal outcomes end-to-end** — never cache truncated
+   turns (424); frontier stream terminal honesty (425); Responses
+   `incomplete` status (426); **typed overload envelopes (436)**;
+   abort/missing `finish_reason` (373); finish_reason Prom (431).
+   Non-stream `stop_reason` (365) + streamed cache tool_calls
+   (367) shipped.
+3. **Nothing goes stale quietly** — **deprecation successor +
+   exposure report (434)**; any-5xx doctor + Prom (429–430);
    auto_caching doctor + Prom (419–420); MCP egress re-mint (395);
    modality deadlines (400); MCP cancellation (385); session-pin
    isolation (387); ZDR (398); reservation doctor tip (403).
-   stream_fallback doctor (411) + any-5xx dial (362) + advisor gate
-   (363) shipped.
 4. **Agent-loop / Responses / Extractions fidelity + CMA** —
    Responses output-order + reasoning items (406); local-tier
    thinking (407); Extractions (390); OpenRouter `reasoning` (397);
    failed `previous_response_id` (380); `max_tool_calls` (381);
    `allowed_tools` (377); Managed Agents recipe (382); credential
-   hygiene fence (378); scan tool_call args (366); coding-router
-   (370).
+   hygiene fence (378). Tool_call-arg scan (366) + coding-router
+   (370) shipped.
 5. **Local engine floor + survive the blip + honest compare** —
-   vLLM 0.34.0 pin (427); watermark omit-inject docs (433); HF /
-   scoped-keys compare (432); llama.cpp v1.0.0 pin (388); LTS floor
-   **1.108.10** (422); binding Prom (417); stream_fallback Grafana
-   (410); offline Prom/doctor (279/285); reservation Grafana (402);
-   hot-reload (6); failover panels (274); fences through 428; then
-   62–67.
+   LiteLLM floor **1.110.0 / 1.108.11 LTS** (437); vLLM 0.34.0 pin
+   (427); watermark omit-inject docs (433); HF / scoped-keys
+   compare (432); llama.cpp v1.0.0 pin (388); LTS floor 1.108.10
+   (422, supersede with 437); binding Prom (417); stream_fallback
+   Grafana (410); offline Prom/doctor (279/285); reservation
+   Grafana (402); hot-reload (6); failover panels (274); fences
+   through 438; then 62–67.
 
 ---
 
 ## Changelog
 
-- **2026-11-17 pm (prove shipped dials + watermark/HF docs)** —
-  Outward flat vs morning (LiteLLM/Portkey/Kong/Ollama/vLLM);
-  Anthropic watermark caveat → six models; OpenRouter HF Inference
-  Providers + scoped management keys still compare-only. Inward:
-  any-5xx doctor (429), http_5xx Prom (430), finish_reason Prom
-  (431), compare HF/scoped keys (432), watermark omit-inject docs
-  (433). Morning truncation cut (424–428) unchanged.
+- **2026-11-18 (LiteLLM 1.110.0 stable mined)** — 1.110.0 stable
+  (Rust-only router, ledger-default accounting, Skills Hub, FIPS)
+  + 1.108.11 LTS + 1.111.0-rc.1 overnight. Verified fine:
+  response-id ownership + named-SSE/sequence_number already in-tree.
+  Filed: lifecycle successor + exposure report (434), per-tenant
+  zero_retention (435), typed overload envelopes (436), compare
+  1.110.0 floor (437), overnight fence (438). Overnight 366–368 +
+  370 Shipped (#2342–#2345).
 
-- **2026-11-17 (truncation honesty + vLLM 0.34.0 GA)** — Condensed:
-  vLLM 0.34.0 GA mined; GPT-6.1 Terra catalog already current;
-  overnight 362–363 + 365 Shipped → 424–428 Filed.
+- **2026-11-17 (+pm)** — Condensed: vLLM 0.34.0 GA mined; truncation
+  honesty 424–428; pm prove-the-dials 429–433; watermark six-model
+  caveat; 362–363 + 365 Shipped.
 
 - **2026-11-16 → 11-14** — Condensed: auto_caching + residency ops
   (419–423); team-BYOK follow-through (414–418); midstream
