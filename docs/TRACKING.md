@@ -9264,6 +9264,15 @@ opt-in `guardrails.scan_system` (default off) includes system message content in
 the input scan (stage=`system`); PII scrub still skips system prompts. Covered by
 `tests/unit/test_guardrails.py`.
 
+### Streamed L0 skips tool-bearing responses ([#2234](https://github.com/naveenreddyalka/daari/issues/2234))
+
+<!-- tracking:#2234 -->
+**Status:** Done (2026-11-18). Non-stream L0/L1 put excludes responses with
+`tool_calls` (parity with stream put guards). Streamed OpenAI/Anthropic L0 hits
+also skip legacy tool-bearing entries so a text-only replay cannot drop tools.
+Pure-text `stream_cache_hit` unchanged. Covered by
+`tests/unit/test_stream_l0_tool_calls.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

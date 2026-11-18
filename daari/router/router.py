@@ -2382,11 +2382,15 @@ class Router:
                     gen_request, response, started, profile=profile
                 )
         self._finish_session_pin(request, response)
+        # #2234: skip L0/L1 when the response carries tool_calls — parity with
+        # stream put guards (`not tool_calls_sent` / `not tool_use_sent`). A
+        # streamed repeat must miss rather than text-only-replay and drop tools.
         if (
             not request.meta.no_cache
             and not cache_skip
             and response.daari_meta.tier in {"L3", "L4", "L5"}
             and response.content.strip()
+            and not response.tool_calls
         ):
             try:
                 self.cache.put(request, response)
@@ -2401,11 +2405,10 @@ class Router:
             if agent_turn:
                 # G1b: learn the stable prefix (keyed by the exact tool-result
                 # suffix). Tool-call transcripts are never stored as answers.
-                if not response.tool_calls:
-                    try:
-                        await self.semantic_cache.put_agent_prefix(request, response)
-                    except Exception:
-                        pass
+                try:
+                    await self.semantic_cache.put_agent_prefix(request, response)
+                except Exception:
+                    pass
             else:
                 try:
                     await self.semantic_cache.put(request, response)
@@ -2736,7 +2739,12 @@ class Router:
             except Exception:
                 cached = None
             add_step("l0_lookup", hit=cached is not None)
-            if cached is not None and cached.content.strip():
+            # #2234: never text-only-replay a tool-bearing L0 entry (legacy puts).
+            if (
+                cached is not None
+                and cached.content.strip()
+                and not cached.tool_calls
+            ):
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
                 if self.usage_ledger is not None:
@@ -2761,7 +2769,11 @@ class Router:
 
             if self.org_cache_client is not None:
                 org_l0_hit = await self.org_cache_client.get_l0(request)
-                if org_l0_hit is not None and org_l0_hit.content.strip():
+                if (
+                    org_l0_hit is not None
+                    and org_l0_hit.content.strip()
+                    and not org_l0_hit.tool_calls
+                ):
                     latency_ms = int((time.perf_counter() - started) * 1000)
                     self.metrics.record("L0-org", cache_hit=True, latency_ms=latency_ms)
                     if self.usage_ledger is not None:
@@ -4107,7 +4119,12 @@ class Router:
             except Exception:
                 cached = None
             add_step("l0_lookup", hit=cached is not None)
-            if cached is not None and cached.content.strip():
+            # #2234: skip tool-bearing L0 entries on Anthropic stream (same as OpenAI).
+            if (
+                cached is not None
+                and cached.content.strip()
+                and not cached.tool_calls
+            ):
                 latency_ms = int((time.perf_counter() - stream_started) * 1000)
                 self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
                 if self.usage_ledger is not None:
@@ -4127,7 +4144,11 @@ class Router:
 
             if self.org_cache_client is not None:
                 org_l0_hit = await self.org_cache_client.get_l0(request)
-                if org_l0_hit is not None and org_l0_hit.content.strip():
+                if (
+                    org_l0_hit is not None
+                    and org_l0_hit.content.strip()
+                    and not org_l0_hit.tool_calls
+                ):
                     latency_ms = int((time.perf_counter() - stream_started) * 1000)
                     self.metrics.record("L0-org", cache_hit=True, latency_ms=latency_ms)
                     if self.usage_ledger is not None:
