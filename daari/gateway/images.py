@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import httpx
@@ -26,9 +27,151 @@ _UNAVAILABLE = (
     "not invent images locally."
 )
 
+# Image-input token rate ($/1M) when usage.input_tokens_details splits text vs
+# image. Catalog input_per_1m is the text rate (#2249 / OpenAI pricing page).
+_IMAGE_INPUT_PER_1M: dict[str, float] = {
+    "gpt-image-2.6-sunburst": 8.0,
+    "gpt-image-2.6-flare": 8.0,
+    "gpt-image-2.5-sunburst": 8.0,
+    "gpt-image-2.5-flare": 8.0,
+    "gpt-image-2": 8.0,
+    "gpt-image-1.5": 8.0,
+    "gpt-image-1": 8.0,
+    "gpt-image-1-mini": 2.5,
+}
+
+# Documented per-image USD when upstream omits usage (dall-e-2/3 era).
+# Sources: OpenAI Images pricing (standard 1024×1024).
+_PER_IMAGE_ESTIMATE_USD = 0.04
+_PER_IMAGE_ESTIMATE_BY_MODEL: dict[str, float] = {
+    "dall-e-3": 0.04,
+    "dall-e-2": 0.02,
+}
+_DALL_E_3_HD_USD = 0.08
+
 ImagesTarget = L6Target
 
 _http: httpx.AsyncClient | None = None
+
+
+@dataclass(frozen=True)
+class ImageCharge:
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    estimated: bool
+
+
+def images_default_model(settings: Any) -> str:
+    """Configurable default for /v1/images/* when the client omits model (#2249)."""
+    frontier = getattr(settings, "frontier", None)
+    configured = str(getattr(frontier, "images_default_model", "") or "").strip()
+    return configured or "gpt-image-2.6-flare"
+
+
+def _per_image_estimate_usd(model: str, *, quality: str | None = None) -> float:
+    name = (model or "").strip().lower()
+    if "dall-e-3" in name:
+        q = (quality or "standard").strip().lower()
+        if q in {"hd", "high"}:
+            return _DALL_E_3_HD_USD
+        return _PER_IMAGE_ESTIMATE_BY_MODEL["dall-e-3"]
+    for key, amount in _PER_IMAGE_ESTIMATE_BY_MODEL.items():
+        if key in name:
+            return amount
+    return _PER_IMAGE_ESTIMATE_USD
+
+
+def _image_input_rate(model: str, text_input_per_1m: float) -> float:
+    from daari.pricing import matching_model_key
+
+    key = matching_model_key(model, _IMAGE_INPUT_PER_1M)
+    if key is not None:
+        return float(_IMAGE_INPUT_PER_1M[key])
+    return float(text_input_per_1m)
+
+
+def _tokens_from_usage(usage: dict[str, Any]) -> tuple[int, int]:
+    raw_in = usage.get("input_tokens", usage.get("prompt_tokens"))
+    raw_out = usage.get("output_tokens", usage.get("completion_tokens"))
+    inp = int(raw_in) if isinstance(raw_in, (int, float)) and raw_in >= 0 else 0
+    out = int(raw_out) if isinstance(raw_out, (int, float)) and raw_out >= 0 else 0
+    return inp, out
+
+
+def price_image_request(
+    model: str,
+    upstream: dict[str, Any] | None,
+    *,
+    n: int,
+    quality: str | None = None,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> ImageCharge:
+    """Bill from upstream ``usage`` or a documented per-image estimate (#2249)."""
+    from daari.pricing import cost_usd, resolve_price
+
+    count = max(1, int(n or 1))
+    usage = None
+    if isinstance(upstream, dict) and isinstance(upstream.get("usage"), dict):
+        usage = upstream["usage"]
+    if usage is not None:
+        inp, out = _tokens_from_usage(usage)
+        details = usage.get("input_tokens_details")
+        details = details if isinstance(details, dict) else {}
+        text_raw = details.get("text_tokens")
+        image_raw = details.get("image_tokens")
+        has_split = isinstance(text_raw, (int, float)) or isinstance(image_raw, (int, float))
+        if has_split:
+            text_tok = int(text_raw) if isinstance(text_raw, (int, float)) and text_raw >= 0 else 0
+            image_tok = (
+                int(image_raw) if isinstance(image_raw, (int, float)) and image_raw >= 0 else 0
+            )
+            price = resolve_price(model, pricing, fallback_per_1k=fallback_per_1k)
+            image_rate = _image_input_rate(model, price.input_per_1m)
+            cost = (
+                text_tok / 1_000_000 * float(price.input_per_1m)
+                + image_tok / 1_000_000 * float(image_rate)
+                + max(0, out) / 1_000_000 * float(price.output_per_1m)
+            )
+            return ImageCharge(
+                input_tokens=max(inp, text_tok + image_tok),
+                output_tokens=out,
+                cost_usd=round(max(0.0, cost), 8),
+                estimated=False,
+            )
+        if inp or out or "input_tokens" in usage or "prompt_tokens" in usage:
+            cost = cost_usd(
+                model,
+                inp,
+                out,
+                pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+            return ImageCharge(
+                input_tokens=inp,
+                output_tokens=out,
+                cost_usd=round(max(0.0, cost), 8),
+                estimated=False,
+            )
+    unit = _per_image_estimate_usd(model, quality=quality)
+    cost = round(unit * count, 8)
+    log_gateway_event(
+        "images_cost_estimated",
+        {
+            "model": model,
+            "n": count,
+            "quality": (quality or "") or None,
+            "per_image_usd": unit,
+            "cost_usd": cost,
+        },
+    )
+    return ImageCharge(
+        input_tokens=count,
+        output_tokens=0,
+        cost_usd=cost,
+        estimated=True,
+    )
 
 
 def _shared_client() -> httpx.AsyncClient:
@@ -70,7 +213,9 @@ def resolve_images_target(
     """First eligible frontier slot (or None). Prefer resolve_l6_targets for failover."""
     try:
         targets = resolve_l6_targets(
-            settings, region_pin=region_pin, default_model="dall-e-3"
+            settings,
+            region_pin=region_pin,
+            default_model=images_default_model(settings),
         )
     except RegionUnavailable:
         return None
@@ -152,6 +297,7 @@ def _bind_spend_context(
     model: str,
     client_id: str | None,
     user_id: str | None = None,
+    reported_cost: float | None = None,
 ) -> None:
     router = getattr(ctx, "router", None)
     ledger = getattr(router, "spend_ledger", None)
@@ -183,7 +329,7 @@ def _bind_spend_context(
             requested_model=model,
             pricing=pricing,
             fallback_per_1k=fallback,
-            reported_cost=0.0,
+            reported_cost=reported_cost,
         )
     )
 
@@ -195,31 +341,62 @@ def _record_request(
     model: str,
     prompt: str,
     n: int,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    reported_cost: float | None = None,
 ) -> None:
-    input_tokens = max(1, n)
+    tokens_in = max(1, n) if input_tokens is None else max(0, int(input_tokens))
+    tokens_out = 0 if output_tokens is None else max(0, int(output_tokens))
     metrics = getattr(ctx, "metrics", None)
     if metrics is not None:
         metrics.record(
             "images",
             cache_hit=False,
             modality="images",
-            input_tokens=input_tokens,
-            output_tokens=0,
+            input_tokens=tokens_in,
+            output_tokens=tokens_out,
         )
     ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
     if ledger is None:
         return
+    # Record as L6 so per-key/team frontier budgets meter image spend like chat
+    # (#2249). Metrics keep modality="images" above.
     ledger.record(
-        tier="images",
+        tier="L6",
         cache_hit=False,
         prompt_chars=len(prompt),
         completion_chars=0,
         client_id=client_id,
         model=model,
         provider="images",
-        input_tokens=input_tokens,
-        output_tokens=0,
-        reported_cost=0.0,
+        input_tokens=tokens_in,
+        output_tokens=tokens_out,
+        reported_cost=reported_cost,
+    )
+
+
+def _charge_for(
+    ctx: Any,
+    *,
+    model: str,
+    upstream: dict[str, Any],
+    n: int,
+    quality: str | None = None,
+) -> ImageCharge:
+    settings = getattr(ctx, "settings", None)
+    usage = getattr(settings, "usage", None) if settings is not None else None
+    fallback = float(getattr(usage, "frontier_price_per_1k_tokens", 0.002) or 0.002)
+    router = getattr(ctx, "router", None)
+    pricing = getattr(router, "pricing", None) if router is not None else None
+    if pricing is None and settings is not None:
+        pricing = getattr(settings, "pricing", None)
+    return price_image_request(
+        model,
+        upstream,
+        n=n,
+        quality=quality,
+        pricing=pricing,
+        fallback_per_1k=fallback,
     )
 
 
@@ -253,9 +430,10 @@ async def handle_images_generations(
         return idem_response
 
     pin = region_pin_from_request(request)
+    default_model = images_default_model(settings)
     try:
         targets = resolve_l6_targets(
-            settings, region_pin=pin, default_model="dall-e-3"
+            settings, region_pin=pin, default_model=default_model
         )
     except RegionUnavailable as exc:
         log_gateway_event("images_region_unavailable", {"pin": exc.pin})
@@ -266,7 +444,9 @@ async def handle_images_generations(
         abandon_slot(idem_slot)
         return _error(501, "not_implemented", _UNAVAILABLE)
 
-    model = (body.model or "").strip() or targets[0].default_model
+    # Prefer explicit body.model, then images_default_model — not the chat
+    # frontier provider model, which is often a text id (#2249).
+    model = (body.model or "").strip() or default_model
     denied = reject_disallowed_model(request, model, settings)
     if denied is not None:
         abandon_slot(idem_slot)
@@ -378,8 +558,27 @@ async def handle_images_generations(
             return _error(502, "bad_gateway", "Images upstream returned non-JSON.")
         log_gateway_event("images_ok", {"model": model, "n": n, "slot": target.slot_id})
         caller = _caller_client_id(request)
-        _bind_spend_context(request, ctx, model=model, client_id=caller, user_id=body.user)
-        _record_request(ctx, client_id=caller, model=model, prompt=prompt, n=n)
+        charge = _charge_for(
+            ctx, model=model, upstream=data, n=n, quality=body.quality
+        )
+        _bind_spend_context(
+            request,
+            ctx,
+            model=model,
+            client_id=caller,
+            user_id=body.user,
+            reported_cost=charge.cost_usd,
+        )
+        _record_request(
+            ctx,
+            client_id=caller,
+            model=model,
+            prompt=prompt,
+            n=n,
+            input_tokens=charge.input_tokens,
+            output_tokens=charge.output_tokens,
+            reported_cost=charge.cost_usd,
+        )
         from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
 
         cost_headers = modality_response_headers(
@@ -387,9 +586,10 @@ async def handle_images_generations(
             tier="images",
             model=model,
             prompt_chars=len(prompt),
-            input_tokens=max(1, n),
-            output_tokens=0,
-            cost_usd=0.0,
+            input_tokens=charge.input_tokens,
+            output_tokens=charge.output_tokens,
+            cost_usd=charge.cost_usd,
+            executor="frontier",
             session_id=session_id_from_request(request),
             savings=getattr(getattr(ctx, "router", None), "session_savings", None),
         )
@@ -476,9 +676,10 @@ async def handle_images_edits(
     settings = ctx.settings
 
     pin = region_pin_from_request(request)
+    default_model = images_default_model(settings)
     try:
         targets = resolve_l6_targets(
-            settings, region_pin=pin, default_model="dall-e-2"
+            settings, region_pin=pin, default_model=default_model
         )
     except RegionUnavailable as exc:
         log_gateway_event("images_edits_region_unavailable", {"pin": exc.pin})
@@ -487,7 +688,7 @@ async def handle_images_edits(
         log_gateway_event("images_edits_unavailable", {"reason": "frontier_disabled_or_no_key"})
         return _error(501, "not_implemented", _UNAVAILABLE)
 
-    resolved_model = (model or "").strip() or targets[0].default_model
+    resolved_model = (model or "").strip() or default_model
     denied = reject_disallowed_model(request, resolved_model, settings)
     if denied is not None:
         return denied
@@ -591,11 +792,24 @@ async def handle_images_edits(
             {"model": resolved_model, "n": count, "slot": target.slot_id},
         )
         caller = _caller_client_id(request)
+        charge = _charge_for(ctx, model=resolved_model, upstream=data, n=count)
         _bind_spend_context(
-            request, ctx, model=resolved_model, client_id=caller, user_id=user
+            request,
+            ctx,
+            model=resolved_model,
+            client_id=caller,
+            user_id=user,
+            reported_cost=charge.cost_usd,
         )
         _record_request(
-            ctx, client_id=caller, model=resolved_model, prompt=prompt_text, n=count
+            ctx,
+            client_id=caller,
+            model=resolved_model,
+            prompt=prompt_text,
+            n=count,
+            input_tokens=charge.input_tokens,
+            output_tokens=charge.output_tokens,
+            reported_cost=charge.cost_usd,
         )
         from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
 
@@ -604,9 +818,10 @@ async def handle_images_edits(
             tier="images",
             model=resolved_model,
             prompt_chars=len(prompt_text),
-            input_tokens=max(1, count),
-            output_tokens=0,
-            cost_usd=0.0,
+            input_tokens=charge.input_tokens,
+            output_tokens=charge.output_tokens,
+            cost_usd=charge.cost_usd,
+            executor="frontier",
             session_id=session_id_from_request(request),
             savings=getattr(getattr(ctx, "router", None), "session_savings", None),
         )
@@ -677,9 +892,10 @@ async def handle_images_variations(
     settings = ctx.settings
 
     pin = region_pin_from_request(request)
+    default_model = images_default_model(settings)
     try:
         targets = resolve_l6_targets(
-            settings, region_pin=pin, default_model="dall-e-2"
+            settings, region_pin=pin, default_model=default_model
         )
     except RegionUnavailable as exc:
         log_gateway_event("images_variations_region_unavailable", {"pin": exc.pin})
@@ -690,7 +906,7 @@ async def handle_images_variations(
         )
         return _error(501, "not_implemented", _UNAVAILABLE)
 
-    resolved_model = (model or "").strip() or targets[0].default_model
+    resolved_model = (model or "").strip() or default_model
     denied = reject_disallowed_model(request, resolved_model, settings)
     if denied is not None:
         return denied
@@ -778,11 +994,24 @@ async def handle_images_variations(
             {"model": resolved_model, "n": count, "slot": target.slot_id},
         )
         caller = _caller_client_id(request)
+        charge = _charge_for(ctx, model=resolved_model, upstream=data, n=count)
         _bind_spend_context(
-            request, ctx, model=resolved_model, client_id=caller, user_id=user
+            request,
+            ctx,
+            model=resolved_model,
+            client_id=caller,
+            user_id=user,
+            reported_cost=charge.cost_usd,
         )
         _record_request(
-            ctx, client_id=caller, model=resolved_model, prompt="", n=count
+            ctx,
+            client_id=caller,
+            model=resolved_model,
+            prompt="",
+            n=count,
+            input_tokens=charge.input_tokens,
+            output_tokens=charge.output_tokens,
+            reported_cost=charge.cost_usd,
         )
         from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
 
@@ -791,9 +1020,10 @@ async def handle_images_variations(
             tier="images",
             model=resolved_model,
             prompt_chars=0,
-            input_tokens=max(1, count),
-            output_tokens=0,
-            cost_usd=0.0,
+            input_tokens=charge.input_tokens,
+            output_tokens=charge.output_tokens,
+            cost_usd=charge.cost_usd,
+            executor="frontier",
             session_id=session_id_from_request(request),
             savings=getattr(getattr(ctx, "router", None), "session_savings", None),
         )
