@@ -104,6 +104,7 @@ async def test_openai_compat_reuses_client(monkeypatch):
 async def test_openai_compat_sequential_streams_reuse_client(monkeypatch):
     sse = (
         'data: {"choices":[{"delta":{"content":"a"}}]}\n\n'
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
         "data: [DONE]\n\n"
     )
 

@@ -154,8 +154,11 @@ class MLXExecutor:
             deadline_bounded_stream,
             guard_upstream,
         )
+        from daari.router.stream_terminal import StreamTerminalError, is_abort_finish_reason
 
         guard_upstream(self.tier)
+        had_output = False
+        last_finish: str | None = None
         async with deadline_bounded_stream(
             self._client(),
             "POST",
@@ -172,7 +175,22 @@ class MLXExecutor:
                     continue
                 data = line[len("data:") :].strip()
                 if data == "[DONE]":
-                    yield {"message": {"role": "assistant", "content": ""}, "done": True}
+                    if is_abort_finish_reason(last_finish):
+                        raise StreamTerminalError(
+                            "abort", detail="upstream finish_reason=abort"
+                        )
+                    if had_output and not (last_finish or "").strip():
+                        raise StreamTerminalError(
+                            "missing_finish_reason",
+                            detail="stream ended without terminal finish_reason",
+                        )
+                    done_event: dict[str, Any] = {
+                        "message": {"role": "assistant", "content": ""},
+                        "done": True,
+                    }
+                    if last_finish:
+                        done_event["finish_reason"] = last_finish
+                    yield done_event
                     return
                 try:
                     chunk = json.loads(data)
@@ -186,5 +204,23 @@ class MLXExecutor:
                 }
                 if delta.get("tool_calls"):
                     message["tool_calls"] = delta["tool_calls"]
-                yield {"message": message, "done": False}
+                raw_finish = choice.get("finish_reason")
+                if isinstance(raw_finish, str) and raw_finish.strip():
+                    last_finish = raw_finish.strip()
+                if message.get("content") or message.get("tool_calls"):
+                    had_output = True
+                event: dict[str, Any] = {"message": message, "done": False}
+                if last_finish and raw_finish:
+                    event["finish_reason"] = last_finish
+                if is_abort_finish_reason(raw_finish if isinstance(raw_finish, str) else None):
+                    yield event
+                    raise StreamTerminalError(
+                        "abort", detail="upstream finish_reason=abort"
+                    )
+                yield event
+        if had_output:
+            raise StreamTerminalError(
+                "missing_finish_reason",
+                detail="stream ended without terminal finish_reason",
+            )
         yield {"message": {"role": "assistant", "content": ""}, "done": True}

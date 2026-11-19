@@ -61,6 +61,7 @@ async def test_stream_converts_sse_to_ollama_events(monkeypatch):
     sse_body = (
         'data: {"choices":[{"delta":{"role":"assistant","content":"Hel"}}]}\n\n'
         'data: {"choices":[{"delta":{"content":"lo"}}]}\n\n'
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
         "data: [DONE]\n\n"
     )
 
@@ -109,6 +110,7 @@ async def test_stream_requests_usage_and_surfaces_final_usage_chunk(monkeypatch)
     sse_body = (
         'data: {"choices":[{"delta":{"role":"assistant","content":"Hel"}}]}\n\n'
         'data: {"choices":[{"delta":{"content":"lo"}}]}\n\n'
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
         'data: {"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}\n\n'
         "data: [DONE]\n\n"
     )
@@ -130,7 +132,7 @@ async def test_stream_running_usage_totals_pass_through_unsummed(monkeypatch):
     sse_body = (
         'data: {"choices":[{"delta":{"content":"a"}}],"usage":{"prompt_tokens":11,"completion_tokens":1}}\n\n'
         'data: {"choices":[{"delta":{"content":"b"}}],"usage":{"prompt_tokens":11,"completion_tokens":2}}\n\n'
-        'data: {"choices":[{"delta":{"content":"c"}}],"usage":{"prompt_tokens":11,"completion_tokens":3}}\n\n'
+        'data: {"choices":[{"delta":{"content":"c"},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"completion_tokens":3}}\n\n'
         "data: [DONE]\n\n"
     )
     events = await _stream_events(monkeypatch, sse_body)

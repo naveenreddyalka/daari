@@ -706,6 +706,13 @@ class FrontierExecutor:
                 response.raise_for_status()
                 self._remember_fast_rate_headers(response)
                 tool_block_open = False
+                had_output = False
+                saw_terminal = False
+                from daari.router.stream_terminal import (
+                    StreamTerminalError,
+                    is_abort_finish_reason,
+                )
+
                 async for line in aiter_with_ttft_deadline(response.aiter_lines()):
                     if self._is_anthropic():
                         if not line.startswith("data:"):
@@ -719,13 +726,27 @@ class FrontierExecutor:
                             parsed = None
                         if isinstance(parsed, dict):
                             _remember_anthropic_stream_usage(self, parsed)
+                            event_type = parsed.get("type")
+                            if event_type == "message_delta":
+                                stop = (parsed.get("delta") or {}).get("stop_reason")
+                                if isinstance(stop, str) and stop.strip():
+                                    saw_terminal = True
+                                    if is_abort_finish_reason(stop):
+                                        raise StreamTerminalError(
+                                            "abort",
+                                            detail="upstream stop_reason=abort",
+                                        )
+                            elif event_type == "message_stop":
+                                saw_terminal = True
                         tool_event = anthropic_tool_event_from_sse_data(data)
                         if tool_event is not None:
                             event_type = tool_event.get("type")
                             if event_type == "content_block_start":
                                 tool_block_open = True
+                                had_output = True
                                 yield {"anthropic_event": tool_event}
                             elif event_type == "content_block_delta":
+                                had_output = True
                                 yield {"anthropic_event": tool_event}
                             elif event_type == "content_block_stop" and tool_block_open:
                                 tool_block_open = False
@@ -733,12 +754,15 @@ class FrontierExecutor:
                             continue
                         delta = text_delta_from_sse_data(data)
                         if delta:
+                            had_output = True
                             yield delta
                         continue
                     if not line.startswith("data:"):
                         continue
                     data = line[len("data:") :].strip()
-                    if not data or data == "[DONE]":
+                    if not data:
+                        continue
+                    if data == "[DONE]":
                         continue
                     try:
                         chunk = json.loads(data)
@@ -758,6 +782,7 @@ class FrontierExecutor:
                                     "reasoning_encrypted": item["encrypted_content"].strip()
                                 }
                             elif isinstance(item, dict) and item.get("type") == "function_call":
+                                had_output = True
                                 yield {
                                     "tool_calls": [
                                         {
@@ -777,9 +802,11 @@ class FrontierExecutor:
                         if event_type == "response.output_text.delta":
                             delta_text = chunk.get("delta")
                             if isinstance(delta_text, str) and delta_text:
+                                had_output = True
                                 yield delta_text
                             continue
                         if event_type == "response.completed":
+                            saw_terminal = True
                             usage = chunk.get("response", {}).get("usage")
                             if isinstance(usage, dict):
                                 _remember_openai_stream_usage(
@@ -790,13 +817,31 @@ class FrontierExecutor:
                     if isinstance(chunk, dict):
                         _remember_openai_stream_usage(self, chunk)
                     for choice in chunk.get("choices", []):
+                        raw_finish = choice.get("finish_reason")
+                        if isinstance(raw_finish, str) and raw_finish.strip():
+                            saw_terminal = True
+                            if is_abort_finish_reason(raw_finish):
+                                raise StreamTerminalError(
+                                    "abort",
+                                    detail="upstream finish_reason=abort",
+                                )
                         delta_obj = choice.get("delta") or {}
                         tool_calls = delta_obj.get("tool_calls")
                         if tool_calls:
+                            had_output = True
                             yield {"tool_calls": tool_calls}
                         text = delta_obj.get("content")
                         if text:
+                            had_output = True
                             yield text
+                # Chat/completions (+ Anthropic messages): abort / missing terminal
+                # fail visibly so mid-stream failover can run (#2241). Responses
+                # WS terminal rules stay out of scope.
+                if not uses_responses and had_output and not saw_terminal:
+                    raise StreamTerminalError(
+                        "missing_finish_reason",
+                        detail="stream ended without terminal finish_reason",
+                    )
                 return
 
     async def execute(

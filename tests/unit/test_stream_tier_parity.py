@@ -218,6 +218,7 @@ async def test_frontier_executor_parses_upstream_sse():
         "data: \n\n"
         "data: not-json\n\n"
         'data: {"choices":[{"delta":{"content":" world"}}]}\n\n'
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
         "data: [DONE]\n\n"
     )
 
