@@ -62,6 +62,11 @@ def _stream_sse(*, service_tier: str = "default") -> bytes:
         "object": "chat.completion.chunk",
         "choices": [{"delta": {"content": "ok"}, "finish_reason": None}],
     }
+    terminal = {
+        "id": "chatcmpl-s",
+        "object": "chat.completion.chunk",
+        "choices": [{"delta": {}, "finish_reason": "stop"}],
+    }
     usage = {
         "id": "chatcmpl-s",
         "object": "chat.completion.chunk",
@@ -69,7 +74,12 @@ def _stream_sse(*, service_tier: str = "default") -> bytes:
         "choices": [],
         "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
     }
-    return (f"data: {json.dumps(delta)}\n\ndata: {json.dumps(usage)}\n\ndata: [DONE]\n\n").encode()
+    return (
+        f"data: {json.dumps(delta)}\n\n"
+        f"data: {json.dumps(terminal)}\n\n"
+        f"data: {json.dumps(usage)}\n\n"
+        "data: [DONE]\n\n"
+    ).encode()
 
 
 def test_detects_service_tier_restriction_by_param():

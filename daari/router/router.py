@@ -3052,9 +3052,17 @@ class Router:
                     delta_count = 0
                     pre_token_failover = False
                     attempt_failed = False
+                    saw_terminal = False
+                    stream_finish_reason: str | None = None
                     try:
                         from daari.gateway.anthropic import hoist_system_messages
                         from daari.router.deadline import guard_upstream
+                        from daari.router.stream_terminal import (
+                            StreamTerminalError,
+                            is_abort_finish_reason,
+                            normalize_stream_finish_reason,
+                            stream_ended_without_terminal,
+                        )
 
                         guard_upstream(tier)
                         ollama_request = self._maybe_scrub_cloud(
@@ -3100,8 +3108,27 @@ class Router:
                                 pending_chunks.append(
                                     f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
                                 )
+                            raw_done = event.get("done_reason") or event.get("finish_reason")
+                            if isinstance(raw_done, str) and raw_done.strip():
+                                if is_abort_finish_reason(raw_done):
+                                    raise StreamTerminalError(
+                                        "abort",
+                                        detail="upstream finish_reason=abort",
+                                    )
+                                normalized = normalize_stream_finish_reason(raw_done)
+                                if normalized:
+                                    stream_finish_reason = normalized
                             if event.get("done"):
+                                saw_terminal = True
                                 break
+                        if stream_ended_without_terminal(
+                            had_output=content_sent or tool_calls_sent,
+                            saw_terminal=saw_terminal,
+                        ):
+                            raise StreamTerminalError(
+                                "missing_finish_reason",
+                                detail="stream ended without terminal finish_reason",
+                            )
                     except Exception as exc:
                         from daari.router.deadline import reraise_deadline
 
@@ -3663,7 +3690,11 @@ class Router:
                         yield chunk
                 else:
                     yield role_chunk
-                finish_reason = "tool_calls" if tool_calls_sent else "stop"
+                finish_reason = (
+                    "tool_calls"
+                    if tool_calls_sent
+                    else (stream_finish_reason or "stop")
+                )
                 yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
                 # One usage figure feeds the client-visible usage chunk and the
                 # ledger row, so both see the provider's final count once (#320).
@@ -4308,11 +4339,18 @@ class Router:
                 tier_text_parts = []
                 reported_usage = None
                 stream_finish_reason = "stop"
+                saw_terminal = False
                 pre_token_failover = False
                 attempt_failed = False
                 try:
                     from daari.gateway.anthropic import hoist_system_messages
                     from daari.router.deadline import guard_upstream
+                    from daari.router.stream_terminal import (
+                        StreamTerminalError,
+                        is_abort_finish_reason,
+                        normalize_stream_finish_reason,
+                        stream_ended_without_terminal,
+                    )
 
                     guard_upstream(tier)
                     # Local llama templates need leading system turns (#94/#1154).
@@ -4400,20 +4438,30 @@ class Router:
                                     },
                                 )
                             )
+                        raw_done = event.get("done_reason") or event.get("finish_reason")
+                        if isinstance(raw_done, str) and raw_done.strip():
+                            if is_abort_finish_reason(raw_done):
+                                raise StreamTerminalError(
+                                    "abort",
+                                    detail="upstream finish_reason=abort",
+                                )
+                            normalized = normalize_stream_finish_reason(raw_done)
+                            if normalized:
+                                stream_finish_reason = normalized
+                            else:
+                                stream_finish_reason = "stop"
                         if event.get("done"):
                             # Ollama done_reason / OpenAI finish_reason → honest stop (#2232).
-                            raw_done = event.get("done_reason") or event.get("finish_reason")
-                            if isinstance(raw_done, str) and raw_done.strip():
-                                token = raw_done.strip().lower()
-                                if token in {"length", "max_tokens"}:
-                                    stream_finish_reason = "length"
-                                elif token in {"tool_calls", "tool_use"}:
-                                    stream_finish_reason = "tool_calls"
-                                elif token in {"pause_turn", "refusal"}:
-                                    stream_finish_reason = token
-                                else:
-                                    stream_finish_reason = "stop"
+                            saw_terminal = True
                             break
+                    if stream_ended_without_terminal(
+                        had_output=any_output or tool_use_sent,
+                        saw_terminal=saw_terminal,
+                    ):
+                        raise StreamTerminalError(
+                            "missing_finish_reason",
+                            detail="stream ended without terminal finish_reason",
+                        )
                 except Exception as exc:
                     from daari.router.deadline import reraise_deadline
 

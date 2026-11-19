@@ -117,6 +117,7 @@ async def test_stream_converts_sse_to_ollama_events(monkeypatch):
     sse_body = (
         'data: {"choices":[{"delta":{"role":"assistant","content":"Hel"}}]}\n\n'
         'data: {"choices":[{"delta":{"content":"lo"}}]}\n\n'
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
         "data: [DONE]\n\n"
     )
 
@@ -140,6 +141,7 @@ async def test_stream_converts_sse_to_ollama_events(monkeypatch):
 async def test_stream_forwards_tool_call_deltas(monkeypatch):
     sse_body = (
         'data: {"choices":[{"delta":{"tool_calls":[{"id":"t1","function":{"name":"read_file","arguments":"{}"}}]}}]}\n\n'
+        'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
         "data: [DONE]\n\n"
     )
 

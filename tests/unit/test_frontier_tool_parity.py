@@ -126,6 +126,7 @@ async def test_frontier_stream_forwards_openai_tool_call_deltas():
         '"type":"function","function":{"name":"lookup","arguments":"{\\"q\\":"}}]}}]}\n\n'
         'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
         '"function":{"arguments":"\\"x\\"}"}}]}}]}\n\n'
+        'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
         "data: [DONE]\n\n"
     )
 

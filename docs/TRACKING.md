@@ -9322,6 +9322,17 @@ tips when frontier virtual candidates lack model-scope daily caps and
 key-level rpd/tpd are unset. Covered by
 `tests/unit/test_model_daily_rpd_tpd.py`.
 
+### Stream abort / missing finish_reason fail visibly ([#2241](https://github.com/naveenreddyalka/daari/issues/2241))
+
+<!-- tracking:#2241 -->
+**Status:** Done (2026-11-19). Upstream `finish_reason`/`done_reason`/`stop_reason`
+`abort`, and streams that yield content/tool deltas then end without a
+terminal reason, surface in-band `stream_incomplete` (same shape as mid-stream
+relay death) so breakers and failover can run — no synthesized client `stop`.
+OpenAI-compat / MLX / frontier chat legs raise `StreamTerminalError`; Ollama
+`done: true` without `done_reason` stays a clean stop. Covered by
+`tests/unit/test_stream_abort_finish_reason.py` and gateway-flow cases.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
