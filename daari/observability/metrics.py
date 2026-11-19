@@ -337,6 +337,9 @@ class Metrics:
     stream_fallback_continue: int = 0
     # Virtual-model candidate hops (failed → next) — no per-candidate labels (#2023).
     virtual_model_failover: int = 0
+    # Virtual-model candidate skipped solely for model-scope daily quota (#2240).
+    # Distinct from hard 429 rejects (rate_limit_rpd / rate_limit_tpd).
+    virtual_model_daily_quota_skip: int = 0
     # mode (ordered|performance) → count of virtual-model selection decisions (#2052).
     virtual_model_selection: dict[str, int] = field(default_factory=dict)
     # outcome (demoted|within) → performance-mode SLO bucketing pressure (#2123).
@@ -684,6 +687,11 @@ class Metrics:
         with self._lock:
             self.virtual_model_failover += 1
 
+    def record_virtual_model_daily_quota_skip(self) -> None:
+        """Candidate skipped for model-scope daily rpd/tpd; not a client 429 (#2240)."""
+        with self._lock:
+            self.virtual_model_daily_quota_skip += 1
+
     def record_virtual_model_selection(self, mode: str) -> None:
         """Record how a virtual-model candidate list was ordered (#2052, #2164)."""
         label = (mode or "ordered").strip().lower() or "ordered"
@@ -907,6 +915,7 @@ class Metrics:
                 "compact_to_fit_tokens_dropped": self.compact_to_fit_tokens_dropped,
                 "stream_fallback_continue": self.stream_fallback_continue,
                 "virtual_model_failover": self.virtual_model_failover,
+                "virtual_model_daily_quota_skip": self.virtual_model_daily_quota_skip,
                 "virtual_model_selection": dict(self.virtual_model_selection),
                 "virtual_model_slo_demotion": dict(self.virtual_model_slo_demotion),
                 "anthropic_message_thread": dict(self.anthropic_message_thread),

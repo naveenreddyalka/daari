@@ -839,8 +839,8 @@ class TestPerModelMapAndKeyConcurrency:
                 "llama3-70b": ModelRateLimitSettings(rpm=1),
             },
         )
-        assert limiter.resolve_model_limits("llama3-70b-q4") == (1, 0, 0)
-        assert limiter.resolve_model_limits("llama3-8b") == (3, 0, 0)
+        assert limiter.resolve_model_limits("llama3-70b-q4") == (1, 0, 0, 0, 0)
+        assert limiter.resolve_model_limits("llama3-8b") == (3, 0, 0, 0, 0)
 
     def test_key_gauge_cap_memory_and_release(self):
         limiter = RateLimiter(MemoryCounterBackend(), retry_after_seconds=2)

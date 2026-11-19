@@ -161,6 +161,9 @@ def run_doctor(
     coding_router_tip = _check_coding_router_compose(cfg)
     if coding_router_tip is not None:
         results.append(coding_router_tip)
+    frontier_daily_tip = _check_virtual_model_frontier_daily_cap(cfg)
+    if frontier_daily_tip is not None:
+        results.append(frontier_daily_tip)
     results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
     body_cap_tip = _check_body_cap_below_provider(cfg)
@@ -3583,6 +3586,76 @@ def _check_virtual_models(settings: Settings) -> CheckResult:
 
 
 _CODE_SIGNAL_CATEGORIES = frozenset({"code", "code_gen", "code_explain"})
+
+
+def _check_virtual_model_frontier_daily_cap(settings: Settings) -> CheckResult | None:
+    """Informational tip: frontier virtual candidates without model-scope daily caps (#2240)."""
+    routing = getattr(settings, "routing", None)
+    mapping = getattr(routing, "virtual_models", None) or {} if routing is not None else {}
+    if not mapping:
+        return None
+    rl = getattr(settings, "rate_limit", None)
+    global_rpd = int(getattr(rl, "model_rpd", 0) or 0) if rl is not None else 0
+    global_tpd = int(getattr(rl, "model_tpd", 0) or 0) if rl is not None else 0
+    if global_rpd > 0 or global_tpd > 0:
+        return None
+    models_map = dict(getattr(rl, "models", None) or {}) if rl is not None else {}
+
+    def _model_has_daily(model_id: str) -> bool:
+        from daari.auth.rate_limit import match_model_limits
+
+        entry = match_model_limits(models_map, model_id)
+        if entry is None:
+            return False
+        if isinstance(entry, dict):
+            return int(entry.get("rpd") or 0) > 0 or int(entry.get("tpd") or 0) > 0
+        return int(getattr(entry, "rpd", 0) or 0) > 0 or int(getattr(entry, "tpd", 0) or 0) > 0
+
+    uncapped: list[str] = []
+    for _name, candidates in mapping.items():
+        for candidate in candidates or []:
+            raw = str(candidate or "").strip()
+            if not raw:
+                continue
+            upper = raw.upper()
+            is_frontier = "/" in raw or upper in {"L6", "FRONTIER"}
+            if not is_frontier:
+                continue
+            model_id = raw
+            if upper in {"L6", "FRONTIER"}:
+                frontier = getattr(settings, "frontier", None)
+                default = getattr(frontier, "default_model", None) if frontier else None
+                model_id = str(default or raw)
+            if not _model_has_daily(model_id):
+                uncapped.append(raw)
+    if not uncapped:
+        return None
+
+    # Quiet when any virtual key already has key-level rpd/tpd.
+    try:
+        from daari.auth.virtual_keys import VirtualKeyStore
+
+        path = getattr(getattr(settings.server, "virtual_keys", None), "path", None)
+        if path:
+            store = VirtualKeyStore(path)
+            for key in store.list():
+                if int(getattr(key, "rpd", 0) or 0) > 0 or int(getattr(key, "tpd", 0) or 0) > 0:
+                    return None
+    except Exception:
+        pass
+
+    sample = ", ".join(sorted(set(uncapped))[:3])
+    return CheckResult(
+        name="virtual_model_frontier_daily_cap",
+        ok=True,
+        detail=(
+            f"routing.virtual_models lists frontier candidate(s) without model-scope "
+            f"daily rpd/tpd ({sample}) and key-level rpd/tpd are unset — set "
+            f"rate_limit.models.<id>.rpd/tpd (or model_rpd/model_tpd) so a noisy "
+            f"frontier peer can fail over without capping every model on the key"
+        ),
+        optional=True,
+    )
 
 
 def _check_coding_router_compose(settings: Settings) -> CheckResult | None:
