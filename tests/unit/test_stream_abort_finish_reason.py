@@ -193,8 +193,6 @@ async def test_clean_stop_stream_unchanged(tmp_path):
 
 @pytest.mark.asyncio
 async def test_openai_executor_abort_raises_stream_terminal_error():
-    import httpx
-
     from daari.router.openai_executor import OpenAICompatExecutor
 
     lines = [
