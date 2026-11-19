@@ -9333,6 +9333,18 @@ OpenAI-compat / MLX / frontier chat legs raise `StreamTerminalError`; Ollama
 `done: true` without `done_reason` stays a clean stop. Covered by
 `tests/unit/test_stream_abort_finish_reason.py` and gateway-flow cases.
 
+### Bill frontier image generations/edits from upstream usage ([#2249](https://github.com/naveenreddyalka/daari/issues/2249))
+
+<!-- tracking:#2249 -->
+**Status:** Done (2026-11-19). `/v1/images/generations|edits|variations` price
+from upstream `usage` (incl. `input_tokens_details` text/image split) via the
+catalog; `gpt-image-2.6-sunburst` / `gpt-image-2.6-flare` ship at $5/$30 text
+in/out with $8 image-input when details are present. No-usage paths
+(dall-e-2/3) use a documented per-image estimate and emit
+`images_cost_estimated`. Image spend records as L6 so key/team budgets 402
+like chat. `frontier.images_default_model` defaults to `gpt-image-2.6-flare`.
+Covered by `tests/unit/test_images.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

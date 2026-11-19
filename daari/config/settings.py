@@ -850,6 +850,18 @@ class FrontierSettings(RuntimeSettings):
             "Env: DAARI_FRONTIER__THINKING_BINDING_DROP_BLOCK."
         ),
     )
+    # Default for POST /v1/images/* when the client omits `model` (#2249).
+    # Independent of frontier.model (chat) so a chat-default id is never
+    # silently sent to the images surface.
+    images_default_model: str = Field(
+        default="gpt-image-2.6-flare",
+        description=(
+            "Default model for POST /v1/images/generations, /edits, and "
+            "/variations when the request omits `model`. Ships as the "
+            "token-billed gpt-image-2.6-flare (not dall-e-3). "
+            "Env: DAARI_FRONTIER__IMAGES_DEFAULT_MODEL (#2249)."
+        ),
+    )
 
 
 class CategoryPolicy(BaseModel):
@@ -1914,6 +1926,23 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "input_per_1m": 2.00,
         "output_per_1m": 6.00,
         "cached_input_per_1m": 0.50,
+    },
+    # OpenAI GPT-Image-2.6 (2026-11-04): text input $5 / image input $8 /
+    # image output $30 / cached text $1.25 / cached image $2 per 1M.
+    # Catalog `input_per_1m` is the text rate; images.py bills
+    # `input_tokens_details.image_tokens` at $8 when present (#2249).
+    # https://platform.openai.com/docs/pricing
+    # https://developers.openai.com/api/docs/models/gpt-image-2.6-sunburst
+    # https://developers.openai.com/api/docs/models/gpt-image-2.6-flare
+    "gpt-image-2.6-sunburst": {
+        "input_per_1m": 5.00,
+        "output_per_1m": 30.00,
+        "cached_input_per_1m": 1.25,
+    },
+    "gpt-image-2.6-flare": {
+        "input_per_1m": 5.00,
+        "output_per_1m": 30.00,
+        "cached_input_per_1m": 1.25,
     },
 }
 
