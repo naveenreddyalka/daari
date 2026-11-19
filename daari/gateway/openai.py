@@ -1072,6 +1072,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 getattr(request.state, "auth_claims", None),
                 model_groups=getattr(ctx.settings, "model_groups", None),
             )
+            # Align virtual-model daily quota with enforce_rate_limits key_id (#2240).
+            if not getattr(meta, "key_id", None):
+                rl_key = getattr(request.state, "rate_limit_key_id", None)
+                if rl_key:
+                    meta.key_id = str(rl_key)
             meta.authorization_bearer = bearer_from_authorization(
                 request.headers.get("authorization")
             )

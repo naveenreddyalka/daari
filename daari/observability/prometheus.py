@@ -358,6 +358,15 @@ def render_prometheus(
         f"daari_virtual_model_failover_total {snap.get('virtual_model_failover', 0)}"
     )
     lines.append(
+        "# HELP daari_virtual_model_daily_quota_skip_total Virtual-model "
+        "candidates skipped solely for model-scope daily rpd/tpd (not a client 429)."
+    )
+    lines.append("# TYPE daari_virtual_model_daily_quota_skip_total counter")
+    lines.append(
+        "daari_virtual_model_daily_quota_skip_total "
+        f"{snap.get('virtual_model_daily_quota_skip', 0)}"
+    )
+    lines.append(
         "# HELP daari_virtual_model_selection_total Virtual-model candidate "
         "list orderings by mode (ordered|performance)."
     )

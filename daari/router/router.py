@@ -6107,10 +6107,33 @@ class Router:
 
         last_exc: BaseException | None = None
         hops = 0
+        rate_limiter = getattr(self, "rate_limiter", None)
+        # meta.key_id is stamped from auth or rate_limit_key_id (#2240).
+        key_id = (getattr(request.meta, "key_id", None) or "").strip() or "anonymous"
+        prompt_tokens = max(
+            1,
+            sum(len(message.content or "") for message in (request.messages or [])) // 4,
+        )
         for index, candidate in enumerate(candidates):
             kind, target = classify_candidate(candidate, settings)
             hop_started = _time.monotonic()
             try:
+                # Skip candidates whose model-scope daily quota is already spent (#2240).
+                if rate_limiter is not None and hasattr(
+                    rate_limiter, "model_daily_exhausted"
+                ):
+                    rate_model = self._virtual_candidate_rate_model(candidate, kind, settings)
+                    if rate_model and rate_limiter.model_daily_exhausted(
+                        key_id=key_id,
+                        model=rate_model,
+                        tokens=prompt_tokens,
+                    ):
+                        if hasattr(self.metrics, "record_virtual_model_daily_quota_skip"):
+                            self.metrics.record_virtual_model_daily_quota_skip()
+                        raise BackendUnavailable(
+                            target if kind == "local" else "L6",
+                            f"model daily quota exhausted for {rate_model!r}",
+                        )
                 if kind == "local":
                     response = await self._run_model_tier(target, gen_request)
                 else:
@@ -6197,6 +6220,38 @@ class Router:
         if last_exc is not None:
             raise last_exc
         raise BackendUnavailable("virtual", f"virtual model {virtual_name!r} exhausted candidates")
+
+    def _virtual_candidate_rate_model(
+        self, candidate: str, kind: str, settings: Any
+    ) -> str:
+        """Model id used for per-model daily quota checks on a virtual candidate (#2240)."""
+        raw = (candidate or "").strip()
+        if not raw:
+            return ""
+        upper = raw.upper()
+        if kind == "local":
+            models = getattr(settings, "models", None) if settings is not None else None
+            if upper in {"L3", "L4", "L5"} and models is not None:
+                attr = upper.lower()
+                configured = getattr(models, attr, None)
+                if configured:
+                    return str(configured)
+            return raw
+        if upper in {"L6", "FRONTIER"}:
+            frontier = getattr(self, "frontier", None)
+            default = getattr(frontier, "default_model", None) if frontier is not None else None
+            if default:
+                return str(default)
+            settings_frontier = (
+                getattr(settings, "frontier", None) if settings is not None else None
+            )
+            fallback = (
+                getattr(settings_frontier, "default_model", None)
+                if settings_frontier is not None
+                else None
+            )
+            return str(fallback or raw)
+        return raw
 
     async def _try_local_pool_frontier_fallback(
         self,
