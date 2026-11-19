@@ -5204,3 +5204,78 @@ async def test_messages_stream_stop_reason_from_finish_reason(app, monkeypatch):
             deltas.append(event)
     assert deltas
     assert deltas[-1]["delta"]["stop_reason"] == "max_tokens"
+
+
+@pytest.mark.asyncio
+async def test_stream_abort_finish_reason_not_successful_stop(app, monkeypatch):
+    """Upstream abort must not look like a clean stop to the client (#2241)."""
+
+    async def fake_stream(_request: InternalRequest):
+        yield {"message": {"role": "assistant", "content": "partial"}}
+        yield {"done": True, "done_reason": "abort"}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": True,
+            },
+            headers={"X-Daari-No-Cache": "true"},
+        )
+    assert response.status_code == 200
+    finish_reasons = []
+    errors = []
+    for line in response.text.splitlines():
+        if not line.startswith("data: ") or line == "data: [DONE]":
+            continue
+        payload = json.loads(line[len("data: ") :])
+        if "error" in payload:
+            errors.append(payload["error"])
+        for choice in payload.get("choices") or []:
+            if choice.get("finish_reason"):
+                finish_reasons.append(choice["finish_reason"])
+    assert errors, f"expected stream_incomplete, got: {response.text}"
+    assert errors[-1].get("type") == "stream_incomplete"
+    assert "stop" not in finish_reasons
+
+
+@pytest.mark.asyncio
+async def test_stream_missing_terminal_not_successful_stop(app, monkeypatch):
+    """Content without a terminal done/finish_reason is not a clean stop (#2241)."""
+
+    async def fake_stream(_request: InternalRequest):
+        yield {"message": {"role": "assistant", "content": "truncated"}}
+        # No done event — connection dropped after partial tokens.
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": True,
+            },
+            headers={"X-Daari-No-Cache": "true"},
+        )
+    assert response.status_code == 200
+    finish_reasons = []
+    errors = []
+    for line in response.text.splitlines():
+        if not line.startswith("data: ") or line == "data: [DONE]":
+            continue
+        payload = json.loads(line[len("data: ") :])
+        if "error" in payload:
+            errors.append(payload["error"])
+        for choice in payload.get("choices") or []:
+            if choice.get("finish_reason"):
+                finish_reasons.append(choice["finish_reason"])
+    assert errors, f"expected stream_incomplete, got: {response.text}"
+    assert errors[-1].get("type") == "stream_incomplete"
+    assert "stop" not in finish_reasons
+
