@@ -121,6 +121,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
             )
         app.state.ctx.rate_limiter = getattr(app.state, "rate_limiter", None)
+        app.state.ctx.router.rate_limiter = app.state.ctx.rate_limiter
         from daari.providers.mcp_egress import wire_mcp_egress_rate_limiters
 
         wire_mcp_egress_rate_limiters(app.state.ctx.providers, app.state.ctx.rate_limiter)
@@ -1273,6 +1274,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             retired = reject_retired_model(request, model, settings)
             if retired is not None:
                 return retired
+        # Router virtual-model daily skips must share this key_id (#2240).
+        request.state.rate_limit_key_id = key_id
         decision = limiter.check(
             key_id=key_id,
             model=model,
@@ -1441,7 +1444,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         if team_id and team_mif > 0:
             gauge_leases.append((f"inflight:team:{team_id}", team_mif, "team_concurrency"))
-        _map_rpm, _map_tpm, model_mif = limiter.resolve_model_limits(model)
+        _map_rpm, _map_tpm, model_mif, _map_rpd, _map_tpd = limiter.resolve_model_limits(model)
         if model_mif > 0:
             gauge_leases.append((f"inflight:model:{model}", model_mif, "model_concurrency"))
         gauge_decision, held_gauges = limiter.try_acquire_gauges(gauge_leases)

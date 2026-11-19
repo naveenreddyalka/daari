@@ -266,6 +266,8 @@ class RateLimiter:
         default_tpm: int = 0,
         model_rpm: int = 0,
         model_tpm: int = 0,
+        model_rpd: int = 0,
+        model_tpd: int = 0,
         models: dict[str, Any] | None = None,
         max_in_flight: int = 0,
         queue_size: int = 32,
@@ -282,6 +284,8 @@ class RateLimiter:
         self.default_tpm = default_tpm
         self.model_rpm = model_rpm
         self.model_tpm = model_tpm
+        self.model_rpd = model_rpd
+        self.model_tpd = model_tpd
         self.models = dict(models or {})
         self.max_in_flight = max_in_flight
         self.queue_size = queue_size
@@ -427,22 +431,53 @@ class RateLimiter:
         # No fallback configured — still must not 500.
         return 0
 
-    def resolve_model_limits(self, model: str) -> tuple[int, int, int]:
-        """Return (rpm, tpm, max_in_flight) for ``model`` from ``rate_limit.models``."""
+    def resolve_model_limits(self, model: str) -> tuple[int, int, int, int, int]:
+        """Return (rpm, tpm, max_in_flight, rpd, tpd) for ``model`` (#1592, #2240)."""
         entry = match_model_limits(self.models, model)
         if entry is None:
-            return self.model_rpm, self.model_tpm, 0
+            return self.model_rpm, self.model_tpm, 0, self.model_rpd, self.model_tpd
         if isinstance(entry, dict):
+            rpd = int(entry.get("rpd") or 0) or self.model_rpd
+            tpd = int(entry.get("tpd") or 0) or self.model_tpd
             return (
                 int(entry.get("rpm") or 0),
                 int(entry.get("tpm") or 0),
                 int(entry.get("max_in_flight") or 0),
+                rpd,
+                tpd,
             )
+        rpd = int(getattr(entry, "rpd", 0) or 0) or self.model_rpd
+        tpd = int(getattr(entry, "tpd", 0) or 0) or self.model_tpd
         return (
             int(getattr(entry, "rpm", 0) or 0),
             int(getattr(entry, "tpm", 0) or 0),
             int(getattr(entry, "max_in_flight", 0) or 0),
+            rpd,
+            tpd,
         )
+
+    def model_daily_exhausted(self, *, key_id: str, model: str, tokens: int = 1) -> bool:
+        """True when admitting ``tokens`` would exceed model-scope daily caps (#2240).
+
+        Peeks counters with amount 0 so a virtual-model skip does not consume quota.
+        """
+        _rpm, _tpm, _mif, per_model_rpd, per_model_tpd = self.resolve_model_limits(model)
+        if per_model_rpd <= 0 and per_model_tpd <= 0:
+            return False
+        token_amount = max(0, int(tokens))
+        if per_model_rpd > 0:
+            used = int(
+                self._increment(f"rpd:{key_id}:{model}", 0, window_seconds=DAY_SECONDS)
+            )
+            if used + 1 > per_model_rpd:
+                return True
+        if per_model_tpd > 0 and token_amount > 0:
+            used = int(
+                self._increment(f"tpd:{key_id}:{model}", 0, window_seconds=DAY_SECONDS)
+            )
+            if used + token_amount > per_model_tpd:
+                return True
+        return False
 
     def _adjust_gauge(self, key: str, delta: int) -> int:
         """Adjust a non-windowed in-flight gauge with the same degrade path as counters."""
@@ -549,7 +584,7 @@ class RateLimiter:
     ) -> RateLimitDecision:
         key_rpm = self.default_rpm if rpm is None else rpm
         key_tpm = self.default_tpm if tpm is None else tpm
-        map_rpm, map_tpm, _map_mif = self.resolve_model_limits(model)
+        map_rpm, map_tpm, _map_mif, map_rpd, map_tpd = self.resolve_model_limits(model)
         if model_rpm is None:
             per_model_rpm = map_rpm if map_rpm > 0 else self.model_rpm
         else:
@@ -562,6 +597,9 @@ class RateLimiter:
             per_model_rpm = key_rpm
         if per_model_tpm <= 0:
             per_model_tpm = key_tpm
+        # Model-scope daily caps never fall through to key rpm/rpd (#2240).
+        per_model_rpd = int(map_rpd or 0)
+        per_model_tpd = int(map_tpd or 0)
         agg_team_rpm = 0 if team_rpm is None else int(team_rpm)
         agg_team_tpm = 0 if team_tpm is None else int(team_tpm)
         # 0 / unset = unlimited. Separate from rpm so a minute window can stay open (#717).
@@ -618,6 +656,21 @@ class RateLimiter:
                     max(1, tokens),
                     per_model_tpm,
                     WINDOW_SECONDS,
+                )
+            )
+        if per_model_rpd > 0:
+            checks.append(
+                (f"rpd:{key_id}:{model}", "rpd", "model", 1, per_model_rpd, DAY_SECONDS)
+            )
+        if per_model_tpd > 0:
+            checks.append(
+                (
+                    f"tpd:{key_id}:{model}",
+                    "tpd",
+                    "model",
+                    token_amount,
+                    per_model_tpd,
+                    DAY_SECONDS,
                 )
             )
         # Team aggregate ceilings share the same counter backend (#546).
@@ -1090,6 +1143,8 @@ def build_rate_limiter(settings: Any, redis_client: Any | None = None) -> RateLi
     default_tpm = int(getattr(rl, "tpm", 0) or 0)
     model_rpm = int(getattr(rl, "model_rpm", 0) or 0)
     model_tpm = int(getattr(rl, "model_tpm", 0) or 0)
+    model_rpd = int(getattr(rl, "model_rpd", 0) or 0)
+    model_tpd = int(getattr(rl, "model_tpd", 0) or 0)
     models = dict(getattr(rl, "models", None) or {})
     max_in_flight = int(getattr(rl, "max_in_flight", 0) or 0)
     raw_queue = getattr(rl, "queue_size", 32)
@@ -1120,6 +1175,8 @@ def build_rate_limiter(settings: Any, redis_client: Any | None = None) -> RateLi
         default_tpm=default_tpm,
         model_rpm=model_rpm,
         model_tpm=model_tpm,
+        model_rpd=model_rpd,
+        model_tpd=model_tpd,
         models=models,
         max_in_flight=max_in_flight,
         queue_size=queue_size,

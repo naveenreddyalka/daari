@@ -9311,6 +9311,17 @@ never trigger `secret://` resolution; compare-litellm floor is **1.109.1** /
 LTS **1.108.6** with a hygiene row citing #51254. Covered by
 `tests/unit/test_client_credential_hygiene.py` and compare-litellm pins.
 
+### Per-model daily rpd/tpd with virtual-model failover ([#2240](https://github.com/naveenreddyalka/daari/issues/2240))
+
+<!-- tracking:#2240 -->
+**Status:** Done (2026-11-19). `ModelRateLimitSettings` + globals
+`rate_limit.model_rpd` / `model_tpd` enforce per-key-per-model UTC-day
+request/token caps; virtual-model walks skip exhausted frontier peers with
+`daari_virtual_model_daily_quota_skip_total` (distinct from hard 429s); doctor
+tips when frontier virtual candidates lack model-scope daily caps and
+key-level rpd/tpd are unset. Covered by
+`tests/unit/test_model_daily_rpd_tpd.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
