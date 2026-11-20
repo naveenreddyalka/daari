@@ -114,9 +114,12 @@ LTS GA cut was
 **[v1.108.0](https://github.com/BerriAI/litellm/releases/tag/v1.108.0)**
 (2026-11-04); **1.108.2** was the fixes-only LTS patch (including spend/key
 401s while Postgres restarts). The **live LTS patch** is now
+**[v1.108.7](https://github.com/BerriAI/litellm/releases/tag/v1.108.7)**
+(2026-11-12; Responses bridge `max_tool_calls` action-required + failed-turn
+`previous_response_id` rebuild; prior live patch
 **[v1.108.6](https://github.com/BerriAI/litellm/releases/tag/v1.108.6)**
-(2026-11-12; carries the [#51254](https://github.com/BerriAI/litellm/pull/51254)
-credential-field hygiene fix; prior live patch was
+carried the [#51254](https://github.com/BerriAI/litellm/pull/51254)
+credential-field hygiene fix after
 **[v1.108.5](https://github.com/BerriAI/litellm/releases/tag/v1.108.5)** on
 2026-11-10). The earlier RC
 [v1.108.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.108.0-rc.1)
@@ -125,13 +128,19 @@ fixes onto the 1.108 train — not a feature ship — and is superseded by the
 stable tags. **1.106.7** remains the final 1.106.x patch; do **not** treat
 compromised **1.107.0** as a support window. The **stable comparison floor**
 moved to **[1.109.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.1)**
-(see below); keep 1.108.6 for LTS-pin buyers only.
+(see below); keep 1.108.7 for LTS-pin buyers only.
 
 **1.108.7 action-required `max_tool_calls`:** LiteLLM fails closed on
 Responses→chat bridge params like `max_tool_calls` unless `drop_params` is
 on. daari declares `max_tool_calls` on the Responses request, never smuggles
 it into chat/Anthropic L6 payloads, and lists it in `daari_meta.dropped_params`
 when set — no silent discard and no Bedrock/Claude 400s.
+
+**1.108.7 failed-turn `previous_response_id`:** LiteLLM skips failed turns when
+rebuilding a Responses session from `previous_response_id`. daari rejects
+`previous_response_id` chains that point at a `failed` or `cancelled` store
+row with HTTP 400 (completed priors stay chainable) — honesty without a
+proxy control-plane flag.
 
 **LTS pilot and Tuesday cadence are live** (not pending): LiteLLM pauses the
 usual four-most-recent-stable-lines patch window on this 1.108 LTS line, and
@@ -155,7 +164,7 @@ credential-field hygiene; see
 and
 [v1.109.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.1)
 builds are superseded. The live LTS patch on the prior line remains
-**[1.108.6](https://github.com/BerriAI/litellm/releases/tag/v1.108.6)**
+**[1.108.7](https://github.com/BerriAI/litellm/releases/tag/v1.108.7)**
 (2026-11-12). Feature notes and daari's stance:
 
 - **Client credential-field hygiene** — LiteLLM #51254 blocked client bodies

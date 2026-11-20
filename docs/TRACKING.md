@@ -9397,6 +9397,15 @@ up (no partnership claim). Docs:
 [claude-managed-agents.md](developer/guides/clients/claude-managed-agents.md).
 Covered by `tests/unit/test_cma_gateway.py`.
 
+### Promote LiteLLM LTS floor to 1.108.7 ([#2258](https://github.com/naveenreddyalka/daari/issues/2258))
+
+<!-- tracking:#2258 -->
+**Status:** Done (2026-11-20). Compare doc live LTS patch is **1.108.7**
+(Responses `max_tool_calls` action-required + failed-turn
+`previous_response_id` rebuild) with daari local-first answers; GA floor
+stays **1.109.1**; disk-cache differentiator retained. Covered by
+`tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
