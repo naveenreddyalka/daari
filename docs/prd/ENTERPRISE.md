@@ -11,30 +11,39 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-19 pm)
+## Where daari stands (verified in-tree, 2026-11-20)
 
-**Loop velocity.** Afternoon shipped frontier image usage billing
-(375 → #2373). Morning PRD cut landed (#2372) with GPT-6.2 catalog /
-MCP Events / tool-name fence / speech discovery / overnight fence
-(444–448). Sol promo expires **2026-11-21 — 2 days** (405 still open).
+**Loop velocity.** Overnight shipped four rows: frontier ASR billing
+(376 → #2380), `allowed_tools` across Anthropic + local (377 →
+#2381), failed/cancelled `previous_response_id` chains rejected
+(380 → #2382), `max_tool_calls` dropped_params honesty (381 →
+#2383). Sol promo expires **2026-11-21 — tomorrow** (405 still open).
 
-**Outward.** LiteLLM's four-line GPT-6.2 `store:false` patch night is
-**GA** as **1.110.1** + **1.108.12 LTS** (+ 1.111.0-rc.2 /
-1.106.11) — placement bug, not just catalog. OpenAI Ultrafast now
-lists **GPT-6.2** at **3× Standard through 2027-02-28** (then 6×);
-background Responses windows **2h −30% / 8h −40%** replace Flex on
-6.2. Kong **2.3.2** (nginx CVE-2026-123633 / 123007). OpenRouter TTS
-discovery + images `url`/`expires_at` unchanged since morning.
-Portkey 2.33.1, Ollama 0.40.17-rc1, vLLM 0.34.0 flat. SEP-3415 Final;
-ChatGPT MCP Events is **webhook-only** (poll/stream later).
+**Outward.** LiteLLM shipped a **five-line patch night** (1.110.2 /
+1.109.3 / **1.108.13 LTS** / 1.106.12 / 1.111.0-rc.3): GPT-6.2
+system prompts missed the prompt cache on chat + Messages unless
+`store:false` (#52906, all five lines); Responses streams retried
+after delivered output — duplicate events, double billing (#52461 /
+#52616); `/key/info` read other keys by hash/alias (#52838);
+`temperature=1` 400 on Claude models that removed sampling params
+(#52341); Claude Code's rotating billing header broke caching
+(#52922, LTS). Anthropic's API version **2026-10-21** removes
+`temperature`/`top_p`/`top_k` for **every** model. OpenAI added
+GPT-Live-1.1 (Live API); Gemini launched **Tool Retrieval** preview
+(`tool_search` + `defer_loading`) and Genie 4 on the Interactions
+API. Kong OSS 3.9.5 (nginx CVEs). Portkey 2.33.1, Ollama
+0.40.17-rc2, vLLM 0.34.0, OpenRouter, MCP spec flat.
 
-**Inward theme: GPT-6.2 wire-shape day-0.** `_FRONTIER_PARAM_COMPAT`
-has **no** 6.2 entries — tools on chat still look legal (449);
-`_ULTRAFAST_MODELS` still only 6.1-sol / 6-astra and factor is flat
-6× (450); L6 Responses hardcodes `store: False` and emits
-`role: system` not leading `developer` (451); background jobs ignore
-completion_window discounts (452); image-billing + this wave need an
-integration fence (453). Morning 444–448 remain open.
+**Inward theme: the 11-20 litellm bug classes, audited.**
+Fable/Mythos 5.1/5.2 have **no `_FRONTIER_PARAM_COMPAT` entries** —
+temperature/forced tool_choice/thinking shapes 400 on the flagship
+Anthropic family (454); `_build_messages` keeps `role: system`
+verbatim → GPT-6.2 chat-leg cache misses (455); `POST /introspect`
+lets any virtual key introspect any token cross-tenant (456).
+Verified immune: stream retry never duplicates delivered output —
+buffer-then-flush + relay prefetch + fail-closed continue (457 is
+the fence); cache keys are header-free (#52922 N/A); SSO has no
+server-side redirect (#52213 N/A).
 
 ---
 
@@ -42,6 +51,11 @@ integration fence (453). Morning 444–448 remain open.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 454 | Fable/Mythos 5.1+5.2 param_compat — strip temperature/top_p/top_k (defaults included), never emit `thinking: disabled`/`budget_tokens` on 5.2, degrade forced tool_choice `any`/`tool` | 5 | 2 | LiteLLM 1.110.2 (regression-fixed #52341) / Anthropic migration guide | One declared constraint family at the edge for the flagship Anthropic models; operators hotfix via `frontier.param_compat`, no backport night | Filed [#2384](https://github.com/naveenreddyalka/daari/issues/2384) |
+| 455 | GPT-6.2 chat-leg prompt cache — `_build_messages` keeps `role: system` verbatim; 6.2 needs `developer` on /chat/completions + Messages bridge (litellm #52906, all five lines) | 4 | 2 | LiteLLM 11-20 backports / OpenAI caching guide | Escalated repeats must bill cached ($0.40/M) not list ($8/M); L0–L5 absorb the rest at $0. Adjacent to 451 (#2376, Responses placement) | Filed [#2385](https://github.com/naveenreddyalka/daari/issues/2385) |
+| 456 | Scope `POST /introspect` — any virtual key can introspect any token today (team names, quotas, master-key oracle); self-introspect only (litellm #52838 /key/info class) | 3 | 1 | LiteLLM (after its four-line backport) | Tenant isolation at one box's edge includes the introspection door; RFC 7662-safe deny + audit event | Filed [#2386](https://github.com/naveenreddyalka/daari/issues/2386) |
+| 457 | Prove + fence no-duplicate stream delivery — buffer-then-flush, relay prefetch, fail-closed continue (litellm #52461/#52616 retried delivered streams; double billing) | 3 | 1 | — (daari immune by construction; litellm patched reactively) | "Never the same delta twice, never a restarted bill" provable hermetically on one box | Filed [#2387](https://github.com/naveenreddyalka/daari/issues/2387) |
+| 458 | Integration fence for the 11-19/11-20 overnight ASR-billing, allowed_tools, failed-chain, max_tool_calls wave | 2 | 2 | — (testability) | Hermetic proof: ASR ledger row, allowed_tools both layouts, poison-chain reject, dropped_params honesty | Filed [#2388](https://github.com/naveenreddyalka/daari/issues/2388) |
 | 449 | GPT-6.2 param_compat — strip temperature/top_p/logprobs, floor effort `none`→`low`, `tools_transport=responses` | 5 | 1 | OpenAI migration guide / LiteLLM GPT-6 family table | One Pure-Python table at the edge; local tools stay $0; frontier never sees a forbidden chat+tools shape | Filed [#2374](https://github.com/naveenreddyalka/daari/issues/2374) |
 | 450 | GPT-6.2 Ultrafast allowlist + 3× promo factor through 2027-02-28 (then 6×); EU Astra still unsupported | 4 | 2 | OpenAI Ultrafast pricing | Same-box multiplier matches invoice without a SaaS price feed; local legs stay 1.0× | Filed [#2375](https://github.com/naveenreddyalka/daari/issues/2375) |
 | 451 | GPT-6.2 `store:false` prompt-cache placement — leading `developer` in `input`, not trailing `instructions` (LiteLLM 1.110.1 class) | 4 | 2 | LiteLLM 1.110.1 / OpenAI caching guide | Encrypted-reasoning Responses hop already owns the wire; fix once, every L6 escalate caches | Filed [#2376](https://github.com/naveenreddyalka/daari/issues/2376) |
@@ -110,14 +124,14 @@ integration fence (453). Morning 444–448 remain open.
 | 387 | Session pins must not replay across conversations under a shared key | 4 | 2 | LiteLLM 1.111-dev #50741; Kong 2.3.0 x-opencode header | Prefix-hash gate on-box — no vendor header convention needed | Filed [#2267](https://github.com/naveenreddyalka/daari/issues/2267) |
 | 388 | llama.cpp v1.0.0: guide pin, security opt-ins, TTS target, FP8/MoE capacity levers | 3 | 1 | llama.cpp release docs | daari is the governance layer the engine lacks; pin its first stable major honestly | Filed [#2268](https://github.com/naveenreddyalka/daari/issues/2268) |
 | 389 | Integration fence for the 11-12/11-13 overnight wave | 2 | 2 | — (testability) | Hermetic proof: forensics PATCH, effort none, cost counters, drop_block | Filed [#2269](https://github.com/naveenreddyalka/daari/issues/2269) |
-| 380 | `previous_response_id` must not replay failed/cancelled turns | 4 | 2 | LiteLLM 1.108.7 LTS (#48647) | On-box store skips poison history; local+frontier share one chain contract | Filed [#2255](https://github.com/naveenreddyalka/daari/issues/2255) |
-| 381 | Honor or honestly declare `max_tool_calls` (Responses-only fields) | 3 | 2 | LiteLLM 1.108.7 (#48655 drop_params / 400) | Enforce or `dropped_params` on-box — never silent, never smuggle to Bedrock | Filed [#2256](https://github.com/naveenreddyalka/daari/issues/2256) |
+| 380 | `previous_response_id` must not replay failed/cancelled turns | 4 | 2 | LiteLLM 1.108.7 LTS (#48647) | On-box store skips poison history; local+frontier share one chain contract | Shipped (#2382) |
+| 381 | Honor or honestly declare `max_tool_calls` (Responses-only fields) | 3 | 2 | LiteLLM 1.108.7 (#48655 drop_params / 400) | Enforce or `dropped_params` on-box — never silent, never smuggle to Bedrock | Shipped (#2383) |
 | 382 | Claude Managed Agents self-hosted → daari Anthropic facade recipe | 4 | 2 | Anthropic CMA (hosted default); any Claude-shaped gateway | Local L0–L5 absorb CMA repeats at $0 before frontier | Filed [#2257](https://github.com/naveenreddyalka/daari/issues/2257) |
 | 383 | compare-litellm: LTS floor → 1.108.7; Responses bridge + failed-turn positioning | 3 | 1 | LiteLLM release notes | Honest floor + diskcache differentiator next to tonight's LTS | Filed [#2258](https://github.com/naveenreddyalka/daari/issues/2258) |
 | 384 | Integration fence for the 11-12 evening 1.108.7 / CMA wave | 2 | 2 | — (testability) | Hermetic proof: failed-chain, max_tool_calls honesty, cma-server metadata | Filed [#2259](https://github.com/naveenreddyalka/daari/issues/2259) |
 | 375 | Bill frontier image generations/edits from upstream `usage`; gpt-image-2.6 catalog rates | 4 | 2 | OpenAI token-billed images; LiteLLM 1.108.6 Gemini image-edit billing | Image spend lands in the same-box ledger/budgets that meter chat | Shipped (#2373) |
-| 376 | Bill the frontier ASR leg honestly (duration/token rates); local stays $0 | 3 | 2 | OpenAI per-minute/token ASR billing | The fallback that costs money is the leg the ledger must meter | Filed [#2250](https://github.com/naveenreddyalka/daari/issues/2250) |
-| 377 | Honor `tool_choice: allowed_tools` (nested + flat) across Anthropic + local backends | 3 | 2 | LiteLLM 1.108.6 LTS (#49043/#50467) | One tool-governance contract at the edge for every executor | Filed [#2251](https://github.com/naveenreddyalka/daari/issues/2251) |
+| 376 | Bill the frontier ASR leg honestly (duration/token rates); local stays $0 | 3 | 2 | OpenAI per-minute/token ASR billing | The fallback that costs money is the leg the ledger must meter | Shipped (#2380) |
+| 377 | Honor `tool_choice: allowed_tools` (nested + flat) across Anthropic + local backends | 3 | 2 | LiteLLM 1.108.6 LTS (#49043/#50467) | One tool-governance contract at the edge for every executor | Shipped (#2381) |
 | 378 | Prove + fence client credential-field hygiene (immune to the litellm#51254 class); floors 1.109.1/1.108.6 | 3 | 1 | LiteLLM (after its emergency patch) | Allowlist payloads never needed the patch — argue it with a test | Shipped (#2358) |
 | 379 | Integration fence for the 11-11/11-12 overnight wave | 2 | 2 | — (testability) | Hermetic proof: MCP egress fidelity, cost split, forensics, patterns | Filed [#2253](https://github.com/naveenreddyalka/daari/issues/2253) |
 | 370 | Coding-router recipe (virtual_models + code signals + cost/SLO/effort) | 4 | 2 | OpenRouter Auto Code (hosted) | $0 local-first coding compose on-box; marketplace stays optional L6 | Shipped (#2345) |
@@ -146,49 +160,54 @@ integration fence (453). Morning 444–448 remain open.
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (≥60m session) | Parked |
 | 8 | Full DCR; A2A; Realtime/WS; OpenAI Live; stdio MCP; M365; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM | Demand-triggered | Watch |
 
-Watch rows (do not file yet): **LiteLLM floor → 1.110.1 / 1.108.12
-LTS** (fold into open 437; do not file a fifth compare); **1.111.0-rc.2**
+Watch rows (do not file yet): **LiteLLM floor → 1.110.2 / 1.108.13
+LTS** (fold into open 437; do not file a fifth compare); 1.111.0-rc.3
 remainder (hold GA: Customer Management UI, capacity borrow, Web IQ,
-OpenSearch); **SEP-3415 stream/webhook** (445 is list+poll; ChatGPT is
-webhook-only — next slice after 445); OpenRouter images
-`url`+`expires_at` (response_format already forwarded; watch default
-flip) + SCIM group-mappings deprecation; OpenRouter TTS
-`input_references` voice-clone (447 is discovery first); **Kong 2.3.2**
-nginx CVEs (docs note only — daari is not Kong); Opus 4.8 fast removal
-**11-30** (lifecycle shield shipped #2053 — doctor tip only if needed);
-Ollama 0.40.17-rc1 (hold GA); vLLM 0.34 remainder; Portkey MCP
-policies; OpenAI Live/SIP / Realtime/WS; FIPS (row 8); A2A 1.1 RC;
-MCP SEP-3398; SCIM + multi-issuer SSO. Non-root Docker already
-`USER daari`.
+OpenSearch); **Anthropic API version 2026-10-21** removes sampling
+params for every model — if daari ever pins that `anthropic-version`,
+strip the trio unconditionally (noted in 454); **Gemini Tool
+Retrieval preview** (`tool_search` + `defer_loading`) — a
+model-agnostic deferred-tool-schema twin at daari's MCP edge is a
+credible feature once it GAs or a buyer asks; GPT-Live-1.1 / Genie 4
+Interactions API (row 8 family); **SEP-3415 stream/webhook** (445 is
+list+poll); OpenRouter images `url`+`expires_at` default flip + TTS
+`input_references` voice-clone (447 first); Kong OSS 3.9.5 + AI
+Gateway 2.3.2 nginx CVEs (docs note only); Opus 4.8 fast removal
+**11-30** (shield shipped #2053); Ollama 0.40.17-rc2 (hold GA); vLLM
+0.34 remainder; Portkey MCP policies; FIPS (row 8); A2A 1.1 RC; MCP
+SEP-3398; SCIM + multi-issuer SSO.
 
-Verified fine this run — don't re-audit: image usage billing path
-shipped (#2373); transcriptions `prompt` forwarded; images
-`response_format` url/b64 forwarded; `prompt_cache_options.ttl`
-longest-wins + `cache_write_12h_per_1m` dimension (444/451 are catalog
-+ placement, not TTL plumbing); no 64-char tool-name constant (446 is
-proof); response-id ownership + named-SSE (1.110.0 parity); Opus 4.8
-speed_lifecycle seeded; `_ULTRAFAST_MODELS` still excludes 6.2
-(450's job); `_FRONTIER_PARAM_COMPAT` still excludes 6.2 (449's job);
-`messages_to_responses_input` still emits `role: system` (451's job).
+Verified fine this run — don't re-audit: L0 `cache_key` is
+header-free (messages/model/temp/tools/scope/thread only) — immune to
+the rotating-billing-header poisoning class (litellm #52922); SSO is
+token-validation only, no server-side OIDC redirect (#52213 N/A);
+stream paths never duplicate delivered output (457 is the fence, not
+a fix); Claude 5.5 sampler strip already in param_compat (#52341
+partial — 454 is the Fable/Mythos extension); single-process router —
+litellm's JWT 5-min propagation (#52350), burst-503 spend loss
+(#52080), worker memory-growth (#51888/#52600) and per-worker
+Postgres pool (#52378) classes N/A; 5.2 thinking-block strip (#2205)
++ advisor gate (#2328) already in-tree.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
 1. **Billing + tenancy truth everywhere money and data move** —
-   **GPT-6.2 Ultrafast promo (450)**; background window discounts
-   (452); GPT-6.2 catalog (444); Hydrogen (439); BYOK modality doors
-   (414); credential attribution (415); reconcile (416);
-   zero_retention (435); residency (421); Sol promo **11-21** (405);
-   refused-leg (391); abandoned-stream (386); OCR/ASR (396, 376);
-   Grafana/tool-fee/truncation Prom (392, 401, 412). Image billing
-   (375) + daily `rpd`/`tpd` (372) shipped.
-2. **Honest terminal outcomes + GPT-6.2 wire-shape hygiene** —
-   **param_compat (449)**; **store:false developer placement (451)**;
-   never cache truncated turns (424); frontier stream honesty (425);
-   Responses `incomplete` (426); overload envelopes (436); long
-   tool-name fence (446); finish_reason Prom (431). Abort honesty
-   (373) shipped.
+   **GPT-6.2 chat-leg cache placement (455)**; **introspection
+   scoping (456)**; GPT-6.2 Ultrafast promo (450); background window
+   discounts (452); GPT-6.2 catalog (444); Hydrogen (439); BYOK
+   modality doors (414); credential attribution (415); reconcile
+   (416); zero_retention (435); residency (421); Sol promo **11-21**
+   (405); refused-leg (391); abandoned-stream (386); OCR (396);
+   Grafana/tool-fee/truncation Prom (392, 401, 412). ASR (376)
+   shipped.
+2. **Honest terminal outcomes + frontier wire-shape hygiene** —
+   **Fable/Mythos 5.1+5.2 param_compat (454)**; GPT-6.2 param_compat
+   (449); store:false developer placement (451); no-duplicate stream
+   fence (457); never cache truncated turns (424); frontier stream
+   honesty (425); Responses `incomplete` (426); overload envelopes
+   (436); long tool-name fence (446); finish_reason Prom (431).
 3. **Nothing goes stale quietly** — performance alerts (440);
    `rate_limited_by` (441); deprecation successor + exposure (434);
    any-5xx doctor + Prom (429–430); auto_caching doctor + Prom
@@ -197,18 +216,29 @@ speed_lifecycle seeded; `_ULTRAFAST_MODELS` still excludes 6.2
    reservation doctor tip (403).
 4. **Agent-protocol + Responses fidelity** — MCP Events relay (445);
    Responses output-order + reasoning (406); local-tier thinking
-   (407); Extractions (390); OpenRouter `reasoning` (397); failed
-   `previous_response_id` (380); `max_tool_calls` (381);
-   `allowed_tools` (377); Managed Agents recipe (382).
+   (407); Extractions (390); OpenRouter `reasoning` (397); Managed
+   Agents recipe (382). Failed chains (380), `max_tool_calls` (381),
+   `allowed_tools` (377) shipped.
 5. **Local engine floor + discovery + honest compare** — speech
-   discovery (447); 1.111.0-rc watch (442); LiteLLM floor **1.110.1 /
-   1.108.12 LTS** (fold into 437); Kong 2.3.2 CVE note (watch); vLLM
+   discovery (447); 1.111.0-rc watch (442); LiteLLM floor **1.110.2 /
+   1.108.13 LTS** (fold into 437); Tool Retrieval twin (watch); vLLM
    0.34.0 (427); watermark (433); HF / scoped-keys (432); llama.cpp
-   v1.0.0 (388); binding Prom (417); fences through 453; then 62–67.
+   v1.0.0 (388); binding Prom (417); fences through 458; then 62–67.
 
 ---
 
 ## Changelog
+
+- **2026-11-20 (litellm five-line patch night, audited)** — Mined
+  1.110.2 / 1.109.3 / 1.108.13 LTS / 1.106.12 / 1.111.0-rc.3 plus the
+  Anthropic 5.2 migration guide and API version 2026-10-21. Filed:
+  Fable/Mythos 5.1+5.2 param_compat (454); GPT-6.2 chat-leg
+  system→developer cache placement (455, adjacent to 451);
+  `/introspect` scoping (456); no-duplicate stream prove+fence (457);
+  overnight fence (458). Verified immune: header-free cache keys,
+  no server-side SSO redirect, buffer-then-flush streams. Overnight
+  376–377 + 380–381 Shipped (#2380–#2383). Floor promote folded into
+  watch/437. New watch: Gemini Tool Retrieval, GPT-Live-1.1.
 
 - **2026-11-19 pm (GPT-6.2 wire-shape follow-through)** — Mined
   LiteLLM 1.110.1 / 1.108.12 LTS placement patch + OpenAI Ultrafast
@@ -226,21 +256,12 @@ speed_lifecycle seeded; `_ULTRAFAST_MODELS` still excludes 6.2
   LiteLLM's 4-line patch night folded into watch; 372–373 Shipped
   (#2365, #2366).
 
-- **2026-11-18 pm (1.111.0-rc.1 mined; Carbon/Argon shipped)** —
-  Afternoon #2352 / #2358. Mined RC without promoting the floor:
-  Hydrogen catalog + `xhigh` (439), 7-day performance alerts (440),
-  `rate_limited_by` (441), compare RC watch (442), afternoon fence
-  (443). Hold Customer Management UI / Web IQ / capacity-borrow for
-  GA. Sol still 3 days out (#2297).
-
-- **2026-11-18 (LiteLLM 1.110.0 stable mined)** — 1.110.0 stable
-  (Rust-only router, ledger-default accounting, Skills Hub, FIPS)
-  + 1.108.11 LTS + 1.111.0-rc.1 overnight. Verified fine:
-  response-id ownership + named-SSE/sequence_number already in-tree.
-  Filed: lifecycle successor + exposure report (434), per-tenant
-  zero_retention (435), typed overload envelopes (436), compare
-  1.110.0 floor (437), overnight fence (438). Overnight 366–368 +
-  370 Shipped (#2342–#2345).
+- **2026-11-18 (+pm)** — Condensed: 1.110.0 stable (Rust-only
+  router, ledger-default) + 1.108.11 LTS mined → successor/
+  zero_retention/overload/compare/fence (434–438); pm mined
+  1.111.0-rc.1 → Hydrogen, alerts, `rate_limited_by`, RC watch,
+  fence (439–443). Overnight 366–368 + 370 Shipped (#2342–#2345);
+  afternoon #2352/#2358.
 
 - **2026-11-17 (+pm)** — Condensed: vLLM 0.34.0 GA mined; truncation
   honesty 424–428; pm prove-the-dials 429–433; watermark six-model
