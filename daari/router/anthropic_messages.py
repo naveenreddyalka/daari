@@ -689,7 +689,7 @@ def _merge_cache_control(
 
 
 def openai_tool_choice_to_anthropic(tool_choice: Any) -> dict[str, Any] | None:
-    """Map OpenAI ``tool_choice`` to Anthropic's Messages API shape (#934)."""
+    """Map OpenAI ``tool_choice`` to Anthropic's Messages API shape (#934 / #2251)."""
     if tool_choice is None:
         return None
     if tool_choice == "auto":
@@ -700,6 +700,18 @@ def openai_tool_choice_to_anthropic(tool_choice: Any) -> dict[str, Any] | None:
         return {"type": "any"}
     if isinstance(tool_choice, dict):
         kind = tool_choice.get("type")
+        if kind == "allowed_tools":
+            from daari.gateway.sampling import parse_allowed_tools_choice
+
+            parsed = parse_allowed_tools_choice(tool_choice)
+            if parsed is None:
+                return {"type": "auto"}
+            mode, names = parsed
+            if mode == "required" and len(names) == 1:
+                return {"type": "tool", "name": names[0]}
+            if mode == "required":
+                return {"type": "any"}
+            return {"type": "auto"}
         if kind == "function":
             function = tool_choice.get("function") if isinstance(tool_choice.get("function"), dict) else {}
             name = function.get("name")
@@ -773,8 +785,13 @@ def to_anthropic_payload(
         payload["system"] = system_blocks
     if request.temperature is not None:
         payload["temperature"] = request.temperature
-    if request.tools:
-        anthropic_tools = openai_tools_to_anthropic(request.tools)
+    from daari.gateway.sampling import filter_tools_by_allowed
+
+    tools_for_upstream = filter_tools_by_allowed(
+        request.tools, request.sampling.tool_choice
+    )
+    if tools_for_upstream:
+        anthropic_tools = openai_tools_to_anthropic(tools_for_upstream)
         if anthropic_tools:
             payload["tools"] = anthropic_tools
     if request.sampling.top_p is not None:

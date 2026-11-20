@@ -30,6 +30,78 @@ _REPEAT_PENALTY_CENTRE = 1.0
 _REPEAT_PENALTY_SCALE = 0.5
 
 
+def _tool_function_name(entry: Any) -> str | None:
+    """Best-effort function name from a chat tool or allowed_tools ref."""
+    if not isinstance(entry, dict):
+        return None
+    function = entry.get("function")
+    if isinstance(function, dict):
+        name = function.get("name")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    name = entry.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return None
+
+
+def parse_allowed_tools_choice(
+    tool_choice: Any,
+) -> tuple[str, list[str]] | None:
+    """Parse nested or flat OpenAI ``allowed_tools`` tool_choice (#2251).
+
+    Returns ``(mode, allowed_names)`` or None when the value is not allowed_tools.
+    """
+    if not isinstance(tool_choice, dict):
+        return None
+    if tool_choice.get("type") != "allowed_tools":
+        return None
+    nested = tool_choice.get("allowed_tools")
+    if isinstance(nested, dict):
+        mode_raw = nested.get("mode")
+        tools_raw = nested.get("tools")
+    else:
+        mode_raw = tool_choice.get("mode")
+        tools_raw = tool_choice.get("tools")
+    mode = str(mode_raw or "auto").strip().lower()
+    if mode not in {"auto", "required"}:
+        mode = "auto"
+    names: list[str] = []
+    if isinstance(tools_raw, list):
+        for item in tools_raw:
+            name = _tool_function_name(item)
+            if name and name not in names:
+                names.append(name)
+    return mode, names
+
+
+def filter_tools_by_allowed(
+    tools: list[Any] | None, tool_choice: Any
+) -> list[Any] | None:
+    """Keep only declared tools named in ``allowed_tools`` (#2251)."""
+    parsed = parse_allowed_tools_choice(tool_choice)
+    if parsed is None or not tools:
+        return tools
+    _mode, allowed = parsed
+    if not allowed:
+        return []
+    allowed_set = set(allowed)
+    return [
+        tool
+        for tool in tools
+        if (_tool_function_name(tool) or "") in allowed_set
+    ]
+
+
+def degrade_allowed_tools_choice(tool_choice: Any) -> Any:
+    """Map ``allowed_tools`` to ``auto``/``required`` for local OpenAI-compat (#2251)."""
+    parsed = parse_allowed_tools_choice(tool_choice)
+    if parsed is None:
+        return tool_choice
+    mode, _names = parsed
+    return "required" if mode == "required" else "auto"
+
+
 class WebSearchUnavailable(Exception):
     """Client set ``web_search_options`` but L6 cannot serve it (#1295).
 
@@ -701,11 +773,15 @@ class SamplingParams(BaseModel):
             return None
         return _REASONING_EFFORT_TO_THINK[effort]
 
-    def openai_payload(self) -> dict[str, Any]:
+    def openai_payload(self, *, degrade_allowed_tools: bool = False) -> dict[str, Any]:
         """Parameters to forward verbatim to an OpenAI-compatible provider.
 
         `top_k` is left out on purpose: it is not in the chat-completions schema and
         strict providers reject an unknown field with a 400.
+
+        ``degrade_allowed_tools=True`` for local OpenAI-compat facades: strip the
+        ``allowed_tools`` object to ``auto``/``required`` (#2251). Frontier OpenAI
+        keeps the raw shape (default).
         """
         payload: dict[str, Any] = {}
         for name in (
@@ -762,7 +838,10 @@ class SamplingParams(BaseModel):
         elif self.response_format_json:
             payload["response_format"] = {"type": "json_object"}
         if self.tool_choice is not None:
-            payload["tool_choice"] = self.tool_choice
+            choice = self.tool_choice
+            if degrade_allowed_tools:
+                choice = degrade_allowed_tools_choice(choice)
+            payload["tool_choice"] = choice
         return payload
 
     def ollama_034_knob_names(self) -> list[str]:
@@ -901,8 +980,13 @@ class SamplingParams(BaseModel):
             data["response_format"] = fmt
         elif self.response_format_json:
             data["response_format"] = "json_object"
-        if self.tool_choice in {"none"}:
+        if self.tool_choice == "none":
             data["tool_choice"] = self.tool_choice
+        allowed = parse_allowed_tools_choice(self.tool_choice)
+        if allowed is not None:
+            # Constrained vs unconstrained turns must not share L0/L1 (#2251).
+            mode, names = allowed
+            data["allowed_tools"] = {"mode": mode, "tools": list(names)}
         if self.tool_search is not None:
             data["tool_search"] = self.tool_search
         if self.response_compaction is not None:

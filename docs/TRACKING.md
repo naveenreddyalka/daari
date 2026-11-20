@@ -9356,6 +9356,16 @@ minute rates and gpt-4o-*-transcribe token + minute rates. Local ASR stays
 $0; frontier spend decrements key/team budgets and cost headers. Covered by
 `tests/unit/test_audio_transcriptions.py`.
 
+### Honor tool_choice allowed_tools across Anthropic and local ([#2251](https://github.com/naveenreddyalka/daari/issues/2251))
+
+<!-- tracking:#2251 -->
+**Status:** Done (2026-11-20). Nested and flat OpenAI `allowed_tools`
+`tool_choice` layouts parse; Anthropic and local OpenAI-compat paths filter
+the declared tools list and map mode to `auto`/`any`/`tool` (local degrades
+to `"auto"`/`"required"`). OpenAI frontier keeps verbatim passthrough. L0/L1
+cache fingerprints include the allowed subset. Covered by
+`tests/unit/test_allowed_tools.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
