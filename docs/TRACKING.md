@@ -9376,6 +9376,16 @@ chainable even if a later failed sibling exists. Docs:
 [clients-and-gateways.md](developer/concepts/clients-and-gateways.md).
 Covered by `tests/unit/test_responses_failed_prior.py`.
 
+### Declare Responses max_tool_calls via dropped_params ([#2256](https://github.com/naveenreddyalka/daari/issues/2256))
+
+<!-- tracking:#2256 -->
+**Status:** Done (2026-11-20). `max_tool_calls` is a first-class Responses
+field on `ResponsesRequest` / `SamplingParams`; never forwarded on chat or
+Anthropic bridges; always listed in `daari_meta.dropped_params` when set.
+Docs: [clients-and-gateways.md](developer/concepts/clients-and-gateways.md),
+[compare-litellm.md](developer/resources/compare-litellm.md). Covered by
+`tests/unit/test_responses_max_tool_calls.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

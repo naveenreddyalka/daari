@@ -160,7 +160,11 @@ Responses-native sampling maps onto the same `SamplingParams` as chat:
 (including `name`/`strict`), plus `tool_choice`, `parallel_tool_calls`, and
 `service_tier`. `prompt_cache_key`, `prompt_cache_retention`, and
 `prompt_cache_options` forward on OpenAI-compatible L6; local tiers name them
-in `daari_meta.dropped_params` / `x-daari-dropped-params`. Responses
+in `daari_meta.dropped_params` / `x-daari-dropped-params`. Responses-only
+`max_tool_calls` is accepted on the request model but never bridged into
+chat / Anthropic L6 payloads (strict providers would 400); when set it is
+always listed in `daari_meta.dropped_params` until server-side tool-round
+enforcement ships — no silent discard. Responses
 `truncation: "auto"` compacts oversized input against the serving tier's
 known context window (compact-to-fit telemetry on `daari_meta`);
 `truncation: "disabled"` (or omitted) returns OpenAI-shaped 400

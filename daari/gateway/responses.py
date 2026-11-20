@@ -145,6 +145,9 @@ class ResponsesRequest(BaseModel):
     prompt_cache_key: str | None = None
     prompt_cache_retention: str | None = None
     prompt_cache_options: dict[str, Any] | None = None
+    # Responses-only tool-round cap (#2256). Declared; never bridged to chat.
+    # Listed in dropped_params until server-side enforcement ships.
+    max_tool_calls: int | None = None
     # Anthropic top-level cache_control when Responses bridge to Claude (#2221).
     cache_control: dict[str, Any] | None = None
     # Stable end-user id for spend attribution / chargeback (#1172).

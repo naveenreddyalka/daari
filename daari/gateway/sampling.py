@@ -457,6 +457,9 @@ class SamplingParams(BaseModel):
     # Responses truncation auto|disabled (#2215). Enforced locally; forwarded on
     # OpenAI Responses upstream hops only (not chat completions).
     truncation: str | None = None
+    # Responses-only max_tool_calls (#2256). Never forwarded on chat bridges;
+    # always listed in dropped_params when set (honesty until round enforcement).
+    max_tool_calls: int | None = None
 
     @classmethod
     def from_openai_body(cls, body: dict[str, Any]) -> SamplingParams:
@@ -648,9 +651,15 @@ class SamplingParams(BaseModel):
         if "multi_agent" in body and "multi_agent" not in mapped:
             mapped["multi_agent"] = body.get("multi_agent")
 
+        # max_tool_calls is Responses-only; from_openai_body ignores unknown keys.
+        mapped.pop("max_tool_calls", None)
+
         params = cls.from_openai_body(mapped)
         if truncation in {"auto", "disabled"}:
             params.truncation = truncation
+        raw_cap = body.get("max_tool_calls")
+        if isinstance(raw_cap, int) and not isinstance(raw_cap, bool) and raw_cap >= 1:
+            params.max_tool_calls = raw_cap
         return params
 
     @classmethod
@@ -896,6 +905,11 @@ class SamplingParams(BaseModel):
                 "thinking.type between_tools is not available on local models; "
                 "treated as disabled (no up-front think)"
             )
+        if self.max_tool_calls is not None:
+            notes.append(
+                "max_tool_calls is Responses-native and is not enforced yet; "
+                "declared via dropped_params"
+            )
         return notes
 
     def unsupported_non_ollama(self) -> list[str]:
@@ -947,6 +961,8 @@ class SamplingParams(BaseModel):
             names.append("cache_control")
         if _thinking_type(self.thinking) == "between_tools":
             names.append("thinking.between_tools")
+        if self.max_tool_calls is not None:
+            names.append("max_tool_calls")
         return names
 
     def honored_fields(self) -> dict[str, Any]:
