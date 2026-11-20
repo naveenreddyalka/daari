@@ -9366,6 +9366,16 @@ to `"auto"`/`"required"`). OpenAI frontier keeps verbatim passthrough. L0/L1
 cache fingerprints include the allowed subset. Covered by
 `tests/unit/test_allowed_tools.py`.
 
+### Reject failed/cancelled previous_response_id chains ([#2255](https://github.com/naveenreddyalka/daari/issues/2255))
+
+<!-- tracking:#2255 -->
+**Status:** Done (2026-11-20). `POST /v1/responses` (and compact) return 400
+when `previous_response_id` points at a `failed` or `cancelled` store row,
+logging `responses.previous_response_rejected`. Completed priors stay
+chainable even if a later failed sibling exists. Docs:
+[clients-and-gateways.md](developer/concepts/clients-and-gateways.md).
+Covered by `tests/unit/test_responses_failed_prior.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

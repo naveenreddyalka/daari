@@ -120,6 +120,11 @@ the same Bearer / `x-api-key` middleware as the rest of the daemon.
 The Responses surface round-trips `function_call` / `function_call_output` items,
 chains turns with `previous_response_id`, honors `store: false`, and returns
 `queued` for `background: true` (poll `GET /v1/responses/{id}`).
+A `previous_response_id` that points at a terminal `failed` or `cancelled` row
+returns **400** (naming the status) rather than replaying poison `_conversation`
+history into the next turn — chain only from `completed` responses. A later
+failed sibling does not affect a new chain that references the completed id.
+The gateway logs `responses.previous_response_rejected` when this fires.
 Create-time `POST /v1/responses` streams also stamp contiguous
 `sequence_number` (from 0) on every non-keepalive event so clients can
 reconnect with `starting_after`.
