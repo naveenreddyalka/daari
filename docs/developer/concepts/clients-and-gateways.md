@@ -9,7 +9,7 @@
 | OpenAI Chat | `POST /v1/chat/completions` | Cursor BYOK, VS Code, SDKs |
 | Audio | `POST /v1/audio/transcriptions`, `POST /v1/audio/speech` | OpenAI speech-to-text / text-to-speech clients |
 | OpenAI Responses | `POST /v1/responses`, `POST /v1/responses/input_tokens`, `GET /v1/responses/{id}`, `POST /v1/responses/{id}/cancel`, `DELETE /v1/responses/{id}` | Newer OpenAI SDKs |
-| Anthropic | `POST /v1/messages`, `POST /v1/messages/count_tokens` | Claude Code, Claude Desktop (gateway mode) |
+| Anthropic | `POST /v1/messages`, `POST /v1/messages/count_tokens` | Claude Code, Claude Desktop (gateway mode), self-hosted Claude Managed Agents ([guide](../guides/clients/claude-managed-agents.md)) |
 | Ollama facade | `/api/chat`, `/api/generate`, `/api/embed`, `/api/tags`, … | JetBrains AI Assistant, ChatGPT Desktop |
 | MCP | `POST /mcp` (JSON-RPC 2.0), `POST /v1/mcp/query` (deprecated) | Cursor, Claude Desktop |
 
