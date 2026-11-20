@@ -87,7 +87,7 @@ def test_compare_litellm_pins_1106_decision_model_guardrail() -> None:
 
 
 def test_compare_litellm_pins_1108_ga_lts_floor() -> None:
-    """1.108 LTS history retained; live LTS patch is 1.108.6; floor moved to 1.109.1 (#2252)."""
+    """1.108 LTS history retained; live LTS patch is 1.108.7; floor moved to 1.109.1 (#2258)."""
     text = DOC.read_text(encoding="utf-8")
     section = _markdown_section(text, "## LiteLLM 1.108")
     lower = section.lower()
@@ -97,6 +97,8 @@ def test_compare_litellm_pins_1108_ga_lts_floor() -> None:
     assert "1.108.0" in section
     assert "releases/tag/v1.108.0" in text
     assert "2026-11-04" in section
+    assert "1.108.7" in section
+    assert "releases/tag/v1.108.7" in text
     assert "1.108.6" in section
     assert "releases/tag/v1.108.6" in text
     assert "1.108.5" in section
@@ -110,6 +112,9 @@ def test_compare_litellm_pins_1108_ga_lts_floor() -> None:
     assert "1.108.0-rc.1" in section
     assert "parity" in lower
     assert "1.106.7" in section
+    # Responses bridge honesty called out on the LTS line (#2258).
+    assert "max_tool_calls" in section
+    assert "failed" in lower and ("turn" in lower or "previous_response" in lower)
     # Stable floor is now 1.109.1 — 1.108 section must not claim current floor.
     assert "1.109.1" in section
     floor = _markdown_section(text, "## LiteLLM 1.109")
@@ -118,11 +123,12 @@ def test_compare_litellm_pins_1108_ga_lts_floor() -> None:
 
 
 def test_compare_litellm_pins_1108_lts_pilot_and_tuesday_cadence() -> None:
-    """1.108 LTS pilot + Tuesday cadence are live; floor is 1.109.1 (#2252)."""
+    """1.108 LTS pilot + Tuesday cadence are live; floor is 1.109.1 (#2258)."""
     text = DOC.read_text(encoding="utf-8")
     section = _markdown_section(text, "## LiteLLM 1.108")
     lower = section.lower()
     assert "1.108.2" in section
+    assert "1.108.7" in section
     assert "1.108.6" in section
     assert "1.108.0" in section
     assert "lts" in lower
@@ -174,7 +180,7 @@ def test_compare_litellm_pins_1107_compromise_advisory() -> None:
 
 
 def test_compare_litellm_pins_1109_ga_floor() -> None:
-    """1.109.1 is GA stable comparison floor; 1.108.6 live LTS; hygiene + upgrade costs (#2252)."""
+    """1.109.1 is GA stable comparison floor; 1.108.7 live LTS; hygiene + upgrade costs (#2258)."""
     text = DOC.read_text(encoding="utf-8")
     section = _markdown_section(text, "## LiteLLM 1.109")
     lower = section.lower()
@@ -187,8 +193,8 @@ def test_compare_litellm_pins_1109_ga_floor() -> None:
     assert "stable comparison floor" in lower or "comparison floor" in lower
     assert "prerelease" not in lower or "superseded" in lower
     assert "do not promote" not in lower and "do **not** promote" not in lower
-    assert "1.108.6" in section
-    assert "releases/tag/v1.108.6" in text
+    assert "1.108.7" in section
+    assert "releases/tag/v1.108.7" in text
     assert "51254" in section
     assert "credential" in lower or "hygiene" in lower
     assert "allowlist" in lower or "openai_payload" in section
@@ -214,6 +220,7 @@ def test_compare_litellm_pins_1109_ga_floor() -> None:
     assert "l1" in lower or "l0" in lower or "semantic" in lower
     assert "lens parity" not in lower
     lts = _markdown_section(text, "## LiteLLM 1.108")
+    assert "1.108.7" in lts
     assert "1.108.6" in lts
     assert "1.108.5" in lts
     assert "1.108.2" in lts
