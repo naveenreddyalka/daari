@@ -127,6 +127,12 @@ compromised **1.107.0** as a support window. The **stable comparison floor**
 moved to **[1.109.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.1)**
 (see below); keep 1.108.6 for LTS-pin buyers only.
 
+**1.108.7 action-required `max_tool_calls`:** LiteLLM fails closed on
+Responses→chat bridge params like `max_tool_calls` unless `drop_params` is
+on. daari declares `max_tool_calls` on the Responses request, never smuggles
+it into chat/Anthropic L6 payloads, and lists it in `daari_meta.dropped_params`
+when set — no silent discard and no Bedrock/Claude 400s.
+
 **LTS pilot and Tuesday cadence are live** (not pending): LiteLLM pauses the
 usual four-most-recent-stable-lines patch window on this 1.108 LTS line, and
 RC / stable cuts publish on **Tuesday** mornings instead of Saturday
