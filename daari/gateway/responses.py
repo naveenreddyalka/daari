@@ -593,6 +593,31 @@ def _visible_stored_response(
     return store, stored
 
 
+_UNCHAINABLE_PRIOR_STATUSES = frozenset({"failed", "cancelled"})
+
+
+def _reject_unchainable_prior(prior: dict[str, Any], previous_response_id: str) -> None:
+    """Refuse previous_response_id chains that would replay failed/cancelled turns (#2255)."""
+    status = str(prior.get("status") or "")
+    if status not in _UNCHAINABLE_PRIOR_STATUSES:
+        return
+    log_gateway_event(
+        "responses.previous_response_rejected",
+        {
+            "previous_response_id": previous_response_id,
+            "status": status,
+            "reason": "terminal_non_completed",
+        },
+    )
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"previous_response_id {previous_response_id} has status {status}; "
+            "chain only from completed responses"
+        ),
+    )
+
+
 def _sse(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
@@ -1011,6 +1036,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             conversation: list[dict[str, Any]] = []
             if body.previous_response_id:
                 _store, prior = _visible_stored_response(ctx, body.previous_response_id, request)
+                _reject_unchainable_prior(prior, body.previous_response_id)
                 conversation = list(prior.get("_conversation") or [])
             if body.input is not None:
                 mapped = ResponsesRequest(
@@ -1240,6 +1266,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                         status_code=400,
                         detail=f"previous_response_id not found: {body.previous_response_id}",
                     )
+                _reject_unchainable_prior(prior, body.previous_response_id)
                 prior_messages = [
                     Message.model_validate(item) for item in prior.get("_conversation") or []
                 ]
