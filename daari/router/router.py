@@ -304,9 +304,12 @@ class OllamaExecutor:
             "stream": stream,
         }
         prompt_chars = sum(len(m.content or "") for m in request.messages)
-        if request.tools:
-            payload["tools"] = request.tools
-            prompt_chars += len(json.dumps(request.tools))
+        from daari.gateway.sampling import filter_tools_by_allowed
+
+        tools = filter_tools_by_allowed(request.tools, request.sampling.tool_choice)
+        if tools:
+            payload["tools"] = tools
+            prompt_chars += len(json.dumps(tools))
         options: dict[str, Any] = {"num_ctx": estimate_num_ctx(prompt_chars)}
         # Client-requested generation controls (#161). num_ctx stays ours: it is
         # sized from the prompt, not something the client asks for.

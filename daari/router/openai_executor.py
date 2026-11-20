@@ -84,11 +84,14 @@ class OpenAICompatExecutor:
             # vLLM / llama.cpp / LM Studio only send token counts on a stream
             # when asked; without this the ledger falls back to chars/4 (#320).
             payload["stream_options"] = {"include_usage": True}
-        if request.tools:
-            payload["tools"] = request.tools
+        from daari.gateway.sampling import filter_tools_by_allowed
+
+        tools = filter_tools_by_allowed(request.tools, request.sampling.tool_choice)
+        if tools:
+            payload["tools"] = tools
         if request.temperature is not None:
             payload["temperature"] = request.temperature
-        payload.update(request.sampling.openai_payload())
+        payload.update(request.sampling.openai_payload(degrade_allowed_tools=True))
         return payload
 
     def _meta(self, model: str, latency_ms: int) -> DaariMeta:

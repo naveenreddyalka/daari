@@ -83,12 +83,15 @@ class MLXExecutor:
                 continue
             messages.append(data)
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": stream}
-        if request.tools:
-            payload["tools"] = request.tools
+        from daari.gateway.sampling import filter_tools_by_allowed
+
+        tools = filter_tools_by_allowed(request.tools, request.sampling.tool_choice)
+        if tools:
+            payload["tools"] = tools
         if request.temperature is not None:
             payload["temperature"] = request.temperature
-        # mlx_lm.server speaks the OpenAI shape, so forward these verbatim (#161).
-        payload.update(request.sampling.openai_payload())
+        # mlx_lm.server speaks the OpenAI shape; degrade allowed_tools (#2251).
+        payload.update(request.sampling.openai_payload(degrade_allowed_tools=True))
         return payload
 
     def _meta(self, model: str, latency_ms: int) -> DaariMeta:
