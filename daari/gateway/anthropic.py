@@ -80,6 +80,27 @@ def wants_anthropic_models(request: Request) -> bool:
     return False
 
 
+_MANAGED_AGENTS_HEADER_PREFIX = "anthropic-managed-agents-"
+
+
+def collect_managed_agents_headers(request: Request) -> dict[str, str]:
+    """Return ``anthropic-managed-agents-*`` attribution headers (#2257).
+
+    Self-hosted Claude Managed Agents may send these on every model call.
+    They are logged and otherwise ignored — never rejected, never forwarded
+    upstream unless a future Anthropic hop needs them.
+    """
+    collected: dict[str, str] = {}
+    for name, value in request.headers.items():
+        key = str(name).strip().lower()
+        if not key.startswith(_MANAGED_AGENTS_HEADER_PREFIX):
+            continue
+        text = str(value).strip()
+        if text:
+            collected[key] = text
+    return collected
+
+
 class AnthropicMessageIn(BaseModel):
     role: str
     content: str | list[dict[str, Any]] | None = None
@@ -371,6 +392,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 raise HTTPException(status_code=400, detail=mcp_reject)
 
             client_id = x_daari_client_id or sniff_agent_client_id(user_agent)
+            managed_agents_headers = collect_managed_agents_headers(request)
             # Request-shape log (issue #88): mirrors chat_completions_request so
             # live failures are diagnosable from cursor-requests.log.
             log_gateway_event(
@@ -387,6 +409,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                     "prompt_chars": sum(
                         len(content_to_text(message.content) or "") for message in body.messages
                     ),
+                    "managed_agents_headers": managed_agents_headers or None,
                 },
             )
             internal_messages: list[Message] = []

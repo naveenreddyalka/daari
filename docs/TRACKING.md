@@ -9386,6 +9386,17 @@ Docs: [clients-and-gateways.md](developer/concepts/clients-and-gateways.md),
 [compare-litellm.md](developer/resources/compare-litellm.md). Covered by
 `tests/unit/test_responses_max_tool_calls.py`.
 
+### Claude Managed Agents self-hosted recipe ([#2257](https://github.com/naveenreddyalka/daari/issues/2257))
+
+<!-- tracking:#2257 -->
+**Status:** Done (2026-11-20). Setup guide for pointing self-hosted CMA
+inference at daari's Anthropic facade; hermetic pin that
+`metadata.user_id=cma-server` returns 2xx; `anthropic-managed-agents-*`
+headers collected/logged and never rejected; doctor tip when the facade is
+up (no partnership claim). Docs:
+[claude-managed-agents.md](developer/guides/clients/claude-managed-agents.md).
+Covered by `tests/unit/test_cma_gateway.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

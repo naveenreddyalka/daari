@@ -205,6 +205,9 @@ def run_doctor(
     results.append(_check_ready(cfg, httpx_client, daemon_ok=daemon.ok))
     results.append(_check_metrics_auth(cfg, httpx_client, daemon_ok=daemon.ok))
     results.append(_check_warm_models(cfg, httpx_client, daemon_ok=daemon.ok))
+    cma_tip = _check_cma_inference_tip(cfg, daemon_ok=daemon.ok)
+    if cma_tip is not None:
+        results.append(cma_tip)
     if tunnel_url:
         results.append(_check_tunnel(tunnel_url, httpx_client))
 
@@ -2031,6 +2034,33 @@ def _check_postgres_stores(settings: Settings) -> list[CheckResult]:
                 )
             )
     return results
+
+
+def _check_cma_inference_tip(
+    settings: Settings,
+    *,
+    daemon_ok: bool,
+) -> CheckResult | None:
+    """Optional tip when the Anthropic facade is up (#2257).
+
+    Reminds operators that self-hosted Claude Managed Agents can point
+    inference at daari. Wording must not claim an Anthropic partnership.
+    Quiet when the daemon is down so doctor stays silent offline.
+    """
+    if not daemon_ok:
+        return None
+    host = settings.server.host
+    port = settings.server.port
+    return CheckResult(
+        name="cma_inference",
+        ok=True,
+        detail=(
+            f"Anthropic facade listening at http://{host}:{port} — "
+            "self-hosted Claude Managed Agents (CMA) can set their inference "
+            "base URL here; see docs/developer/guides/clients/claude-managed-agents.md"
+        ),
+        optional=True,
+    )
 
 
 def _check_ready(
