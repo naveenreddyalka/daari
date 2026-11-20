@@ -792,3 +792,180 @@ async def test_translation_includes_cost_headers(settings, monkeypatch):
     assert response.status_code == 200, response.text
     assert response.headers[TIER_HEADER] == "translation"
     assert float(response.headers[COST_HEADER]) == 0.0
+
+
+def test_asr_catalog_ships_minute_and_token_rates(settings):
+    """Whisper minute + gpt-4o-transcribe token rates are operator-overridable (#2250)."""
+    from daari.config.settings import ModelPrice
+    from daari.gateway.transcriptions import asr_usd_per_minute
+    from daari.pricing import resolve_price
+
+    whisper = resolve_price("whisper-1", settings.pricing, fallback_per_1k=0.002)
+    assert whisper.is_fallback is False
+    assert asr_usd_per_minute("whisper-1", settings.pricing) == pytest.approx(0.006)
+
+    tok = resolve_price("gpt-4o-transcribe", settings.pricing, fallback_per_1k=0.002)
+    assert tok.is_fallback is False
+    assert tok.input_per_1m == pytest.approx(2.50)
+    assert tok.output_per_1m == pytest.approx(10.00)
+
+    settings.pricing.models["whisper-1"] = ModelPrice(
+        input_per_1m=0.0,
+        output_per_1m=0.0,
+        usd_per_minute=0.01,
+    )
+    assert asr_usd_per_minute("whisper-1", settings.pricing) == pytest.approx(0.01)
+
+
+def test_price_transcription_prefers_usage_tokens():
+    from daari.gateway.transcriptions import price_transcription
+    from daari.config.settings import PricingSettings
+
+    pricing = PricingSettings()
+    charge = price_transcription(
+        "gpt-4o-transcribe",
+        {"text": "hi", "usage": {"input_tokens": 1_000_000, "output_tokens": 100_000}},
+        audio_bytes=b"x" * 1000,
+        pricing=pricing,
+        fallback_per_1k=0.002,
+    )
+    # $2.50 in + $10 out per 1M
+    assert charge.cost_usd == pytest.approx(2.50 + 1.0)
+    assert charge.estimated is False
+    assert charge.input_tokens == 1_000_000
+    assert charge.output_tokens == 100_000
+
+
+def test_price_transcription_uses_duration_when_no_usage():
+    from daari.gateway.transcriptions import price_transcription
+    from daari.config.settings import PricingSettings
+
+    pricing = PricingSettings()
+    charge = price_transcription(
+        "whisper-1",
+        {"text": "hi", "duration": 120.0},
+        audio_bytes=b"x" * 10,
+        pricing=pricing,
+        fallback_per_1k=0.002,
+    )
+    assert charge.cost_usd == pytest.approx(0.012)  # 2 min × $0.006
+    assert charge.estimated is False
+    assert charge.duration_seconds == pytest.approx(120.0)
+
+
+def test_price_transcription_estimates_from_file_size(monkeypatch):
+    from daari.gateway.transcriptions import price_transcription
+    from daari.config.settings import PricingSettings
+
+    events: list[tuple[str, dict]] = []
+
+    def _capture(event: str, payload: dict | None = None, **kwargs):
+        events.append((event, dict(payload or {}) | dict(kwargs)))
+
+    monkeypatch.setattr("daari.gateway.transcriptions.log_gateway_event", _capture)
+    pricing = PricingSettings()
+    # 32_000 bytes/s × 60s ≈ 1 minute at 16kHz 16-bit mono PCM estimate
+    charge = price_transcription(
+        "whisper-1",
+        {"text": "hi"},
+        audio_bytes=b"\x00" * (32_000 * 60),
+        pricing=pricing,
+        fallback_per_1k=0.002,
+    )
+    assert charge.estimated is True
+    assert charge.cost_usd == pytest.approx(0.006, rel=0.05)
+    assert any(name == "asr_cost_estimated" for name, _ in events)
+
+
+@pytest.mark.asyncio
+async def test_frontier_asr_bills_usage_local_stays_zero(settings, tmp_path, monkeypatch):
+    """Frontier ASR meters real USD; local ASR stays $0 (#2250)."""
+    from daari.gateway.cost_headers import COST_HEADER
+
+    def frontier_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "text": "hello from asr",
+                "usage": {"input_tokens": 500_000, "output_tokens": 50_000},
+            },
+        )
+
+    _patch_upstream(monkeypatch, frontier_handler)
+    _enable_spend(settings, tmp_path)
+    monkeypatch.setenv("DAARI_FRONTIER_API_KEY", "sk-frontier-test")
+    settings.frontier.enabled = True
+    settings.frontier.base_url = "https://frontier.example/v1"
+    settings.asr.base_url = ""
+    settings.asr.frontier_fallback = True
+    settings.asr.model = "gpt-4o-transcribe"
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        frontier = await _post(client, data=_form("gpt-4o-transcribe"))
+    assert frontier.status_code == 200, frontier.text
+    expected = (500_000 / 1_000_000) * 2.50 + (50_000 / 1_000_000) * 10.0
+    assert float(frontier.headers[COST_HEADER]) == pytest.approx(expected)
+    rows = [r for r in _spend_rows(app) if r["tier"] == "L6"]
+    assert len(rows) == 1
+    assert float(rows[0]["cost_usd"]) == pytest.approx(expected)
+
+    def local_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "text": "local",
+                "usage": {"input_tokens": 500_000, "output_tokens": 50_000},
+            },
+        )
+
+    _patch_upstream(monkeypatch, local_handler)
+    settings.asr.base_url = "http://asr.local/v1"
+    settings.asr.frontier_fallback = False
+    local_app = _app(settings)
+    async with AsyncClient(
+        transport=ASGITransport(app=local_app), base_url="http://test"
+    ) as client:
+        local = await _post(client)
+    assert local.status_code == 200, local.text
+    assert float(local.headers[COST_HEADER]) == 0.0
+    local_rows = [r for r in _spend_rows(local_app) if r["tier"] == "asr"]
+    assert len(local_rows) == 1
+    assert float(local_rows[0]["cost_usd"]) == 0.0
+
+
+@pytest.mark.asyncio
+async def test_frontier_asr_spend_hits_daily_budget(settings, tmp_path, monkeypatch):
+    """Budget-capped key that exhausts via frontier ASR gets 402 (#2250)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "text": "hello",
+                "usage": {"input_tokens": 0, "output_tokens": 200_000},
+            },
+        )
+
+    _patch_upstream(monkeypatch, handler)
+    _enable_spend(settings, tmp_path)
+    monkeypatch.setenv("DAARI_FRONTIER_API_KEY", "sk-frontier-test")
+    settings.frontier.enabled = True
+    settings.frontier.base_url = "https://frontier.example/v1"
+    settings.asr.base_url = ""
+    settings.asr.frontier_fallback = True
+    settings.asr.model = "gpt-4o-transcribe"
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    # gpt-4o-transcribe output $10/1M × 200k = $2.00; daily cap $1.
+    key = store.create("bot", client_id="client-bot", daily_budget_usd=1.0)
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    headers = {"Authorization": f"Bearer {key.plaintext}"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await _post(client, headers=headers, data=_form("gpt-4o-transcribe"))
+        second = await _post(client, headers=headers, data=_form("gpt-4o-transcribe"))
+    assert first.status_code == 200, first.text
+    assert second.status_code == 402
+    assert second.json()["error"]["type"] == "budget_exceeded"

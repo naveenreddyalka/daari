@@ -9345,6 +9345,17 @@ in/out with $8 image-input when details are present. No-usage paths
 like chat. `frontier.images_default_model` defaults to `gpt-image-2.6-flare`.
 Covered by `tests/unit/test_images.py`.
 
+### Bill frontier ASR from usage or duration rates ([#2250](https://github.com/naveenreddyalka/daari/issues/2250))
+
+<!-- tracking:#2250 -->
+**Status:** Done (2026-11-20). `/v1/audio/transcriptions` frontier fallback
+prices from upstream `usage` tokens when present, else audio duration ×
+`pricing.models.*.usd_per_minute` (file-size estimate + `asr_cost_estimated`
+event when duration is unknown). Catalog ships whisper-1 / gpt-transcribe
+minute rates and gpt-4o-*-transcribe token + minute rates. Local ASR stays
+$0; frontier spend decrements key/team budgets and cost headers. Covered by
+`tests/unit/test_audio_transcriptions.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

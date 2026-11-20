@@ -59,6 +59,118 @@ class AsrTarget:
     retry: Any | None = None
 
 
+# 16 kHz 16-bit mono PCM ≈ OpenAI's whisper upload guidance when duration is unknown.
+_ASR_BYTES_PER_SECOND_ESTIMATE = 32_000
+_DEFAULT_ASR_USD_PER_MINUTE = 0.006
+
+
+@dataclass(frozen=True)
+class AsrCharge:
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    duration_seconds: float | None
+    estimated: bool
+
+
+def asr_usd_per_minute(model: str, pricing: Any) -> float | None:
+    """Catalog ``usd_per_minute`` for an ASR model id, longest-key match (#2250)."""
+    from daari.pricing import matching_model_key
+
+    table = getattr(pricing, "models", None) or {}
+    key = matching_model_key(model, table)
+    if key is None:
+        return None
+    entry = table[key]
+    raw = entry.get("usd_per_minute") if isinstance(entry, dict) else getattr(
+        entry, "usd_per_minute", None
+    )
+    if raw is None:
+        return None
+    return float(raw)
+
+
+def _tokens_from_usage(usage: dict[str, Any]) -> tuple[int, int]:
+    raw_in = usage.get("input_tokens", usage.get("prompt_tokens"))
+    raw_out = usage.get("output_tokens", usage.get("completion_tokens"))
+    inp = int(raw_in) if isinstance(raw_in, (int, float)) and raw_in >= 0 else 0
+    out = int(raw_out) if isinstance(raw_out, (int, float)) and raw_out >= 0 else 0
+    return inp, out
+
+
+def _duration_seconds(
+    upstream: dict[str, Any] | None, audio_bytes: bytes
+) -> tuple[float, bool]:
+    """Return (seconds, estimated). Prefer upstream metadata, else file-size estimate."""
+    if isinstance(upstream, dict):
+        raw = upstream.get("duration")
+        if isinstance(raw, (int, float)) and raw > 0:
+            return float(raw), False
+        usage = upstream.get("usage")
+        if isinstance(usage, dict):
+            u_dur = usage.get("seconds", usage.get("duration"))
+            if isinstance(u_dur, (int, float)) and u_dur > 0:
+                return float(u_dur), False
+    seconds = max(len(audio_bytes), 1) / float(_ASR_BYTES_PER_SECOND_ESTIMATE)
+    return seconds, True
+
+
+def price_transcription(
+    model: str,
+    upstream: dict[str, Any] | None,
+    *,
+    audio_bytes: bytes,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> AsrCharge:
+    """Bill frontier ASR from ``usage`` tokens or duration × catalog minute rate (#2250)."""
+    from daari.pricing import cost_usd
+
+    usage = None
+    if isinstance(upstream, dict) and isinstance(upstream.get("usage"), dict):
+        usage = upstream["usage"]
+    if usage is not None:
+        inp, out = _tokens_from_usage(usage)
+        if inp or out or "input_tokens" in usage or "prompt_tokens" in usage:
+            cost = cost_usd(
+                model,
+                inp,
+                out,
+                pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+            return AsrCharge(
+                input_tokens=inp,
+                output_tokens=out,
+                cost_usd=round(max(0.0, cost), 8),
+                duration_seconds=None,
+                estimated=False,
+            )
+    duration, estimated = _duration_seconds(upstream, audio_bytes)
+    rate = asr_usd_per_minute(model, pricing)
+    if rate is None:
+        rate = _DEFAULT_ASR_USD_PER_MINUTE
+    cost = round(max(0.0, (duration / 60.0) * float(rate)), 8)
+    if estimated:
+        log_gateway_event(
+            "asr_cost_estimated",
+            {
+                "model": model,
+                "bytes": len(audio_bytes),
+                "duration_seconds": duration,
+                "usd_per_minute": float(rate),
+                "cost_usd": cost,
+            },
+        )
+    return AsrCharge(
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=cost,
+        duration_seconds=duration,
+        estimated=estimated,
+    )
+
+
 def _error(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(
         status_code=status,
@@ -282,6 +394,7 @@ def _bind_spend_context(
     model: str,
     client_id: str | None,
     user_id: str | None = None,
+    reported_cost: float | None = None,
 ) -> None:
     """Copy virtual-key identity onto the chargeback row before the usage hook fires."""
     router = getattr(ctx, "router", None)
@@ -314,6 +427,7 @@ def _bind_spend_context(
             requested_model=model,
             pricing=pricing,
             fallback_per_1k=fallback,
+            reported_cost=reported_cost,
         )
     )
 
@@ -335,9 +449,16 @@ def _record_request(
     text: str,
     latency_ms: int,
     local_tier: str = "asr",
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    reported_cost: float | None = None,
 ) -> None:
     tier = "L6" if via == "frontier" else local_tier
     provider = "frontier" if via == "frontier" else local_tier
+    tokens_in = 0 if input_tokens is None else max(0, int(input_tokens))
+    tokens_out = (
+        max(0, len(text) // 4) if output_tokens is None else max(0, int(output_tokens))
+    )
     metrics = getattr(ctx, "metrics", None)
     if metrics is not None and hasattr(metrics, "record"):
         metrics.record(
@@ -345,8 +466,8 @@ def _record_request(
             cache_hit=False,
             latency_ms=latency_ms,
             modality="asr",
-            input_tokens=0,
-            output_tokens=max(0, len(text) // 4),
+            input_tokens=tokens_in,
+            output_tokens=tokens_out,
         )
     ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
     if ledger is None:
@@ -358,8 +479,9 @@ def _record_request(
         client_id=client_id,
         model=model,
         provider=provider,
-        input_tokens=0,
-        output_tokens=max(0, len(text) // 4),
+        input_tokens=tokens_in,
+        output_tokens=tokens_out,
+        reported_cost=reported_cost if via == "frontier" else 0.0,
     )
 
 
@@ -617,8 +739,34 @@ async def handle_transcription(
         },
     )
     caller = _caller_client_id(request)
+    settings = ctx.settings
+    usage = getattr(settings, "usage", None)
+    fallback = float(getattr(usage, "frontier_price_per_1k_tokens", 0.002) or 0.002)
+    pricing = getattr(getattr(ctx, "router", None), "pricing", None)
+    if pricing is None:
+        pricing = getattr(settings, "pricing", None)
+    if target.via == "frontier":
+        charge = price_transcription(
+            model_name,
+            payload,
+            audio_bytes=content,
+            pricing=pricing,
+            fallback_per_1k=fallback,
+        )
+        reported_cost = charge.cost_usd
+        tokens_in = charge.input_tokens
+        tokens_out = charge.output_tokens or max(0, len(payload["text"]) // 4)
+    else:
+        reported_cost = 0.0
+        tokens_in = 0
+        tokens_out = max(0, len(payload["text"]) // 4)
     _bind_spend_context(
-        request, ctx, model=model_name, client_id=caller, user_id=user
+        request,
+        ctx,
+        model=model_name,
+        client_id=caller,
+        user_id=user,
+        reported_cost=reported_cost,
     )
     _record_request(
         ctx,
@@ -628,19 +776,22 @@ async def handle_transcription(
         text=payload["text"],
         latency_ms=latency_ms,
         local_tier=phase,
+        input_tokens=tokens_in,
+        output_tokens=tokens_out,
+        reported_cost=reported_cost,
     )
     from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
 
     tier = "L6" if target.via == "frontier" else phase
-    out_tokens = max(0, len(payload["text"]) // 4)
     headers = modality_response_headers(
         ctx.settings,
         tier=tier,
         model=model_name,
         prompt_chars=0,
         completion_chars=len(payload["text"]),
-        input_tokens=0,
-        output_tokens=out_tokens,
+        input_tokens=tokens_in,
+        output_tokens=tokens_out,
+        cost_usd=reported_cost,
         executor="frontier" if target.via == "frontier" else phase,
         session_id=session_id_from_request(request),
         savings=getattr(getattr(ctx, "router", None), "session_savings", None),

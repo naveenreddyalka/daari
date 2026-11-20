@@ -597,6 +597,7 @@ _RATE_FIELDS = (
     "input_threshold_tokens",
     "above_input_per_1m",
     "above_output_per_1m",
+    "usd_per_minute",
 )
 
 

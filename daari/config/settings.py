@@ -1597,6 +1597,9 @@ class ModelPrice(BaseModel):
     input_threshold_tokens: int | None = None
     above_input_per_1m: float | None = None
     above_output_per_1m: float | None = None
+    # Hosted ASR (whisper / gpt-transcribe) bills per audio minute when the
+    # upstream response has no token ``usage`` block (#2250).
+    usd_per_minute: float | None = None
     # Bill this id like another catalog / configured key (LiteLLM pricing_provider).
     # Set in config.yaml (not live-editable via the config editor ownership subset).
     alias_of: str | None = Field(
@@ -1943,6 +1946,35 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "input_per_1m": 5.00,
         "output_per_1m": 30.00,
         "cached_input_per_1m": 1.25,
+    },
+    # OpenAI speech-to-text (#2250). Minute rates for duration-billed models;
+    # gpt-4o-* transcribe family also ships token rates when ``usage`` is present.
+    # https://developers.openai.com/api/docs/pricing
+    # https://platform.openai.com/docs/pricing
+    "whisper-1": {
+        "input_per_1m": 0.0,
+        "output_per_1m": 0.0,
+        "usd_per_minute": 0.006,
+    },
+    "gpt-transcribe": {
+        "input_per_1m": 0.0,
+        "output_per_1m": 0.0,
+        "usd_per_minute": 0.0045,
+    },
+    "gpt-4o-transcribe": {
+        "input_per_1m": 2.50,
+        "output_per_1m": 10.00,
+        "usd_per_minute": 0.006,
+    },
+    "gpt-4o-mini-transcribe": {
+        "input_per_1m": 1.25,
+        "output_per_1m": 5.00,
+        "usd_per_minute": 0.003,
+    },
+    "gpt-4o-transcribe-diarize": {
+        "input_per_1m": 2.50,
+        "output_per_1m": 10.00,
+        "usd_per_minute": 0.006,
     },
 }
 
