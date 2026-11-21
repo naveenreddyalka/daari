@@ -11,33 +11,38 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-20 pm)
+## Where daari stands (verified in-tree, 2026-11-21)
 
-**Loop velocity.** Afternoon shipped CMA recipe + compare LTS floor
-(#2390, #2391). Morning filed 454–458 (Fable param_compat, 6.2
-chat-leg cache, introspect scope, stream fence, overnight fence).
-Overnight 376–377 + 380–381 remain Shipped (#2380–#2383).
+**Loop velocity.** Overnight shipped the 11-13 band's last four:
+MCP `notifications/cancelled` (#2398), abandoned-frontier-stream
+ledger settle (#2399), conversation-prefix session pins (#2400),
+llama.cpp v1.0.0 guide (#2401) — issues #2265–#2268. The 11-20 pm
+filings 459–463 and morning 454–458 remain open.
 
-**Outward.** OpenAI pricing page: **GPT-5.6 Sol promo runs through
-2026-11-30** (not 11-21 — community “at least through 11-21” + Nov-3
-email reinstatement on 11-30); still $4/$20 until then. **GPT-Live-1.1**
-GA on Live API: $0.05/min active + **$0.02/min standby** (WebRTC idle).
-OpenRouter **Tool Search** beta + Gemini **Tool Retrieval** preview
-share `defer_loading` + `tool_search` / `deferred_tools` (scope
-`all`|`mcp`; `client` removed → 400). LiteLLM **1.112.0-dev.1**:
-forwarded Anthropic credential clones priced from source deployment
-(#52313), exhausted keys keep `/models` + count_tokens (#51675),
-control-plane skeleton, capacity borrow, Skills Hub preserve. Patch
-floors stay 1.110.2 / 1.108.13 LTS. Portkey/Ollama/vLLM/Kong flat vs
-morning.
+**Outward.** **Anthropic linked billing beta (11-17, surfaced
+11-20):** platforms set `billing_policy` per `/v1/messages` or
+`/v1/chat/completions` request under `user-profiles-billing-2026-10-01`;
+Anthropic bills the end customer's org directly; unbillable
+customer-paid requests are refused, never platform-billed. SDK
+2.12.0 moves `user_profile_id` into the body on Bedrock. **OpenAI
+changelog amended 11-21: new models will never support Flex**; the
+beta winds down on supported ones. **LiteLLM 1.108.14 LTS (11-20
+night):** Claude server-tool declarations lost on `/v1/responses`
+follow-ups → Anthropic 400s (#50821); `input_json` parts on
+`/v1/decisions` (#52807 — daari already parses them). **Ollama
+0.40.17 GA:** tool definitions keep unmodeled JSON-schema keywords,
+`ollama launch claude` deferred tool loading, Apple-silicon
+concurrency, Inkling 2 Mini (Apple-only). Kong 2.3.2 = nginx CVEs.
+Portkey 2.33.1 / vLLM 0.34.0 / OpenRouter (11-19) / MCP blog flat.
 
-**Inward theme: promo-date honesty + deferred tools + discovery under
-budget + Live catalog + Anthropic BYOK price truth.**
-Settings/docs still say Sol ends **11-21** (460); no
-`defer_loading` wire twin despite on-box `mcp_tool_search` ranking
-(459); GPT-Live rates absent (461); `/v1/models` already skips USD
-402 — fence it (462); Messages spend must not zero when client
-forwards Anthropic key (463). Morning 454–458 still open.
+**Inward theme: the facade and the bill-payer are the day's truth
+gaps.** The Ollama facade drops `tools` entirely (`extra="ignore"`,
+no field — tool clients silently break, 467); `billing_policy` is
+dropped on the rebuilt Anthropic body and the ledger has no bill-to
+dimension (465); `pricing.py` applies the 0.5 flex factor on the
+tier string alone while Flex winds down (466); the flattened
+`_conversation` replay wants a #50821-class fence (464); overnight
+wave unfenced (468).
 
 ---
 
@@ -45,6 +50,11 @@ forwards Anthropic key (463). Morning 454–458 still open.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 464 | Prove + fence: `previous_response_id` follow-ups never replay undeclared server-tool blocks (litellm #50821, fixed in 1.108.14 LTS) | 3 | 1 | LiteLLM (after its LTS patch) | Flattened `_conversation` replay makes the 400 class structurally impossible — argue it hermetically | Filed [#2402](https://github.com/naveenreddyalka/daari/issues/2402) |
+| 465 | Anthropic linked billing — forward `billing_policy` (dropped by the rebuilt Messages body today); ledger bill-to dimension; customer-paid legs out of org budgets + reconcile | 4 | 2 | Anthropic native (platform-side); no gateway relays it yet | daari is the platform in Anthropic's model; one on-box ledger tells platform-paid from customer-paid (adjacent to 415/416 credential attribution) | Filed [#2403](https://github.com/naveenreddyalka/daari/issues/2403) |
+| 466 | Flex wind-down: capability-gate `service_tier=flex` (new models never get Flex, changelog 11-21); `pricing.py` 0.5 factor keyed on tier string alone misprices non-Flex models | 3 | 1 | OpenAI changelog / LiteLLM cost map | Capability + price fence is one catalog entry in one process; degrade with `dropped_params` honesty (6.2 refuse case shared with 452) | Filed [#2404](https://github.com/naveenreddyalka/daari/issues/2404) |
+| 467 | Ollama facade tool calling — `/api/chat` has no `tools` field (`extra="ignore"`); tool clients (`ollama launch claude`/opencode, 0.40.17) silently lose tools through daari | 4 | 2 | Ollama native 0.40.17 (keeps unmodeled schema keywords) | Facade puts cache + per-key tool governance in front of every Ollama-wire client — only if the tool loop survives the hop | Filed [#2405](https://github.com/naveenreddyalka/daari/issues/2405) |
+| 468 | Integration fence for the 11-20/11-21 overnight MCP-cancel + abandoned-stream ledger + session-pin wave | 2 | 2 | — (testability) | Hermetic proof: cancelled relays, partial usage settles, prefix scopes the pin | Filed [#2406](https://github.com/naveenreddyalka/daari/issues/2406) |
 | 459 | Deferred tool schema protocol — honor `defer_loading` + `tool_search` / OpenRouter `deferred_tools` on Responses + Messages (hide until search loads; `scope` all\|mcp) | 4 | 3 | OpenRouter Tool Search beta / Gemini Tool Retrieval preview | Large MCP catalogs stay $0 tokens on local legs; one edge owns deferral + grants without a SaaS tool broker | Filed [#2392](https://github.com/naveenreddyalka/daari/issues/2392) |
 | 460 | Sol promo end-date honesty — official end is **2026-11-30** not 11-21; keep $4/$20 until then; align settings comments, budgets-frontier, effective_to AC | 3 | 1 | OpenAI pricing page (checked 11-20) | Ledger must not step up a week early or leave stale “expires tomorrow” ops copy | Filed [#2393](https://github.com/naveenreddyalka/daari/issues/2393) |
 | 461 | GPT-Live-1.1 (+ gpt-live-1 standby) catalog — $0.05/min active, $0.02/min standby; capabilities note; no full `/v1/live` WS yet | 3 | 2 | OpenAI Live pricing / LiteLLM cost-map #52926 | Same-box duration ledger when Live eventually fronts; local voice stays $0 until then | Filed [#2394](https://github.com/naveenreddyalka/daari/issues/2394) |
@@ -91,7 +101,7 @@ forwards Anthropic key (463). Morning 454–458 still open.
 | 406 | Preserve every reasoning item + upstream output order on the frontier Responses path | 4 | 3 | LiteLLM 1.108.9 LTS (#51356 backport) | Byte-faithful item order on one box fronting local + frontier; encrypted replay keeps positional binding | Filed [#2298](https://github.com/naveenreddyalka/daari/issues/2298) |
 | 407 | Surface local-tier thinking: capture Ollama `message.thinking` / OpenAI-compat `reasoning_content`, emit on chat + Responses + Messages | 4 | 3 | llama.cpp / vLLM emit it; LiteLLM relays it (1.108.9 #51748) | Local reasoning models are the pitch — daari pays the thinking tokens and must stop discarding the text | Filed [#2299](https://github.com/naveenreddyalka/daari/issues/2299) |
 | 408 | Integration fence for the 11-14/11-15 overnight wave | 2 | 2 | — (testability) | Hermetic proof: thinking strip, toolset gate, baggage PATCH, encrypted reasoning | Filed [#2300](https://github.com/naveenreddyalka/daari/issues/2300) |
-| 385–404 | MCP cancel + abandoned-stream spend + session pins + llama.cpp v1.0 + Extractions + refused-leg + OCR + reasoning + ZDR + deadlines + tool-fee/reservation ops | 2–4 | 1–3 | LiteLLM / OpenRouter / Kong / llama.cpp | Same-box agent + FinOps honesty | Filed [#2265](https://github.com/naveenreddyalka/daari/issues/2265)–[#2291](https://github.com/naveenreddyalka/daari/issues/2291) |
+| 385–404 | Extractions + refused-leg + OCR + reasoning + ZDR + deadlines + tool-fee/reservation ops; MCP cancel / abandoned-stream spend / session pins / llama.cpp v1.0 **Shipped** (#2398–#2401) | 2–4 | 1–3 | LiteLLM / OpenRouter / Kong / llama.cpp | Same-box agent + FinOps honesty | Open [#2269](https://github.com/naveenreddyalka/daari/issues/2269)–[#2291](https://github.com/naveenreddyalka/daari/issues/2291); Shipped #2265–#2268 |
 | 380 | `previous_response_id` must not replay failed/cancelled turns | 4 | 2 | LiteLLM 1.108.7 LTS (#48647) | On-box store skips poison history; local+frontier share one chain contract | Shipped (#2382) |
 | 381 | Honor or honestly declare `max_tool_calls` (Responses-only fields) | 3 | 2 | LiteLLM 1.108.7 (#48655 drop_params / 400) | Enforce or `dropped_params` on-box — never silent, never smuggle to Bedrock | Shipped (#2383) |
 | 382 | Claude Managed Agents self-hosted → daari Anthropic facade recipe | 4 | 2 | Anthropic CMA (hosted default); any Claude-shaped gateway | Local L0–L5 absorb CMA repeats at $0 before frontier | Filed [#2257](https://github.com/naveenreddyalka/daari/issues/2257) |
@@ -128,67 +138,81 @@ forwards Anthropic key (463). Morning 454–458 still open.
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (≥60m session) | Parked |
 | 8 | Full DCR; A2A; Realtime/WS; OpenAI Live; stdio MCP; M365; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM | Demand-triggered | Watch |
 
-Watch rows (do not file yet): **LiteLLM floor → 1.110.2 / 1.108.13
+Watch rows (do not file yet): **LiteLLM floor → 1.110.2 / 1.108.14
 LTS** (fold into open 437); **1.112.0-dev.1** remainder (control
 plane, capacity borrow, Skills Hub preserve — hold GA; fold compare
 into 442/437, do not file a fifth); Anthropic API version
-**2026-10-21** (noted in 454); Genie 4 Interactions / full Live WS
-(row 8; 461 is catalog-only); **SEP-3415 stream/webhook** (445 is
-list+poll); OpenRouter TTS `input_references` (447 first); Kong OSS
-3.9.5 nginx CVEs (docs note); Opus 4.8 fast removal **11-30**
-(shield #2053); Ollama 0.40.17-rc2; vLLM 0.34 remainder; Portkey MCP
-policies; FIPS; A2A 1.1 RC; MCP SEP-3398; SCIM + multi-issuer SSO.
-**Sol promo → $5/$30 on 2026-11-30** (460 corrects the date; 405
-implements effective_to).
+**2026-10-21** (noted in 454); Anthropic linked billing on Batches /
+CMA ("not covered yet" — 465 is Messages+chat only); Genie 4
+Interactions / full Live WS (row 8; 461 is catalog-only); **SEP-3415
+stream/webhook** (445 is list+poll); OpenRouter TTS
+`input_references` (447 first); Kong OSS 3.9.5 + AI Gateway 2.3.2
+nginx CVEs (docs note); Opus 4.8 fast removal **11-30** (shield
+#2053); Inkling 2 Mini (Apple-only — recipe once PC support lands);
+vLLM 0.34 remainder; Portkey MCP policies; FIPS; A2A 1.1 RC; MCP
+SEP-3398; SCIM + multi-issuer SSO. **Sol promo → $5/$30 on
+2026-11-30** (460 corrects the date; 405 implements effective_to).
 
-Verified fine this run — don't re-audit: L0 `cache_key` is
-header-free (messages/model/temp/tools/scope/thread only) — immune to
-the rotating-billing-header poisoning class (litellm #52922); SSO is
-token-validation only, no server-side OIDC redirect (#52213 N/A);
-stream paths never duplicate delivered output (457 is the fence, not
-a fix); Claude 5.5 sampler strip already in param_compat (#52341
-partial — 454 is the Fable/Mythos extension); single-process router —
-litellm's JWT 5-min propagation (#52350), burst-503 spend loss
-(#52080), worker memory-growth (#51888/#52600) and per-worker
-Postgres pool (#52378) classes N/A; 5.2 thinking-block strip (#2205)
-+ advisor gate (#2328) already in-tree.
+Verified fine this run — don't re-audit: `/v1/decisions` already
+parses `input_json` content parts (decisions.py L444/457 — litellm
+#52807 N/A); `anthropic-beta` passthrough in-tree (#455 — 465 needs
+only the body field + ledger); Responses chains replay the flattened
+`_conversation`, never raw provider blocks (464 is the fence, not a
+fix); facade forwards `think` / `tool_search` / `format` / `logprobs`
+(#1011/#1066 — `tools` is the one missing field, 467); Ollama
+thinking-disable mapping + schema-keyword keeping are upstream-side
+(daari forwards both verbatim on the local tier).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
 1. **Billing + tenancy truth everywhere money and data move** —
-   **Sol promo date honesty → 11-30 (460)** + effective_to (405);
-   **Anthropic forwarded-cred catalog billing (463)**; GPT-Live
-   catalog (461); GPT-6.2 chat-leg cache (455); introspect scope
-   (456); Ultrafast (450); background windows (452); GPT-6.2 catalog
-   (444); Hydrogen (439); BYOK doors (414–416); zero_retention (435);
-   refused-leg / abandoned-stream / OCR (391/386/396). ASR shipped.
+   **Anthropic linked billing bill-to (465)**; **Flex wind-down
+   price fence (466)**; **Sol promo date honesty → 11-30 (460)** +
+   effective_to (405); Anthropic forwarded-cred catalog billing
+   (463); GPT-Live catalog (461); GPT-6.2 chat-leg cache (455);
+   introspect scope (456); Ultrafast (450); background windows
+   (452); GPT-6.2 catalog (444); Hydrogen (439); BYOK doors
+   (414–416); zero_retention (435); refused-leg / OCR (391/396).
+   ASR + abandoned-stream shipped.
 2. **Honest terminal outcomes + frontier wire-shape hygiene** —
    Fable/Mythos param_compat (454); GPT-6.2 param_compat (449);
-   store:false developer (451); stream no-dup fence (457); truncated
-   cache gate (424); frontier stream honesty (425); Responses
-   `incomplete` (426); overload envelopes (436); long tool-name
-   (446); finish_reason Prom (431).
+   store:false developer (451); server-tool replay fence (464);
+   stream no-dup fence (457); truncated cache gate (424); frontier
+   stream honesty (425); Responses `incomplete` (426); overload
+   envelopes (436); long tool-name (446); finish_reason Prom (431).
 3. **Nothing goes stale quietly** — exhausted-key discovery fence
    (462); performance alerts (440); `rate_limited_by` (441);
    deprecation exposure (434); 5xx/auto_caching doctor+Prom
-   (429–430, 419–420); MCP re-mint (395); deadlines (400); MCP
-   cancel (385); session pins (387); ZDR (398).
-4. **Agent-protocol + Responses fidelity** — **deferred tool schema
-   (459)**; MCP Events (445); Responses order + reasoning (406);
-   local thinking (407); Extractions (390); OpenRouter reasoning
-   (397). CMA recipe Shipped (#2390); failed-chain / max_tool_calls /
-   allowed_tools shipped.
+   (429–430, 419–420); MCP re-mint (395); deadlines (400); ZDR
+   (398). MCP cancel + session pins shipped (#2398, #2400).
+4. **Agent-protocol + tool-loop fidelity** — **Ollama facade tools
+   (467)**; **deferred tool schema (459)**; MCP Events (445);
+   Responses order + reasoning (406); local thinking (407);
+   Extractions (390); OpenRouter reasoning (397). CMA recipe,
+   failed-chain, max_tool_calls, allowed_tools shipped.
 5. **Local engine floor + discovery + honest compare** — speech
    discovery (447); Live catalog (461) ahead of full WS; 1.111/1.112
-   watch (442 + fold); LiteLLM floor 1.110.2 / 1.108.13 (437); vLLM
-   0.34 (427); watermark (433); HF keys (432); llama.cpp v1.0 (388);
-   fences through 458; then 62–67.
+   watch (442 + fold); LiteLLM floor 1.110.2 / 1.108.14 (437); vLLM
+   0.34 (427); watermark (433); HF keys (432); fences through 468;
+   then 62–67. llama.cpp v1.0 guide shipped (#2401).
 
 ---
 
 ## Changelog
+
+- **2026-11-21 (linked billing + facade tools + Flex wind-down)** —
+  Mined Anthropic linked billing beta (`billing_policy`,
+  `user-profiles-billing-2026-10-01`), the 11-21 OpenAI Flex
+  wind-down amendment, LiteLLM 1.108.14 LTS (#50821, #52807), and
+  Ollama 0.40.17 GA. Filed: server-tool replay fence (464); linked
+  billing bill-to (465); Flex capability + price fence (466);
+  **Ollama facade tool calling** (467 — `/api/chat` drops `tools`
+  today); overnight fence (468). Verified fine: decisions
+  `input_json` parsed; `anthropic-beta` forwards. Overnight
+  #2265–#2268 Shipped (#2398–#2401). Floor promote 1.108.14 folded
+  into watch/437.
 
 - **2026-11-20 pm (Sol date + deferred tools + Live + BYOK price)** —
   Mined OpenAI pricing (Sol promo → **11-30**), GPT-Live-1.1 standby
@@ -211,21 +235,12 @@ Postgres pool (#52378) classes N/A; 5.2 thinking-block strip (#2205)
   376–377 + 380–381 Shipped (#2380–#2383). Floor promote folded into
   watch/437.
 
-- **2026-11-19 pm (GPT-6.2 wire-shape follow-through)** — Mined
-  LiteLLM 1.110.1 / 1.108.12 LTS placement patch + OpenAI Ultrafast
-  6.2 promo + background completion windows. In-tree gaps: no 6.2
-  param_compat (449), Ultrafast allowlist stuck on 6.1 (450),
-  `store:false` emits system not developer (451), background window
-  discounts missing (452), afternoon fence (453). Image billing
-  Shipped (#2373). Floor promote folded into watch/437.
-
-- **2026-11-19 (GPT-6.2 day-0; stuck PRD PR repaired)** — Repaired the
-  11-18 pm PRD PR in-run (pin rows 19–28 restored → #2364 merged).
-  GPT-6.2 Astra/Sol launch mined (444); MCP SEP-3415 Events merged
-  same day (445); litellm long-tool-name fail-open class → immunity
-  fence (446); OpenRouter TTS discovery (447); overnight fence (448).
-  LiteLLM's 4-line patch night folded into watch; 372–373 Shipped
-  (#2365, #2366).
+- **2026-11-19 (+pm)** — Condensed: GPT-6.2 day-0 cut (444–448:
+  catalog, SEP-3415 Events, long-tool-name fence, TTS discovery,
+  fence; stuck 11-18 pm PRD PR repaired in-run); pm wire-shape
+  follow-through (449–453: 6.2 param_compat, Ultrafast, store:false
+  developer placement, background windows, fence). 372–373 + image
+  billing Shipped (#2365, #2366, #2373).
 
 - **2026-11-18 (+pm)** — Condensed: 1.110.0 stable (Rust-only
   router, ledger-default) + 1.108.11 LTS mined → successor/
