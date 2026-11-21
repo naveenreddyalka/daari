@@ -16,4 +16,8 @@ Sets `models.l5=ripple-preview` (high-memory L4 is also fine). Plan ~40 GB+
 VRAM/RAM quantized. The preview tag/name may change at GA. Doctor tips when
 this recipe is configured but the Ollama server is older than 0.40.16.
 
+Ripple also runs on pinned [llama.cpp v1.0.0+](../developer/guides/configuration/llamacpp-local-tier.md)
+`llama-server` as a `kind: openai` L5 slot when you prefer a binary floor over
+Ollama's library UX.
+
 See also the backends guide: [ollama.md](../developer/guides/backends/ollama.md).

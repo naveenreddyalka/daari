@@ -1,6 +1,6 @@
 # daari vs LiteLLM
 
-LiteLLM is a **provider gateway**: one OpenAI-shaped API in front of 100+ cloud models. daari is a **local cost optimizer**: cache, tools, and Ollama/MLX first, frontier last.
+LiteLLM is a **provider gateway**: one OpenAI-shaped API in front of 100+ cloud models. daari is a **local cost optimizer**: cache, tools, and Ollama/MLX first, frontier last. Local engine floor for OpenAI-compat slots is [llama.cpp v1.0.0](https://github.com/ggml-org/llama.cpp/releases/tag/v1.0.0) ([operator guide](../guides/configuration/llamacpp-local-tier.md)).
 
 | | LiteLLM | daari |
 |--|---------|-------|
