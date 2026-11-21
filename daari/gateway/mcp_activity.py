@@ -38,14 +38,23 @@ class McpActivityEntry:
         }
 
 
+def _rpc_key(rpc_id: Any) -> str:
+    """Stable map key for a JSON-RPC request id (int or str)."""
+    if rpc_id is None:
+        return ""
+    return f"rpc:{rpc_id!s}"
+
+
 class McpActivityRegistry:
     """Thread-safe enough for a single-event-loop process (laptop / one replica)."""
 
     def __init__(self) -> None:
         self._entries: dict[str, McpActivityEntry] = {}
+        self._rpc_index: dict[str, str] = {}  # rpc key -> request_id
         self._lock = asyncio.Lock()
         # Finished ids kept briefly so abort stays idempotent after unregister.
         self._finished: set[str] = set()
+        self._finished_rpc: set[str] = set()
 
     def register(
         self,
@@ -56,6 +65,7 @@ class McpActivityRegistry:
         method: str = "tools/call",
         tool_name: str | None = None,
         task: asyncio.Task[Any] | None = None,
+        rpc_id: Any = None,
     ) -> McpActivityEntry:
         rid = (request_id or "").strip()
         if not rid:
@@ -78,12 +88,17 @@ class McpActivityRegistry:
         )
         self._finished.discard(rid)
         self._entries[rid] = entry
+        rkey = _rpc_key(rpc_id)
+        if rkey:
+            self._finished_rpc.discard(rkey)
+            self._rpc_index[rkey] = rid
         log_gateway_event(
             "mcp.activity_registered",
             {
                 "request_id": rid,
                 "method": method,
                 "tool_name": entry.tool_name or "",
+                "rpc_id": rpc_id if rpc_id is not None else "",
             },
         )
         return entry
@@ -99,6 +114,10 @@ class McpActivityRegistry:
             return
         if self._entries.pop(rid, None) is not None:
             self._finished.add(rid)
+            stale = [k for k, v in self._rpc_index.items() if v == rid]
+            for k in stale:
+                self._rpc_index.pop(k, None)
+                self._finished_rpc.add(k)
             log_gateway_event("mcp.activity_unregistered", {"request_id": rid})
 
     def list(self) -> list[dict[str, Any]]:
@@ -106,6 +125,12 @@ class McpActivityRegistry:
 
     def get(self, request_id: str) -> McpActivityEntry | None:
         return self._entries.get((request_id or "").strip())
+
+    def get_by_rpc_id(self, rpc_id: Any) -> McpActivityEntry | None:
+        rid = self._rpc_index.get(_rpc_key(rpc_id))
+        if not rid:
+            return None
+        return self._entries.get(rid)
 
     def abort(self, request_id: str) -> bool | None:
         """Cancel in-flight work.
@@ -131,8 +156,32 @@ class McpActivityRegistry:
             )
         self._entries.pop(rid, None)
         self._finished.add(rid)
+        stale = [k for k, v in self._rpc_index.items() if v == rid]
+        for k in stale:
+            self._rpc_index.pop(k, None)
+            self._finished_rpc.add(k)
         return True
 
+    def abort_by_rpc_id(self, rpc_id: Any) -> bool | None:
+        """Cancel via MCP ``notifications/cancelled`` requestId (#2265).
+
+        Returns True if cancelled or already finished; None if unknown.
+        """
+        rkey = _rpc_key(rpc_id)
+        if not rkey:
+            return None
+        rid = self._rpc_index.get(rkey)
+        if rid is None:
+            if rkey in self._finished_rpc:
+                return True
+            return None
+        result = self.abort(rid)
+        if result is True:
+            log_gateway_event(
+                "mcp.request_cancelled",
+                {"rpc_id": rpc_id, "request_id": rid},
+            )
+        return result
 
 def principal_from_claims(claims: Any) -> tuple[str | None, str | None]:
     """Return ``(key_id, principal)`` for registry rows."""
@@ -160,6 +209,7 @@ async def track_awaitable(
     principal: str | None,
     method: str,
     tool_name: str | None,
+    rpc_id: Any = None,
 ) -> Any:
     """Register *awaitable* as a Task, await it, and always unregister."""
     task: asyncio.Task[Any] = asyncio.ensure_future(awaitable)
@@ -170,6 +220,7 @@ async def track_awaitable(
         method=method,
         tool_name=tool_name,
         task=task,
+        rpc_id=rpc_id,
     )
     try:
         return await task

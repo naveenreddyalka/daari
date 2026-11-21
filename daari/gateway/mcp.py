@@ -1202,6 +1202,7 @@ async def _run_tool_with_deadline(
     *,
     model: str | None,
     request: Request,
+    rpc_id: Any = None,
 ) -> MCPQueryResponse:
     """Bind wall-clock budget for tools/call, then run the tool (#827)."""
 
@@ -1231,11 +1232,21 @@ async def _run_tool_with_deadline(
             principal=principal,
             method="tools/call",
             tool_name=name.strip().lower() if name else None,
+            rpc_id=rpc_id,
         )
     except asyncio.CancelledError:
-        # Admin force-abort (or ASGI cancel) — same operator-facing 499 as disconnect.
+        # Admin force-abort / notifications/cancelled / ASGI cancel — 499.
         raise ClientDisconnected() from None
 
+
+def _handle_notifications_cancelled(ctx: AppContext, params: dict[str, Any]) -> Response:
+    """Honor MCP ``notifications/cancelled`` for an in-flight JSON-RPC id (#2265)."""
+    request_id = params.get("requestId")
+    registry = getattr(ctx, "mcp_activity", None)
+    if registry is not None and request_id is not None:
+        registry.abort_by_rpc_id(request_id)
+    # Unknown / finished ids are ignored without error (spec).
+    return Response(status_code=202)
 
 def _client_disconnected_response() -> JSONResponse:
     return JSONResponse(
@@ -1566,7 +1577,10 @@ class MCPGatewayAdapter(GatewayAdapter):
             method = str(message["method"])
             rpc_id = message.get("id")
             params = message.get("params") if isinstance(message.get("params"), dict) else {}
+            ctx: AppContext = request.app.state.ctx
             if "id" not in message:
+                if method == "notifications/cancelled":
+                    return _handle_notifications_cancelled(ctx, params)
                 return Response(status_code=202)
 
             mismatch = _check_mcp_routing_headers(
@@ -1586,7 +1600,6 @@ class MCPGatewayAdapter(GatewayAdapter):
                     request, _unsupported_protocol_error(rpc_id, requested_meta)
                 )
 
-            ctx: AppContext = request.app.state.ctx
             governance = _Governance(request, ctx, transport="jsonrpc")
             try:
                 governed_methods = {
@@ -1822,7 +1835,13 @@ class MCPGatewayAdapter(GatewayAdapter):
                             _jsonrpc_result(rpc_id, create_task_result(task)),
                         )
                     tool_response = await _run_tool_with_deadline(
-                        ctx, name, arguments.get("input"), arguments, model=None, request=request
+                        ctx,
+                        name,
+                        arguments.get("input"),
+                        arguments,
+                        model=None,
+                        request=request,
+                        rpc_id=rpc_id,
                     )
                     exchange_err = _token_exchange_error_response(
                         request, rpc_id, tool_response

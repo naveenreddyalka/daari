@@ -9,6 +9,8 @@ and emit an OTel client span (`mcp.tools/call` / `mcp.tools/list`) (#1203).
 
 from __future__ import annotations
 
+import asyncio
+import itertools
 import json
 import re
 import time
@@ -225,6 +227,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         self.settings = settings
         self._tool_embed_cache = ToolEmbeddingCache()
         self._http: httpx.AsyncClient | None = None
+        self._rpc_id_seq = itertools.count(1)
         from daari.providers.mcp_token_exchange import TokenExchangeCache
 
         self._token_exchange_cache = TokenExchangeCache()
@@ -329,6 +332,40 @@ class McpEgressProvider(HttpIntegrationProvider):
             upstream=self.id,
             policy=self.retry,
             metrics=self.metrics,
+        )
+
+    async def _notify_cancelled(
+        self,
+        rpc_id: Any,
+        headers: dict[str, str],
+        *,
+        tool: str,
+    ) -> None:
+        """Best-effort MCP ``notifications/cancelled`` after an aborted call (#2265)."""
+        from daari.gateway.request_log import log_gateway_event
+
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "notifications/cancelled",
+            "params": {"requestId": rpc_id},
+        }
+        notify_headers = {
+            **headers,
+            "Mcp-Method": "notifications/cancelled",
+        }
+        notify_headers.pop("Mcp-Name", None)
+        try:
+            client = self._client()
+            await client.post(self.base_url, json=payload, headers=notify_headers)
+        except Exception:  # noqa: BLE001 — never mask the cancellation
+            log_gateway_event(
+                "mcp.egress_cancelled_notify_failed",
+                {"server_id": self.server.id, "tool": tool, "rpc_id": rpc_id},
+            )
+            return
+        log_gateway_event(
+            "mcp.egress_cancelled",
+            {"server_id": self.server.id, "tool": tool, "rpc_id": rpc_id},
         )
 
     def _policy_denied_response(self, request: InternalRequest) -> InternalResponse | None:
@@ -605,9 +642,10 @@ class McpEgressProvider(HttpIntegrationProvider):
                 legacy=f"{self.id} call to {tool} blocked by guardrail {rule}.",
             )
             return self._guardrail_blocked(request, tool, rule, denial=denial)
+        rpc_id = next(self._rpc_id_seq)
         payload = {
             "jsonrpc": "2.0",
-            "id": 1,
+            "id": rpc_id,
             "method": "tools/call",
             "params": {"name": tool, "arguments": arguments},
         }
@@ -623,6 +661,13 @@ class McpEgressProvider(HttpIntegrationProvider):
             self.breaker.record_success()
             self._record_egress("ok")
             return self._tool_result_response(request, text, warning=warning)
+        except asyncio.CancelledError:
+            # Client disconnect / deadline / abort — tell the MCP server to stop.
+            try:
+                await self._notify_cancelled(rpc_id, headers, tool=tool)
+            except Exception:  # noqa: BLE001 — never mask CancelledError
+                pass
+            raise
         except Exception as exc:  # noqa: BLE001
             self.breaker.record_failure()
             self._record_egress("error")

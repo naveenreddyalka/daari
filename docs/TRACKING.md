@@ -9406,6 +9406,15 @@ Covered by `tests/unit/test_cma_gateway.py`.
 stays **1.109.1**; disk-cache differentiator retained. Covered by
 `tests/unit/test_compare_litellm_1104.py`.
 
+### MCP cancellation notifications ([#2265](https://github.com/naveenreddyalka/daari/issues/2265))
+
+<!-- tracking:#2265 -->
+**Status:** Done (2026-11-21). Ingress honors `notifications/cancelled` by
+aborting the matching in-flight JSON-RPC `tools/call` (unknown/finished ids
+ignored); egress emits best-effort `notifications/cancelled` on abort before
+re-raising `CancelledError`. Events: `mcp.request_cancelled`,
+`mcp.egress_cancelled`. Covered by `tests/unit/test_mcp_cancellation.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
