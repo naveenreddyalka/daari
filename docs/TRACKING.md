@@ -9415,6 +9415,15 @@ ignored); egress emits best-effort `notifications/cancelled` on abort before
 re-raising `CancelledError`. Events: `mcp.request_cancelled`,
 `mcp.egress_cancelled`. Covered by `tests/unit/test_mcp_cancellation.py`.
 
+### Settle spend for abandoned frontier streams ([#2266](https://github.com/naveenreddyalka/daari/issues/2266))
+
+<!-- tracking:#2266 -->
+**Status:** Done (2026-11-21). Client `aclose` mid-relay settles the usage
+ledger from text already sent (`usage_estimated=True`,
+`stream_abandon_settled` event) on OpenAI and Anthropic stream paths; local
+tiers record request counts without frontier cost. Covered by
+`tests/unit/test_stream_abandon_spend.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

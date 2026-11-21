@@ -184,9 +184,7 @@ class UsageLedger:
         # Additive cache-token dims (#1105). Safe on existing DBs that already
         # have the post-#156 token/model columns.
         for table in _SPEND_TABLES:
-            columns = {
-                row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
-            }
+            columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if not columns:
                 continue
             if "cached_tokens" not in columns:
@@ -215,13 +213,12 @@ class UsageLedger:
         cached_tokens: int | None = None,
         cache_write_tokens: int | None = None,
         reported_cost: float | None = None,
+        usage_estimated: bool = False,
     ) -> None:
         # Fall back to the chars/4 estimate only when the provider reported
         # nothing, so old call sites keep working (#156).
         tokens_in = max(0, input_tokens if input_tokens is not None else prompt_chars // 4)
-        tokens_out = max(
-            0, output_tokens if output_tokens is not None else completion_chars // 4
-        )
+        tokens_out = max(0, output_tokens if output_tokens is not None else completion_chars // 4)
         cached = max(0, int(cached_tokens or 0))
         cache_write = max(0, int(cache_write_tokens or 0))
         notify_recorded(
@@ -239,6 +236,7 @@ class UsageLedger:
             cached_tokens=cached,
             cache_write_tokens=cache_write,
             reported_cost=reported_cost,
+            usage_estimated=bool(usage_estimated),
         )
         if not self.enabled:
             return
@@ -526,9 +524,12 @@ class UsageLedger:
         if window in {"lifetime", "total", "all"}:
             where, params = "client_id = ?", (client_id,)
         elif window == "month":
-            where, params = "client_id = ? AND day LIKE ?", (
-                client_id,
-                (month or _today()[:7]) + "-%",
+            where, params = (
+                "client_id = ? AND day LIKE ?",
+                (
+                    client_id,
+                    (month or _today()[:7]) + "-%",
+                ),
             )
         elif window == "day":
             where, params = "client_id = ? AND day = ?", (client_id, day or _today())
@@ -559,16 +560,22 @@ class UsageLedger:
         if window in {"lifetime", "total", "all"}:
             where, params = "client_id = ? AND user_id = ?", (client_id, user_id)
         elif window == "month":
-            where, params = "client_id = ? AND user_id = ? AND day LIKE ?", (
-                client_id,
-                user_id,
-                (month or _today()[:7]) + "-%",
+            where, params = (
+                "client_id = ? AND user_id = ? AND day LIKE ?",
+                (
+                    client_id,
+                    user_id,
+                    (month or _today()[:7]) + "-%",
+                ),
             )
         elif window == "day":
-            where, params = "client_id = ? AND user_id = ? AND day = ?", (
-                client_id,
-                user_id,
-                day or _today(),
+            where, params = (
+                "client_id = ? AND user_id = ? AND day = ?",
+                (
+                    client_id,
+                    user_id,
+                    day or _today(),
+                ),
             )
         else:
             raise ValueError(f"window must be 'day', 'month', or 'lifetime', got {window!r}")
@@ -652,9 +659,7 @@ class UsageLedger:
             with self._lock, self._connect() as conn:
                 rows = conn.execute(
                     "SELECT model, COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0)"
-                    f" FROM {table} WHERE "
-                    + where
-                    + f" AND {_metered_spend_sql()} GROUP BY model",
+                    f" FROM {table} WHERE " + where + f" AND {_metered_spend_sql()} GROUP BY model",
                     (*params, FRONTIER_TIER, _CLOUD_MODEL_LIKE),
                 ).fetchall()
         except Exception:
@@ -687,9 +692,12 @@ class UsageLedger:
         if window in {"lifetime", "total", "all"}:
             where, params = "client_id = ?", (client_id,)
         elif window == "month":
-            where, params = "client_id = ? AND day LIKE ?", (
-                client_id,
-                (month or _today()[:7]) + "-%",
+            where, params = (
+                "client_id = ? AND day LIKE ?",
+                (
+                    client_id,
+                    (month or _today()[:7]) + "-%",
+                ),
             )
         elif window == "day":
             where, params = "client_id = ? AND day = ?", (client_id, day or _today())
@@ -835,10 +843,14 @@ class UsageLedger:
         except Exception:
             return 0
 
-    def report(self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002) -> dict[str, Any]:
+    def report(
+        self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002
+    ) -> dict[str, Any]:
         if not self.enabled:
             return {"enabled": False, "days": [], "totals": _empty_totals()}
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime("%Y-%m-%d")
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
+            "%Y-%m-%d"
+        )
         try:
             with self._lock, self._connect() as conn:
                 rows = conn.execute(
@@ -848,7 +860,9 @@ class UsageLedger:
                 ).fetchall()
         except Exception:
             return {"enabled": False, "days": [], "totals": _empty_totals()}
-        return _usage_rows_to_report(rows, frontier_price_per_1k_tokens=frontier_price_per_1k_tokens)
+        return _usage_rows_to_report(
+            rows, frontier_price_per_1k_tokens=frontier_price_per_1k_tokens
+        )
 
     def report_for_clients(
         self,
@@ -879,7 +893,9 @@ class UsageLedger:
                 ).fetchall()
         except Exception:
             return {"enabled": False, "days": [], "totals": _empty_totals()}
-        return _usage_rows_to_report(rows, frontier_price_per_1k_tokens=frontier_price_per_1k_tokens)
+        return _usage_rows_to_report(
+            rows, frontier_price_per_1k_tokens=frontier_price_per_1k_tokens
+        )
 
 
 def _usage_rows_to_report(
