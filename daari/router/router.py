@@ -1120,18 +1120,14 @@ class Router:
                     return policy
                 policy.warning = f"boundary_out:{decision.reason}"
         if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
-            input_text = "\n".join(
-                m.content or "" for m in request.messages if m.role != "system"
-            )
+            input_text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
             check_input = getattr(self.guardrails, "check_input_async", None)
             if check_input is not None:
                 inbound = await check_input(request)
             else:
                 inbound = self.guardrails.check_input(request)
             if inbound.hits:
-                self._apply_guardrail_hits(
-                    inbound.hits, warning=inbound.warning, text=input_text
-                )
+                self._apply_guardrail_hits(inbound.hits, warning=inbound.warning, text=input_text)
             if inbound.blocked:
                 denial = getattr(inbound, "block_message", None) or self.guardrails.block_message
                 policy.refusal = blocked_response(request, denial)
@@ -1141,9 +1137,7 @@ class Router:
             # Opt-in scan of role=tool / tool_result payloads (#387). Mutates
             # request in place on redact so cache keys and execute see scrubbed text.
             if getattr(self.guardrails, "scan_tool_results", False):
-                tool_text = "\n".join(
-                    m.content or "" for m in request.messages if m.role == "tool"
-                )
+                tool_text = "\n".join(m.content or "" for m in request.messages if m.role == "tool")
                 tool_scan = self.guardrails.check_tool_results(request)
                 if tool_scan.hits:
                     self._apply_guardrail_hits(
@@ -1340,12 +1334,8 @@ class Router:
                     trace,
                     request=request,
                     response=response,
-                    include_request_tags=bool(
-                        getattr(self, "otel_include_request_tags", False)
-                    ),
-                    include_user_agent=bool(
-                        getattr(self, "otel_include_user_agent", False)
-                    ),
+                    include_request_tags=bool(getattr(self, "otel_include_request_tags", False)),
+                    include_user_agent=bool(getattr(self, "otel_include_user_agent", False)),
                 )
         end_trace()
         self._note_cloud_billing(response)
@@ -2743,11 +2733,7 @@ class Router:
                 cached = None
             add_step("l0_lookup", hit=cached is not None)
             # #2234: never text-only-replay a tool-bearing L0 entry (legacy puts).
-            if (
-                cached is not None
-                and cached.content.strip()
-                and not cached.tool_calls
-            ):
+            if cached is not None and cached.content.strip() and not cached.tool_calls:
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
                 if self.usage_ledger is not None:
@@ -3385,6 +3371,8 @@ class Router:
                     l6_first_at: float | None = None
                     relayed_tool_calls = False
                     relay_incomplete = False
+                    l6_settled = False
+                    relayed_text = ""
                     try:
                         from daari.router.deadline import guard_upstream
 
@@ -3443,6 +3431,19 @@ class Router:
                                 yield f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
                         if prefetch_error is not None:
                             raise prefetch_error
+                    except (asyncio.CancelledError, GeneratorExit):
+                        abandon_text = "".join(relayed)
+                        if abandon_text.strip() or relayed_tool_calls:
+                            self._settle_abandoned_stream(
+                                request,
+                                tier="L6",
+                                prompt_chars=prompt_chars,
+                                completion_text=abandon_text,
+                                started=started,
+                                fallback_model=getattr(served, "model", None),
+                            )
+                            l6_settled = True
+                        raise
                     except Exception as exc:
                         log_gateway_event("stream_frontier_relay_failed", {"error": str(exc)[:300]})
                         # Nothing was emitted yet if the failure came before the
@@ -3472,16 +3473,29 @@ class Router:
                                 },
                             )
                             relay_incomplete = True
-                    if scanner is not None and not scanner.blocked:
-                        flush = scanner.flush()
-                        if flush.text:
-                            yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
-                        self._record_stream_guardrail(scanner)
-                        relayed_text = scanner.scanned_text
-                    elif scanner is not None:
-                        relayed_text = scanner.scanned_text
-                    else:
-                        relayed_text = "".join(relayed)
+                    try:
+                        if scanner is not None and not scanner.blocked:
+                            flush = scanner.flush()
+                            if flush.text:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                            self._record_stream_guardrail(scanner)
+                            relayed_text = scanner.scanned_text
+                        elif scanner is not None:
+                            relayed_text = scanner.scanned_text
+                        else:
+                            relayed_text = "".join(relayed)
+                    except (asyncio.CancelledError, GeneratorExit):
+                        abandon_text = "".join(relayed) or relayed_text
+                        if not l6_settled and (abandon_text.strip() or relayed_tool_calls):
+                            self._settle_abandoned_stream(
+                                request,
+                                tier="L6",
+                                prompt_chars=prompt_chars,
+                                completion_text=abandon_text,
+                                started=started,
+                                fallback_model=getattr(served, "model", None),
+                            )
+                        raise
                     if relay_incomplete:
                         yield _openai_stream_error_frame(
                             error_type="stream_incomplete",
@@ -3573,6 +3587,7 @@ class Router:
                         else:
                             self.metrics.record_cost(input_usd=0.0, output_usd=0.0)
                         self.usage_ledger.record(**record_kwargs)
+                    l6_settled = True
                     add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
                     flight_meta = DaariMeta(
                         tier="L6",
@@ -3645,70 +3660,111 @@ class Router:
                     else None
                 )
                 incremental_emitted = False
-                if scanner is not None and served.content == streamed_text:
-                    # Local (or non-rewritten escalate) text — scan delta-by-delta.
-                    yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                    for part in tier_text_parts:
-                        release = scanner.push(part)
+                local_settled = False
+                served_tier = tier
+                served_model = ollama_model
+                try:
+                    if scanner is not None and served.content == streamed_text:
+                        # Local (or non-rewritten escalate) text — scan delta-by-delta.
+                        yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                        for part in tier_text_parts:
+                            release = scanner.push(part)
+                            if release.text:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                            if release.blocked:
+                                break
+                        if not scanner.blocked:
+                            flush = scanner.flush()
+                            if flush.text:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                        self._record_stream_guardrail(scanner)
+                        served = served.model_copy(update={"content": scanner.scanned_text})
+                        incremental_emitted = True
+                    elif scanner is not None:
+                        # Escalated answer arrived as one blob — still scan with holdback.
+                        yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                        release = scanner.push(served.content)
                         if release.text:
                             yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
-                        if release.blocked:
-                            break
-                    if not scanner.blocked:
-                        flush = scanner.flush()
-                        if flush.text:
-                            yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
-                    self._record_stream_guardrail(scanner)
-                    served = served.model_copy(update={"content": scanner.scanned_text})
-                    incremental_emitted = True
-                elif scanner is not None:
-                    # Escalated answer arrived as one blob — still scan with holdback.
-                    yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                    release = scanner.push(served.content)
-                    if release.text:
-                        yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
-                    if not scanner.blocked:
-                        flush = scanner.flush()
-                        if flush.text:
-                            yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
-                    self._record_stream_guardrail(scanner)
-                    served = served.model_copy(update={"content": scanner.scanned_text})
-                    incremental_emitted = True
-                elif not tool_calls_sent and served.content.strip():
-                    served = await self._apply_output_policy_async(served)
+                        if not scanner.blocked:
+                            flush = scanner.flush()
+                            if flush.text:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                        self._record_stream_guardrail(scanner)
+                        served = served.model_copy(update={"content": scanner.scanned_text})
+                        incremental_emitted = True
+                    elif not tool_calls_sent and served.content.strip():
+                        served = await self._apply_output_policy_async(served)
 
-                served_tier = served.daari_meta.tier or tier
-                served_model = served.daari_meta.model or served.model or ollama_model
-                self._finish_session_pin(request, served)
-                rewritten = served.content != streamed_text
-                completion_chars = len(served.content) if rewritten else tier_completion_chars
-                outcome.note(served_tier, draft=draft_used)
-                if incremental_emitted:
-                    pass  # content already yielded through the scanner
-                elif rewritten:
-                    yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                    yield f"data: {json.dumps(chunk_payload(delta={'content': served.content}))}\n\n"
-                elif content_sent:
-                    for chunk in pending_chunks:
-                        yield chunk
-                else:
-                    yield role_chunk
-                finish_reason = (
-                    "tool_calls"
-                    if tool_calls_sent
-                    else (stream_finish_reason or "stop")
-                )
-                yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
-                # One usage figure feeds the client-visible usage chunk and the
-                # ledger row, so both see the provider's final count once (#320).
-                stream_in, stream_out, usage_estimated = response_token_usage(served, prompt_chars)
-                yield usage_chunk(
-                    completion_chars,
-                    tokens=None if usage_estimated else (stream_in, stream_out),
-                    stream_tier=served_tier,
-                    served=served,
-                )
-                yield "data: [DONE]\n\n"
+                    served_tier = served.daari_meta.tier or tier
+                    served_model = served.daari_meta.model or served.model or ollama_model
+                    self._finish_session_pin(request, served)
+                    rewritten = served.content != streamed_text
+                    completion_chars = len(served.content) if rewritten else tier_completion_chars
+                    outcome.note(served_tier, draft=draft_used)
+                    if incremental_emitted:
+                        pass  # content already yielded through the scanner
+                    elif rewritten:
+                        yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                        yield f"data: {json.dumps(chunk_payload(delta={'content': served.content}))}\n\n"
+                    elif content_sent:
+                        for chunk in pending_chunks:
+                            yield chunk
+                    else:
+                        yield role_chunk
+                    finish_reason = (
+                        "tool_calls" if tool_calls_sent else (stream_finish_reason or "stop")
+                    )
+                    yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
+                    # One usage figure feeds the client-visible usage chunk and the
+                    # ledger row, so both see the provider's final count once (#320).
+                    stream_in, stream_out, usage_estimated = response_token_usage(
+                        served, prompt_chars
+                    )
+                    yield usage_chunk(
+                        completion_chars,
+                        tokens=None if usage_estimated else (stream_in, stream_out),
+                        stream_tier=served_tier,
+                        served=served,
+                    )
+                    yield "data: [DONE]\n\n"
+                except (asyncio.CancelledError, GeneratorExit):
+                    if not local_settled and (served.content or tier_text_parts):
+                        abort_in, abort_out, abort_est = response_token_usage(served, prompt_chars)
+                        completion = served.content or "".join(tier_text_parts)
+                        if self.metrics is not None:
+                            self.metrics.record(
+                                served_tier,
+                                cache_hit=False,
+                                latency_ms=max(0, int((time.perf_counter() - started) * 1000)),
+                            )
+                        if self.usage_ledger is not None:
+                            self.usage_ledger.record(
+                                tier=served_tier,
+                                cache_hit=False,
+                                prompt_chars=prompt_chars,
+                                completion_chars=len(completion),
+                                client_id=request.meta.client_id,
+                                user_id=request.meta.user,
+                                model=served.daari_meta.model or served.model,
+                                provider=served.daari_meta.provider_id,
+                                input_tokens=abort_in,
+                                output_tokens=abort_out,
+                                usage_estimated=abort_est,
+                            )
+                            local_settled = True
+                        from daari.gateway.request_log import log_gateway_event
+
+                        log_gateway_event(
+                            "stream_abandon_settled",
+                            {
+                                "tier": served_tier,
+                                "usage_estimated": abort_est,
+                                "input_tokens": abort_in,
+                                "output_tokens": abort_out,
+                            },
+                        )
+                    raise
 
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 tier = served_tier
@@ -3738,9 +3794,7 @@ class Router:
                         completion_tokens=stream_out,
                         served=served,
                     )
-                    self.metrics.record_cost(
-                        input_usd=parts.input_usd, output_usd=parts.output_usd
-                    )
+                    self.metrics.record_cost(input_usd=parts.input_usd, output_usd=parts.output_usd)
                     self.usage_ledger.record(
                         tier=tier,
                         cache_hit=False,
@@ -3832,9 +3886,7 @@ class Router:
                         include_request_tags=bool(
                             getattr(self, "otel_include_request_tags", False)
                         ),
-                        include_user_agent=bool(
-                            getattr(self, "otel_include_user_agent", False)
-                        ),
+                        include_user_agent=bool(getattr(self, "otel_include_user_agent", False)),
                     )
                 stream_flight_result = served.model_copy(deep=True)
                 finish_trace(tier)
@@ -4154,11 +4206,7 @@ class Router:
                 cached = None
             add_step("l0_lookup", hit=cached is not None)
             # #2234: skip tool-bearing L0 entries on Anthropic stream (same as OpenAI).
-            if (
-                cached is not None
-                and cached.content.strip()
-                and not cached.tool_calls
-            ):
+            if cached is not None and cached.content.strip() and not cached.tool_calls:
                 latency_ms = int((time.perf_counter() - stream_started) * 1000)
                 self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
                 if self.usage_ledger is not None:
@@ -4561,9 +4609,7 @@ class Router:
                 continue
 
             streamed_text = "".join(tier_text_parts)
-            local_finish = (
-                "tool_calls" if tool_use_sent else stream_finish_reason
-            )
+            local_finish = "tool_calls" if tool_use_sent else stream_finish_reason
             served = InternalResponse(
                 content=streamed_text,
                 model=model_name,
@@ -4581,11 +4627,20 @@ class Router:
                 ),
             )
 
-            def record_served(response: InternalResponse, latency_ms: int) -> None:
+            anthropic_settled = False
+
+            def record_served(
+                response: InternalResponse,
+                latency_ms: int,
+                *,
+                usage_estimated: bool = False,
+            ) -> None:
                 # Exactly one ledger row per streamed message, mirroring
                 # stream_openai_chunks (#320).
+                nonlocal anthropic_settled
                 served_tier = response.daari_meta.tier or tier
                 self.metrics.record(served_tier, cache_hit=False, latency_ms=latency_ms)
+                anthropic_settled = True
                 if self.usage_ledger is None:
                     return
                 tokens_in, tokens_out, _ = response_token_usage(response, prompt_chars)
@@ -4600,6 +4655,7 @@ class Router:
                     provider=response.daari_meta.provider_id,
                     input_tokens=tokens_in,
                     output_tokens=tokens_out,
+                    usage_estimated=usage_estimated,
                 )
 
             def write_l0_cache(response: InternalResponse, latency_ms: int) -> None:
@@ -4649,9 +4705,7 @@ class Router:
                                 {
                                     "type": "content_block_start",
                                     "index": 0,
-                                    "content_block": pack_encrypted_reasoning_block(
-                                        enc.strip()
-                                    ),
+                                    "content_block": pack_encrypted_reasoning_block(enc.strip()),
                                     "daari_meta": meta,
                                 },
                             )
@@ -4847,40 +4901,53 @@ class Router:
             output_tokens = (
                 reported_usage[1] if reported_usage is not None else max(0, completion_chars // 4)
             )
-            for chunk in pending:
-                yield chunk
-            if text_block_open:
-                yield block_stop(block_index)
-            from daari.router.anthropic_messages import finish_reason_to_anthropic_stop
+            try:
+                for chunk in pending:
+                    yield chunk
+                if text_block_open:
+                    yield block_stop(block_index)
+                from daari.router.anthropic_messages import finish_reason_to_anthropic_stop
 
-            stream_stop = finish_reason_to_anthropic_stop(
-                "tool_calls"
-                if tool_use_sent and (served.finish_reason or "stop") == "stop"
-                else served.finish_reason
-            )
-            yield sse(
-                "message_delta",
-                {
-                    "type": "message_delta",
-                    "delta": {
-                        "stop_reason": stream_stop,
-                        "stop_sequence": None,
-                    },
-                    # Cumulative per the Anthropic contract: the single delta
-                    # carries the final total.
-                    "usage": self._anthropic_stream_usage(
-                        served.daari_meta.tier or tier,
-                        prompt_tokens=(
-                            reported_usage[0] if reported_usage is not None else input_tokens
+                stream_stop = finish_reason_to_anthropic_stop(
+                    "tool_calls"
+                    if tool_use_sent and (served.finish_reason or "stop") == "stop"
+                    else served.finish_reason
+                )
+                yield sse(
+                    "message_delta",
+                    {
+                        "type": "message_delta",
+                        "delta": {
+                            "stop_reason": stream_stop,
+                            "stop_sequence": None,
+                        },
+                        # Cumulative per the Anthropic contract: the single delta
+                        # carries the final total.
+                        "usage": self._anthropic_stream_usage(
+                            served.daari_meta.tier or tier,
+                            prompt_tokens=(
+                                reported_usage[0] if reported_usage is not None else input_tokens
+                            ),
+                            output_tokens=output_tokens,
+                            served=served,
+                            session_id=getattr(request.meta, "session_id", None),
                         ),
-                        output_tokens=output_tokens,
-                        served=served,
-                        session_id=getattr(request.meta, "session_id", None),
-                    ),
-                    "daari_meta": meta,
-                },
-            )
-            yield sse("message_stop", {"type": "message_stop", "daari_meta": meta})
+                        "daari_meta": meta,
+                    },
+                )
+                yield sse("message_stop", {"type": "message_stop", "daari_meta": meta})
+            except (asyncio.CancelledError, GeneratorExit):
+                if not anthropic_settled and (served.content or tier_text_parts):
+                    self._settle_abandoned_stream(
+                        request,
+                        tier=served.daari_meta.tier or tier,
+                        prompt_chars=prompt_chars,
+                        completion_text=served.content or "".join(tier_text_parts),
+                        started=stream_started,
+                        fallback_model=served.daari_meta.model or model_name,
+                        provider_id=served.daari_meta.provider_id,
+                    )
+                raise
             latency_ms = int((time.perf_counter() - stream_started) * 1000)
             record_served(served, latency_ms)
             write_l0_cache(served, latency_ms)
@@ -6132,9 +6199,7 @@ class Router:
             slo_outcome=slo_outcome,
             pricing=getattr(self, "pricing", None),
             classify_settings=settings,
-            fallback_per_1k=float(
-                getattr(self, "frontier_price_per_1k_tokens", 0.002) or 0.002
-            ),
+            fallback_per_1k=float(getattr(self, "frontier_price_per_1k_tokens", 0.002) or 0.002),
         )
         if hasattr(self.metrics, "record_virtual_model_selection"):
             self.metrics.record_virtual_model_selection(mode)
@@ -6170,9 +6235,7 @@ class Router:
             hop_started = _time.monotonic()
             try:
                 # Skip candidates whose model-scope daily quota is already spent (#2240).
-                if rate_limiter is not None and hasattr(
-                    rate_limiter, "model_daily_exhausted"
-                ):
+                if rate_limiter is not None and hasattr(rate_limiter, "model_daily_exhausted"):
                     rate_model = self._virtual_candidate_rate_model(candidate, kind, settings)
                     if rate_model and rate_limiter.model_daily_exhausted(
                         key_id=key_id,
@@ -6272,9 +6335,7 @@ class Router:
             raise last_exc
         raise BackendUnavailable("virtual", f"virtual model {virtual_name!r} exhausted candidates")
 
-    def _virtual_candidate_rate_model(
-        self, candidate: str, kind: str, settings: Any
-    ) -> str:
+    def _virtual_candidate_rate_model(self, candidate: str, kind: str, settings: Any) -> str:
         """Model id used for per-model daily quota checks on a virtual candidate (#2240)."""
         raw = (candidate or "").strip()
         if not raw:
@@ -6633,6 +6694,115 @@ class Router:
 
     def _frontier_budget_exceeded(self) -> bool:
         return self._frontier_budget_state() == "exceeded"
+
+    def _settle_abandoned_stream(
+        self,
+        request: InternalRequest,
+        *,
+        tier: str,
+        prompt_chars: int,
+        completion_text: str,
+        started: float,
+        fallback_model: str | None = None,
+        provider_id: str | None = None,
+    ) -> None:
+        """Bill (or count) a stream the client abandoned mid-relay (#2266)."""
+        from daari.gateway.request_log import log_gateway_event
+
+        text = completion_text or ""
+        latency_ms = max(0, int((time.perf_counter() - started) * 1000))
+        if self.metrics is not None:
+            try:
+                self.metrics.record(tier, cache_hit=False, latency_ms=latency_ms)
+            except Exception:  # noqa: BLE001
+                pass
+        if tier == "L6":
+            bill = self._anthropic_stream_bill(text, fallback_model=fallback_model)
+            served, tokens = bill
+            if tokens is None:
+                # No provider usage event — estimate from relayed text.
+                tokens = (max(0, prompt_chars // 4), max(0, len(text) // 4))
+                model = (
+                    fallback_model
+                    or getattr(self.frontier, "default_model", None)
+                    or request.model
+                    or ""
+                )
+                provider = provider_id or getattr(self.frontier, "provider", None) or "frontier"
+                served = None
+            else:
+                assert served is not None
+                model = served.daari_meta.model or served.model or fallback_model or ""
+                provider = served.daari_meta.provider_id or provider_id or "frontier"
+            if self.usage_ledger is not None:
+                try:
+                    parts = self._stream_usage_cost_breakdown(
+                        "L6",
+                        prompt_tokens=tokens[0],
+                        completion_tokens=tokens[1],
+                        served=served,
+                    )
+                    self.metrics.record_cost(input_usd=parts.input_usd, output_usd=parts.output_usd)
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    self.usage_ledger.record(
+                        tier="L6",
+                        cache_hit=False,
+                        prompt_chars=prompt_chars,
+                        completion_chars=len(text),
+                        client_id=request.meta.client_id,
+                        user_id=request.meta.user,
+                        model=model,
+                        provider=provider,
+                        input_tokens=tokens[0],
+                        output_tokens=tokens[1],
+                        usage_estimated=True,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            log_gateway_event(
+                "stream_abandon_settled",
+                {
+                    "tier": "L6",
+                    "usage_estimated": True,
+                    "input_tokens": tokens[0],
+                    "output_tokens": tokens[1],
+                    "completion_chars": len(text),
+                },
+            )
+            return
+
+        # Local tiers: count the request, no frontier cost.
+        tokens_in = max(0, prompt_chars // 4)
+        tokens_out = max(0, len(text) // 4)
+        if self.usage_ledger is not None:
+            try:
+                self.usage_ledger.record(
+                    tier=tier,
+                    cache_hit=False,
+                    prompt_chars=prompt_chars,
+                    completion_chars=len(text),
+                    client_id=request.meta.client_id,
+                    user_id=request.meta.user,
+                    model=fallback_model or request.model,
+                    provider=provider_id,
+                    input_tokens=tokens_in,
+                    output_tokens=tokens_out,
+                    usage_estimated=True,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        log_gateway_event(
+            "stream_abandon_settled",
+            {
+                "tier": tier,
+                "usage_estimated": True,
+                "input_tokens": tokens_in,
+                "output_tokens": tokens_out,
+                "completion_chars": len(text),
+            },
+        )
 
     def _anthropic_stream_bill(
         self,
