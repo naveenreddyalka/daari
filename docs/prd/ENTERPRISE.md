@@ -11,38 +11,30 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-21)
+## Where daari stands (verified in-tree, 2026-11-21 pm)
 
-**Loop velocity.** Overnight shipped the 11-13 band's last four:
-MCP `notifications/cancelled` (#2398), abandoned-frontier-stream
-ledger settle (#2399), conversation-prefix session pins (#2400),
-llama.cpp v1.0.0 guide (#2401) — issues #2265–#2268. The 11-20 pm
-filings 459–463 and morning 454–458 remain open.
+**Loop velocity.** Afternoon shipped Extractions (`POST /v1/extractions`,
+#2408 / #2271). Overnight MCP-cancel / abandoned-stream settle /
+session pins / llama.cpp v1.0 guide Shipped (#2398–#2401). Morning
+prd filed 464–468 (#2402–#2406); 11-20 pm 459–463 and older bands
+remain open.
 
-**Outward.** **Anthropic linked billing beta (11-17, surfaced
-11-20):** platforms set `billing_policy` per `/v1/messages` or
-`/v1/chat/completions` request under `user-profiles-billing-2026-10-01`;
-Anthropic bills the end customer's org directly; unbillable
-customer-paid requests are refused, never platform-billed. SDK
-2.12.0 moves `user_profile_id` into the body on Bedrock. **OpenAI
-changelog amended 11-21: new models will never support Flex**; the
-beta winds down on supported ones. **LiteLLM 1.108.14 LTS (11-20
-night):** Claude server-tool declarations lost on `/v1/responses`
-follow-ups → Anthropic 400s (#50821); `input_json` parts on
-`/v1/decisions` (#52807 — daari already parses them). **Ollama
-0.40.17 GA:** tool definitions keep unmodeled JSON-schema keywords,
-`ollama launch claude` deferred tool loading, Apple-silicon
-concurrency, Inkling 2 Mini (Apple-only). Kong 2.3.2 = nginx CVEs.
-Portkey 2.33.1 / vLLM 0.34.0 / OpenRouter (11-19) / MCP blog flat.
+**Outward.** Linked-billing docs sharpened: customer-paid + billable
+**code_execution → 400**; Message Batches **refuse**
+`bill_to:user_profile` (neither party billed; siblings continue);
+Batches/CMA still unsupported. OpenRouter TTS **`input_references`**
+voice cloning (capability-gated). OpenAI Fast=2× / Ultrafast promo
+unchanged; Flex wind-down still the 11-21 amendment. LiteLLM
+1.111.0-rc.3 / 1.112.0-dev.1 / 1.108.14 LTS flat vs morning. Ollama
+0.40.17 / vLLM 0.34.0 / Kong 2.3.2 / Portkey MCP policies /
+semantic-router 1.1.2 flat.
 
-**Inward theme: the facade and the bill-payer are the day's truth
-gaps.** The Ollama facade drops `tools` entirely (`extra="ignore"`,
-no field — tool clients silently break, 467); `billing_policy` is
-dropped on the rebuilt Anthropic body and the ledger has no bill-to
-dimension (465); `pricing.py` applies the 0.5 flex factor on the
-tier string alone while Flex winds down (466); the flattened
-`_conversation` replay wants a #50821-class fence (464); overnight
-wave unfenced (468).
+**Inward theme: linked-billing refuse edges + Extractions tenancy +
+voice clone honesty.** Forwarding `billing_policy` (465) is not
+enough without the documented refuse shapes (469–470); Extractions
+frontier still picks org keys via `resolve_l6_targets()` (472);
+speech drops `input_references` today (471); Extractions ship needs
+a hermetic fence (473).
 
 ---
 
@@ -50,6 +42,11 @@ wave unfenced (468).
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 469 | Linked billing refuse: customer-paid (`bill_to:user_profile`) + billable `code_execution` → 400 before L6 (Anthropic documented) | 3 | 1 | Anthropic native | Edge owns the illegal combo; no burned hop, no accidental platform bill | Filed [#2409](https://github.com/naveenreddyalka/daari/issues/2409) |
+| 470 | Linked billing × batches: refuse `bill_to:user_profile` on Message Batches / drain items (Anthropic: item errored, neither billed) | 3 | 2 | Anthropic native | One on-box drain matches the published contract; no partial invoice surprise | Filed [#2410](https://github.com/naveenreddyalka/daari/issues/2410) |
+| 471 | TTS `input_references` voice cloning on `/v1/audio/speech` (OpenRouter capability-gated clone/design) | 3 | 2 | OpenRouter TTS | Reference audio stays local-first; refuse or forward honestly — never silent drop | Filed [#2411](https://github.com/naveenreddyalka/daari/issues/2411) |
+| 472 | Team/key BYOK must sign the Extractions modality door (`resolve_l6_targets` still org-key after #2408) | 4 | 2 | — (daari BYOK doors; LiteLLM virtual keys) | Tenant Extractions escalate on the bound key; ledger attribution matches Decisions-class doors | Filed [#2412](https://github.com/naveenreddyalka/daari/issues/2412) |
+| 473 | Integration fence for the 11-21 Extractions ship + linked-billing refuse + voice-clone + Extractions BYOK wave | 2 | 2 | — (testability) | Hermetic proof: refuse shapes, batch sibling continue, clone honesty, bound Extractions key | Filed [#2413](https://github.com/naveenreddyalka/daari/issues/2413) |
 | 464 | Prove + fence: `previous_response_id` follow-ups never replay undeclared server-tool blocks (litellm #50821, fixed in 1.108.14 LTS) | 3 | 1 | LiteLLM (after its LTS patch) | Flattened `_conversation` replay makes the 400 class structurally impossible — argue it hermetically | Filed [#2402](https://github.com/naveenreddyalka/daari/issues/2402) |
 | 465 | Anthropic linked billing — forward `billing_policy` (dropped by the rebuilt Messages body today); ledger bill-to dimension; customer-paid legs out of org budgets + reconcile | 4 | 2 | Anthropic native (platform-side); no gateway relays it yet | daari is the platform in Anthropic's model; one on-box ledger tells platform-paid from customer-paid (adjacent to 415/416 credential attribution) | Filed [#2403](https://github.com/naveenreddyalka/daari/issues/2403) |
 | 466 | Flex wind-down: capability-gate `service_tier=flex` (new models never get Flex, changelog 11-21); `pricing.py` 0.5 factor keyed on tier string alone misprices non-Flex models | 3 | 1 | OpenAI changelog / LiteLLM cost map | Capability + price fence is one catalog entry in one process; degrade with `dropped_params` honesty (6.2 refuse case shared with 452) | Filed [#2404](https://github.com/naveenreddyalka/daari/issues/2404) |
@@ -140,42 +137,39 @@ wave unfenced (468).
 
 Watch rows (do not file yet): **LiteLLM floor → 1.110.2 / 1.108.14
 LTS** (fold into open 437); **1.112.0-dev.1** remainder (control
-plane, capacity borrow, Skills Hub preserve — hold GA; fold compare
-into 442/437, do not file a fifth); Anthropic API version
-**2026-10-21** (noted in 454); Anthropic linked billing on Batches /
-CMA ("not covered yet" — 465 is Messages+chat only); Genie 4
-Interactions / full Live WS (row 8; 461 is catalog-only); **SEP-3415
-stream/webhook** (445 is list+poll); OpenRouter TTS
-`input_references` (447 first); Kong OSS 3.9.5 + AI Gateway 2.3.2
-nginx CVEs (docs note); Opus 4.8 fast removal **11-30** (shield
-#2053); Inkling 2 Mini (Apple-only — recipe once PC support lands);
-vLLM 0.34 remainder; Portkey MCP policies; FIPS; A2A 1.1 RC; MCP
-SEP-3398; SCIM + multi-issuer SSO. **Sol promo → $5/$30 on
-2026-11-30** (460 corrects the date; 405 implements effective_to).
+plane, capacity borrow, Skills Hub — hold GA; fold compare into
+442/437); Anthropic API version **2026-10-21** (noted in 454);
+Anthropic linked billing on **Batches / CMA still unsupported
+upstream** (470 is daari refuse-honesty only; re-file forward when
+Anthropic ships coverage); Genie 4 Interactions / full Live WS (row
+8; 461 catalog-only); **SEP-3415 stream/webhook** (445 is list+poll);
+Kong OSS 3.9.5 + AI Gateway 2.3.2 nginx CVEs (docs note); Opus 4.8
+fast removal **11-30** (shield #2053 Shipped); Inkling 2 Mini
+(Apple-only); vLLM 0.34 remainder; Portkey MCP policies; FIPS; A2A
+1.1 RC; MCP SEP-3398; SCIM + multi-issuer SSO; Microsoft Web IQ
+`/v1/search` (LiteLLM 1.111 — demand-trigger). **Sol promo → $5/$30
+on 2026-11-30** (460 corrects the date; 405 implements effective_to).
 
-Verified fine this run — don't re-audit: `/v1/decisions` already
-parses `input_json` content parts (decisions.py L444/457 — litellm
-#52807 N/A); `anthropic-beta` passthrough in-tree (#455 — 465 needs
-only the body field + ledger); Responses chains replay the flattened
-`_conversation`, never raw provider blocks (464 is the fence, not a
-fix); facade forwards `think` / `tool_search` / `format` / `logprobs`
-(#1011/#1066 — `tools` is the one missing field, 467); Ollama
-thinking-disable mapping + schema-keyword keeping are upstream-side
-(daari forwards both verbatim on the local tier).
+Verified fine this run — don't re-audit: Fast mode 2× alias (#1527);
+Ultrafast gating (#1519) + 6.2 Ultrafast promo filed (450); Flex
+morning fence (466); Extractions frontier already meters spend
+(`extractions.py`); decisions `input_json`; `anthropic-beta`
+passthrough; facade `think`/`tool_search`/`format`/`logprobs`
+(tools still 467); overnight #2265–#2268 Shipped.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
 1. **Billing + tenancy truth everywhere money and data move** —
-   **Anthropic linked billing bill-to (465)**; **Flex wind-down
-   price fence (466)**; **Sol promo date honesty → 11-30 (460)** +
-   effective_to (405); Anthropic forwarded-cred catalog billing
-   (463); GPT-Live catalog (461); GPT-6.2 chat-leg cache (455);
-   introspect scope (456); Ultrafast (450); background windows
+   **Linked-billing refuse edges (469–470)** on top of bill-to
+   forward (465); **Extractions BYOK door (472)**; Flex wind-down
+   (466); Sol promo → 11-30 (460) + effective_to (405); forwarded-cred
+   catalog billing (463); Live catalog (461); GPT-6.2 chat-leg cache
+   (455); introspect (456); Ultrafast (450); background windows
    (452); GPT-6.2 catalog (444); Hydrogen (439); BYOK doors
-   (414–416); zero_retention (435); refused-leg / OCR (391/396).
-   ASR + abandoned-stream shipped.
+   (414–416); zero_retention (435). Extractions route + ASR +
+   abandoned-stream shipped.
 2. **Honest terminal outcomes + frontier wire-shape hygiene** —
    Fable/Mythos param_compat (454); GPT-6.2 param_compat (449);
    store:false developer (451); server-tool replay fence (464);
@@ -186,21 +180,32 @@ thinking-disable mapping + schema-keyword keeping are upstream-side
    (462); performance alerts (440); `rate_limited_by` (441);
    deprecation exposure (434); 5xx/auto_caching doctor+Prom
    (429–430, 419–420); MCP re-mint (395); deadlines (400); ZDR
-   (398). MCP cancel + session pins shipped (#2398, #2400).
-4. **Agent-protocol + tool-loop fidelity** — **Ollama facade tools
-   (467)**; **deferred tool schema (459)**; MCP Events (445);
-   Responses order + reasoning (406); local thinking (407);
-   Extractions (390); OpenRouter reasoning (397). CMA recipe,
-   failed-chain, max_tool_calls, allowed_tools shipped.
+   (398). MCP cancel + session pins shipped.
+4. **Agent-protocol + tool-loop + voice fidelity** — **TTS
+   `input_references` (471)**; Ollama facade tools (467); deferred
+   tool schema (459); MCP Events (445); Responses order + reasoning
+   (406); local thinking (407); OpenRouter reasoning (397). CMA
+   recipe, Extractions route, failed-chain, max_tool_calls,
+   allowed_tools shipped.
 5. **Local engine floor + discovery + honest compare** — speech
    discovery (447); Live catalog (461) ahead of full WS; 1.111/1.112
    watch (442 + fold); LiteLLM floor 1.110.2 / 1.108.14 (437); vLLM
-   0.34 (427); watermark (433); HF keys (432); fences through 468;
-   then 62–67. llama.cpp v1.0 guide shipped (#2401).
+   0.34 (427); watermark (433); HF keys (432); fences through 473;
+   then 62–67. llama.cpp v1.0 guide shipped.
 
 ---
 
 ## Changelog
+
+- **2026-11-21 pm (linked-billing refuses + Extractions BYOK + voice
+  clone)** — Re-read Anthropic linked-billing limits (code_execution
+  400; Batches refuse `user_profile`); mined OpenRouter TTS
+  `input_references`; Extractions (#2408) left BYOK unsigned.
+  Filed: customer-paid×code_execution refuse (469); batches
+  user_profile refuse (470); TTS input_references (471); Extractions
+  BYOK door (472); evening fence (473). Landscape flat vs morning
+  on LiteLLM/Ollama/vLLM/Kong. Watch: Batches/CMA linked billing
+  still unsupported upstream; Live WS; SEP-3415 stream/webhook.
 
 - **2026-11-21 (linked billing + facade tools + Flex wind-down)** —
   Mined Anthropic linked billing beta (`billing_policy`,
