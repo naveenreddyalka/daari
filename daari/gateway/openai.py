@@ -1558,6 +1558,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 return parsed
             return await handle_decisions(request, parsed)
 
+        @router.post("/v1/extractions", response_model=None)
+        async def extractions(body: dict[str, Any], request: Request) -> Any:
+            """OpenRouter Extractions twin via local models or frontier (#2271)."""
+            from daari.gateway.extractions import handle_extractions, parse_extractions_body
+            from fastapi.responses import JSONResponse
+
+            parsed = parse_extractions_body(body)
+            if isinstance(parsed, JSONResponse):
+                return parsed
+            return await handle_extractions(request, parsed)
+
         @router.post("/v1/ocr", response_model=None)
         async def ocr(body: dict[str, Any], request: Request) -> Any:
             """LiteLLM/Mistral-shaped OCR via local multimodal or L6 (#1263)."""

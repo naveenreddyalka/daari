@@ -62,6 +62,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/daari/webhooks/anthropic/org` | Daari Anthropic Org Webhook |
 | `POST` | `/v1/decisions` | Decisions |
 | `POST` | `/v1/embeddings` | Embeddings |
+| `POST` | `/v1/extractions` | Extractions |
 | `GET` | `/v1/files` | List Files |
 | `POST` | `/v1/files` | Upload File |
 | `DELETE` | `/v1/files/{file_id}` | Delete File |
@@ -126,6 +127,10 @@ Non-terminal (in-flight / `queued`) responses return **409** when `stream=true`.
 ## Decisions
 
 `POST /v1/decisions` accepts the OpenAI Decisions GA shape: optional top-level `input_json` (or `input_json` content parts inside `input`), per-question `instructions` as a string or content-part array (including images), and up to **400** questions per request. Local catalog models fold structured evidence into systemone `state`/`images`; `gpt-6-luna` forwards the GA payload to the frontier. Frontier billing is input-only with shared-input cache discounts ($0.10/1M input, $0.01/1M cached). Honors `Idempotency-Key`.
+
+## Extractions
+
+`POST /v1/extractions` is the OpenRouter Extractions twin (`fields` instead of `questions`). Allowed top-level keys: `model`, `state`, `fields` (required, ≥1), optional `assets` / `reference_date` / `provider` / `user` / `session_id` / `trace`. Unknown top-level keys and unknown field types return **400**. Local catalog models run on-box via systemone `/v1/extractions` (`daari_meta.tier=local`, `cost_usd=0`); known frontier extraction slugs (for example `cloudflare/clairic`) forward to L6 (OpenRouter `/api/alpha/extractions` when the slot is OpenRouter) and ledger spend from upstream `usage`.
 
 ## Systemone
 

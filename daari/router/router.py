@@ -7395,6 +7395,9 @@ class AppContext:
         await images.aclose_http()
         await systemone.aclose_http()
         await decisions.aclose_http()
+        from daari.gateway import extractions as extractions_mod
+
+        await extractions_mod.aclose_http()
         router = self.router
         for name in ("ollama_l3", "ollama_l4", "ollama_l5", "org_pool_executor"):
             executor = getattr(router, name, None)
