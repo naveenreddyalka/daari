@@ -250,6 +250,14 @@ grafanaDashboard:
 
 See [Prometheus metrics](../observability/metrics-prometheus.md#grafana).
 
+### llama.cpp VRAM levers (co-hosted engine)
+
+When the chart (or a sidecar) runs [llama.cpp v1.0.0+](../configuration/llamacpp-local-tier.md)
+`llama-server` next to daari, size GPU memory with the engine's FP8 KV cache
+(`-ctk` / `-ctv f8_e4m3`) and host-memory MoE expert cache (`moe_cache_size`)
+before adding more accelerator cards. daari's pool still routes; the engine
+owns the VRAM math.
+
 ### Org GPU pool
 
 `orgPool` defaults to **disabled**. When enabled, the Deployment sets

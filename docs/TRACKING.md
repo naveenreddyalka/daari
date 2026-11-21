@@ -9433,6 +9433,14 @@ so a shared session cannot clobber a parent loop; mismatch logs
 `session_pin_prefix_mismatch`. Covered by
 `tests/unit/test_session_affinity.py`.
 
+### llama.cpp v1.0.0 local-tier guide refresh ([#2268](https://github.com/naveenreddyalka/daari/issues/2268))
+
+<!-- tracking:#2268 -->
+**Status:** Done (2026-11-21). Guide pins v1.0.0 with security opt-ins, TTS
+(`drama-3` via `tts.base_url`), FP8 KV / MoE cache capacity notes, Ripple
+cross-link; compare + landscape floors updated. Covered by
+`tests/unit/test_llamacpp_local_tier_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

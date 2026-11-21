@@ -8,6 +8,7 @@
 | Same-model provider pick | Honors OpenRouter `provider` on L6 (G2); ZDR fail-closed | Price / latency / throughput + ZDR; Private Endpoints still via OpenRouter API | Fallback between deployments |
 | Live provider / hop scoring | Opt-in `routing.virtual_model_selection: performance` (on-box EWMA) or `cost` (blended $/1M, local=0) | Rebuilt default routing (price/TTFT/throughput/errors; `preferred_*` soft knobs) | Fallback between deployments |
 | IDE one-click | Cursor/Claude/JB/VS Code | API + playground | DIY |
+| Local engine floor | [llama.cpp v1.0.0](https://github.com/ggml-org/llama.cpp/releases/tag/v1.0.0) via `kind: openai` ([guide](../guides/configuration/llamacpp-local-tier.md)) | N/A (hosted) | Optional backend among many |
 
 OpenRouter (Stripe, Aug 2026) is not a clone target. Late Oct 2026 rebuilt
 default routing, Private Endpoints, and in-flight CSAM screening (incl. ZDR)
