@@ -9424,6 +9424,15 @@ ledger from text already sent (`usage_estimated=True`,
 tiers record request counts without frontier cost. Covered by
 `tests/unit/test_stream_abandon_spend.py`.
 
+### Session pins scoped by conversation prefix ([#2267](https://github.com/naveenreddyalka/daari/issues/2267))
+
+<!-- tracking:#2267 -->
+**Status:** Done (2026-11-21). Tool-result turns only replay a pin when
+`prefix_hash` matches; pins are stored per prefix under the session/user key
+so a shared session cannot clobber a parent loop; mismatch logs
+`session_pin_prefix_mismatch`. Covered by
+`tests/unit/test_session_affinity.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

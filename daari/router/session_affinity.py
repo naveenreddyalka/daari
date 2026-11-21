@@ -24,6 +24,8 @@ class SessionPin:
 
 
 class SessionPinStore:
+    """Prefix-scoped pins so shared session/user keys do not clobber siblings (#2267)."""
+
     def __init__(
         self,
         ttl_seconds: float = 1800.0,
@@ -36,7 +38,8 @@ class SessionPinStore:
     ) -> None:
         self.ttl_seconds = max(0.0, float(ttl_seconds))
         self._clock = clock or time.monotonic
-        self._pins: dict[str, SessionPin] = {}
+        # session/user key → {prefix_hash: SessionPin}
+        self._pins: dict[str, dict[str, SessionPin]] = {}
         self._redis = redis_client
         self._redis_url = redis_url
         self._redis_timeout_seconds = redis_timeout_seconds
@@ -73,36 +76,132 @@ class SessionPinStore:
         except Exception:
             pass
 
-    def get(self, key: str) -> SessionPin | None:
+    def _pin_live(self, pin: SessionPin) -> bool:
+        if self.ttl_seconds > 0 and self._clock() >= pin.expires_at:
+            return False
+        return True
+
+    def _parse_bucket(self, data: Any) -> dict[str, SessionPin]:
+        """Accept legacy single-pin JSON or the prefix-scoped map."""
+        if not isinstance(data, dict):
+            return {}
+        if "pins" in data and isinstance(data["pins"], dict):
+            bucket: dict[str, SessionPin] = {}
+            for prefix, row in data["pins"].items():
+                if not isinstance(row, dict):
+                    continue
+                bucket[str(prefix)] = SessionPin(
+                    tier=str(row["tier"]),
+                    model=row.get("model"),
+                    prefix_hash=str(row.get("prefix_hash") or prefix),
+                    expires_at=float(row.get("expires_at") or 0.0),
+                )
+            return bucket
+        if "tier" in data:
+            prefix = str(data.get("prefix_hash") or "")
+            return {
+                prefix: SessionPin(
+                    tier=str(data["tier"]),
+                    model=data.get("model"),
+                    prefix_hash=prefix,
+                    expires_at=float(data.get("expires_at") or 0.0),
+                )
+            }
+        return {}
+
+    def _dump_bucket(self, bucket: dict[str, SessionPin]) -> str:
+        return json.dumps(
+            {
+                "pins": {
+                    prefix: {
+                        "tier": pin.tier,
+                        "model": pin.model,
+                        "prefix_hash": pin.prefix_hash,
+                        "expires_at": pin.expires_at,
+                    }
+                    for prefix, pin in bucket.items()
+                }
+            }
+        )
+
+    def _load_redis_bucket(self, key: str) -> dict[str, SessionPin] | None:
         client = None
         try:
             client = self._client()
         except Exception as exc:
             self._mark_degraded(exc)
-            client = None
-        if client is not None:
-            try:
-                raw = client.get(self._redis_key(key))
-                if raw is None:
-                    return None
-                if isinstance(raw, bytes):
-                    raw = raw.decode()
-                data = json.loads(raw)
-                return SessionPin(
-                    tier=str(data["tier"]),
-                    model=data.get("model"),
-                    prefix_hash=str(data.get("prefix_hash") or ""),
-                    expires_at=float(data.get("expires_at") or 0.0),
-                )
-            except Exception as exc:
-                self._mark_degraded(exc)
-        pin = self._pins.get(key)
-        if pin is None:
             return None
-        if self.ttl_seconds > 0 and self._clock() >= pin.expires_at:
+        if client is None:
+            return None
+        try:
+            raw = client.get(self._redis_key(key))
+            if raw is None:
+                return {}
+            if isinstance(raw, bytes):
+                raw = raw.decode()
+            return self._parse_bucket(json.loads(raw))
+        except Exception as exc:
+            self._mark_degraded(exc)
+            return None
+
+    def _save_redis_bucket(self, key: str, bucket: dict[str, SessionPin]) -> bool:
+        client = None
+        try:
+            client = self._client()
+        except Exception as exc:
+            self._mark_degraded(exc)
+            return False
+        if client is None:
+            return False
+        try:
+            payload = self._dump_bucket(bucket)
+            redis_key = self._redis_key(key)
+            if self.ttl_seconds > 0:
+                client.set(redis_key, payload, ex=int(max(1, self.ttl_seconds)))
+            else:
+                client.set(redis_key, payload)
+            return True
+        except Exception as exc:
+            self._mark_degraded(exc)
+            return False
+
+    def _memory_bucket(self, key: str) -> dict[str, SessionPin]:
+        bucket = self._pins.get(key)
+        if not bucket:
+            return {}
+        live = {prefix: pin for prefix, pin in bucket.items() if self._pin_live(pin)}
+        if not live:
             self._pins.pop(key, None)
+            return {}
+        if len(live) != len(bucket):
+            self._pins[key] = live
+        return live
+
+    def get(self, key: str, *, prefix_hash: str | None = None) -> SessionPin | None:
+        bucket = self._load_redis_bucket(key)
+        if bucket is None:
+            bucket = self._memory_bucket(key)
+        else:
+            bucket = {prefix: pin for prefix, pin in bucket.items() if self._pin_live(pin)}
+        if not bucket:
             return None
-        return pin
+        if prefix_hash is not None:
+            return bucket.get(prefix_hash)
+        if len(bucket) == 1:
+            return next(iter(bucket.values()))
+        return None
+
+    def mismatched_pin(self, key: str, prefix_hash: str) -> SessionPin | None:
+        """Any live pin under ``key`` whose prefix differs from ``prefix_hash``."""
+        bucket = self._load_redis_bucket(key)
+        if bucket is None:
+            bucket = self._memory_bucket(key)
+        else:
+            bucket = {prefix: pin for prefix, pin in bucket.items() if self._pin_live(pin)}
+        for prefix, pin in bucket.items():
+            if prefix != prefix_hash:
+                return pin
+        return None
 
     def put(
         self,
@@ -120,31 +219,19 @@ class SessionPinStore:
             prefix_hash=prefix_hash,
             expires_at=expires,
         )
-        client = None
-        try:
-            client = self._client()
-        except Exception as exc:
-            self._mark_degraded(exc)
-            client = None
-        if client is not None:
-            try:
-                payload = json.dumps(
-                    {
-                        "tier": pin.tier,
-                        "model": pin.model,
-                        "prefix_hash": pin.prefix_hash,
-                        "expires_at": pin.expires_at,
-                    }
-                )
-                redis_key = self._redis_key(key)
-                if self.ttl_seconds > 0:
-                    client.set(redis_key, payload, ex=int(max(1, self.ttl_seconds)))
-                else:
-                    client.set(redis_key, payload)
-                return
-            except Exception as exc:
-                self._mark_degraded(exc)
-        self._pins[key] = pin
+        bucket = self._load_redis_bucket(key)
+        if bucket is None:
+            bucket = dict(self._memory_bucket(key))
+        else:
+            bucket = {
+                prefix: existing
+                for prefix, existing in bucket.items()
+                if self._pin_live(existing)
+            }
+        bucket[prefix_hash] = pin
+        if self._save_redis_bucket(key, bucket):
+            return
+        self._pins[key] = bucket
 
 
 def is_tool_result(message: Message) -> bool:
@@ -198,9 +285,11 @@ def session_key(meta: object, prefix_hash: str) -> str:
 
 
 def is_continuation(messages: list[Message], pin: SessionPin | None) -> bool:
-    """Tool-result turn, or the same user-turn prefix as the stored pin."""
-    if is_tool_continuation(messages):
-        return True
+    """Same conversation prefix as the stored pin (tool results or re-asks).
+
+    Tool-result turns must still match ``pin.prefix_hash`` so a shared
+    session/user key cannot replay another conversation's tier (#2267).
+    """
     if pin is None:
         return False
     return conversation_prefix_hash(messages) == pin.prefix_hash
