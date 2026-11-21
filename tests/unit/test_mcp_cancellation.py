@@ -20,9 +20,7 @@ from tests.conftest import META_HEADERS
 @pytest.fixture(autouse=True)
 def _public_dns_for_fake_mcp_hosts(monkeypatch):
     def fake_getaddrinfo(host, port, *args, **kwargs):
-        return [
-            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port or 0))
-        ]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port or 0))]
 
     monkeypatch.setattr("daari.security.egress_url.socket.getaddrinfo", fake_getaddrinfo)
 
@@ -262,7 +260,7 @@ async def test_ingress_notifications_cancelled_unknown_id_ignored(settings):
 @pytest.mark.asyncio
 async def test_tasks_cancel_still_works(settings, tmp_path, monkeypatch):
     """Regression: tasks/cancel path unchanged (#2265 AC)."""
-    from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+    from daari.gateway.internal import DaariMeta, InternalResponse
     from daari.gateway.mcp_tasks import TASKS_META_KEY
     from tests.conftest import mock_all_ollama_executors
     from tests.unit.test_mcp_tasks import _rpc
@@ -276,9 +274,7 @@ async def test_tasks_cancel_still_works(settings, tmp_path, monkeypatch):
         return InternalResponse(
             content="should-not-matter",
             model="llama3.2:3b",
-            daari_meta=DaariMeta(
-                tier="L3", executor="ollama", provider_id="ollama", latency_ms=1
-            ),
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=1),
         )
 
     mock_all_ollama_executors(monkeypatch, app.state.ctx.router, fake_execute)

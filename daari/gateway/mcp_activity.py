@@ -74,9 +74,7 @@ class McpActivityRegistry:
             request_id=rid,
             key_id=(key_id.strip() if isinstance(key_id, str) and key_id.strip() else None),
             principal=(
-                principal.strip()
-                if isinstance(principal, str) and principal.strip()
-                else None
+                principal.strip() if isinstance(principal, str) and principal.strip() else None
             ),
             method=method,
             tool_name=(
@@ -182,6 +180,7 @@ class McpActivityRegistry:
                 {"rpc_id": rpc_id, "request_id": rid},
             )
         return result
+
 
 def principal_from_claims(claims: Any) -> tuple[str | None, str | None]:
     """Return ``(key_id, principal)`` for registry rows."""

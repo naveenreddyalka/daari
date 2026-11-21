@@ -242,9 +242,7 @@ def ingress_aggregate_egress_enabled(settings: Any) -> bool:
     return bool(getattr(agg, "enabled", False))
 
 
-def resolve_aggregated_egress_tool(
-    name: str, settings: Any
-) -> tuple[str, str] | None:
+def resolve_aggregated_egress_tool(name: str, settings: Any) -> tuple[str, str] | None:
     """Map `{server_id}__{tool}` to (configured_server_id, upstream_tool)."""
     known = configured_mcp_server_ids(settings)
     if not known:
@@ -257,9 +255,7 @@ def resolve_aggregated_egress_tool(
     return lower_map[sid_lower], tool
 
 
-def _provider_catalog(
-    ctx: AppContext, *, skip_mcp_providers: bool = False
-) -> list[dict[str, Any]]:
+def _provider_catalog(ctx: AppContext, *, skip_mcp_providers: bool = False) -> list[dict[str, Any]]:
     tools: list[dict[str, Any]] = []
     seen: set[str] = set()
     for provider_id in ctx.providers.list_ids():
@@ -363,9 +359,7 @@ async def _aggregated_egress_catalog(
                 schema = _basic_input_schema()
             item = {
                 "name": namespaced,
-                "description": str(
-                    entry.get("description") or f"MCP {sid}/{upstream}"
-                ),
+                "description": str(entry.get("description") or f"MCP {sid}/{upstream}"),
                 "input_schema": schema,
                 "output_schema": {
                     "type": "object",
@@ -703,9 +697,7 @@ class _Governance:
         )
         return identity or ""
 
-    def audit(
-        self, *, tool: str, decision: str, transport: str, server: str | None = None
-    ) -> None:
+    def audit(self, *, tool: str, decision: str, transport: str, server: str | None = None) -> None:
         audit_tool_call(
             self._audit,
             self.claims,
@@ -753,15 +745,15 @@ class _Governance:
     def guard_legacy(self, tool_response: MCPQueryResponse) -> MCPQueryResponse:
         if not tool_response.ok:
             return tool_response
-        result, outcome = self.guardrails.check_legacy_result(tool_response.tool, tool_response.result)
+        result, outcome = self.guardrails.check_legacy_result(
+            tool_response.tool, tool_response.result
+        )
         if not outcome.hits:
             return tool_response
         return tool_response.model_copy(update={"result": result, "ok": not outcome.blocked})
 
 
-def _legacy_guardrail_blocked(
-    name: str, rule: str, *, denial: str | None = None
-) -> JSONResponse:
+def _legacy_guardrail_blocked(name: str, rule: str, *, denial: str | None = None) -> JSONResponse:
     message = denial or f"Tool call blocked by guardrail {rule}: {name}"
     payload = MCPQueryResponse(
         ok=False,
@@ -815,9 +807,7 @@ def _grant_denied_initialize_response(request: Request, rpc_id: Any) -> Response
     )
 
 
-def _client_denied_response(
-    request: Request, rpc_id: Any, client: str, *, method: str
-) -> Response:
+def _client_denied_response(request: Request, rpc_id: Any, client: str, *, method: str) -> Response:
     label = client or "(unknown)"
     return _rpc_response(
         request,
@@ -874,11 +864,7 @@ def _unsupported_protocol_error(rpc_id: Any, requested: str) -> dict[str, Any]:
 
 def _discover_result(protocol: str | None = None) -> dict[str, Any]:
     """Build server/discover DiscoverResult (MCP 2026-07-28 / #1213)."""
-    version = (
-        protocol
-        if protocol in SUPPORTED_PROTOCOL_VERSIONS
-        else MODERN_PROTOCOL_VERSION
-    )
+    version = protocol if protocol in SUPPORTED_PROTOCOL_VERSIONS else MODERN_PROTOCOL_VERSION
     info = _server_info()
     return {
         "resultType": "complete",
@@ -899,7 +885,9 @@ class ModelNotAllowed(Exception):
         super().__init__("model_not_allowed")
 
 
-def _governed_meta(request: Request | None, ctx: AppContext, deadline_ms: int | None) -> RequestMeta:
+def _governed_meta(
+    request: Request | None, ctx: AppContext, deadline_ms: int | None
+) -> RequestMeta:
     """Build RequestMeta with virtual-key claims (tier_cap, cache_scope, key/team)."""
     meta = RequestMeta(deadline_ms=deadline_ms)
     if request is None:
@@ -912,9 +900,7 @@ def _governed_meta(request: Request | None, ctx: AppContext, deadline_ms: int | 
         getattr(request.state, "auth_claims", None),
         model_groups=getattr(ctx.settings, "model_groups", None),
     )
-    meta.authorization_bearer = bearer_from_authorization(
-        request.headers.get("authorization")
-    )
+    meta.authorization_bearer = bearer_from_authorization(request.headers.get("authorization"))
     return meta
 
 
@@ -931,7 +917,9 @@ def _resolve_tool_model(
     return ctx.settings.models.l3
 
 
-def _enforce_mcp_model(request: Request | None, ctx: AppContext, meta: RequestMeta, model: str) -> None:
+def _enforce_mcp_model(
+    request: Request | None, ctx: AppContext, meta: RequestMeta, model: str
+) -> None:
     if request is None:
         return
     from daari.gateway.model_access import reject_disallowed_model, reject_retired_model
@@ -1140,7 +1128,11 @@ async def _run_tool(
             return MCPQueryResponse(
                 ok=False,
                 tool=normalized,
-                result={"error": _error("MCP_ERR_PROVIDER_NOT_FOUND", f"Provider not found: {provider_id}")},
+                result={
+                    "error": _error(
+                        "MCP_ERR_PROVIDER_NOT_FOUND", f"Provider not found: {provider_id}"
+                    )
+                },
             )
         internal = InternalRequest(
             messages=[Message(role="user", content=call_input or "")],
@@ -1214,9 +1206,7 @@ async def _run_tool_with_deadline(
                 return await _run_tool(
                     ctx, name, call_input, call_args, model=model, request=request
                 )
-        return await _run_tool(
-            ctx, name, call_input, call_args, model=model, request=request
-        )
+        return await _run_tool(ctx, name, call_input, call_args, model=model, request=request)
 
     registry = getattr(ctx, "mcp_activity", None)
     if registry is None:
@@ -1247,6 +1237,7 @@ def _handle_notifications_cancelled(ctx: AppContext, params: dict[str, Any]) -> 
         registry.abort_by_rpc_id(request_id)
     # Unknown / finished ids are ignored without error (spec).
     return Response(status_code=202)
+
 
 def _client_disconnected_response() -> JSONResponse:
     return JSONResponse(
@@ -1354,9 +1345,7 @@ async def _handle_tasks_get(
         )
     if hasattr(store, "_record"):
         store._record("polled", tool=task.tool, task_id=task.task_id)
-    return _rpc_response(
-        request, _jsonrpc_result(rpc_id, _public_task_result(store, task, params))
-    )
+    return _rpc_response(request, _jsonrpc_result(rpc_id, _public_task_result(store, task, params)))
 
 
 async def _handle_tasks_update(
@@ -1377,9 +1366,7 @@ async def _handle_tasks_update(
             _jsonrpc_error(rpc_id, INVALID_PARAMS, f"Unknown taskId: {task_id}"),
         )
     # Input-required acknowledgement: echo status; no mutation required for MVP.
-    return _rpc_response(
-        request, _jsonrpc_result(rpc_id, _public_task_result(store, task, params))
-    )
+    return _rpc_response(request, _jsonrpc_result(rpc_id, _public_task_result(store, task, params)))
 
 
 async def _handle_tasks_cancel(
@@ -1398,9 +1385,7 @@ async def _handle_tasks_cancel(
             request,
             _jsonrpc_error(rpc_id, INVALID_PARAMS, f"Unknown taskId: {task_id}"),
         )
-    return _rpc_response(
-        request, _jsonrpc_result(rpc_id, _public_task_result(store, task, params))
-    )
+    return _rpc_response(request, _jsonrpc_result(rpc_id, _public_task_result(store, task, params)))
 
 
 def _public_task_result(store: Any, task: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -1439,13 +1424,19 @@ class MCPGatewayAdapter(GatewayAdapter):
                 )
 
             if tool in {"tools/call", "call_tool"}:
-                name = str(body.args.get("name") or body.args.get("tool") or body.input or "").strip()
+                name = str(
+                    body.args.get("name") or body.args.get("tool") or body.input or ""
+                ).strip()
                 if not name:
                     return _legacy(
                         MCPQueryResponse(
                             ok=False,
                             tool="tools/call",
-                            result={"error": _error("MCP_ERR_MISSING_TOOL_NAME", "Missing tool name in tools/call.")},
+                            result={
+                                "error": _error(
+                                    "MCP_ERR_MISSING_TOOL_NAME", "Missing tool name in tools/call."
+                                )
+                            },
                         ).model_dump()
                     )
                 arguments = body.args.get("arguments") or {}
@@ -1511,7 +1502,9 @@ class MCPGatewayAdapter(GatewayAdapter):
                 except RequestDeadlineExceeded as exc:
                     return request_deadline_response(exc)
                 _record_mcp_tool(
-                    ctx, tool_response.tool or normalized_name, "ok" if tool_response.ok else "error"
+                    ctx,
+                    tool_response.tool or normalized_name,
+                    "ok" if tool_response.ok else "error",
                 )
                 return _legacy(
                     MCPQueryResponse(
@@ -1592,13 +1585,8 @@ class MCPGatewayAdapter(GatewayAdapter):
             # Modern clients declare version per request in _meta; reject unknown
             # revisions with UnsupportedProtocolVersion before method dispatch.
             requested_meta = _per_request_protocol_version(params)
-            if (
-                requested_meta is not None
-                and requested_meta not in SUPPORTED_PROTOCOL_VERSIONS
-            ):
-                return _rpc_response(
-                    request, _unsupported_protocol_error(rpc_id, requested_meta)
-                )
+            if requested_meta is not None and requested_meta not in SUPPORTED_PROTOCOL_VERSIONS:
+                return _rpc_response(request, _unsupported_protocol_error(rpc_id, requested_meta))
 
             governance = _Governance(request, ctx, transport="jsonrpc")
             try:
@@ -1681,9 +1669,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                                 "Unknown or unsupported resource uri",
                             ),
                         )
-                    return _rpc_response(
-                        request, _jsonrpc_result(rpc_id, read_result)
-                    )
+                    return _rpc_response(request, _jsonrpc_result(rpc_id, read_result))
                 if method == "skills/list":
                     if virtual_key_lacks_mcp_grant(governance.claims, ctx.settings):
                         _record_mcp_grant_denied(ctx)
@@ -1712,9 +1698,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                                 "Unknown skill",
                             ),
                         )
-                    return _rpc_response(
-                        request, _jsonrpc_result(rpc_id, get_result)
-                    )
+                    return _rpc_response(request, _jsonrpc_result(rpc_id, get_result))
                 if method == "prompts/list":
                     return _rpc_response(
                         request,
@@ -1772,9 +1756,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                                 _jsonrpc_result(
                                     rpc_id,
                                     _stamp_call_result_type(
-                                        _text_result(
-                                            json.dumps(validation_errors), is_error=True
-                                        ),
+                                        _text_result(json.dumps(validation_errors), is_error=True),
                                         call_protocol,
                                     ),
                                 ),
@@ -1843,15 +1825,11 @@ class MCPGatewayAdapter(GatewayAdapter):
                         request=request,
                         rpc_id=rpc_id,
                     )
-                    exchange_err = _token_exchange_error_response(
-                        request, rpc_id, tool_response
-                    )
+                    exchange_err = _token_exchange_error_response(request, rpc_id, tool_response)
                     if exchange_err is not None:
                         _record_mcp_tool(ctx, name, "error")
                         return exchange_err
-                    _record_mcp_tool(
-                        ctx, name, "ok" if tool_response.ok else "error"
-                    )
+                    _record_mcp_tool(ctx, name, "ok" if tool_response.ok else "error")
                     payload = _stamp_call_result_type(
                         governance.guard_tool_result(
                             name, _tool_call_result_payload(name, tool_response)
