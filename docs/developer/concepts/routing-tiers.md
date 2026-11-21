@@ -144,6 +144,10 @@ Default off; tests set the rate explicitly so the suite stays deterministic.
 `routing.session_affinity` (default off) keeps an agent loop on the model that
 planned the task. A continuation — tool results after an assistant tool-call,
 or the same user-turn prefix — replays that tier. A new human turn re-routes.
+Pins are scoped by conversation prefix under the session/user key, so a
+subagent that shares the parent's `X-Daari-Session` (or lands on the `user:`
+fallback) cannot replay or clobber the parent's tier; a prefix mismatch on a
+tool-result turn logs `session_pin_prefix_mismatch` and fresh-routes.
 
 Session identity is `X-Daari-Session` or the OpenAI `user` field when present,
 otherwise a hash of the user/system prefix. Pins expire after

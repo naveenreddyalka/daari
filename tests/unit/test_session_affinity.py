@@ -82,7 +82,7 @@ def test_tool_continuation_and_unchanged_prefix():
     pin_prefix = conversation_prefix_hash(user)
     store = _pin_store()
     store.put("user:agent-1", tier="L4", model="model-l4", prefix_hash=pin_prefix)
-    pin = store.get("user:agent-1")
+    pin = store.get("user:agent-1", prefix_hash=pin_prefix)
     assert is_continuation(
         [
             *user,
@@ -96,6 +96,32 @@ def test_tool_continuation_and_unchanged_prefix():
         [Message(role="user", content="a brand new question")],
         pin,
     )
+
+
+def test_tool_continuation_prefix_mismatch_is_not_continuation():
+    """Tool-result turns must not replay a pin from a different conversation (#2267)."""
+    parent = [Message(role="user", content="plan the parent change")]
+    foreign = [Message(role="user", content="side quest for the subagent")]
+    parent_prefix = conversation_prefix_hash(parent)
+    store = _pin_store()
+    store.put("session:shared", tier="L5", model="model-l5", prefix_hash=parent_prefix)
+    pin = store.get("session:shared", prefix_hash=parent_prefix)
+    foreign_tool_turn = [
+        *foreign,
+        Message(role="assistant", tool_calls=[{"id": "c"}]),
+        Message(role="tool", content="ok", tool_call_id="c"),
+    ]
+    assert not is_continuation(foreign_tool_turn, pin)
+
+
+def test_prefix_scoped_put_does_not_clobber_sibling():
+    store = _pin_store()
+    store.put("session:shared", tier="L5", model="model-l5", prefix_hash="parent")
+    store.put("session:shared", tier="L3", model="model-l3", prefix_hash="child")
+    parent = store.get("session:shared", prefix_hash="parent")
+    child = store.get("session:shared", prefix_hash="child")
+    assert parent is not None and parent.tier == "L5"
+    assert child is not None and child.tier == "L3"
 
 
 def test_pin_expires(tmp_path):
@@ -130,6 +156,88 @@ async def test_continuation_replays_pin_and_new_user_turn_reroutes(tmp_path, mon
     third = await router.route(_request("short ask"))
     assert third.daari_meta.tier == "L3"
     assert calls[-1] == "L3"
+
+
+def _request_with_session(
+    text: str,
+    *,
+    session_id: str,
+    user: str | None = None,
+    extra: list[Message] | None = None,
+) -> InternalRequest:
+    request = _request(text, user=user, extra=extra)
+    request.meta.session_id = session_id
+    return request
+
+
+def _continuation_with_session(
+    text: str, *, session_id: str, user: str | None = None
+) -> InternalRequest:
+    return _request_with_session(
+        text,
+        session_id=session_id,
+        user=user,
+        extra=[
+            Message(
+                role="assistant",
+                content="",
+                tool_calls=[{"id": "call_1", "type": "function", "function": {"name": "read_file"}}],
+            ),
+            Message(role="tool", content="file contents", tool_call_id="call_1"),
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_shared_session_tool_turn_skips_foreign_pin(tmp_path, monkeypatch):
+    """Subagent tool turns under a shared session_id must not replay the parent pin (#2267)."""
+    events: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda event, payload: events.append((event, payload)),
+    )
+    calls: list[str] = []
+    router = _router(tmp_path, calls=calls)
+
+    parent = await router.route(
+        _request_with_session(LONG_PROMPT, session_id="shared-loop", user=None)
+    )
+    assert parent.daari_meta.tier == "L4"
+
+    foreign = await router.route(
+        _continuation_with_session("short ask", session_id="shared-loop", user=None)
+    )
+    assert foreign.daari_meta.tier == "L3"
+    assert any(event == "session_pin_prefix_mismatch" for event, _ in events)
+
+    # Foreign put must not clobber the parent pin.
+    parent_follow = await router.route(
+        _continuation_with_session(LONG_PROMPT, session_id="shared-loop", user=None)
+    )
+    assert parent_follow.daari_meta.tier == "L4"
+    assert parent_follow.model == "model-l4"
+
+
+@pytest.mark.asyncio
+async def test_user_fallback_tool_turn_skips_foreign_pin(tmp_path, monkeypatch):
+    """Same prefix-mismatch behavior on the user: fallback key (#2267)."""
+    events: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda event, payload: events.append((event, payload)),
+    )
+    calls: list[str] = []
+    router = _router(tmp_path, calls=calls)
+
+    parent = await router.route(_request(LONG_PROMPT, user="agent-1"))
+    assert parent.daari_meta.tier == "L4"
+
+    foreign = await router.route(_continuation("short ask", user="agent-1"))
+    assert foreign.daari_meta.tier == "L3"
+    assert any(event == "session_pin_prefix_mismatch" for event, _ in events)
+
+    parent_follow = await router.route(_continuation(LONG_PROMPT, user="agent-1"))
+    assert parent_follow.daari_meta.tier == "L4"
 
 
 @pytest.mark.asyncio

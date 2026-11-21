@@ -5447,8 +5447,22 @@ class Router:
 
         prefix = conversation_prefix_hash(request.messages)
         key = session_key(request.meta, prefix)
-        pin = self.session_pins.get(key)
+        pin = self.session_pins.get(key, prefix_hash=prefix)
         if pin is None or not is_continuation(request.messages, pin):
+            from daari.router.session_affinity import is_tool_continuation
+
+            if is_tool_continuation(request.messages):
+                other = self.session_pins.mismatched_pin(key, prefix)
+                if other is not None:
+                    log_gateway_event(
+                        "session_pin_prefix_mismatch",
+                        {
+                            "session": key,
+                            "pin_prefix": other.prefix_hash,
+                            "request_prefix": prefix,
+                            "pin_tier": other.tier,
+                        },
+                    )
             return None
         available, reason = self._pinned_tier_available(pin.tier)
         if (
