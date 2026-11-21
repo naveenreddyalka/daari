@@ -9,6 +9,8 @@ and emit an OTel client span (`mcp.tools/call` / `mcp.tools/list`) (#1203).
 
 from __future__ import annotations
 
+import asyncio
+import itertools
 import json
 import re
 import time
@@ -33,9 +35,7 @@ WARNING_RESULT_TRUNCATED = "mcp_result_truncated"
 ACCEPT_JSON_AND_SSE = "application/json, text/event-stream"
 
 
-def parse_mcp_http_response(
-    response: httpx.Response, *, request_id: Any = None
-) -> dict[str, Any]:
+def parse_mcp_http_response(response: httpx.Response, *, request_id: Any = None) -> dict[str, Any]:
     """Parse a Streamable HTTP JSON-RPC reply (plain JSON or SSE-framed) (#2181)."""
     content_type = (response.headers.get("content-type") or "").lower()
     if "text/event-stream" not in content_type:
@@ -146,9 +146,7 @@ def record_mcp_server_rate_limit_reject(
         try:
             from daari.auth.rate_limit import rate_limit_metric_kind
 
-            metrics.record_reject(
-                rate_limit_metric_kind(getattr(exc.decision, "scope", None))
-            )
+            metrics.record_reject(rate_limit_metric_kind(getattr(exc.decision, "scope", None)))
         except Exception:  # noqa: BLE001 — metrics must never break a request
             pass
     if settings is None:
@@ -225,6 +223,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         self.settings = settings
         self._tool_embed_cache = ToolEmbeddingCache()
         self._http: httpx.AsyncClient | None = None
+        self._rpc_id_seq = itertools.count(1)
         from daari.providers.mcp_token_exchange import TokenExchangeCache
 
         self._token_exchange_cache = TokenExchangeCache()
@@ -233,9 +232,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         from daari.security.egress_url import validate_egress_url
         from daari.security.offline_mode import assert_offline_url_allowed
 
-        validate_egress_url(
-            self.base_url, allow_private_networks=self.allow_private_networks
-        )
+        validate_egress_url(self.base_url, allow_private_networks=self.allow_private_networks)
         assert_offline_url_allowed(self.base_url, surface="mcp_egress")
 
     def _client(self) -> httpx.AsyncClient:
@@ -315,9 +312,7 @@ class McpEgressProvider(HttpIntegrationProvider):
     async def health(self) -> bool:
         return True
 
-    async def _post_json(
-        self, payload: dict[str, Any], headers: dict[str, str]
-    ) -> httpx.Response:
+    async def _post_json(self, payload: dict[str, Any], headers: dict[str, str]) -> httpx.Response:
         async def once() -> httpx.Response:
             client = self._client()
             response = await client.post(self.base_url, json=payload, headers=headers)
@@ -329,6 +324,40 @@ class McpEgressProvider(HttpIntegrationProvider):
             upstream=self.id,
             policy=self.retry,
             metrics=self.metrics,
+        )
+
+    async def _notify_cancelled(
+        self,
+        rpc_id: Any,
+        headers: dict[str, str],
+        *,
+        tool: str,
+    ) -> None:
+        """Best-effort MCP ``notifications/cancelled`` after an aborted call (#2265)."""
+        from daari.gateway.request_log import log_gateway_event
+
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "notifications/cancelled",
+            "params": {"requestId": rpc_id},
+        }
+        notify_headers = {
+            **headers,
+            "Mcp-Method": "notifications/cancelled",
+        }
+        notify_headers.pop("Mcp-Name", None)
+        try:
+            client = self._client()
+            await client.post(self.base_url, json=payload, headers=notify_headers)
+        except Exception:  # noqa: BLE001 — never mask the cancellation
+            log_gateway_event(
+                "mcp.egress_cancelled_notify_failed",
+                {"server_id": self.server.id, "tool": tool, "rpc_id": rpc_id},
+            )
+            return
+        log_gateway_event(
+            "mcp.egress_cancelled",
+            {"server_id": self.server.id, "tool": tool, "rpc_id": rpc_id},
         )
 
     def _policy_denied_response(self, request: InternalRequest) -> InternalResponse | None:
@@ -423,9 +452,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         from daari.observability.otel import inject_trace_headers
 
         return (
-            inject_trace_headers(
-                headers, request_id=getattr(request.meta, "request_id", None)
-            ),
+            inject_trace_headers(headers, request_id=getattr(request.meta, "request_id", None)),
             None,
         )
 
@@ -486,9 +513,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         try:
             headers, err = await self._prepare_egress(request, tool="tools/list")
         except McpServerRateLimited as exc:
-            record_mcp_server_rate_limit_reject(
-                exc, metrics=self.metrics, settings=self.settings
-            )
+            record_mcp_server_rate_limit_reject(exc, metrics=self.metrics, settings=self.settings)
             return None, self._rate_limited_response(request)
         if err is not None:
             return None, err
@@ -530,17 +555,13 @@ class McpEgressProvider(HttpIntegrationProvider):
 
         args = dict(arguments or {})
         token_est = max(1, len(_json.dumps(args, default=str)) // 4)
-        headers, err = await self._prepare_egress(
-            request, tool=tool, tokens=token_est
-        )
+        headers, err = await self._prepare_egress(request, tool=tool, tokens=token_est)
         if err is not None:
             return err
         assert headers is not None
         from daari.observability.otel import mcp_client_span
 
-        with mcp_client_span(
-            "mcp.tools/call", server_id=self.server.id, tool_name=tool
-        ):
+        with mcp_client_span("mcp.tools/call", server_id=self.server.id, tool_name=tool):
             return await self._call_tool_under_span(
                 request,
                 tool=tool,
@@ -567,9 +588,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         try:
             headers, err = await self._prepare_egress(request, tool=tool)
         except McpServerRateLimited as exc:
-            record_mcp_server_rate_limit_reject(
-                exc, metrics=self.metrics, settings=self.settings
-            )
+            record_mcp_server_rate_limit_reject(exc, metrics=self.metrics, settings=self.settings)
             return self._rate_limited_response(request)
         if err is not None:
             return err
@@ -579,9 +598,7 @@ class McpEgressProvider(HttpIntegrationProvider):
 
         span_name = "mcp.tools/list" if tool in {"tools/list", "list"} else "mcp.tools/call"
         span_tool = None if tool in {"tools/list", "list"} else tool
-        with mcp_client_span(
-            span_name, server_id=self.server.id, tool_name=span_tool
-        ):
+        with mcp_client_span(span_name, server_id=self.server.id, tool_name=span_tool):
             return await self._execute_under_span(
                 request, tool=tool, arg_text=arg_text, headers=headers
             )
@@ -605,9 +622,10 @@ class McpEgressProvider(HttpIntegrationProvider):
                 legacy=f"{self.id} call to {tool} blocked by guardrail {rule}.",
             )
             return self._guardrail_blocked(request, tool, rule, denial=denial)
+        rpc_id = next(self._rpc_id_seq)
         payload = {
             "jsonrpc": "2.0",
-            "id": 1,
+            "id": rpc_id,
             "method": "tools/call",
             "params": {"name": tool, "arguments": arguments},
         }
@@ -623,6 +641,13 @@ class McpEgressProvider(HttpIntegrationProvider):
             self.breaker.record_success()
             self._record_egress("ok")
             return self._tool_result_response(request, text, warning=warning)
+        except asyncio.CancelledError:
+            # Client disconnect / deadline / abort — tell the MCP server to stop.
+            try:
+                await self._notify_cancelled(rpc_id, headers, tool=tool)
+            except Exception:  # noqa: BLE001 — never mask CancelledError
+                pass
+            raise
         except Exception as exc:  # noqa: BLE001
             self.breaker.record_failure()
             self._record_egress("error")
@@ -637,9 +662,7 @@ class McpEgressProvider(HttpIntegrationProvider):
             value = DEFAULT_MAX_RESULT_CHARS
         return value if value >= 1 else DEFAULT_MAX_RESULT_CHARS
 
-    def _finalize_tool_result_text(
-        self, tool: str, result: Any
-    ) -> tuple[str, str | None]:
+    def _finalize_tool_result_text(self, tool: str, result: Any) -> tuple[str, str | None]:
         """Guardrail + extract + optional truncate for a tools/call result (#2180)."""
         if isinstance(result, dict):
             result, _outcome = self.guardrails.check_tool_result(tool, result)
@@ -666,9 +689,7 @@ class McpEgressProvider(HttpIntegrationProvider):
                 "max_result_chars": max_chars,
             },
         )
-        if self.metrics is not None and hasattr(
-            self.metrics, "record_mcp_egress_result_truncated"
-        ):
+        if self.metrics is not None and hasattr(self.metrics, "record_mcp_egress_result_truncated"):
             try:
                 self.metrics.record_mcp_egress_result_truncated(server=self.server.id)
             except Exception:  # noqa: BLE001 — metrics must never break a request
@@ -822,21 +843,15 @@ def build_mcp_providers(
                 token=str(_entry_get(entry, "token") or ""),
                 triggers=list(_entry_get(entry, "triggers") or []),
                 auth_type=str(_entry_get(entry, "auth_type") or ""),
-                token_exchange_endpoint=str(
-                    _entry_get(entry, "token_exchange_endpoint") or ""
-                ),
+                token_exchange_endpoint=str(_entry_get(entry, "token_exchange_endpoint") or ""),
                 client_id=str(_entry_get(entry, "client_id") or ""),
                 client_secret=str(_entry_get(entry, "client_secret") or ""),
                 audience=str(_entry_get(entry, "audience") or ""),
                 scopes=[str(s) for s in (_entry_get(entry, "scopes") or [])],
-                subject_token_type=str(
-                    _entry_get(entry, "subject_token_type") or "access_token"
-                ),
+                subject_token_type=str(_entry_get(entry, "subject_token_type") or "access_token"),
                 rpm=max(0, int(_entry_get(entry, "rpm") or 0)),
                 tpm=max(0, int(_entry_get(entry, "tpm") or 0)),
-                timeout_seconds=max(
-                    0.0, float(_entry_get(entry, "timeout_seconds") or 0)
-                ),
+                timeout_seconds=max(0.0, float(_entry_get(entry, "timeout_seconds") or 0)),
             )
         if not cfg.id or not cfg.url:
             continue
