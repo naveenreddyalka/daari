@@ -236,6 +236,17 @@ def render_api_reference() -> str:
             "frontier. Frontier billing is input-only with shared-input cache discounts "
             "($0.10/1M input, $0.01/1M cached). Honors `Idempotency-Key`.",
             "",
+            "## Extractions",
+            "",
+            "`POST /v1/extractions` is the OpenRouter Extractions twin (`fields` instead of "
+            "`questions`). Allowed top-level keys: `model`, `state`, `fields` (required, ≥1), "
+            "optional `assets` / `reference_date` / `provider` / `user` / `session_id` / "
+            "`trace`. Unknown top-level keys and unknown field types return **400**. Local "
+            "catalog models run on-box via systemone `/v1/extractions` (`daari_meta.tier=local`, "
+            "`cost_usd=0`); known frontier extraction slugs (for example `cloudflare/clairic`) "
+            "forward to L6 (OpenRouter `/api/alpha/extractions` when the slot is OpenRouter) "
+            "and ledger spend from upstream `usage`.",
+            "",
             "## Systemone",
             "",
             "`POST /v1/systemone` proxies Ollama decision models. The body accepts optional "

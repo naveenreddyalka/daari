@@ -68,6 +68,7 @@ def run_doctor(
     results.append(_check_images_generations(cfg))
     results.append(_check_ocr(cfg))
     results.append(_check_decisions(cfg))
+    results.append(_check_extractions(cfg))
     decisions_models_tip = _check_decisions_local_models(cfg, httpx_client)
     if decisions_models_tip is not None:
         results.append(decisions_models_tip)
@@ -1077,6 +1078,49 @@ def _check_decisions(settings: Settings) -> CheckResult:
             "POST /v1/decisions: systemone.enabled=false and frontier.enabled=false "
             "(no local clef/nimble/tev1 or gpt-6-luna path) — enable systemone "
             "and/or frontier + API key (see clients-and-gateways.md / http-api)"
+        ),
+        optional=True,
+    )
+
+
+def _check_extractions(settings: Settings) -> CheckResult:
+    """Tip when POST /v1/extractions lacks a local or frontier path (#2271)."""
+    systemone_on = bool(getattr(getattr(settings, "systemone", None), "enabled", True))
+    frontier = getattr(settings, "frontier", None)
+    frontier_on = bool(getattr(frontier, "enabled", False))
+    frontier_key = bool(settings.resolve_frontier_api_key()) if frontier_on else False
+    local_ok = systemone_on
+    frontier_ok = frontier_on and frontier_key
+    if frontier_on and not frontier_key:
+        return CheckResult(
+            name="extractions",
+            ok=False,
+            detail=(
+                "POST /v1/extractions: frontier enabled but no API key "
+                "(OpenRouter Extractions L6 blocked) — set DAARI_FRONTIER_API_KEY, "
+                "OPENROUTER_API_KEY, or OPENAI_API_KEY (see http-api)"
+            ),
+            optional=True,
+        )
+    if local_ok or frontier_ok:
+        parts: list[str] = []
+        if local_ok:
+            parts.append("local models via systemone /v1/extractions")
+        if frontier_ok:
+            parts.append("frontier extraction slugs via L6")
+        return CheckResult(
+            name="extractions",
+            ok=True,
+            detail=f"POST /v1/extractions available ({'; '.join(parts)})",
+            optional=True,
+        )
+    return CheckResult(
+        name="extractions",
+        ok=False,
+        detail=(
+            "POST /v1/extractions: systemone.enabled=false and frontier.enabled=false "
+            "(no local or frontier extraction path) — enable systemone and/or "
+            "frontier + API key (see http-api)"
         ),
         optional=True,
     )

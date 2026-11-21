@@ -9441,6 +9441,15 @@ so a shared session cannot clobber a parent loop; mismatch logs
 cross-link; compare + landscape floors updated. Covered by
 `tests/unit/test_llamacpp_local_tier_docs.py`.
 
+### POST /v1/extractions OpenRouter twin ([#2271](https://github.com/naveenreddyalka/daari/issues/2271))
+
+<!-- tracking:#2271 -->
+**Status:** Done (2026-11-21). Extractions envelope (`fields`) with fail-closed
+schema 400s; local systemone path (`daari_meta.tier=local`, `cost_usd=0`);
+frontier OpenRouter `/api/alpha/extractions` with ledger spend; doctor tip.
+Covered by `tests/unit/test_extractions.py` and
+`tests/unit/test_doctor_extractions.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
