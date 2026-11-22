@@ -9467,6 +9467,15 @@ output cost USD** (`increase` of `daari_cost_input_usd_total` /
 `daari_cost_output_usd_total`); metrics guide cross-links the panel. Covered by
 `tests/unit/test_grafana_cost_split_panels.py`.
 
+### GPT-6.2 param_compat strip, floor, tools_transport ([#2374](https://github.com/naveenreddyalka/daari/issues/2374))
+
+<!-- tracking:#2374 -->
+**Status:** Done (2026-11-22). Builtin `_FRONTIER_PARAM_COMPAT` entries for
+`gpt-6.2-astra` / `gpt-6.2-sol` strip `temperature` / `top_p` / `logprobs`,
+floor `reasoning_effort=none` → `low`, and warn + log `frontier.tools_transport`
+when tools hit chat completions (Responses-required). Covered by
+`tests/unit/test_gpt_6_2_param_compat.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
