@@ -114,21 +114,47 @@ LTS GA cut was
 **[v1.108.0](https://github.com/BerriAI/litellm/releases/tag/v1.108.0)**
 (2026-11-04); **1.108.2** was the fixes-only LTS patch (including spend/key
 401s while Postgres restarts). The **live LTS patch** is now
+**[v1.108.8](https://github.com/BerriAI/litellm/releases/tag/v1.108.8)**
+(2026-11-13; Azure `/v1/decisions`, file-id ownership spelling, MCP
+`mcp_all` scope grant). Prior LTS patches retained for history:
 **[v1.108.7](https://github.com/BerriAI/litellm/releases/tag/v1.108.7)**
-(2026-11-12; Responses bridge `max_tool_calls` action-required + failed-turn
-`previous_response_id` rebuild; prior live patch
+(2026-11-12; Responses `max_tool_calls` + failed-turn
+`previous_response_id`),
 **[v1.108.6](https://github.com/BerriAI/litellm/releases/tag/v1.108.6)**
-carried the [#51254](https://github.com/BerriAI/litellm/pull/51254)
-credential-field hygiene fix after
-**[v1.108.5](https://github.com/BerriAI/litellm/releases/tag/v1.108.5)** on
-2026-11-10). The earlier RC
+([#51254](https://github.com/BerriAI/litellm/pull/51254) credential-field
+hygiene), and
+**[v1.108.5](https://github.com/BerriAI/litellm/releases/tag/v1.108.5)**
+(2026-11-10). The earlier RC
 [v1.108.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.108.0-rc.1)
 (29 Oct 2026) was a **parity** cut of the 1.106.x gzip / off-loop compression
 fixes onto the 1.108 train — not a feature ship — and is superseded by the
 stable tags. **1.106.7** remains the final 1.106.x patch; do **not** treat
 compromised **1.107.0** as a support window. The **stable comparison floor**
 moved to **[1.109.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.1)**
-(see below); keep 1.108.7 for LTS-pin buyers only.
+(see below); keep **1.108.8** for LTS-pin buyers only.
+
+**1.108.8 Azure Decisions vs local-first:** LiteLLM fixed 400s on
+`/v1/decisions` for `azure/` deployments (keyless Entra /
+[#51460](https://github.com/BerriAI/litellm/pull/51460)). daari already serves
+`/v1/decisions` on-box and prefers local System One before any frontier hop;
+Azure (or other L6) is optional egress, not the default Decisions path.
+
+**1.108.8 file-id ownership spelling:** LiteLLM canonicalizes alternate
+Gemini file-id spellings (`files/<id>`, URL forms) so ownership checks do not
+miss siblings
+([#51503](https://github.com/BerriAI/litellm/pull/51503)). daari stores
+OpenAI-shaped `file-{hex}` ids with per-key `owner_key_id` fencing on list /
+read / delete; it does **not** rewrite provider-native `files/` URL aliases
+into local ids — operators who need Gemini alias folding still need that
+provider's spelling on the L6 leg.
+
+**1.108.8 `mcp_all` scope wildcard:** LiteLLM accepts servers that answer
+OAuth with a catch-all `mcp_all` grant plus detailed scopes without a
+sign-in loop ([#51578](https://github.com/BerriAI/litellm/pull/51578)).
+daari has no LiteLLM-named `mcp_all` sentinel; on-box MCP grants use
+fnmatch allow/deny globs (and optional
+`integrations.mcp_policy.require_key_access_defined`), so a `*` allow is the
+honest catch-all without a SaaS connect loop.
 
 **1.108.7 action-required `max_tool_calls`:** LiteLLM fails closed on
 Responses→chat bridge params like `max_tool_calls` unless `drop_params` is
@@ -164,8 +190,8 @@ credential-field hygiene; see
 and
 [v1.109.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.1)
 builds are superseded. The live LTS patch on the prior line remains
-**[1.108.7](https://github.com/BerriAI/litellm/releases/tag/v1.108.7)**
-(2026-11-12). Feature notes and daari's stance:
+**[1.108.8](https://github.com/BerriAI/litellm/releases/tag/v1.108.8)**
+(2026-11-13). Feature notes and daari's stance:
 
 - **Client credential-field hygiene** — LiteLLM #51254 blocked client bodies
   from overriding admin deployment credential fields (`tenant_id`,

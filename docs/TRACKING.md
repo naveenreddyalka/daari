@@ -9476,6 +9476,15 @@ floor `reasoning_effort=none` → `low`, and warn + log `frontier.tools_transpor
 when tools hit chat completions (Responses-required). Covered by
 `tests/unit/test_gpt_6_2_param_compat.py`.
 
+### Promote LiteLLM LTS floor to 1.108.8 ([#2274](https://github.com/naveenreddyalka/daari/issues/2274))
+
+<!-- tracking:#2274 -->
+**Status:** Done (2026-11-22). Compare doc live LTS patch is **1.108.8**
+(Azure Decisions, file-id ownership spelling, `mcp_all` scope grant) with
+daari local-first answers; prior 1.108.x notes condensed; GA floor stays
+**1.109.1**; 1.110-dev remains hold-for-stable. Covered by
+`tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -17,7 +17,7 @@ are covered on the [OpenRouter compare page](compare-openrouter.md). Full gap +
 
 Buyer pages (when to pick which, licenses named):
 
-- [daari vs LiteLLM](compare-litellm.md)
+- [daari vs LiteLLM](compare-litellm.md) (stable floor **1.109.1**; LTS **1.108.8**)
 - [daari vs Ollama](compare-ollama.md)
 - [daari vs OpenRouter](compare-openrouter.md)
 
