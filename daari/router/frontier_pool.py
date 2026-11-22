@@ -166,7 +166,8 @@ class FrontierPool:
             slots = allowed_slots
 
         errors: list[str] = []
-        for slot in slots:
+        prior_refusal_cost = 0.0
+        for index, slot in enumerate(slots):
             if not slot.breaker.allow():
                 add_step(
                     "frontier_skip",
@@ -214,6 +215,25 @@ class FrontierPool:
                     escalated_from=escalated_from,
                     local_confidence=local_confidence,
                 )
+                from daari.router.refused_leg import (
+                    attempt_cost_usd,
+                    is_safeguard_refusal,
+                    merge_prior_attempt_cost,
+                )
+
+                # Safeguard refusal is a completed billed attempt — fall through
+                # when another slot remains, carrying its cost (#2272).
+                if is_safeguard_refusal(response) and index + 1 < len(slots):
+                    prior_refusal_cost += attempt_cost_usd(response)
+                    errors.append(f"{slot.id}:safeguard_refusal")
+                    add_step(
+                        "frontier_fail",
+                        provider=slot.id,
+                        error_type="safeguard_refusal",
+                        error=(response.finish_reason or "refusal")[:200],
+                        finish_reason=response.finish_reason,
+                    )
+                    continue
                 slot.breaker.record_success()
                 add_step("frontier_ok", provider=slot.id, model=response.model)
                 # Surface which provider won for ledger/meta.
@@ -225,6 +245,8 @@ class FrontierPool:
                 )
                 if served_region:
                     response.daari_meta.region = served_region
+                if prior_refusal_cost > 0:
+                    merge_prior_attempt_cost(response, prior_refusal_cost)
                 self._last_executor = slot.executor
                 return response
             except RequestDeadlineExceeded:
