@@ -9450,6 +9450,15 @@ frontier OpenRouter `/api/alpha/extractions` with ledger spend; doctor tip.
 Covered by `tests/unit/test_extractions.py` and
 `tests/unit/test_doctor_extractions.py`.
 
+### Bill refused or safeguard failover legs ([#2272](https://github.com/naveenreddyalka/daari/issues/2272))
+
+<!-- tracking:#2272 -->
+**Status:** Done (2026-11-22). Virtual-model and ordered frontier-pool walks
+failover on `finish_reason` `refusal` / `content_filter` and add the discarded
+L6 leg's `cost_usd` onto the serving attempt (local refused legs stay $0).
+Spend ledger / `daari_meta` reflect the sum. Covered by
+`tests/unit/test_refused_leg_spend.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

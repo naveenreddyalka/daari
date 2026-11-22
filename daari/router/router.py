@@ -6237,6 +6237,7 @@ class Router:
 
         last_exc: BaseException | None = None
         hops = 0
+        prior_refusal_cost = 0.0
         rate_limiter = getattr(self, "rate_limiter", None)
         # meta.key_id is stamped from auth or rate_limit_key_id (#2240).
         key_id = (getattr(request.meta, "key_id", None) or "").strip() or "anonymous"
@@ -6331,11 +6332,55 @@ class Router:
                     continue
                 raise
 
+            from daari.router.refused_leg import (
+                attempt_cost_usd,
+                is_safeguard_refusal,
+                merge_prior_attempt_cost,
+            )
+
+            # Completed safeguard refusal: walk to the next candidate and bill
+            # the discarded leg when a later peer serves (#2272).
+            if is_safeguard_refusal(response) and index + 1 < len(candidates):
+                prior_refusal_cost += attempt_cost_usd(response)
+                if tracker is not None:
+                    tracker.observe_error(
+                        virtual_name,
+                        candidate,
+                        latency_ms=(_time.monotonic() - hop_started) * 1000.0,
+                    )
+                hops += 1
+                next_candidate = candidates[index + 1]
+                from daari.router.anthropic_messages import is_fable_mythos_52_model
+
+                if is_fable_mythos_52_model(candidate):
+                    gen_request.meta.anthropic_prior_model = candidate
+                if hasattr(self.metrics, "record_virtual_model_failover"):
+                    self.metrics.record_virtual_model_failover()
+                add_step(
+                    "virtual_model_failover",
+                    virtual_model=virtual_name,
+                    failed_candidate=candidate,
+                    next_candidate=next_candidate,
+                    reason="safeguard_refusal",
+                )
+                log_gateway_event(
+                    "virtual_model_failover",
+                    {
+                        "virtual_model": virtual_name,
+                        "failed_candidate": candidate,
+                        "next_candidate": next_candidate,
+                        "detail": f"safeguard_refusal:{response.finish_reason}",
+                    },
+                )
+                continue
+
             latency_ms = (_time.monotonic() - hop_started) * 1000.0
             if tracker is not None:
                 tracker.observe_success(virtual_name, candidate, latency_ms=latency_ms)
             response.daari_meta.virtual_model = virtual_name
             response.daari_meta.virtual_candidate = candidate
+            if prior_refusal_cost > 0:
+                merge_prior_attempt_cost(response, prior_refusal_cost)
             add_step(
                 "virtual_model",
                 virtual_model=virtual_name,
