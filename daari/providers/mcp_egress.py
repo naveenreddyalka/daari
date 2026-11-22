@@ -32,6 +32,7 @@ DEFAULT_HTTP_TIMEOUT_SECONDS = 30.0
 # Default tools/call result cap — 2 MiB so a 1 MiB text item survives (#2180).
 DEFAULT_MAX_RESULT_CHARS = 2_097_152
 WARNING_RESULT_TRUNCATED = "mcp_result_truncated"
+WARNING_CREDENTIAL_REFRESH_FAILED = "mcp_credential_refresh_failed"
 ACCEPT_JSON_AND_SSE = "application/json, text/event-stream"
 
 
@@ -434,7 +435,37 @@ class McpEgressProvider(HttpIntegrationProvider):
                 return None, self._auth_failure(request, exc.warning, f"{self.id}: {exc}")
             return token, None
         if self.server.token:
-            return self.server.token, None
+            # secret://oauth (and TTL static refs) re-mint near expiry (#2281).
+            from daari.security.secret_refs import (
+                RefreshableSecret,
+                SecretRefError,
+                current_secret,
+            )
+
+            held = self.server.token
+            try:
+                token = current_secret(held)
+            except SecretRefError as exc:
+                log_gateway_event(
+                    "mcp_credential_refresh_failed",
+                    {"server_id": self.server.id, "error": str(exc)[:200]},
+                )
+                return None, self._auth_failure(
+                    request,
+                    WARNING_CREDENTIAL_REFRESH_FAILED,
+                    f"{self.id}: credential refresh failed ({exc})",
+                )
+            if (
+                isinstance(held, RefreshableSecret)
+                and held.ref
+                and token is not None
+                and token != held
+            ):
+                log_gateway_event(
+                    "mcp_credential_refreshed",
+                    {"server_id": self.server.id},
+                )
+            return token, None
         return None, None
 
     async def _request_headers(

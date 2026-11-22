@@ -9485,6 +9485,14 @@ daari local-first answers; prior 1.108.x notes condensed; GA floor stays
 **1.109.1**; 1.110-dev remains hold-for-stable. Covered by
 `tests/unit/test_compare_litellm_1104.py`.
 
+### MCP egress re-resolve secret:// tokens near use ([#2281](https://github.com/naveenreddyalka/daari/issues/2281))
+
+<!-- tracking:#2281 -->
+**Status:** Done (2026-11-22). Egress `_resolve_authorization` passes static
+`server.token` through `current_secret()`; refresh failure fail-closed with
+`mcp_credential_refresh_failed`; remint logs `mcp_credential_refreshed`.
+Covered by `tests/unit/test_mcp_egress_secret_refresh.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

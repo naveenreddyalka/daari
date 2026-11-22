@@ -395,8 +395,9 @@ Non-oauth refs (`env-file`, `exec`, `keychain`) re-resolve at use time when
 | `exec` / `keychain` | TTL elapsed |
 
 Call sites that already go through `current_secret()` — frontier key pick,
-org cache/learning clients — pick up the new value on the next request without
-a process restart. Set `secrets.refresh_ttl_seconds: 0` (or
+org cache/learning clients, and MCP egress `integrations.mcp_servers[].token`
+(#2281) — pick up the new value on the next request without a process restart.
+Set `secrets.refresh_ttl_seconds: 0` (or
 `DAARI_SECRETS__REFRESH_TTL_SECONDS=0`) to keep the legacy boot-only behavior.
 
 **Rotation runbook (env-file / vault CLI):**
