@@ -9459,6 +9459,14 @@ L6 leg's `cost_usd` onto the serving attempt (local refused legs stay $0).
 Spend ledger / `daari_meta` reflect the sum. Covered by
 `tests/unit/test_refused_leg_spend.py`.
 
+### Grafana panels for input/output cost USD ([#2273](https://github.com/naveenreddyalka/daari/issues/2273))
+
+<!-- tracking:#2273 -->
+**Status:** Done (2026-11-22). Overview dashboard + Helm copy add **Input /
+output cost USD** (`increase` of `daari_cost_input_usd_total` /
+`daari_cost_output_usd_total`); metrics guide cross-links the panel. Covered by
+`tests/unit/test_grafana_cost_split_panels.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

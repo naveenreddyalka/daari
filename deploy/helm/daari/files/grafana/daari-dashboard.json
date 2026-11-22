@@ -119,6 +119,30 @@
       ]
     },
     {
+      "id": 62,
+      "title": "Input / output cost USD",
+      "type": "timeseries",
+      "description": "Kong-style split of priced spend: `increase(daari_cost_input_usd_total[$__rate_interval])` and `increase(daari_cost_output_usd_total[$__rate_interval])` over the dashboard window. The two series sum to priced spend for identical requests; local/zero-cost paths contribute 0/0. Place beside frontier spend / budget FinOps panels (#2273).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 256
+      },
+      "targets": [
+        {
+          "expr": "increase(daari_cost_input_usd_total[$__rate_interval])",
+          "legendFormat": "input USD",
+          "refId": "A"
+        },
+        {
+          "expr": "increase(daari_cost_output_usd_total[$__rate_interval])",
+          "legendFormat": "output USD",
+          "refId": "B"
+        }
+      ]
+    },
+    {
       "id": 6,
       "title": "Cache false-hit rate (shadow sample)",
       "type": "stat",
