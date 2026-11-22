@@ -35,6 +35,8 @@ class FrontierParamCompatResult:
 # gpt-6-astra / gpt-6.1-sol: no custom temperature/top_p/logprobs;
 # no reasoning_effort=none; tool calling requires the Responses API
 # (chat completions tools unsupported). Same GPT-6 restriction family.
+# gpt-6.2-astra / gpt-6.2-sol: same sampler strip + Responses tools;
+# reasoning_effort=none floors to low (OpenAI GPT-6.2 migration guide).
 # gpt-6.1-terra: same sampler strip + Responses tools, but publishes
 # reasoning.effort=none — do not floor it.
 # claude-sonnet-5-5 / claude-opus-5-5 / claude-haiku-5-5: adaptive thinking
@@ -58,6 +60,18 @@ _FRONTIER_PARAM_COMPAT: dict[str, FrontierParamCompat] = {
         unsupported_params=frozenset({"temperature", "top_p", "logprobs"}),
         unsupported_reasoning_efforts=frozenset({"none"}),
         reasoning_effort_floor="minimal",
+        tools_transport="responses",
+    ),
+    "gpt-6.2-astra": FrontierParamCompat(
+        unsupported_params=frozenset({"temperature", "top_p", "logprobs"}),
+        unsupported_reasoning_efforts=frozenset({"none"}),
+        reasoning_effort_floor="low",
+        tools_transport="responses",
+    ),
+    "gpt-6.2-sol": FrontierParamCompat(
+        unsupported_params=frozenset({"temperature", "top_p", "logprobs"}),
+        unsupported_reasoning_efforts=frozenset({"none"}),
+        reasoning_effort_floor="low",
         tools_transport="responses",
     ),
     "gpt-6.1-terra": FrontierParamCompat(
