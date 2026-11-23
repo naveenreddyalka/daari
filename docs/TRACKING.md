@@ -9502,6 +9502,15 @@ length fallback); catalog ships `mistral-ocr-latest` at $0.001/page (Mistral
 list, checked 2026-11-23). Local and vision legs stay $0; frontier spend is
 L6 so key/team budgets 402 like chat. Covered by `tests/unit/test_ocr.py`.
 
+### OpenRouter reasoning object on chat/completions ([#2283](https://github.com/naveenreddyalka/daari/issues/2283))
+
+<!-- tracking:#2283 -->
+**Status:** Done (2026-11-23). `from_openai_body` maps OpenRouter `reasoning`
+(`effort` / `max_tokens` / `enabled` / `exclude`); flat `reasoning_effort`
+wins; `exclude` strips assistant `reasoning` on chat non-stream + stream while
+usage stays; `reasoning.context` / `reasoning.mode` always in `dropped_params`.
+Covered by `tests/unit/test_openrouter_reasoning_object.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

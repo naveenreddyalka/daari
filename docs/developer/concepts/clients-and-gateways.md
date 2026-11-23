@@ -155,10 +155,16 @@ supported allowlist. Opt in to local server-side MCP with
 `integrations.mcp_servers` id; daari lists that server's tools, runs egress
 `tools/call` on model tool rounds (SSRF / policy / metering unchanged), and
 continues the turn. Unknown labels and other hosted types still **400**.
-Responses-native sampling maps onto the same `SamplingParams` as chat:
-`reasoning.effort` → `reasoning_effort`, `text.format` → JSON / `json_schema`
-(including `name`/`strict`), plus `tool_choice`, `parallel_tool_calls`, and
-`service_tier`. `prompt_cache_key`, `prompt_cache_retention`, and
+OpenRouter-dialect chat `reasoning` objects map onto the same levers:
+`effort` → `reasoning_effort` (flat `reasoning_effort` wins when both are sent),
+`max_tokens` → Anthropic `thinking.budget_tokens` plus local effort buckets,
+`enabled: false` → effort `none`, `exclude: true` strips assistant `reasoning`
+from non-stream and stream chat payloads while usage still counts those tokens.
+`reasoning.context` / `reasoning.mode` are always named in
+`daari_meta.dropped_params`. Responses-native sampling maps onto the same
+`SamplingParams` as chat: `reasoning.effort` → `reasoning_effort`,
+`text.format` → JSON / `json_schema` (including `name`/`strict`), plus
+`tool_choice`, `parallel_tool_calls`, and `service_tier`. `prompt_cache_key`, `prompt_cache_retention`, and
 `prompt_cache_options` forward on OpenAI-compatible L6; local tiers name them
 in `daari_meta.dropped_params` / `x-daari-dropped-params`. Responses-only
 `max_tool_calls` is accepted on the request model but never bridged into
