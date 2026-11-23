@@ -366,6 +366,15 @@ class ModelsSettings(BaseModel):
             "(tests and staged cutovers). None uses the host date."
         ),
     )
+    # Models Anthropic documents as requiring 30-day retention may still serve
+    # provider.zdr when listed here (expressly authorized orgs) (#2284).
+    retention_authorized: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Frontier model ids allowed under provider.zdr despite Anthropic "
+            "30-day retention (Fable/Mythos). Empty refuses those models."
+        ),
+    )
     timeout_s: dict[str, float] = Field(
         default_factory=dict,
         description=(

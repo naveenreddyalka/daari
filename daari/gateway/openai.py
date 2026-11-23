@@ -39,7 +39,9 @@ from daari.gateway.provider_prefs import (
     configured_frontier_slots,
     require_zdr_slot,
     RegionUnavailable,
+    ZdrRetentionConflict,
     ZdrUnavailable,
+    require_zdr_retention_ok,
 )
 from daari.gateway.sampling import SamplingParams
 from daari.gateway.cost_headers import (
@@ -1191,7 +1193,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if internal.provider and internal.provider.zdr and ctx.settings.frontier.enabled:
                 try:
                     require_zdr_slot(internal.provider, configured_frontier_slots(ctx.settings))
-                except ZdrUnavailable as exc:
+                    require_zdr_retention_ok(
+                        internal.provider,
+                        internal.model,
+                        authorized=ctx.settings.models.retention_authorized,
+                    )
+                except (ZdrUnavailable, ZdrRetentionConflict) as exc:
                     raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
 
             from daari.gateway.idempotency import resolve_idempotency
@@ -1293,7 +1300,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         }
                     },
                 )
-            except ZdrUnavailable as exc:
+            except (ZdrUnavailable, ZdrRetentionConflict) as exc:
                 if idem_slot is not None:
                     idem_slot.abandon()
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc

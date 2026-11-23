@@ -341,8 +341,25 @@ _ANTHROPIC_MODEL_LINES: dict[str, str] = {
     "claude-3-5-haiku": "haiku",
     "claude-fable-5-1": "fable",
     "claude-fable-5-2": "fable",
+    "claude-mythos-5-1": "mythos",
     "claude-mythos-5-2": "mythos",
 }
+
+# Anthropic Fable/Mythos require 30-day retention; not available under ZDR
+# unless expressly authorized (#2284).
+_RETENTION_REQUIRED_MODELS: tuple[str, ...] = (
+    "claude-fable-5-1",
+    "claude-fable-5-2",
+    "claude-mythos-5-1",
+    "claude-mythos-5-2",
+)
+
+
+def is_retention_required_model(model_id: str) -> bool:
+    """True when Anthropic documents a 30-day retention floor for ``model_id``."""
+    from daari.pricing import matching_model_key
+
+    return matching_model_key(model_id, _RETENTION_REQUIRED_MODELS) is not None
 
 
 def anthropic_model_line(model_id: str) -> str | None:
@@ -530,6 +547,12 @@ def anthropic_capabilities(model_id: str, settings: Any = None) -> dict[str, Any
     if matching_model_key(model_id, ("claude-haiku-5-5",)) is not None:
         thinking_types["adaptive"] = {"supported": True, "default": True}
         caps["thinking"]["default_effort"] = "medium"
+    if is_retention_required_model(model_id):
+        caps["retention"] = {
+            "required": True,
+            "zero_data_retention": False,
+            "min_days": 30,
+        }
     speed = anthropic_speed_capability(
         model_id,
         pricing=getattr(settings, "pricing", None) if settings is not None else None,

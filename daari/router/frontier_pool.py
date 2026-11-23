@@ -19,7 +19,9 @@ from daari.gateway.provider_prefs import (
     filter_slots_for_region,
     normalize_region,
     require_region_slot,
+    require_zdr_retention_ok,
     require_zdr_slot,
+    ZdrRetentionConflict,
 )
 from daari.observability.trace import add_step
 from daari.router.breaker_redis import share_key_for
@@ -84,6 +86,38 @@ class ProviderSlot:
         return current_secret(next(self._key_cycle))
 
 
+def _slots_for_zdr_retention(
+    request: InternalRequest,
+    slots: list[ProviderSlot],
+    *,
+    authorized: tuple[str, ...] = (),
+) -> list[ProviderSlot]:
+    """Drop retention-required models under provider.zdr; fail if none remain (#2284)."""
+    prefs = request.provider
+    if prefs is None or not prefs.zdr:
+        return slots
+    require_zdr_retention_ok(prefs, request.model, authorized=authorized)
+    kept: list[ProviderSlot] = []
+    blocked: ZdrRetentionConflict | None = None
+    for slot in slots:
+        model = getattr(getattr(slot, "executor", None), "default_model", "") or ""
+        try:
+            require_zdr_retention_ok(prefs, model, authorized=authorized)
+        except ZdrRetentionConflict as exc:
+            blocked = exc
+            add_step(
+                "frontier_skip",
+                provider=slot.id,
+                reason="zdr_retention_required",
+                model=model,
+            )
+            continue
+        kept.append(slot)
+    if not kept and blocked is not None:
+        raise blocked
+    return kept
+
+
 @dataclass
 class FrontierPool:
     """Ordered failover across providers; duck-types FrontierExecutor.execute."""
@@ -96,6 +130,8 @@ class FrontierPool:
     provider: str = "pool"
     prompt_cache: bool = True
     auto_caching: bool = False
+    # models.retention_authorized — expressly authorized ZDR exceptions (#2284).
+    retention_authorized: tuple[str, ...] = ()
     _last_executor: FrontierExecutor | None = field(default=None, init=False, repr=False)
 
     @property
@@ -138,6 +174,9 @@ class FrontierPool:
         slots = list(self.slots)
         if request.provider is not None and request.provider.zdr:
             slots = [slot for slot in slots if slot.zdr]
+        slots = _slots_for_zdr_retention(
+            request, slots, authorized=self.retention_authorized
+        )
         region_pin = getattr(request.meta, "region_pin", None)
         require_region_slot(region_pin, slots)
         slots = filter_slots_for_region(region_pin, slots)
@@ -308,6 +347,9 @@ class FrontierPool:
         slots = list(self.slots)
         if request.provider is not None and request.provider.zdr:
             slots = [slot for slot in slots if slot.zdr]
+        slots = _slots_for_zdr_retention(
+            request, slots, authorized=self.retention_authorized
+        )
         region_pin = getattr(request.meta, "region_pin", None)
         require_region_slot(region_pin, slots)
         slots = filter_slots_for_region(region_pin, slots)
@@ -422,7 +464,14 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             pool_limits=pool_limits_from_settings(settings),
             param_compat_table=compat_table,
         )
-        return FrontierPool.from_single(executor)
+        authorized = tuple(
+            str(item).strip()
+            for item in (getattr(getattr(settings, "models", None), "retention_authorized", None) or [])
+            if str(item).strip()
+        )
+        pool = FrontierPool.from_single(executor)
+        pool.retention_authorized = authorized
+        return pool
 
     slots: list[ProviderSlot] = []
     for entry in providers:
@@ -469,6 +518,11 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             )
         )
     first = slots[0].executor if slots else None
+    authorized = tuple(
+        str(item).strip()
+        for item in (getattr(getattr(settings, "models", None), "retention_authorized", None) or [])
+        if str(item).strip()
+    )
     return FrontierPool(
         slots=slots,
         base_url=first.base_url if first else frontier.base_url,
@@ -477,4 +531,5 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
         provider="pool",
         prompt_cache=frontier.prompt_cache,
         auto_caching=bool(getattr(frontier, "auto_caching", False)),
+        retention_authorized=authorized,
     )

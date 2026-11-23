@@ -9522,6 +9522,14 @@ effort, and degrades forced `tool_choice` any/tool → auto. Claude 5.5
 none→disabled unchanged. Compare-litellm watch for pinning API version
 `2026-10-21`. Covered by `tests/unit/test_fable_mythos_param_compat.py`.
 
+### ZDR honesty for retention-required Claude models ([#2284](https://github.com/naveenreddyalka/daari/issues/2284))
+
+<!-- tracking:#2284 -->
+**Status:** Done (2026-11-23). Capability metadata marks Fable/Mythos 5.1/5.2 as
+retention-required; `provider.zdr` against those models returns HTTP 400 unless
+listed in `models.retention_authorized`; doctor tips zdr slots that conflict.
+Covered by `tests/unit/test_zdr_retention_required.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

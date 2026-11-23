@@ -37,6 +37,8 @@ from daari.gateway.provider_prefs import (
     configured_frontier_slots,
     parse_provider,
     require_zdr_slot,
+    require_zdr_retention_ok,
+    ZdrRetentionConflict,
     ZdrUnavailable,
 )
 from daari.gateway.sampling import SamplingParams
@@ -679,7 +681,12 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                     require_zdr_slot(
                         internal.provider, configured_frontier_slots(ctx.settings)
                     )
-                except ZdrUnavailable as exc:
+                    require_zdr_retention_ok(
+                        internal.provider,
+                        internal.model,
+                        authorized=ctx.settings.models.retention_authorized,
+                    )
+                except (ZdrUnavailable, ZdrRetentionConflict) as exc:
                     raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
 
             if body.stream:
@@ -781,7 +788,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         }
                     },
                 )
-            except ZdrUnavailable as exc:
+            except (ZdrUnavailable, ZdrRetentionConflict) as exc:
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except LegacyComputerToolRejected as exc:
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
