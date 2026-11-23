@@ -49,6 +49,17 @@ _CLAUDE_55_ADAPTIVE_DEFAULT: tuple[str, ...] = (
     "claude-haiku-5-5",
 )
 
+# Fable/Mythos 5.1+5.2: sampling trio always 400 (even defaults); adaptive
+# thinking cannot be disabled; budget_tokens / forced tool_choice any|tool
+# also 400 (#2384 / Anthropic migration guide; litellm#52341).
+_FABLE_MYTHOS_PARAM_COMPAT: tuple[str, ...] = (
+    "claude-fable-5-1",
+    "claude-fable-5-2",
+    "claude-mythos-5-2",
+)
+# thinking.disabled / budget_tokens rejected on 5.2 (and already on fable-5-1).
+_FABLE_MYTHOS_NO_DISABLE_THINKING: tuple[str, ...] = _FABLE_MYTHOS_PARAM_COMPAT
+
 _FRONTIER_PARAM_COMPAT: dict[str, FrontierParamCompat] = {
     "gpt-6-astra": FrontierParamCompat(
         unsupported_params=frozenset({"temperature", "top_p", "logprobs"}),
@@ -90,6 +101,21 @@ _FRONTIER_PARAM_COMPAT: dict[str, FrontierParamCompat] = {
     ),
     "claude-haiku-5-5": FrontierParamCompat(
         unsupported_params=frozenset({"temperature", "top_p", "top_k"}),
+    ),
+    "claude-fable-5-1": FrontierParamCompat(
+        unsupported_params=frozenset({"temperature", "top_p", "top_k"}),
+        unsupported_reasoning_efforts=frozenset({"none"}),
+        reasoning_effort_floor="low",
+    ),
+    "claude-fable-5-2": FrontierParamCompat(
+        unsupported_params=frozenset({"temperature", "top_p", "top_k"}),
+        unsupported_reasoning_efforts=frozenset({"none"}),
+        reasoning_effort_floor="low",
+    ),
+    "claude-mythos-5-2": FrontierParamCompat(
+        unsupported_params=frozenset({"temperature", "top_p", "top_k"}),
+        unsupported_reasoning_efforts=frozenset({"none"}),
+        reasoning_effort_floor="low",
     ),
 }
 
@@ -202,6 +228,17 @@ def apply_frontier_param_compat(
             if "budget_tokens" not in result.dropped_params:
                 result.dropped_params.append("budget_tokens")
 
+    # Fable/Mythos 5.1+5.2: never emit disabled/budget thinking; degrade forced
+    # tool_choice. Runs before Claude 5.5 none→disabled so these ids never
+    # reuse that mapping (#2384).
+    if matching_model_key(model, _FABLE_MYTHOS_NO_DISABLE_THINKING) is not None:
+        _apply_fable_mythos_thinking_compat(payload, model, result)
+        warning = _degrade_fable_mythos_forced_tool_choice(payload, model)
+        if warning:
+            result.warnings.append(warning)
+            if "tool_choice" not in result.dropped_params:
+                result.dropped_params.append("tool_choice")
+
     # Claude 5.5 adaptive-default: effort none → thinking disabled (#2188).
     # Runs after Haiku budget remap so an explicit none still wins.
     if matching_model_key(model, _CLAUDE_55_ADAPTIVE_DEFAULT) is not None:
@@ -274,6 +311,25 @@ def _strip_adaptive_thinking_keys(
 
 def _map_haiku_55_budget_thinking(payload: dict[str, Any]) -> str | None:
     """Rewrite ``thinking.budget_tokens`` to adaptive + output_config.effort."""
+    return _map_budget_thinking_to_adaptive(
+        payload, model_label="claude-haiku-5-5"
+    )
+
+
+def _ensure_output_config_effort(payload: dict[str, Any], effort: str) -> None:
+    output_config = payload.get("output_config")
+    if not isinstance(output_config, dict):
+        output_config = {}
+    else:
+        output_config = dict(output_config)
+    output_config["effort"] = effort
+    payload["output_config"] = output_config
+
+
+def _map_budget_thinking_to_adaptive(
+    payload: dict[str, Any], *, model_label: str
+) -> str | None:
+    """Rewrite ``thinking.budget_tokens`` to adaptive + output_config.effort."""
     thinking = payload.get("thinking")
     if not isinstance(thinking, dict):
         return None
@@ -293,6 +349,61 @@ def _map_haiku_55_budget_thinking(payload: dict[str, Any]) -> str | None:
         output_config["effort"] = effort
     payload["output_config"] = output_config
     return (
-        "thinking budget_tokens is not supported by claude-haiku-5-5; "
+        f"thinking budget_tokens is not supported by {model_label}; "
         f"mapped to adaptive thinking with effort '{output_config['effort']}'"
+    )
+
+
+def _apply_fable_mythos_thinking_compat(
+    payload: dict[str, Any],
+    model: str,
+    result: FrontierParamCompatResult,
+) -> None:
+    """Floor effort none→low; never emit disabled or budget_tokens thinking (#2384)."""
+    # output_config.effort=none is not covered by the reasoning_effort table path.
+    output_config = payload.get("output_config")
+    if isinstance(output_config, dict):
+        raw_effort = output_config.get("effort")
+        if isinstance(raw_effort, str) and raw_effort.strip().lower() == "none":
+            _ensure_output_config_effort(payload, "low")
+            if "reasoning_effort" not in result.dropped_params:
+                result.dropped_params.append("reasoning_effort")
+            result.warnings.append(
+                f"reasoning_effort/output_config.effort 'none' is not supported "
+                f"by {model}; coerced to 'low'"
+            )
+
+    warning = _map_budget_thinking_to_adaptive(payload, model_label=model)
+    if warning:
+        result.warnings.append(warning)
+        if "budget_tokens" not in result.dropped_params:
+            result.dropped_params.append("budget_tokens")
+
+    thinking = payload.get("thinking")
+    if isinstance(thinking, dict):
+        kind = str(thinking.get("type") or "").strip().lower()
+        if kind == "disabled":
+            payload["thinking"] = {"type": "adaptive"}
+            if _payload_reasoning_effort(payload) in (None, "none"):
+                _ensure_output_config_effort(payload, "low")
+            result.warnings.append(
+                f"thinking.type 'disabled' is not supported by {model}; "
+                "mapped to adaptive thinking with effort 'low'"
+            )
+
+
+def _degrade_fable_mythos_forced_tool_choice(
+    payload: dict[str, Any], model: str
+) -> str | None:
+    """Forced Anthropic tool_choice any/tool → auto for Fable/Mythos (#2384)."""
+    choice = payload.get("tool_choice")
+    if not isinstance(choice, dict):
+        return None
+    kind = str(choice.get("type") or "").strip().lower()
+    if kind not in {"any", "tool"}:
+        return None
+    payload["tool_choice"] = {"type": "auto"}
+    return (
+        f"tool_choice type '{kind}' is not supported by {model}; "
+        "coerced to 'auto'"
     )

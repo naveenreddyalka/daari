@@ -9511,6 +9511,17 @@ wins; `exclude` strips assistant `reasoning` on chat non-stream + stream while
 usage stays; `reasoning.context` / `reasoning.mode` always in `dropped_params`.
 Covered by `tests/unit/test_openrouter_reasoning_object.py`.
 
+### Fable/Mythos 5.1+5.2 param_compat ([#2384](https://github.com/naveenreddyalka/daari/issues/2384))
+
+<!-- tracking:#2384 -->
+**Status:** Done (2026-11-23). Builtin `_FRONTIER_PARAM_COMPAT` for
+`claude-fable-5-1` / `claude-fable-5-2` / `claude-mythos-5-2` strips
+`temperature` / `top_p` / `top_k` (including defaults), floors effort `none` →
+`low` without emitting `thinking.disabled`, maps budget thinking to adaptive +
+effort, and degrades forced `tool_choice` any/tool → auto. Claude 5.5
+none→disabled unchanged. Compare-litellm watch for pinning API version
+`2026-10-21`. Covered by `tests/unit/test_fable_mythos_param_compat.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
