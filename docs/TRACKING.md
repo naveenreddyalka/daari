@@ -9493,6 +9493,15 @@ daari local-first answers; prior 1.108.x notes condensed; GA floor stays
 `mcp_credential_refresh_failed`; remint logs `mcp_credential_refreshed`.
 Covered by `tests/unit/test_mcp_egress_secret_refresh.py`.
 
+### Bill frontier OCR from pages processed ([#2282](https://github.com/naveenreddyalka/daari/issues/2282))
+
+<!-- tracking:#2282 -->
+**Status:** Done (2026-11-23). `/v1/ocr` frontier leg prices from
+`usage_info.pages_processed` × `pricing.models.*.usd_per_page` (pages array
+length fallback); catalog ships `mistral-ocr-latest` at $0.001/page (Mistral
+list, checked 2026-11-23). Local and vision legs stay $0; frontier spend is
+L6 so key/team budgets 402 like chat. Covered by `tests/unit/test_ocr.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

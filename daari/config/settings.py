@@ -1600,6 +1600,8 @@ class ModelPrice(BaseModel):
     # Hosted ASR (whisper / gpt-transcribe) bills per audio minute when the
     # upstream response has no token ``usage`` block (#2250).
     usd_per_minute: float | None = None
+    # Hosted OCR (mistral-ocr-latest) bills per page from ``usage_info.pages_processed`` (#2282).
+    usd_per_page: float | None = None
     # Bill this id like another catalog / configured key (LiteLLM pricing_provider).
     # Set in config.yaml (not live-editable via the config editor ownership subset).
     alias_of: str | None = Field(
@@ -1975,6 +1977,13 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "input_per_1m": 2.50,
         "output_per_1m": 10.00,
         "usd_per_minute": 0.006,
+    },
+    # Mistral OCR (#2282). $1 / 1,000 pages = $0.001/page (checked 2026-11-23).
+    # https://mistral.ai/pricing
+    "mistral-ocr-latest": {
+        "input_per_1m": 0.0,
+        "output_per_1m": 0.0,
+        "usd_per_page": 0.001,
     },
 }
 
