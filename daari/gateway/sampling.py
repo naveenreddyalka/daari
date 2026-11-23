@@ -234,6 +234,17 @@ def normalize_reasoning_effort(raw: Any) -> str | None:
     return text or None
 
 
+def apply_reasoning_exclude_to_delta(
+    delta: dict[str, Any], *, exclude: bool
+) -> dict[str, Any]:
+    """Drop OpenRouter ``reasoning`` from a stream delta when exclude is set (#2283)."""
+    if not exclude or "reasoning" not in delta:
+        return delta
+    out = dict(delta)
+    out.pop("reasoning", None)
+    return out
+
+
 def _normalize_ollama_think(raw: Any) -> tuple[bool | str | None, str | None]:
     """Return (ollama_think_value, reasoning_effort) from a facade `think` (#1011)."""
     if isinstance(raw, bool):
@@ -460,6 +471,10 @@ class SamplingParams(BaseModel):
     # Responses-only max_tool_calls (#2256). Never forwarded on chat bridges;
     # always listed in dropped_params when set (honesty until round enforcement).
     max_tool_calls: int | None = None
+    # OpenRouter reasoning.exclude — strip reasoning from chat responses (#2283).
+    reasoning_exclude: bool = False
+    # OpenRouter reasoning fields we cannot honor; always in dropped_params (#2283).
+    reasoning_dropped: list[str] | None = None
 
     @classmethod
     def from_openai_body(cls, body: dict[str, Any]) -> SamplingParams:
@@ -509,6 +524,42 @@ class SamplingParams(BaseModel):
         elif not isinstance(tool_choice, str):
             tool_choice = None
 
+        flat_effort = normalize_reasoning_effort(body.get("reasoning_effort"))
+        thinking: dict[str, Any] | None = None
+        reasoning_exclude = False
+        reasoning_dropped: list[str] = []
+        effort = flat_effort
+        reasoning = body.get("reasoning")
+        if isinstance(reasoning, dict):
+            if "context" in reasoning and reasoning.get("context") is not None:
+                reasoning_dropped.append("reasoning.context")
+            if "mode" in reasoning and reasoning.get("mode") is not None:
+                reasoning_dropped.append("reasoning.mode")
+            if reasoning.get("exclude") is True:
+                reasoning_exclude = True
+            object_effort = normalize_reasoning_effort(reasoning.get("effort"))
+            enabled = reasoning.get("enabled")
+            raw_budget = reasoning.get("max_tokens")
+            budget: int | None = None
+            if (
+                isinstance(raw_budget, int)
+                and not isinstance(raw_budget, bool)
+                and raw_budget > 0
+                and enabled is not False
+            ):
+                budget = raw_budget
+                thinking = {"type": "enabled", "budget_tokens": budget}
+            # Flat reasoning_effort wins when both are sent (#2283).
+            if flat_effort is None:
+                if object_effort is not None:
+                    effort = object_effort
+                elif enabled is False:
+                    effort = "none"
+                    thinking = None
+                elif budget is not None:
+                    effort = reasoning_effort_from_thinking(thinking)
+                # enabled: true alone → provider default (leave effort unset).
+
         return cls(
             max_tokens=max_tokens,
             top_p=body.get("top_p"),
@@ -523,7 +574,10 @@ class SamplingParams(BaseModel):
             tool_choice=tool_choice,
             n=_normalize_n(body.get("n")),
             logprobs=_normalize_bool(body.get("logprobs")),
-            reasoning_effort=normalize_reasoning_effort(body.get("reasoning_effort")),
+            reasoning_effort=effort,
+            thinking=thinking,
+            reasoning_exclude=reasoning_exclude,
+            reasoning_dropped=reasoning_dropped or None,
             service_tier=_normalize_service_tier(body.get("service_tier")),
             speed=_normalize_speed(body.get("speed")),
             parallel_tool_calls=_normalize_parallel_tool_calls(
@@ -910,6 +964,8 @@ class SamplingParams(BaseModel):
                 "max_tool_calls is Responses-native and is not enforced yet; "
                 "declared via dropped_params"
             )
+        for name in self.reasoning_dropped or []:
+            notes.append(f"{name} is not supported and was ignored")
         return notes
 
     def unsupported_non_ollama(self) -> list[str]:
@@ -963,6 +1019,9 @@ class SamplingParams(BaseModel):
             names.append("thinking.between_tools")
         if self.max_tool_calls is not None:
             names.append("max_tool_calls")
+        for name in self.reasoning_dropped or []:
+            if name not in names:
+                names.append(name)
         return names
 
     def honored_fields(self) -> dict[str, Any]:

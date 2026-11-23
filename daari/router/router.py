@@ -2574,10 +2574,19 @@ class Router:
             },
         )
 
+        reasoning_exclude = bool(
+            getattr(stream_request.sampling, "reasoning_exclude", False)
+        )
+
         def chunk_payload(
             *, delta: dict[str, Any], finish_reason: str | None = None
         ) -> dict[str, Any]:
-            choice: dict[str, Any] = {"index": 0, "delta": delta}
+            from daari.gateway.sampling import apply_reasoning_exclude_to_delta
+
+            filtered = apply_reasoning_exclude_to_delta(
+                delta, exclude=reasoning_exclude
+            )
+            choice: dict[str, Any] = {"index": 0, "delta": filtered}
             if finish_reason is not None:
                 choice["finish_reason"] = finish_reason
             return {
