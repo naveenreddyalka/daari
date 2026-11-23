@@ -172,6 +172,9 @@ def run_doctor(
         results.append(body_cap_tip)
     results.append(_check_model_lifecycle(cfg))
     results.append(_check_anthropic_speed_lifecycle(cfg))
+    zdr_retention_tip = _check_zdr_retention_required(cfg)
+    if zdr_retention_tip is not None:
+        results.append(zdr_retention_tip)
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
@@ -2828,6 +2831,43 @@ def _check_model_lifecycle(settings: Settings) -> CheckResult:
         ok=True,
         detail="configured tier/frontier/pool models are active",
         optional=True,
+    )
+
+
+def _check_zdr_retention_required(settings: Settings) -> CheckResult | None:
+    """Tip when a zdr:true L6 slot's model requires Anthropic 30-day retention (#2284)."""
+    from daari.gateway.provider_prefs import configured_frontier_slots
+    from daari.pricing import matching_model_key
+    from daari.router.capabilities import is_retention_required_model
+
+    authorized = tuple(
+        str(item).strip()
+        for item in (getattr(settings.models, "retention_authorized", None) or [])
+        if str(item).strip()
+    )
+    hits: list[str] = []
+    for slot in configured_frontier_slots(settings):
+        if not bool(getattr(slot, "zdr", False)):
+            continue
+        model = (getattr(slot, "model", "") or "").strip()
+        if not model or not is_retention_required_model(model):
+            continue
+        if authorized and matching_model_key(model, authorized) is not None:
+            continue
+        sid = (getattr(slot, "id", "") or "").strip() or "frontier"
+        hits.append(f"{sid}:{model}")
+    if not hits:
+        return None
+    named = ", ".join(hits)
+    return CheckResult(
+        name="zdr_retention_required",
+        ok=False,
+        optional=True,
+        detail=(
+            f"L6 slot(s) declare zdr but model requires Anthropic 30-day retention "
+            f"({named}); provider.zdr requests will 400 unless listed in "
+            "models.retention_authorized"
+        ),
     )
 
 

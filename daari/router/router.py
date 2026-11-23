@@ -30,7 +30,11 @@ from daari.gateway.cost_headers import (
     stream_usage_cost_breakdown,
 )
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
-from daari.gateway.provider_prefs import RegionUnavailable, ZdrUnavailable
+from daari.gateway.provider_prefs import (
+    RegionUnavailable,
+    ZdrRetentionConflict,
+    ZdrUnavailable,
+)
 from daari.gateway.sampling import model_supports_thinking
 from daari.observability.metrics import Metrics
 from daari.observability.trace import TraceStore, add_step, end_trace, start_trace
@@ -6163,6 +6167,8 @@ class Router:
             response.daari_meta.warning = "request_deadline_exceeded"
             return response
         except ZdrUnavailable:
+            raise
+        except ZdrRetentionConflict:
             raise
         except RegionUnavailable:
             # Soft-local: keep the best on-box answer rather than leaving the region (#466).

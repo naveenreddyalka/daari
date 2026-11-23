@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Iterable, Literal
 
 from pydantic import BaseModel
 
@@ -26,6 +26,18 @@ class ZdrUnavailable(Exception):
     def __init__(self) -> None:
         super().__init__(
             "no configured L6 provider declares zdr; refusing to drop the constraint"
+        )
+
+
+class ZdrRetentionConflict(Exception):
+    """`zdr: true` requested for a model Anthropic requires 30-day retention on (#2284)."""
+
+    def __init__(self, model: str) -> None:
+        self.model = model
+        super().__init__(
+            f"model {model!r} requires Anthropic 30-day data retention and is not "
+            "available under zero data retention unless expressly authorized; "
+            "refusing provider.zdr (set models.retention_authorized to override)"
         )
 
 
@@ -81,6 +93,29 @@ def require_zdr_slot(prefs: ProviderPreferences | None, slots: list[Any]) -> Non
         return
     if not any(bool(getattr(slot, "zdr", False)) for slot in slots):
         raise ZdrUnavailable()
+
+
+def require_zdr_retention_ok(
+    prefs: ProviderPreferences | None,
+    model: str | None,
+    *,
+    authorized: Iterable[str] | None = None,
+) -> None:
+    """Fail closed when ``provider.zdr`` targets a retention-required model (#2284)."""
+    if prefs is None or not prefs.zdr:
+        return
+    if not model or not str(model).strip():
+        return
+    from daari.router.capabilities import is_retention_required_model
+    from daari.pricing import matching_model_key
+
+    blob = str(model).strip()
+    if not is_retention_required_model(blob):
+        return
+    allow = tuple(str(item).strip() for item in (authorized or ()) if str(item).strip())
+    if allow and matching_model_key(blob, allow) is not None:
+        return
+    raise ZdrRetentionConflict(blob)
 
 
 def normalize_region(value: str | None) -> str:
