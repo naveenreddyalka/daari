@@ -125,6 +125,8 @@ class ChatMessage(BaseModel):
     role: str
     content: str | list[dict[str, Any]] | dict[str, Any] | None = None
     tool_calls: list[Any] | None = None
+    # OpenRouter chat dialect: assistant reasoning text (#2283).
+    reasoning: str | None = None
 
 
 class EmbeddingsRequest(BaseModel):
@@ -175,6 +177,8 @@ class ChatCompletionRequest(BaseModel):
     provider: Any | None = None
     # OpenAI reasoning_effort (o-series / gpt-5 clients). Same #161 pattern (#297).
     reasoning_effort: Any | None = None
+    # OpenRouter reasoning object (effort / max_tokens / exclude / enabled) (#2283).
+    reasoning: Any | None = None
     # Stable end-user id. Used as a session key when routing.session_affinity is on.
     user: str | None = None
     # OpenRouter Auto `cost_tier` / `plugins: [{id: auto-router}]` (#388).
@@ -385,6 +389,7 @@ async def _execute_batch_chat_body(
             prompt_chars=prompt_chars,
             include_daari_meta=False,
             client_model=body.model or None,
+            reasoning_exclude=bool(internal.sampling.reasoning_exclude),
         )
     finally:
         if acquired:
@@ -703,22 +708,33 @@ def build_chat_completion_payload(
     prompt_chars: int,
     include_daari_meta: bool,
     client_model: str | None = None,
+    reasoning_exclude: bool = False,
 ) -> dict[str, Any]:
     """Serialize an InternalResponse as an OpenAI chat completion.
 
     Token counts come from the provider when it reported them; `usage_estimated`
     in daari_meta says whether they had to be derived from chars (#156).
+
+    When ``reasoning_exclude`` is true, assistant ``reasoning`` is omitted but
+    usage still reflects provider token counts (billing truth) (#2283).
     """
     input_tokens, output_tokens, estimated = response_token_usage(response, prompt_chars)
     meta = response.daari_meta.model_dump(exclude_none=True)
     meta["usage_estimated"] = estimated
+    reasoning_text = (response.reasoning_content or "").strip() or None
+    if reasoning_exclude:
+        reasoning_text = None
     payload = ChatCompletionResponse(
         id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
         created=int(time.time()),
         model=client_model or response.model,
         choices=[
             ChatCompletionChoice(
-                message=ChatMessage(role="assistant", content=response.content),
+                message=ChatMessage(
+                    role="assistant",
+                    content=response.content,
+                    reasoning=reasoning_text,
+                ),
                 finish_reason=response.finish_reason or "stop",
             )
         ],
@@ -741,6 +757,8 @@ def _openai_completion_body(
     include_daari_meta: bool,
     usage: tuple[int, int, bool] | None = None,
     finish_reason: str | None = None,
+    reasoning_content: str | None = None,
+    reasoning_exclude: bool = False,
 ) -> dict[str, Any]:
     prompt_chars = sum(len(message.content or "") for message in body.messages)
     if usage is not None:
@@ -752,13 +770,20 @@ def _openai_completion_body(
     meta = dict(daari_meta) if daari_meta else None
     if meta is not None:
         meta["usage_estimated"] = estimated
+    reasoning_text = (reasoning_content or "").strip() or None
+    if reasoning_exclude:
+        reasoning_text = None
     payload = ChatCompletionResponse(
         id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
         created=int(time.time()),
         model=body.model or result_model,
         choices=[
             ChatCompletionChoice(
-                message=ChatMessage(role="assistant", content=result_content),
+                message=ChatMessage(
+                    role="assistant",
+                    content=result_content,
+                    reasoning=reasoning_text,
+                ),
                 finish_reason=finish_reason or "stop",
             )
         ],
@@ -1335,6 +1360,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 include_daari_meta=include_daari_meta,
                 usage=response_token_usage(result, prompt_chars),
                 finish_reason=result.finish_reason,
+                reasoning_content=result.reasoning_content,
+                reasoning_exclude=bool(internal.sampling.reasoning_exclude),
             )
             if idem_slot is not None:
                 idem_slot.complete(
