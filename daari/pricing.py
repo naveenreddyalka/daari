@@ -598,6 +598,7 @@ _RATE_FIELDS = (
     "above_input_per_1m",
     "above_output_per_1m",
     "usd_per_minute",
+    "usd_per_page",
 )
 
 

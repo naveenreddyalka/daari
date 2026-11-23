@@ -69,6 +69,62 @@ class OcrTarget:
     retry: Any | None = None
 
 
+_DEFAULT_OCR_USD_PER_PAGE = 0.001
+
+
+@dataclass(frozen=True)
+class OcrCharge:
+    pages: int
+    cost_usd: float
+
+
+def ocr_usd_per_page(model: str, pricing: Any) -> float | None:
+    """Catalog ``usd_per_page`` for an OCR model id, longest-key match (#2282)."""
+    from daari.pricing import matching_model_key
+
+    table = getattr(pricing, "models", None) or {}
+    key = matching_model_key(model, table)
+    if key is None:
+        return None
+    entry = table[key]
+    raw = entry.get("usd_per_page") if isinstance(entry, dict) else getattr(
+        entry, "usd_per_page", None
+    )
+    if raw is None:
+        return None
+    return float(raw)
+
+
+def _pages_processed(upstream: dict[str, Any] | None) -> int:
+    """Prefer ``usage_info.pages_processed``; else length of the ``pages`` array."""
+    if not isinstance(upstream, dict):
+        return 0
+    usage = upstream.get("usage_info")
+    if isinstance(usage, dict):
+        raw = usage.get("pages_processed")
+        if isinstance(raw, (int, float)) and raw >= 0:
+            return int(raw)
+    pages = upstream.get("pages")
+    if isinstance(pages, list):
+        return len(pages)
+    return 0
+
+
+def price_ocr(
+    model: str,
+    upstream: dict[str, Any] | None,
+    *,
+    pricing: Any = None,
+) -> OcrCharge:
+    """Bill frontier OCR from pages × catalog per-page rate (#2282)."""
+    pages = _pages_processed(upstream)
+    rate = ocr_usd_per_page(model, pricing)
+    if rate is None:
+        rate = _DEFAULT_OCR_USD_PER_PAGE
+    cost = round(max(0.0, float(pages) * float(rate)), 8)
+    return OcrCharge(pages=pages, cost_usd=cost)
+
+
 class OcrDocument(BaseModel):
     type: str | None = Field(default=None)
     document_url: str | None = Field(default=None)
@@ -266,6 +322,7 @@ def _bind_spend_context(
     model: str,
     client_id: str | None,
     user_id: str | None = None,
+    reported_cost: float | None = None,
 ) -> None:
     router = getattr(ctx, "router", None)
     ledger = getattr(router, "spend_ledger", None)
@@ -297,7 +354,7 @@ def _bind_spend_context(
             requested_model=model,
             pricing=pricing,
             fallback_per_1k=fallback,
-            reported_cost=0.0,
+            reported_cost=reported_cost,
         )
     )
 
@@ -309,13 +366,30 @@ def _record_request(
     model: str,
     prompt_chars: int,
     completion_chars: int,
+    via: str = "local",
+    reported_cost: float | None = None,
 ) -> None:
-    input_tokens = max(0, prompt_chars // 4)
-    output_tokens = max(0, completion_chars // 4)
+    tier = "L6" if via == "frontier" else "ocr"
+    provider = "frontier" if via == "frontier" else "ocr"
+    # Budget windows reprice L6 rows from tokens × pricing. Page-billed OCR
+    # ships token rates at $0, so encode reported_cost as synthetic tokens at
+    # the flat fallback under an empty model (same seeding pattern budgets
+    # tests use). Spend ledger still gets the real model via SpendContext.
+    if via == "frontier" and reported_cost is not None and float(reported_cost) > 0:
+        settings = getattr(ctx, "settings", None)
+        usage = getattr(settings, "usage", None) if settings is not None else None
+        fallback = float(getattr(usage, "frontier_price_per_1k_tokens", 0.002) or 0.002)
+        input_tokens = max(1, int(round(float(reported_cost) / fallback * 1000)))
+        output_tokens = 0
+        ledger_model = ""
+    else:
+        input_tokens = max(0, prompt_chars // 4)
+        output_tokens = max(0, completion_chars // 4)
+        ledger_model = model
     metrics = getattr(ctx, "metrics", None)
     if metrics is not None:
         metrics.record(
-            "ocr",
+            tier,
             cache_hit=False,
             modality="ocr",
             input_tokens=input_tokens,
@@ -325,16 +399,16 @@ def _record_request(
     if ledger is None:
         return
     ledger.record(
-        tier="ocr",
+        tier=tier,
         cache_hit=False,
         prompt_chars=prompt_chars,
         completion_chars=completion_chars,
         client_id=client_id,
-        model=model,
-        provider="ocr",
+        model=ledger_model,
+        provider=provider,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        reported_cost=0.0,
+        reported_cost=reported_cost if via == "frontier" else 0.0,
     )
 
 
@@ -510,7 +584,12 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
                 caller = _caller_client_id(request)
                 markdown = str(data["pages"][0].get("markdown") or "")
                 _bind_spend_context(
-                    request, ctx, model=model, client_id=caller, user_id=body.user
+                    request,
+                    ctx,
+                    model=model,
+                    client_id=caller,
+                    user_id=body.user,
+                    reported_cost=0.0,
                 )
                 _record_request(
                     ctx,
@@ -518,6 +597,8 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
                     model=model,
                     prompt_chars=prompt_chars,
                     completion_chars=len(markdown),
+                    via="vision",
+                    reported_cost=0.0,
                 )
                 from daari.gateway.cost_headers import (
                     modality_response_headers,
@@ -532,6 +613,7 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
                     input_tokens=max(0, prompt_chars // 4),
                     output_tokens=max(0, len(markdown) // 4),
                     cost_usd=0.0,
+                    executor="vision",
                     session_id=session_id_from_request(request),
                     savings=getattr(getattr(ctx, "router", None), "session_savings", None),
                 )
@@ -624,8 +706,20 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
             for page in pages:
                 if isinstance(page, dict):
                     completion += len(str(page.get("markdown") or ""))
+        if target.via == "frontier":
+            pricing = getattr(getattr(ctx, "router", None), "pricing", None)
+            if pricing is None:
+                pricing = getattr(settings, "pricing", None)
+            reported_cost = price_ocr(model, data, pricing=pricing).cost_usd
+        else:
+            reported_cost = 0.0
         _bind_spend_context(
-            request, ctx, model=model, client_id=caller, user_id=body.user
+            request,
+            ctx,
+            model=model,
+            client_id=caller,
+            user_id=body.user,
+            reported_cost=reported_cost,
         )
         _record_request(
             ctx,
@@ -633,17 +727,20 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
             model=model,
             prompt_chars=prompt_chars,
             completion_chars=completion,
+            via=target.via,
+            reported_cost=reported_cost,
         )
         from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
 
         cost_headers = modality_response_headers(
             ctx.settings,
-            tier="ocr",
+            tier="L6" if target.via == "frontier" else "ocr",
             model=model,
             prompt_chars=prompt_chars,
             input_tokens=max(0, prompt_chars // 4),
             output_tokens=max(0, completion // 4),
-            cost_usd=0.0,
+            cost_usd=reported_cost,
+            executor="frontier" if target.via == "frontier" else target.via,
             session_id=session_id_from_request(request),
             savings=getattr(getattr(ctx, "router", None), "session_savings", None),
         )

@@ -292,7 +292,7 @@ async def test_virtual_key_spend_metered(settings, tmp_path, monkeypatch):
     assert len(seen) == 1
     rows = _spend_rows(app)
     assert len(rows) == 1
-    assert rows[0]["tier"] == "ocr"
+    assert rows[0]["tier"] == "L6"
     assert rows[0]["key_id"] == key.key.key_id
     assert rows[0]["team_id"] == key.key.team_id
     assert rows[0]["model"] == "mistral-ocr-latest"
@@ -469,3 +469,166 @@ async def test_ocr_input_guardrail_blocks(settings, monkeypatch):
 
     assert response.status_code == 400
     assert response.json()["error"]["type"] == "guardrail_blocked"
+
+
+def test_ocr_catalog_ships_per_page_rate(settings):
+    """mistral-ocr-latest usd_per_page is operator-overridable (#2282)."""
+    from daari.config.settings import ModelPrice
+    from daari.gateway.ocr import ocr_usd_per_page
+    from daari.pricing import resolve_price
+
+    price = resolve_price("mistral-ocr-latest", settings.pricing, fallback_per_1k=0.002)
+    assert price.is_fallback is False
+    assert ocr_usd_per_page("mistral-ocr-latest", settings.pricing) == pytest.approx(0.001)
+
+    settings.pricing.models["mistral-ocr-latest"] = ModelPrice(
+        input_per_1m=0.0,
+        output_per_1m=0.0,
+        usd_per_page=0.005,
+    )
+    assert ocr_usd_per_page("mistral-ocr-latest", settings.pricing) == pytest.approx(0.005)
+
+
+def test_price_ocr_uses_pages_processed():
+    from daari.config.settings import PricingSettings
+    from daari.gateway.ocr import price_ocr
+
+    pricing = PricingSettings()
+    charge = price_ocr(
+        "mistral-ocr-latest",
+        {
+            "pages": [{"index": 0, "markdown": "a"}, {"index": 1, "markdown": "b"}],
+            "usage_info": {"pages_processed": 3, "doc_size_bytes": 10},
+        },
+        pricing=pricing,
+    )
+    assert charge.pages == 3
+    assert charge.cost_usd == pytest.approx(0.003)
+
+
+def test_price_ocr_falls_back_to_pages_array_length():
+    from daari.config.settings import PricingSettings
+    from daari.gateway.ocr import price_ocr
+
+    pricing = PricingSettings()
+    charge = price_ocr(
+        "mistral-ocr-latest",
+        {"pages": [{"index": 0, "markdown": "a"}, {"index": 1, "markdown": "b"}]},
+        pricing=pricing,
+    )
+    assert charge.pages == 2
+    assert charge.cost_usd == pytest.approx(0.002)
+
+
+def test_price_ocr_operator_override_wins():
+    from daari.config.settings import ModelPrice, PricingSettings
+    from daari.gateway.ocr import price_ocr
+
+    pricing = PricingSettings()
+    pricing.models["mistral-ocr-latest"] = ModelPrice(
+        input_per_1m=0.0,
+        output_per_1m=0.0,
+        usd_per_page=0.01,
+    )
+    charge = price_ocr(
+        "mistral-ocr-latest",
+        {"usage_info": {"pages_processed": 2}},
+        pricing=pricing,
+    )
+    assert charge.cost_usd == pytest.approx(0.02)
+
+
+@pytest.mark.asyncio
+async def test_frontier_ocr_bills_pages_local_stays_zero(settings, tmp_path, monkeypatch):
+    """Frontier OCR meters pages × rate; local OCR stays $0 (#2282)."""
+    from daari.gateway.cost_headers import COST_HEADER
+
+    body = {
+        **_OCR_OK,
+        "usage_info": {"pages_processed": 5, "doc_size_bytes": 42},
+    }
+
+    def frontier_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=body)
+
+    _patch_upstream(monkeypatch, frontier_handler)
+    _enable_frontier(settings)
+    _enable_spend(settings, tmp_path)
+    settings.ocr.base_url = ""
+    settings.ocr.vision_model = ""
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        frontier = await client.post(
+            "/v1/ocr",
+            json={"model": "mistral-ocr-latest", "document": _DOC},
+        )
+    assert frontier.status_code == 200, frontier.text
+    expected = 5 * 0.001
+    assert float(frontier.headers[COST_HEADER]) == pytest.approx(expected)
+    rows = [r for r in _spend_rows(app) if r["tier"] == "L6"]
+    assert len(rows) == 1
+    assert float(rows[0]["cost_usd"]) == pytest.approx(expected)
+    assert rows[0]["model"] == "mistral-ocr-latest"
+
+    def local_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=body)
+
+    _patch_upstream(monkeypatch, local_handler)
+    settings.ocr.base_url = "http://ocr.local/v1"
+    settings.ocr.model = "local-ocr"
+    settings.frontier.enabled = False
+    local_app = _app(settings)
+    async with AsyncClient(
+        transport=ASGITransport(app=local_app), base_url="http://test"
+    ) as client:
+        local = await client.post(
+            "/v1/ocr",
+            json={"model": "local-ocr", "document": _DOC},
+        )
+    assert local.status_code == 200, local.text
+    assert float(local.headers[COST_HEADER]) == 0.0
+    local_rows = [r for r in _spend_rows(local_app) if r["tier"] == "ocr"]
+    assert len(local_rows) == 1
+    assert float(local_rows[0]["cost_usd"]) == 0.0
+
+
+@pytest.mark.asyncio
+async def test_frontier_ocr_spend_hits_daily_budget(settings, tmp_path, monkeypatch):
+    """Budget-capped key that exhausts via frontier OCR gets 402 (#2282)."""
+
+    body = {
+        **_OCR_OK,
+        "usage_info": {"pages_processed": 2000, "doc_size_bytes": 42},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=body)
+
+    _patch_upstream(monkeypatch, handler)
+    _enable_frontier(settings)
+    _enable_spend(settings, tmp_path)
+    settings.ocr.base_url = ""
+    settings.ocr.vision_model = ""
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    # 2000 pages × $0.001 = $2.00; daily cap $1.
+    key = store.create("bot", client_id="client-bot", daily_budget_usd=1.0)
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    headers = {"Authorization": f"Bearer {key.plaintext}"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post(
+            "/v1/ocr",
+            json={"model": "mistral-ocr-latest", "document": _DOC},
+            headers=headers,
+        )
+        second = await client.post(
+            "/v1/ocr",
+            json={"model": "mistral-ocr-latest", "document": _DOC},
+            headers=headers,
+        )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 402
+    assert second.json()["error"]["type"] == "budget_exceeded"
