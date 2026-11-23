@@ -282,4 +282,18 @@ include provider-reported `usage.cost`, tenant session affinity, and
 Lens-split Helm; daari does **not** claim Lens / hosted Helm parity. Treat
 1.110-dev as competitor ops context, not a support window.
 
+### Anthropic API version `2026-10-21` sampling watch (#2384)
+
+Anthropic API version **`2026-10-21`** removes `temperature` / `top_p` /
+`top_k` for **every** model (not only Fable/Mythos). daari already strips that
+trio when the client sends `anthropic-version: 2026-10-21`
+(`apply_anthropic_version_sampling_compat`). Builtin `frontier.param_compat`
+also strips the trio (plus effort / thinking / forced `tool_choice` hygiene)
+for `claude-fable-5-1` / `claude-fable-5-2` / `claude-mythos-5-2` regardless
+of version — LiteLLM's 1.110.2 / 1.111.0-rc.3 patch night
+([litellm#52341](https://github.com/BerriAI/litellm/issues/52341)) special-cased
+default `temperature=1` and let it through. **Watch:** if daari ever pins
+default `anthropic-version` to `2026-10-21`, strip the sampling trio
+unconditionally for all Anthropic ids (not only the Fable/Mythos table).
+
 Measured on the same Ollama corpus: [benchmark vs LiteLLM](benchmark-vs-litellm.md). Short matrix: [compare](compare.md).
