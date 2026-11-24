@@ -13,7 +13,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from daari.gateway.client_errors import summarize_upstream_failure
+from daari.gateway.client_errors import request_deadline_response, summarize_upstream_failure
 from daari.gateway.l6_passthrough import (
     RegionUnavailable,
     is_slot_failure,
@@ -22,6 +22,14 @@ from daari.gateway.l6_passthrough import (
     resolve_l6_targets,
 )
 from daari.gateway.request_log import log_gateway_event
+from daari.router.deadline import (
+    RequestDeadlineExceeded,
+    bind_request_deadline,
+    deadline_active,
+    nonstream_timeout,
+    parse_deadline_ms,
+    resolve_deadline_seconds,
+)
 
 _UNAVAILABLE = (
     "OCR requires a configured local multimodal vision model "
@@ -444,6 +452,13 @@ def _apply_ocr_output_policy(
     return {**data, "pages": rewritten_pages}, None
 
 
+def _ocr_deadline_seconds(request: Request, settings: Any) -> float | None:
+    header_ms = parse_deadline_ms(request.headers.get("x-daari-deadline-ms"))
+    upstream = getattr(settings, "upstream", None)
+    setting = getattr(upstream, "request_deadline_seconds", None) if upstream else None
+    return resolve_deadline_seconds(header_ms, setting)
+
+
 async def _run_vision(
     target: OcrTarget,
     *,
@@ -457,9 +472,10 @@ async def _run_vision(
             "ocr.vision_model supports image_url (or image data URIs); "
             "use ocr.base_url or frontier for PDF document_url"
         )
+    timeout = nonstream_timeout(target.timeout, "ocr")
     b64 = _image_b64_for_vision(source)
     if b64 is None:
-        b64 = await _fetch_image_b64(source, timeout=target.timeout)
+        b64 = await _fetch_image_b64(source, timeout=timeout)
     url = f"{target.base_url.rstrip('/')}/api/chat"
     payload = {
         "model": model,
@@ -473,7 +489,7 @@ async def _run_vision(
         ],
     }
     client = _shared_client()
-    upstream = await client.post(url, json=payload, timeout=target.timeout)
+    upstream = await client.post(url, json=payload, timeout=timeout)
     if upstream.status_code >= 400:
         upstream.raise_for_status()
     data = upstream.json()
@@ -504,6 +520,13 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
 
     ctx = request.app.state.ctx
     settings = ctx.settings
+    seconds = _ocr_deadline_seconds(request, settings)
+    if seconds is not None and not deadline_active():
+        try:
+            with bind_request_deadline(seconds, metrics=ctx.metrics):
+                return await handle_ocr(request, body)
+        except RequestDeadlineExceeded as exc:
+            return request_deadline_response(exc)
 
     idem_kind, idem_response, idem_slot = await resolve_idempotency(request, ctx, body)
     if idem_kind in {"replay", "conflict"} and idem_response is not None:
@@ -626,17 +649,21 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
             headers = inject_trace_headers(headers)
             url = f"{target.base_url.rstrip('/')}/ocr"
             payload = _ocr_payload(body, model)
+            timeout = nonstream_timeout(target.timeout, "ocr")
             with modality_client_span("daari.ocr", attributes=span_attrs):
                 upstream = await post_l6(
                     _shared_client(),
                     url,
                     headers=headers,
                     payload=payload,
-                    timeout=target.timeout,
+                    timeout=timeout,
                     upstream="ocr",
                     retry=target.retry if target.retry is not None else retry_settings,
                     metrics=metrics,
                 )
+        except RequestDeadlineExceeded as exc:
+            abandon_slot(idem_slot)
+            return request_deadline_response(exc)
         except ValueError as exc:
             abandon_slot(idem_slot)
             return _error(400, "invalid_request_error", str(exc))
