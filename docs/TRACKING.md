@@ -9538,6 +9538,14 @@ bind `X-Daari-Deadline-Ms` (wins) else `upstream.request_deadline_seconds`; spen
 budget returns **504** `request_deadline_exceeded` without upstream HTTP.
 Covered by `tests/unit/test_request_deadline.py` and `tests/unit/test_deadline_docs.py`.
 
+### Prometheus counters for server-side tool fee spend ([#2288](https://github.com/naveenreddyalka/daari/issues/2288))
+
+<!-- tracking:#2288 -->
+**Status:** Done (2026-11-24). `daari_server_tool_cost_usd_total{tool}` + stats
+`server_tool_cost_usd` accumulate frontier tool fees by `pricing.server_tools`
+key on the same `_ledger_record` path as spend `tool_cost_usd`; zero-fee tools
+omit. Covered by `tests/unit/test_server_tool_cost_metrics.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
