@@ -39,7 +39,9 @@ returns the same `budget_exceeded` `402` shape. The hold releases when the
 response completes, errors, or a stream aborts. Local tiers (L1–L5 header or
 configured local model ids) reserve `$0` so zero-cost traffic is not
 throttled. Denials increment `daari_budget_reservation_denied_total` and
-`daari_rejects_total{kind="budget_reservation"}`.
+`daari_rejects_total{kind="budget_reservation"}`. With the flag on but no
+key/team USD windows, reservation is a no-op — `daari doctor` tips
+`budget_reserve_in_flight`.
 
 ## Per-key budgets
 
