@@ -54,6 +54,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `fleet_cache` | Optional: `DAARI_FLEET_REPLICAS` > 1 without `cache.backend=redis` — L0 / session pins / singleflight stay per-pod |
 | doctor `scoped_cache_fleet` | Optional: `DAARI_FLEET_REPLICAS` > 1 with `cache.backend` not `redis` and any virtual key/team `cache_scope` other than `global` — tenant L0/L1 stays per-pod |
 | doctor `soft_budget_ratio` | Optional: `frontier.soft_budget_ratio=0` while request quotas, USD budget windows, or `rate_limit` RPM/TPM are set — soft 402/429 warnings disabled |
+| doctor `budget_reserve_in_flight` | Optional: `budgets.reserve_in_flight` true with no key/team USD budget windows — reservation is a silent no-op |
 | doctor `model_lifecycle` | Required when a configured tier/frontier/pool model has `lifecycle=retired`; optional tip when `deprecated` |
 | doctor `anthropic_speed_lifecycle` | Optional tip when configured models or recent spend still use a sunset Anthropic `speed=fast` combo (Opus 4.8 → Opus 5.5) |
 | doctor `key_expiry` | Optional: virtual keys expiring within `alerts.key_expiry_warn_days` (default 14) or expired-but-not-revoked — rotate before production 401s |

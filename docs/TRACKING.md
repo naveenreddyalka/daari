@@ -9555,6 +9555,14 @@ panel notes flat series when `budgets.reserve_in_flight` is off and the
 `kind="budget_reservation"` rejects twin; metrics guide cross-links. Covered by
 `tests/unit/test_grafana_dashboard.py`.
 
+### Doctor tip for reserve_in_flight without USD windows ([#2290](https://github.com/naveenreddyalka/daari/issues/2290))
+
+<!-- tracking:#2290 -->
+**Status:** Done (2026-11-24). `daari doctor` optional tip
+`budget_reserve_in_flight` when the flag is on and `_has_usd_budget_windows` is
+false; quiet when the flag is off or USD windows exist. Covered by
+`tests/unit/test_doctor_budget_reserve_in_flight.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

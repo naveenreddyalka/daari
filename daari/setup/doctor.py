@@ -184,6 +184,7 @@ def run_doctor(
     results.append(_check_mcp_oauth_revoke_fleet(cfg))
     results.append(_check_scoped_cache_fleet(cfg))
     results.append(_check_soft_budget_ratio(cfg))
+    results.append(_check_budget_reserve_in_flight(cfg))
     results.append(_check_unbounded_rpd(cfg))
     results.append(_check_user_rpd(cfg))
     results.append(_check_tpd(cfg))
@@ -2745,6 +2746,36 @@ def _check_soft_budget_ratio(settings: Settings) -> CheckResult:
             f"frontier.soft_budget_ratio=0 with {' + '.join(reasons)} — soft "
             "402/429 warnings are disabled while hard caps remain; set "
             "soft_budget_ratio (e.g. 0.8) so agents can back off before cliffs"
+        ),
+        optional=True,
+    )
+
+
+def _check_budget_reserve_in_flight(settings: Settings) -> CheckResult:
+    """Tip when reserve_in_flight is on but no USD budget windows exist (#2290)."""
+    budgets = getattr(settings, "budgets", None)
+    enabled = bool(getattr(budgets, "reserve_in_flight", False))
+    if not enabled:
+        return CheckResult(
+            name="budget_reserve_in_flight",
+            ok=True,
+            detail="budgets.reserve_in_flight=false",
+            optional=True,
+        )
+    if _has_usd_budget_windows(settings):
+        return CheckResult(
+            name="budget_reserve_in_flight",
+            ok=True,
+            detail="budgets.reserve_in_flight with USD budget windows configured",
+            optional=True,
+        )
+    return CheckResult(
+        name="budget_reserve_in_flight",
+        ok=False,
+        detail=(
+            "budgets.reserve_in_flight=true but no key/team USD budget windows "
+            "are configured — reservation is a no-op (settled-only behavior); "
+            "set a max_usd window on a virtual key or team, or turn the flag off"
         ),
         optional=True,
     )
