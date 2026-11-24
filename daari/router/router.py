@@ -1526,6 +1526,17 @@ class Router:
             bound.cache_ttl = cache_ttl
             bound.cache_write_tokens = write_tokens
             bound.cached_tokens = int(response.daari_meta.cached_tokens or 0)
+        tool_usage = getattr(response.daari_meta, "tool_usage", None)
+        if isinstance(tool_usage, dict) and tool_usage:
+            from daari.gateway.provider_prefs import resolve_server_tool_prices
+
+            prices = resolve_server_tool_prices(self.pricing)
+            per_tool: dict[str, float] = {}
+            for tool, count in tool_usage.items():
+                usd = int(count or 0) * float(prices.get(str(tool), 0.0) or 0.0)
+                if usd > 0.0:
+                    per_tool[str(tool)] = usd
+            self.metrics.record_server_tool_cost(per_tool)
         bill_tier = served_tier or getattr(request.sampling, "service_tier", None)
         # When the provider omitted usage.cost, bill from pricing + request TTL (#1843).
         if (

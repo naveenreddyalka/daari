@@ -318,6 +318,21 @@ def render_prometheus(
     else:
         lines.append(f"daari_cost_output_usd_total {float(snap.get('cost_output_usd') or 0.0)}")
 
+    lines.append(
+        "# HELP daari_server_tool_cost_usd_total "
+        "Cumulative server-side tool fee USD by tool type "
+        "(pricing.server_tools keys: web_search, file_search, …)."
+    )
+    lines.append("# TYPE daari_server_tool_cost_usd_total counter")
+    tool_costs = snap.get("server_tool_cost_usd") or {}
+    for tool, amount in sorted(tool_costs.items()):
+        usd = float(amount or 0.0)
+        if usd <= 0.0:
+            continue
+        lines.append(
+            f"daari_server_tool_cost_usd_total{_labels(tool=str(tool))} {usd}"
+        )
+
     lines.append("# HELP daari_upstream_retries_total Transient upstream failures retried.")
     lines.append("# TYPE daari_upstream_retries_total counter")
     lines.append(f"daari_upstream_retries_total {snap.get('upstream_retries', 0)}")
