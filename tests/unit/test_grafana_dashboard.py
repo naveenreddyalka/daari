@@ -855,3 +855,24 @@ def test_grafana_dashboard_includes_service_tier_not_allowed_panels():
         'kind="service_tier_not_allowed_degraded"' in expr for expr in soft_exprs
     )
     assert any("rate(" in expr for expr in soft_exprs)
+
+
+def test_grafana_dashboard_includes_budget_reservation_denied_panel():
+    """In-flight budget reservation denials should chart on the overview (#2289)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "budget reservation" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a budget-reservation-denials panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_budget_reservation_denied_total" in expr for expr in exprs)
+    assert any("rate(" in expr or "increase(" in expr for expr in exprs)
+    description = (panel.get("description") or "").lower()
+    assert "reserve_in_flight" in description
+    assert "budget_reservation" in description
+    assert "flat" in description

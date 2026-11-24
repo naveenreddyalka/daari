@@ -9546,6 +9546,15 @@ Covered by `tests/unit/test_request_deadline.py` and `tests/unit/test_deadline_d
 key on the same `_ledger_record` path as spend `tool_cost_usd`; zero-fee tools
 omit. Covered by `tests/unit/test_server_tool_cost_metrics.py`.
 
+### Grafana panel for budget reservation denials ([#2289](https://github.com/naveenreddyalka/daari/issues/2289))
+
+<!-- tracking:#2289 -->
+**Status:** Done (2026-11-24). Overview dashboard + Helm copy add **Budget
+reservation denials** (`rate(daari_budget_reservation_denied_total[5m])`);
+panel notes flat series when `budgets.reserve_in_flight` is off and the
+`kind="budget_reservation"` rejects twin; metrics guide cross-links. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
