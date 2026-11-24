@@ -36,12 +36,25 @@ missing from `_DEFAULT_MODEL_LIFECYCLE` (487); retention refuses have no
 Prom/stats (489); LTS compare still cites 1.108.15 (488); fence the wave
 (490). `/v1/responses` `reasoning.exclude` (484) still open.
 
+**PM delta (17:01 run).** Overnight after the morning scan, main absorbed
+OCR/image request deadlines (#2445) and server-tool-fee Prom counters
+(#2446). Follow-through gaps: `X-Daari-Deadline-Ms` still ignored on the
+extractions/moderations/rerank/decisions doors — all dial L6 over httpx
+with no `bind_request_deadline` (491); Grafana has no panel for
+`daari_server_tool_cost_usd_total` (492); the wave is unfenced (493).
+Outward pm: LiteLLM **1.110.3 / 1.109.4** (backport-only: MCP DCR opt-in,
+audit-log fixes, group fallback — fold into 437/488); Ollama **0.40.18**
+(MLX/Metal perf, facade-neutral); everything else flat since the morning.
+
 ---
 
 ## Scored gap table
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 491 | Honor `X-Daari-Deadline-Ms` on extractions / moderations / rerank / decisions — four frontier doors dial L6 with no deadline binding; a spent budget still pays upstream (#2445 covered only OCR/images) | 3 | 2 | Kong request timeouts (transport-level only) | One on-box deadline arithmetic (`router/deadline.py`) refuses with 504 **before** frontier spend; `post_l6` is the shared choke point | Filed [#2447](https://github.com/naveenreddyalka/daari/issues/2447) |
+| 492 | Grafana panel for `daari_server_tool_cost_usd_total{tool}` — #2446 counters ship but the dashboard graphs no tool-fee spend | 2 | 1 | LiteLLM hosted analytics | Per-call tool fees (web search, code exec) don't scale with tokens; on-box panel closes the FinOps loop | Filed [#2448](https://github.com/naveenreddyalka/daari/issues/2448) |
+| 493 | Integration fence for the 11-24 evening deadline-modality + tool-fee-metrics wave | 2 | 2 | — (testability) | Hermetic proof: 504 pre-upstream on OCR/images, tool-fee counter on settle, zero-fee omitted | Filed [#2449](https://github.com/naveenreddyalka/daari/issues/2449) |
 | 487 | Pin Claude Opus 4.5 deprecation lifecycle — retires 2027-01-22, successor Opus 5.5; `_DEFAULT_MODEL_LIFECYCLE` is OpenAI-only today | 4 | 1 | Anthropic platform notes / LiteLLM catalog | On-box `/v1/models` + doctor show the cutover; local tiers keep cheap loops | Filed [#2439](https://github.com/naveenreddyalka/daari/issues/2439) |
 | 486 | EFS honesty for `models.retention_authorized` — doctor + config docs name Enterprise Frontier Safeguards / customer-owned Sealed Safety Data (Anthropic 11-23) | 4 | 2 | Anthropic EFS console | Override is an honest EFS exception, not a silent ZDR lie | Filed [#2440](https://github.com/naveenreddyalka/daari/issues/2440) |
 | 489 | Prometheus + stats for `zdr_retention_required` refusals — overnight refuse is ops-blind | 3 | 1 | LiteLLM spend/guardrail metrics | Graph impossible ZDR+Fable asks before frontier spend | Filed [#2441](https://github.com/naveenreddyalka/daari/issues/2441) |
@@ -68,7 +81,7 @@ Prom/stats (489); LTS compare still cites 1.108.15 (488); fence the wave
 | 414–423 | Team BYOK modality + credential attribution + reconcile + binding Prom + auto_caching/residency + LTS + fences | 2–4 | 1–3 | LiteLLM / Portkey / Kong | Tenant credential + cache dials | Filed [#2313](https://github.com/naveenreddyalka/daari/issues/2313)–[#2325](https://github.com/naveenreddyalka/daari/issues/2325) |
 | 409–413 | Midstream tool-call safety + truncation Prom/Grafana | 2–5 | 1–2 | LiteLLM 1.111-dev | Local loops must not double-fire | Open [#2304](https://github.com/naveenreddyalka/daari/issues/2304)/[#2306](https://github.com/naveenreddyalka/daari/issues/2306)/[#2307](https://github.com/naveenreddyalka/daari/issues/2307) |
 | 405–408 | effective_to promos; Responses order; local thinking; fence | 2–4 | 2–3 | Kong / LiteLLM | Honest ledger + reasoning | Filed [#2297](https://github.com/naveenreddyalka/daari/issues/2297)–[#2300](https://github.com/naveenreddyalka/daari/issues/2300) |
-| 385–404 | Extractions + OCR + reasoning + ZDR + deadlines + tool-fee ops; MCP cancel / pins / llama.cpp / refused-leg / cost panels / OCR pages / reasoning object / **ZDR retention** | 2–4 | 1–3 | LiteLLM / OpenRouter / Kong / Anthropic | Same-box agent + FinOps | Open [#2269](https://github.com/naveenreddyalka/daari/issues/2269)–[#2291](https://github.com/naveenreddyalka/daari/issues/2291); Shipped #2265–#2268, #2272–#2273, #2398–#2401, #2415–#2416, #2432–#2433, **#2438** |
+| 385–404 | Extractions + OCR + reasoning + ZDR + deadlines + tool-fee ops; MCP cancel / pins / llama.cpp / refused-leg / cost panels / OCR pages / reasoning object / **ZDR retention** | 2–4 | 1–3 | LiteLLM / OpenRouter / Kong / Anthropic | Same-box agent + FinOps | Open [#2269](https://github.com/naveenreddyalka/daari/issues/2269)–[#2291](https://github.com/naveenreddyalka/daari/issues/2291); Shipped #2265–#2268, #2272–#2273, #2398–#2401, #2415–#2416, #2432–#2433, **#2438**, **#2445–#2446** |
 | 375–384 | Image/ASR billing; allowed_tools; failed-chain; max_tool_calls; CMA; LTS — most Shipped | 2–4 | 1–2 | LiteLLM / Anthropic | Wire + FinOps | Open [#2253](https://github.com/naveenreddyalka/daari/issues/2253)/[#2257](https://github.com/naveenreddyalka/daari/issues/2257)–[#2259](https://github.com/naveenreddyalka/daari/issues/2259) |
 | 62–67 | End-user inventory; guardrail profiles; web-ui pagination; nested usage | 4–5 | 2–3 | OpenRouter / LiteLLM / Portkey | Ledger meters; finish the console | Open (agent:working) |
 | 19 | Config ownership for `routing.compact_to_fit.*` | 3 | 2 | LiteLLM config ownership | Shipped | Shipped |
@@ -85,8 +98,10 @@ Prom/stats (489); LTS compare still cites 1.108.15 (488); fence the wave
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (≥60m session) | Parked |
 | 8 | Full DCR; A2A; Realtime/WS; OpenAI Live; stdio MCP; M365; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM | Demand-triggered | Watch |
 
-Watch rows (do not file yet): **LiteLLM floor → 1.110.2 / 1.108.16
-LTS** (488 is the LTS pin; fold GA into open 437/2349); **1.112.0-dev.2**
+Watch rows (do not file yet): **LiteLLM floor → 1.110.3 / 1.108.16
+LTS** (488 is the LTS pin; 1.110.3/1.109.4 are backport-only patches —
+fold GA floor into open 437/2349, never file separately); Ollama
+**0.40.18** (MLX/Metal perf only, facade-neutral); **1.112.0-dev.2**
 remainder (**Lens**, FIPS 140-3 image, custom spend windows,
 budget-reservation sizing, app-budget presets — hold GA); incomplete
 synthetic-stream event (fold into 426); semantic-router 1.2.0
@@ -119,7 +134,8 @@ the Anthropic-authorized exception path for 486).
    prefs (482); marketplace floor (474); TTS duration (477); linked-billing
    refuses (469–470); Extractions BYOK (472); Flex wind-down (466); Sol →
    11-30 (460) + effective_to (405); Live catalog (461); zero_retention
-   (435). ZDR retention refuse shipped.
+   (435); **deadline on remaining L6 doors (491)**. ZDR retention refuse +
+   OCR/image deadlines shipped.
 2. **Honest terminal outcomes + frontier wire-shape** —
    reasoning.exclude on /v1/responses (484); previous_response_id refuse
    (476); store:false developer (451); Responses `incomplete` (426);
@@ -127,7 +143,8 @@ the Anthropic-authorized exception path for 486).
    envelopes (436). GPT-6.2 + Fable/Mythos param_compat + chat reasoning
    object shipped.
 3. **Nothing goes stale quietly** — **zdr_retention Prom (489)**;
-   **LTS 1.108.16 compare (488)**; omit X-Daari headers (480);
+   **LTS 1.108.16 compare (488)**; tool-fee Grafana panel (492);
+   omit X-Daari headers (480);
    Cache-Control (475); exhausted-key discovery (462); performance alerts
    (440); `rate_limited_by` (441); deprecation exposure (434); 5xx/
    auto_caching doctor+Prom (429–430, 419–420).
@@ -137,11 +154,20 @@ the Anthropic-authorized exception path for 486).
    thinking (407).
 5. **Local engine floor + discovery + honest compare + fences** — speech
    discovery (447); Live catalog (461); 1.111/1.112 watch (442); vLLM
-   0.34 (427); fences through **490**; then 62–67.
+   0.34 (427); fences through **493**; then 62–67.
 
 ---
 
 ## Changelog
+
+- **2026-11-24 pm (deadline doors + tool-fee panel; sibling unpark)** —
+  Unparked morning PR (restored pinned rows 19–28 after another
+  band-collapse failed the pin suite; merged 17:12 UTC). Outward pm flat:
+  LiteLLM 1.110.3/1.109.4 backport patches (fold into 437/488); Ollama
+  0.40.18 MLX perf. Inward: audited overnight #2445/#2446 — deadline
+  header dead on extractions/moderations/rerank/decisions; no Grafana
+  tool-fee panel. Filed: deadline on remaining L6 doors (491); tool-fee
+  panel (492); evening fence (493). 385–404 band +#2445/#2446 Shipped.
 
 - **2026-11-24 (Anthropic EFS + Opus 4.5 + LiteLLM 1.108.16)** — Outward:
   Anthropic EFS beta + Opus 4.5 retire 2027-01-22; LiteLLM LTS 1.108.16;
