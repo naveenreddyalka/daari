@@ -10,7 +10,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from daari.gateway.client_errors import summarize_upstream_failure
+from daari.gateway.client_errors import request_deadline_response, summarize_upstream_failure
 from daari.gateway.l6_passthrough import (
     L6Target,
     RegionUnavailable,
@@ -20,6 +20,14 @@ from daari.gateway.l6_passthrough import (
     resolve_l6_targets,
 )
 from daari.gateway.request_log import log_gateway_event
+from daari.router.deadline import (
+    RequestDeadlineExceeded,
+    bind_request_deadline,
+    deadline_active,
+    nonstream_timeout,
+    parse_deadline_ms,
+    resolve_deadline_seconds,
+)
 
 _UNAVAILABLE = (
     "Image generation requires a configured frontier (L6) OpenAI-compatible "
@@ -281,6 +289,13 @@ async def post_images_multipart(
     )
 
 
+def _images_deadline_seconds(request: Request, settings: Any) -> float | None:
+    header_ms = parse_deadline_ms(request.headers.get("x-daari-deadline-ms"))
+    upstream = getattr(settings, "upstream", None)
+    setting = getattr(upstream, "request_deadline_seconds", None) if upstream else None
+    return resolve_deadline_seconds(header_ms, setting)
+
+
 def _caller_client_id(request: Request) -> str | None:
     claims = getattr(request.state, "auth_claims", None)
     if claims is None or getattr(claims, "kind", None) != "virtual":
@@ -424,6 +439,13 @@ async def handle_images_generations(
 
     ctx = request.app.state.ctx
     settings = ctx.settings
+    seconds = _images_deadline_seconds(request, settings)
+    if seconds is not None and not deadline_active():
+        try:
+            with bind_request_deadline(seconds, metrics=ctx.metrics):
+                return await handle_images_generations(request, body)
+        except RequestDeadlineExceeded as exc:
+            return request_deadline_response(exc)
 
     idem_kind, idem_response, idem_slot = await resolve_idempotency(request, ctx, body)
     if idem_kind in {"replay", "conflict"} and idem_response is not None:
@@ -503,14 +525,18 @@ async def handle_images_generations(
         }
         url = f"{target.base_url}/images/generations"
         try:
+            timeout = nonstream_timeout(target.timeout, "images")
             upstream = await post_images(
                 url,
                 headers=headers,
                 payload=payload,
-                timeout=target.timeout,
+                timeout=timeout,
                 retry=target.retry if target.retry is not None else retry_settings,
                 metrics=metrics,
             )
+        except RequestDeadlineExceeded as exc:
+            abandon_slot(idem_slot)
+            return request_deadline_response(exc)
         except httpx.HTTPStatusError as exc:
             last_upstream = exc.response
             last_exc = exc
@@ -650,6 +676,26 @@ async def handle_images_edits(
     if image is None:
         return _error(400, "invalid_request_error", "image is required")
 
+    ctx = request.app.state.ctx
+    settings = ctx.settings
+    seconds = _images_deadline_seconds(request, settings)
+    if seconds is not None and not deadline_active():
+        try:
+            with bind_request_deadline(seconds, metrics=ctx.metrics):
+                return await handle_images_edits(
+                    request,
+                    image=image,
+                    prompt=prompt,
+                    mask=mask,
+                    model=model,
+                    n=n,
+                    size=size,
+                    response_format=response_format,
+                    user=user,
+                )
+        except RequestDeadlineExceeded as exc:
+            return request_deadline_response(exc)
+
     async def _read_upload(upload: Any) -> tuple[bytes, str, str]:
         read = getattr(upload, "read", None)
         raw = await read() if callable(read) else bytes(upload or b"")
@@ -671,9 +717,6 @@ async def handle_images_edits(
         mask_bytes, mask_name, mask_type = await _read_upload(mask)
         if not mask_bytes:
             mask_bytes = None
-
-    ctx = request.app.state.ctx
-    settings = ctx.settings
 
     pin = region_pin_from_request(request)
     default_model = images_default_model(settings)
@@ -735,15 +778,18 @@ async def handle_images_edits(
         headers = {"Authorization": f"Bearer {target.api_key}"}
         url = f"{target.base_url}/images/edits"
         try:
+            timeout = nonstream_timeout(target.timeout, "images")
             upstream = await post_images_multipart(
                 url,
                 headers=headers,
                 form=form,
                 files=files,
-                timeout=target.timeout,
+                timeout=timeout,
                 retry=target.retry if target.retry is not None else retry_settings,
                 metrics=metrics,
             )
+        except RequestDeadlineExceeded as exc:
+            return request_deadline_response(exc)
         except httpx.HTTPStatusError as exc:
             last_upstream = exc.response
             last_exc = exc
@@ -874,6 +920,24 @@ async def handle_images_variations(
     if image is None:
         return _error(400, "invalid_request_error", "image is required")
 
+    ctx = request.app.state.ctx
+    settings = ctx.settings
+    seconds = _images_deadline_seconds(request, settings)
+    if seconds is not None and not deadline_active():
+        try:
+            with bind_request_deadline(seconds, metrics=ctx.metrics):
+                return await handle_images_variations(
+                    request,
+                    image=image,
+                    model=model,
+                    n=n,
+                    size=size,
+                    response_format=response_format,
+                    user=user,
+                )
+        except RequestDeadlineExceeded as exc:
+            return request_deadline_response(exc)
+
     async def _read_upload(upload: Any) -> tuple[bytes, str, str]:
         read = getattr(upload, "read", None)
         raw = await read() if callable(read) else bytes(upload or b"")
@@ -887,9 +951,6 @@ async def handle_images_variations(
     image_bytes, image_name, image_type = await _read_upload(image)
     if not image_bytes:
         return _error(400, "invalid_request_error", "image is required")
-
-    ctx = request.app.state.ctx
-    settings = ctx.settings
 
     pin = region_pin_from_request(request)
     default_model = images_default_model(settings)
@@ -937,15 +998,18 @@ async def handle_images_variations(
         headers = {"Authorization": f"Bearer {target.api_key}"}
         url = f"{target.base_url}/images/variations"
         try:
+            timeout = nonstream_timeout(target.timeout, "images")
             upstream = await post_images_multipart(
                 url,
                 headers=headers,
                 form=form,
                 files=files,
-                timeout=target.timeout,
+                timeout=timeout,
                 retry=target.retry if target.retry is not None else retry_settings,
                 metrics=metrics,
             )
+        except RequestDeadlineExceeded as exc:
+            return request_deadline_response(exc)
         except httpx.HTTPStatusError as exc:
             last_upstream = exc.response
             last_exc = exc

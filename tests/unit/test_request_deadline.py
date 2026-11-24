@@ -17,6 +17,7 @@ from daari.router.deadline import (
     RequestDeadlineExceeded,
     aiter_with_ttft_deadline,
     bind_request_deadline,
+    deadline_active,
     nonstream_timeout,
     parse_deadline_ms,
     resolve_deadline_seconds,
@@ -456,4 +457,234 @@ async def test_ollama_generate_deadline_header_is_504(tmp_path):
     body = response.json()["error"]
     assert body["type"] == "request_deadline_exceeded"
     assert called["n"] == 0
+    assert app.state.ctx.metrics.deadline_exhausted == 1
+
+
+def _frontier_images_settings(tmp_path) -> Settings:
+    from daari.config.settings import FrontierProviderConfig
+
+    settings = Settings.model_validate(
+        {
+            "models": {"l3": "llama3.2:3b"},
+            "cache": {"l0": {"enabled": False, "path": str(tmp_path / "l0")}},
+            "upstream": {"request_deadline_seconds": 30},
+            "frontier": {
+                "enabled": True,
+                "providers": [
+                    {
+                        "id": "openai",
+                        "base_url": "https://api.openai.com/v1",
+                        "model": "dall-e-3",
+                        "keys": ["sk-test"],
+                    }
+                ],
+            },
+        }
+    )
+    # model_validate may not nest FrontierProviderConfig for providers list
+    # the same way Settings fixtures do — normalize if needed.
+    if settings.frontier.providers and not isinstance(
+        settings.frontier.providers[0], FrontierProviderConfig
+    ):
+        settings.frontier.providers = [
+            FrontierProviderConfig.model_validate(p) if isinstance(p, dict) else p
+            for p in settings.frontier.providers
+        ]
+    return settings
+
+
+def _patch_httpx_seen(monkeypatch) -> list:
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    real = httpx.AsyncClient
+
+    class Patched(real):
+        def __init__(self, *args, **kwargs):
+            if kwargs.get("transport") is None:
+                kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    for mod in ("daari.gateway.ocr", "daari.gateway.images"):
+        try:
+            monkeypatch.setattr(f"{mod}.httpx.AsyncClient", Patched)
+            import importlib
+
+            m = importlib.import_module(mod)
+            if hasattr(m, "_http"):
+                m._http = None
+        except Exception:
+            pass
+    return seen
+
+
+@pytest.mark.asyncio
+async def test_ocr_deadline_header_is_504(tmp_path, monkeypatch):
+    """X-Daari-Deadline-Ms: 0 on OCR must not call upstream (#2287)."""
+    seen = _patch_httpx_seen(monkeypatch)
+    settings = _frontier_images_settings(tmp_path)
+    settings.ocr.base_url = ""
+    settings.ocr.vision_model = ""
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/ocr",
+            json={
+                "model": "mistral-ocr-latest",
+                "document": {
+                    "type": "image_url",
+                    "image_url": "data:image/png;base64,aaaa",
+                },
+            },
+            headers={"X-Daari-Deadline-Ms": "0"},
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert body["deadline_seconds"] == 0
+    assert seen == []
+    assert app.state.ctx.metrics.deadline_exhausted == 1
+
+
+@pytest.mark.asyncio
+async def test_images_generations_deadline_header_is_504(tmp_path, monkeypatch):
+    """X-Daari-Deadline-Ms: 0 on generations must not call upstream (#2287)."""
+    seen = _patch_httpx_seen(monkeypatch)
+    settings = _frontier_images_settings(tmp_path)
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/generations",
+            json={"prompt": "a red cube", "model": "dall-e-3"},
+            headers={"X-Daari-Deadline-Ms": "0"},
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert body["deadline_seconds"] == 0
+    assert seen == []
+    assert app.state.ctx.metrics.deadline_exhausted == 1
+
+
+@pytest.mark.asyncio
+async def test_images_edits_deadline_header_is_504(tmp_path, monkeypatch):
+    """X-Daari-Deadline-Ms: 0 on edits must not call upstream (#2287)."""
+    seen = _patch_httpx_seen(monkeypatch)
+    settings = _frontier_images_settings(tmp_path)
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/edits",
+            data={"prompt": "make it blue", "model": "dall-e-2"},
+            files={"image": ("src.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+            headers={"X-Daari-Deadline-Ms": "0"},
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert body["deadline_seconds"] == 0
+    assert seen == []
+    assert app.state.ctx.metrics.deadline_exhausted == 1
+
+
+@pytest.mark.asyncio
+async def test_images_variations_deadline_header_is_504(tmp_path, monkeypatch):
+    """X-Daari-Deadline-Ms: 0 on variations must not call upstream (#2287)."""
+    seen = _patch_httpx_seen(monkeypatch)
+    settings = _frontier_images_settings(tmp_path)
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/variations",
+            data={"model": "dall-e-2"},
+            files={"image": ("src.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+            headers={"X-Daari-Deadline-Ms": "0"},
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert body["deadline_seconds"] == 0
+    assert seen == []
+    assert app.state.ctx.metrics.deadline_exhausted == 1
+
+
+@pytest.mark.asyncio
+async def test_ocr_config_deadline_is_504(tmp_path, monkeypatch):
+    """Config-only upstream.request_deadline_seconds is enforced on OCR (#2287)."""
+    seen = _patch_httpx_seen(monkeypatch)
+
+    def fake_mono() -> float:
+        # Bind samples the clock before the ContextVar is set; once active,
+        # report past the budget so guard_upstream refuses the hop.
+        return 10_000.0 if deadline_active() else 1_000.0
+
+    monkeypatch.setattr("daari.router.deadline.time.monotonic", fake_mono)
+    settings = _frontier_images_settings(tmp_path)
+    settings.upstream.request_deadline_seconds = 1.0
+    settings.ocr.base_url = ""
+    settings.ocr.vision_model = ""
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/ocr",
+            json={
+                "model": "mistral-ocr-latest",
+                "document": {
+                    "type": "image_url",
+                    "image_url": "data:image/png;base64,aaaa",
+                },
+            },
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert seen == []
+    assert app.state.ctx.metrics.deadline_exhausted == 1
+
+
+@pytest.mark.asyncio
+async def test_images_generations_config_deadline_is_504(tmp_path, monkeypatch):
+    """Config-only upstream.request_deadline_seconds on generations (#2287)."""
+    seen = _patch_httpx_seen(monkeypatch)
+
+    def fake_mono() -> float:
+        return 10_000.0 if deadline_active() else 1_000.0
+
+    monkeypatch.setattr("daari.router.deadline.time.monotonic", fake_mono)
+    settings = _frontier_images_settings(tmp_path)
+    settings.upstream.request_deadline_seconds = 1.0
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/generations",
+            json={"prompt": "a red cube", "model": "dall-e-3"},
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert seen == []
     assert app.state.ctx.metrics.deadline_exhausted == 1

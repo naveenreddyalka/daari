@@ -9530,6 +9530,14 @@ retention-required; `provider.zdr` against those models returns HTTP 400 unless
 listed in `models.retention_authorized`; doctor tips zdr slots that conflict.
 Covered by `tests/unit/test_zdr_retention_required.py`.
 
+### Honor X-Daari-Deadline-Ms on OCR and image routes ([#2287](https://github.com/naveenreddyalka/daari/issues/2287))
+
+<!-- tracking:#2287 -->
+**Status:** Done (2026-11-24). `/v1/ocr` and `/v1/images/{generations,edits,variations}`
+bind `X-Daari-Deadline-Ms` (wins) else `upstream.request_deadline_seconds`; spent
+budget returns **504** `request_deadline_exceeded` without upstream HTTP.
+Covered by `tests/unit/test_request_deadline.py` and `tests/unit/test_deadline_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

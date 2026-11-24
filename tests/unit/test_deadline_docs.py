@@ -17,6 +17,10 @@ def test_headers_document_deadline_ms() -> None:
     assert "/v1/audio/speech" in headers
     assert "/v1/embeddings" in headers
     assert "tools/call" in headers
+    assert "/v1/ocr" in headers
+    assert "/v1/images/generations" in headers
+    assert "/v1/images/edits" in headers
+    assert "/v1/images/variations" in headers
     assert "504" in headers
 
 
