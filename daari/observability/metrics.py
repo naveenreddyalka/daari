@@ -368,6 +368,8 @@ class Metrics:
     # Process-lifetime input/output USD (Kong 2.3.0 split; sums to priced total) (#2189).
     cost_input_usd: float = 0.0
     cost_output_usd: float = 0.0
+    # Server-side tool fee USD by tool type (pricing.server_tools keys) (#2288).
+    server_tool_cost_usd: dict[str, float] = field(default_factory=dict)
     # Opt-in per-team request/error counters (#1997). Off → no team dims.
     team_metrics: bool = False
     team_allowlist: frozenset[str] = field(default_factory=frozenset)
@@ -854,6 +856,20 @@ class Metrics:
                     self.key_cost_output_usd.get(key_label, 0.0) + out_usd
                 )
 
+    def record_server_tool_cost(self, tool_usd: dict[str, float] | None) -> None:
+        """Accumulate server-tool fee USD by tool type; omit non-positive (#2288)."""
+        if not tool_usd:
+            return
+        with self._lock:
+            for tool, amount in tool_usd.items():
+                name = str(tool or "").strip()
+                usd = max(0.0, float(amount or 0.0))
+                if not name or usd <= 0.0:
+                    continue
+                self.server_tool_cost_usd[name] = (
+                    self.server_tool_cost_usd.get(name, 0.0) + usd
+                )
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -930,6 +946,7 @@ class Metrics:
                 "cache_write_tokens": dict(self.cache_write_tokens),
                 "cost_input_usd": float(self.cost_input_usd),
                 "cost_output_usd": float(self.cost_output_usd),
+                "server_tool_cost_usd": dict(sorted(self.server_tool_cost_usd.items())),
                 "decision_classifier": dict(self.decision_classifier),
                 "decision_classifier_latency": {
                     "count": self.decision_classifier_latency.count,
