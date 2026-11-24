@@ -1277,6 +1277,25 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 63,
+      "title": "Budget reservation denials",
+      "description": "Pre-charge admissions denied because settled + reserved USD would exceed a budget window (`rate(daari_budget_reservation_denied_total[5m])`). Series stays flat when `budgets.reserve_in_flight` is off; denials also appear under `daari_rejects_total{kind=\"budget_reservation\"}` next to Hard rejects / frontier spend panels (#2289).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 256
+      },
+      "targets": [
+        {
+          "expr": "rate(daari_budget_reservation_denied_total[5m]) or vector(0)",
+          "legendFormat": "reservation denials/s",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",
