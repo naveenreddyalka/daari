@@ -36,7 +36,8 @@ def test_gpt_6_1_sol_prefix_does_not_collide_with_astra_or_gpt56():
     astra = resolve_price("gpt-6-astra", settings.pricing, fallback_per_1k=0.002)
     assert astra.input_per_1m == pytest.approx(10.0)
     sol56 = resolve_price("gpt-5.6-sol", settings.pricing, fallback_per_1k=0.002)
-    assert sol56.input_per_1m == pytest.approx(4.0)
+    # Post promo window (effective_to 2026-11-21) → baseline $5 (#2297).
+    assert sol56.input_per_1m == pytest.approx(5.0)
     # gpt-6.1-sol must not resolve as astra or gpt-5.6*.
     key = matching_model_key("gpt-6.1-sol", table)
     assert key not in {"gpt-6-astra", "gpt-5.6", "gpt-5.6-sol"}

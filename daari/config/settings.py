@@ -1583,6 +1583,23 @@ class UpstreamSettings(BaseModel):
     )
 
 
+class ModelPriceBaseline(BaseModel):
+    """Post-window rates for a catalog entry with ``effective_to`` (#2297)."""
+
+    input_per_1m: float | None = None
+    output_per_1m: float | None = None
+    cached_input_per_1m: float | None = None
+    cache_write_1h_per_1m: float | None = None
+    cache_write_per_1m: float | None = None
+    cache_write_30m_per_1m: float | None = None
+    cache_write_12h_per_1m: float | None = None
+    input_threshold_tokens: int | None = None
+    above_input_per_1m: float | None = None
+    above_output_per_1m: float | None = None
+    usd_per_minute: float | None = None
+    usd_per_page: float | None = None
+
+
 class ModelPrice(BaseModel):
     """USD per 1M tokens, which is how providers quote list prices."""
 
@@ -1611,6 +1628,10 @@ class ModelPrice(BaseModel):
     usd_per_minute: float | None = None
     # Hosted OCR (mistral-ocr-latest) bills per page from ``usage_info.pages_processed`` (#2282).
     usd_per_page: float | None = None
+    # Promo / intro window end (ISO 8601 date or datetime, UTC). On or after
+    # this instant, ``baseline`` rates bill instead of the top-level rates (#2297).
+    effective_to: str | None = None
+    baseline: ModelPriceBaseline | None = None
     # Bill this id like another catalog / configured key (LiteLLM pricing_provider).
     # Set in config.yaml (not live-editable via the config editor ownership subset).
     alias_of: str | None = Field(
@@ -1733,7 +1754,8 @@ def merged_anthropic_speed_lifecycle(settings: Any = None) -> dict[str, dict[str
 # List prices captured 2026-09-07. These move, so treat the table as a
 # convenience default: anything in `pricing.models` overrides an entry here,
 # and unpriced models fall back to frontier.price_per_1k_tokens.
-_DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
+# Entries may set ``effective_to`` + ``baseline`` for published promo windows (#2297).
+_DEFAULT_MODEL_PRICES: dict[str, dict[str, Any]] = {
     "gpt-4o": {"input_per_1m": 2.50, "output_per_1m": 10.00, "cached_input_per_1m": 1.25},
     "gpt-4o-mini": {"input_per_1m": 0.15, "output_per_1m": 0.60, "cached_input_per_1m": 0.075},
     "claude-3-5-sonnet": {"input_per_1m": 3.00, "output_per_1m": 15.00},
@@ -1820,8 +1842,7 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "above_input_per_1m": 0.50,
         "above_output_per_1m": 2.50,
     },
-    # OpenAI standard short-context tier. gpt-5.6 is the Sol alias.
-    # Sol is the promotional rate published through 2026-11-21 ($4/$20).
+    # OpenAI standard short-context tier.
     # Above 272K input tokens the whole request bills at 2× input / 1.5× output.
     # Prompt-cache writes: 30m = 1.25× input, 12h = 2.5× input (#1843).
     "gpt-6-astra": {
@@ -1882,12 +1903,24 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cache_write_30m_per_1m": 0.125,
         "cache_write_12h_per_1m": 0.25,
     },
+    # OpenAI GPT-5.6 / Sol: promotional $4/$20 at least through 2026-11-21
+    # (OpenAI changelog Aug 21 2026); standard $5/$30 after. Cache writes are
+    # 1.25× / 2.5× of the active input rate (#1843 / #2297).
+    # https://platform.openai.com/docs/changelog
     "gpt-5.6": {
         "input_per_1m": 4.00,
         "output_per_1m": 20.00,
         "cached_input_per_1m": 0.40,
         "cache_write_30m_per_1m": 5.00,
         "cache_write_12h_per_1m": 10.00,
+        "effective_to": "2026-11-21",
+        "baseline": {
+            "input_per_1m": 5.00,
+            "output_per_1m": 30.00,
+            "cached_input_per_1m": 0.50,
+            "cache_write_30m_per_1m": 6.25,
+            "cache_write_12h_per_1m": 12.50,
+        },
     },
     "gpt-5.6-sol": {
         "input_per_1m": 4.00,
@@ -1895,6 +1928,14 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cached_input_per_1m": 0.40,
         "cache_write_30m_per_1m": 5.00,
         "cache_write_12h_per_1m": 10.00,
+        "effective_to": "2026-11-21",
+        "baseline": {
+            "input_per_1m": 5.00,
+            "output_per_1m": 30.00,
+            "cached_input_per_1m": 0.50,
+            "cache_write_30m_per_1m": 6.25,
+            "cache_write_12h_per_1m": 12.50,
+        },
     },
     "gpt-5.6-terra": {
         "input_per_1m": 2.00,

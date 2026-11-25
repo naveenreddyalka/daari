@@ -15,7 +15,7 @@ rate fields on that entry still override the aliased values.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 # OpenAI / Anthropic / OpenRouter service_tier multipliers (#430).
@@ -436,6 +436,7 @@ def resolve_price(
     fallback_per_1k: float,
     input_tokens: int = 0,
     billing_path: str | None = None,
+    now: date | datetime | None = None,
 ) -> ResolvedPrice:
     """Price for `model`, falling back to the flat per-1k rate when unknown.
 
@@ -444,6 +445,8 @@ def resolve_price(
 
     ``billing_path="decisions"`` uses the Decisions card for ids that OpenAI
     bills differently on ``POST /v1/decisions`` than on Chat/Responses (#1484).
+
+    ``now`` freezes the clock for ``effective_to`` promo windows (#2297).
     """
     if (billing_path or "").strip().lower() == "decisions" and model:
         decisions_key = matching_model_key(model, _DECISIONS_MODEL_PRICES)
@@ -462,6 +465,8 @@ def resolve_price(
             input_tokens=input_tokens,
             table=table,
             exclude_keys={matched_key} if matched_key else set(),
+            now=now,
+            model_key=matched_key,
         )
         if resolved is not None:
             return resolved
@@ -501,6 +506,7 @@ def cost_breakdown(
     region_pin: str | None = None,
     billing_path: str | None = None,
     usage_speed: str | None = None,
+    now: date | datetime | None = None,
 ) -> CostBreakdown:
     """Input/output USD components; ``input + output == cost_usd(...)``."""
     price = resolve_price(
@@ -509,6 +515,7 @@ def cost_breakdown(
         fallback_per_1k=fallback_per_1k,
         input_tokens=input_tokens,
         billing_path=billing_path,
+        now=now,
     )
     write_tokens = max(0, int(cache_write_tokens))
     billable_input = max(0, input_tokens - cached_input_tokens)
@@ -542,6 +549,7 @@ def cost_usd(
     region_pin: str | None = None,
     billing_path: str | None = None,
     usage_speed: str | None = None,
+    now: date | datetime | None = None,
 ) -> float:
     return cost_breakdown(
         model,
@@ -556,6 +564,7 @@ def cost_usd(
         region_pin=region_pin,
         billing_path=billing_path,
         usage_speed=usage_speed,
+        now=now,
     ).total
 
 
@@ -653,21 +662,121 @@ def _merged_rate_entry(
     return merged
 
 
+_pricing_window_warnings: set[str] = set()
+
+
+def _parse_effective_to(raw: object) -> datetime | None:
+    """Parse ISO 8601 date or datetime as UTC; date-only → start of that UTC day."""
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        if len(text) == 10 and text[4] == "-" and text[7] == "-":
+            day = date.fromisoformat(text)
+            return datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+        normalized = text.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def _pricing_now(now: date | datetime | None) -> datetime:
+    if now is None:
+        return datetime.now(timezone.utc)
+    if isinstance(now, datetime):
+        if now.tzinfo is None:
+            return now.replace(tzinfo=timezone.utc)
+        return now.astimezone(timezone.utc)
+    return datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+
+
+def _entry_attr(entry: object, name: str) -> object:
+    if isinstance(entry, dict):
+        return entry.get(name)
+    return getattr(entry, name, None)
+
+
+def _warn_pricing_window(key: str, reason: str, detail: dict[str, Any]) -> None:
+    """Emit a once-per-key warning for malformed effective_to windows (#2297)."""
+    if key in _pricing_window_warnings:
+        return
+    _pricing_window_warnings.add(key)
+    from daari.gateway.request_log import log_gateway_event
+
+    log_gateway_event(
+        "pricing_effective_to_ignored",
+        {"reason": reason, **detail},
+    )
+
+
+def _baseline_rates_if_active(
+    entry: object,
+    *,
+    now: date | datetime | None,
+    model_key: str | None,
+) -> dict[str, float | int] | None:
+    """Return baseline rates when the clock is on/after ``effective_to``.
+
+    Malformed windows (unparseable date, missing/incomplete baseline) keep the
+    top-level promo rates and emit a rate-limited warning — never bill $0.
+    """
+    raw_to = _entry_attr(entry, "effective_to")
+    if raw_to is None or (isinstance(raw_to, str) and not raw_to.strip()):
+        return None
+    warn_key = model_key or str(raw_to)
+    boundary = _parse_effective_to(raw_to)
+    if boundary is None:
+        _warn_pricing_window(
+            warn_key,
+            "unparseable_effective_to",
+            {"effective_to": str(raw_to), "model": model_key},
+        )
+        return None
+    baseline = _entry_attr(entry, "baseline")
+    if baseline is None:
+        _warn_pricing_window(
+            warn_key,
+            "missing_baseline",
+            {"effective_to": str(raw_to), "model": model_key},
+        )
+        return None
+    rates = _entry_rate_dict(baseline)
+    if "input_per_1m" not in rates or "output_per_1m" not in rates:
+        _warn_pricing_window(
+            warn_key,
+            "incomplete_baseline",
+            {"effective_to": str(raw_to), "model": model_key},
+        )
+        return None
+    if _pricing_now(now) >= boundary:
+        return rates
+    return None
+
+
 def _resolved_from_entry(
     entry: object,
     *,
     input_tokens: int = 0,
     table: object | None = None,
     exclude_keys: set[str] | None = None,
+    now: date | datetime | None = None,
+    model_key: str | None = None,
 ) -> ResolvedPrice | None:
     """Resolve rates, following ``alias_of`` / ``pricing_provider`` when present.
 
     Returns None when an alias cannot be resolved and the entry has no
     explicit input/output rates (caller falls back to the flat rate).
     """
-    merged = _merged_rate_entry(
-        entry, table=table, exclude_keys=set(exclude_keys or ())
-    )
+    baseline = _baseline_rates_if_active(entry, now=now, model_key=model_key)
+    if baseline is not None:
+        merged: dict[str, float | int] | None = dict(baseline)
+    else:
+        merged = _merged_rate_entry(
+            entry, table=table, exclude_keys=set(exclude_keys or ())
+        )
     if merged is None:
         return None
 
