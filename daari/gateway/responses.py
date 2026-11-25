@@ -358,10 +358,24 @@ def _output_items_from_result(
     *,
     include_encrypted: bool = False,
 ) -> list[dict[str, Any]]:
-    items: list[dict[str, Any]] = []
+    ordered = getattr(result, "output_items", None)
+    if isinstance(ordered, list) and ordered:
+        items: list[dict[str, Any]] = []
+        for raw in ordered:
+            if not isinstance(raw, dict):
+                continue
+            item = dict(raw)
+            if item.get("type") == "reasoning" and not include_encrypted:
+                item.pop("encrypted_content", None)
+            if item.get("type") == "reasoning" and not item.get("id"):
+                item["id"] = f"rs_{uuid.uuid4().hex[:12]}"
+            items.append(item)
+        if items:
+            return items
+    items = []
     reasoning_text = (getattr(result, "reasoning_content", None) or "").strip()
     if reasoning_text:
-        item: dict[str, Any] = {
+        item = {
             "type": "reasoning",
             "id": f"rs_{uuid.uuid4().hex[:12]}",
             "summary": [{"type": "summary_text", "text": reasoning_text}],

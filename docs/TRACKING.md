@@ -9574,6 +9574,16 @@ rate-limited `pricing_effective_to_ignored` warning. `gpt-5.6` /
 (cached $0.50, 30m/12h writes 1.25×/2.5× baseline input). Covered by
 `tests/unit/test_pricing_effective_to.py`.
 
+### Preserve Responses output order / multi-reasoning (#2298) ([#2298](https://github.com/naveenreddyalka/daari/issues/2298))
+
+<!-- tracking:#2298 -->
+**Status:** Done (2026-11-25). Frontier Responses path carries ordered
+`output_items` on `InternalResponse` (every reasoning with summary +
+encrypted_content, every function_call, every message). Facade prefers
+that list so interleaved agentic turns survive; `_conversation_after`
+keeps each reasoning adjacent to the call it preceded. Flat chat-shaped
+results unchanged. Covered by `tests/unit/test_responses_output_order.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

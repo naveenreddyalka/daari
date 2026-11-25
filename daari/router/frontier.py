@@ -33,6 +33,7 @@ from daari.router.anthropic_messages import (
 )
 from daari.router.openai_encrypted_reasoning import (
     messages_to_responses_input,
+    output_items_from_responses_output,
     reasoning_encrypted_from_responses_output,
     text_from_responses_output,
     tool_calls_from_responses_output,
@@ -929,6 +930,7 @@ class FrontierExecutor:
             metrics=self.metrics,
         )
         reasoning_encrypted = None
+        output_items = None
         finish_reason = "stop"
         if anthropic:
             content = text_from_anthropic_content(data.get("content"))
@@ -943,6 +945,7 @@ class FrontierExecutor:
             content = text_from_responses_output(output)
             tool_calls = tool_calls_from_responses_output(output)
             reasoning_encrypted = reasoning_encrypted_from_responses_output(output)
+            output_items = output_items_from_responses_output(output)
             if tool_calls:
                 finish_reason = "tool_calls"
             status = data.get("status")
@@ -1032,4 +1035,5 @@ class FrontierExecutor:
             tool_calls=tool_calls if tool_calls else None,
             daari_meta=meta,
             reasoning_encrypted=reasoning_encrypted,
+            output_items=output_items,
         )
