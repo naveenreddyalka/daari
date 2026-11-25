@@ -138,12 +138,19 @@ class OpenAICompatExecutor:
         message = choice.get("message") or {}
         content = message.get("content") or ""
         tool_calls = message.get("tool_calls") or None
+        raw_reasoning = message.get("reasoning_content")
+        reasoning_content = (
+            raw_reasoning.strip()
+            if isinstance(raw_reasoning, str) and raw_reasoning.strip()
+            else None
+        )
         latency_ms = int((time.perf_counter() - started) * 1000)
         return InternalResponse(
             content=content,
             model=model,
             finish_reason="tool_calls" if tool_calls else (choice.get("finish_reason") or "stop"),
             tool_calls=tool_calls,
+            reasoning_content=reasoning_content,
             daari_meta=self._meta(model, latency_ms),
         )
 
@@ -209,10 +216,19 @@ class OpenAICompatExecutor:
                 }
                 if delta.get("tool_calls"):
                     message["tool_calls"] = delta["tool_calls"]
+                # Map OpenAI-compat reasoning deltas onto Ollama's thinking field
+                # so the tier loop can emit delta.reasoning_content (#2299).
+                raw_reasoning = delta.get("reasoning_content")
+                if isinstance(raw_reasoning, str) and raw_reasoning:
+                    message["thinking"] = raw_reasoning
                 raw_finish = choice.get("finish_reason")
                 if isinstance(raw_finish, str) and raw_finish.strip():
                     last_finish = raw_finish.strip()
-                if message.get("content") or message.get("tool_calls"):
+                if (
+                    message.get("content")
+                    or message.get("tool_calls")
+                    or message.get("thinking")
+                ):
                     had_output = True
                 event: dict[str, Any] = {"message": message, "done": False}
                 if last_finish and raw_finish:

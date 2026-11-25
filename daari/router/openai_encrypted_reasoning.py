@@ -268,10 +268,14 @@ def anthropic_content_with_encrypted_reasoning(
     text: str,
     *,
     reasoning_encrypted: str | None = None,
+    reasoning_content: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Build Messages ``content`` blocks, packing encrypted reasoning first."""
+    """Build Messages ``content`` blocks, packing encrypted / plain thinking first."""
     blocks: list[dict[str, Any]] = []
     if isinstance(reasoning_encrypted, str) and reasoning_encrypted.strip():
         blocks.append(pack_encrypted_reasoning_block(reasoning_encrypted.strip()))
+    elif isinstance(reasoning_content, str) and reasoning_content.strip():
+        # Local-tier thinking (Ollama / OpenAI-compat) → Anthropic thinking (#2299).
+        blocks.append({"type": "thinking", "thinking": reasoning_content.strip()})
     blocks.append({"type": "text", "text": text or ""})
     return blocks
