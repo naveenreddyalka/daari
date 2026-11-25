@@ -100,9 +100,7 @@ def messages_to_responses_input(messages: list[Message]) -> list[dict[str, Any]]
             item: dict[str, Any] = {
                 "type": "reasoning",
                 "encrypted_content": encrypted,
-                "summary": block.get("summary")
-                if isinstance(block.get("summary"), list)
-                else [],
+                "summary": block.get("summary") if isinstance(block.get("summary"), list) else [],
             }
             if isinstance(block.get("id"), str) and block["id"].strip():
                 item["id"] = block["id"]

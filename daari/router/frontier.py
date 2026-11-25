@@ -81,6 +81,7 @@ def resolve_frontier_base_url(
         return configured
     return override
 
+
 # Dedicated fast-mode bucket headers (Anthropic, 2026-10-15). Nothing else is copied.
 ANTHROPIC_FAST_RATE_HEADERS = (
     "anthropic-fast-input-tokens-limit",
@@ -287,9 +288,7 @@ class FrontierExecutor:
     last_param_compat: FrontierParamCompatResult | None = field(
         default=None, init=False, repr=False
     )
-    last_fast_rate_headers: dict[str, str] = field(
-        default_factory=dict, init=False, repr=False
-    )
+    last_fast_rate_headers: dict[str, str] = field(default_factory=dict, init=False, repr=False)
     last_fast_degraded: bool = field(default=False, init=False, repr=False)
     last_service_tier_degraded: bool = field(default=False, init=False, repr=False)
     last_stream_service_tier: str | None = field(default=None, init=False, repr=False)
@@ -682,9 +681,7 @@ class FrontierExecutor:
                     degraded_fast = True
                     payload["speed"] = "standard"
                     self.last_fast_degraded = True
-                    if self.metrics is not None and hasattr(
-                        self.metrics, "record_soft_warning"
-                    ):
+                    if self.metrics is not None and hasattr(self.metrics, "record_soft_warning"):
                         self.metrics.record_soft_warning("fast_degraded_to_standard")
                     continue
                 if (
@@ -698,9 +695,7 @@ class FrontierExecutor:
                     degraded_service_tier = True
                     payload.pop("service_tier", None)
                     self.last_service_tier_degraded = True
-                    if self.metrics is not None and hasattr(
-                        self.metrics, "record_soft_warning"
-                    ):
+                    if self.metrics is not None and hasattr(self.metrics, "record_soft_warning"):
                         self.metrics.record_soft_warning("service_tier_degraded")
                     continue
                 note_frontier_http_failure(response)
@@ -779,9 +774,7 @@ class FrontierExecutor:
                                 and isinstance(item.get("encrypted_content"), str)
                                 and item["encrypted_content"].strip()
                             ):
-                                yield {
-                                    "reasoning_encrypted": item["encrypted_content"].strip()
-                                }
+                                yield {"reasoning_encrypted": item["encrypted_content"].strip()}
                             elif isinstance(item, dict) and item.get("type") == "function_call":
                                 had_output = True
                                 yield {
@@ -793,8 +786,7 @@ class FrontierExecutor:
                                             "type": "function",
                                             "function": {
                                                 "name": item.get("name") or "",
-                                                "arguments": item.get("arguments")
-                                                or "{}",
+                                                "arguments": item.get("arguments") or "{}",
                                             },
                                         }
                                     ]
@@ -810,9 +802,7 @@ class FrontierExecutor:
                             saw_terminal = True
                             usage = chunk.get("response", {}).get("usage")
                             if isinstance(usage, dict):
-                                _remember_openai_stream_usage(
-                                    self, {"usage": usage, "choices": []}
-                                )
+                                _remember_openai_stream_usage(self, {"usage": usage, "choices": []})
                             continue
                         continue
                     if isinstance(chunk, dict):
@@ -958,16 +948,10 @@ class FrontierExecutor:
             message = choice.get("message", {})
             content = message.get("content", "") or ""
             tool_calls = message.get("tool_calls")
-            finish_reason = (
-                "tool_calls"
-                if tool_calls
-                else (choice.get("finish_reason") or "stop")
-            )
+            finish_reason = "tool_calls" if tool_calls else (choice.get("finish_reason") or "stop")
         latency_ms = int((time.perf_counter() - started) * 1000)
         prompt_chars = sum(len(message.content or "") for message in request.messages)
-        input_tokens, output_tokens, estimated = openai_token_usage(
-            data, prompt_chars, content
-        )
+        input_tokens, output_tokens, estimated = openai_token_usage(data, prompt_chars, content)
         cost_usd, cached_tokens, cache_write_tokens = usage_cost_and_cache(data)
         pricing = None
         try:

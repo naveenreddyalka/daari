@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from daari.gateway.internal import DaariMeta, InternalResponse, Message
 from daari.gateway.responses import _conversation_after, _output_items_from_result
@@ -39,7 +38,7 @@ def _interleaved_upstream() -> list[dict]:
             "id": "fc_2",
             "call_id": "call_b",
             "name": "tool_b",
-            "arguments": "{\"x\": 1}",
+            "arguments": '{"x": 1}',
             "status": "completed",
         },
         {
@@ -78,7 +77,9 @@ def test_output_items_from_result_prefers_ordered_output_items():
         content="done",
         model="gpt-5.6",
         daari_meta=DaariMeta(tier="L6", executor="frontier", latency_ms=1),
-        tool_calls=[{"id": "call_a", "type": "function", "function": {"name": "tool_a", "arguments": "{}"}}],
+        tool_calls=[
+            {"id": "call_a", "type": "function", "function": {"name": "tool_a", "arguments": "{}"}}
+        ],
         reasoning_content="only first would have been kept",
         reasoning_encrypted="enc-a",
         output_items=output_items_from_responses_output(_interleaved_upstream()),
