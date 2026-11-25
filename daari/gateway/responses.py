@@ -178,9 +178,7 @@ _COMPACT_PROMPT = (
 
 
 # Media parts handled by extract_images / extract_audio — not text drops.
-_HANDLED_MEDIA_PART_TYPES = frozenset(
-    {"input_image", "image_url", "image", "input_audio"}
-)
+_HANDLED_MEDIA_PART_TYPES = frozenset({"input_image", "image_url", "image", "input_audio"})
 # Readable Responses content types we still cannot map into Message.content.
 _READABLE_DROPPED_PART_TYPES = frozenset({"input_file"})
 
@@ -358,10 +356,24 @@ def _output_items_from_result(
     *,
     include_encrypted: bool = False,
 ) -> list[dict[str, Any]]:
-    items: list[dict[str, Any]] = []
+    ordered = getattr(result, "output_items", None)
+    if isinstance(ordered, list) and ordered:
+        items: list[dict[str, Any]] = []
+        for raw in ordered:
+            if not isinstance(raw, dict):
+                continue
+            item = dict(raw)
+            if item.get("type") == "reasoning" and not include_encrypted:
+                item.pop("encrypted_content", None)
+            if item.get("type") == "reasoning" and not item.get("id"):
+                item["id"] = f"rs_{uuid.uuid4().hex[:12]}"
+            items.append(item)
+        if items:
+            return items
+    items = []
     reasoning_text = (getattr(result, "reasoning_content", None) or "").strip()
     if reasoning_text:
-        item: dict[str, Any] = {
+        item = {
             "type": "reasoning",
             "id": f"rs_{uuid.uuid4().hex[:12]}",
             "summary": [{"type": "summary_text", "text": reasoning_text}],
@@ -554,9 +566,7 @@ def _notify_responses_completion(ctx: Any, body: dict[str, Any]) -> None:
         schedule_responses_completion_webhook(
             url=getattr(alerts, "responses_completion_webhook_url", "") or "",
             secret=getattr(alerts, "responses_completion_webhook_secret", "") or "",
-            previous_secret=getattr(
-                alerts, "responses_completion_webhook_secret_previous", ""
-            )
+            previous_secret=getattr(alerts, "responses_completion_webhook_secret_previous", "")
             or "",
             body=body,
             redis_url=redis_url,
@@ -791,7 +801,6 @@ def _replay_events_from_stored(
     return frames
 
 
-
 def _parse_chat_delta(raw: str) -> dict[str, Any] | None:
     line = raw.strip()
     if not line.startswith("data:"):
@@ -865,17 +874,13 @@ def _governed_responses_meta(
     )
     headers = getattr(request, "headers", None)
     if headers is not None:
-        meta.authorization_bearer = bearer_from_authorization(
-            headers.get("authorization")
-        )
+        meta.authorization_bearer = bearer_from_authorization(headers.get("authorization"))
         from daari.router.anthropic_messages import apply_anthropic_user_profile
 
         apply_anthropic_user_profile(
             meta,
             client_header=headers.get("anthropic-user-profile-id"),
-            user_profiles=getattr(
-                getattr(ctx.settings, "anthropic", None), "user_profiles", None
-            ),
+            user_profiles=getattr(getattr(ctx.settings, "anthropic", None), "user_profiles", None),
         )
     return meta
 
@@ -953,9 +958,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         ) -> Any:
             ctx: AppContext = request.app.state.ctx
             store, stored = _visible_stored_response(ctx, response_id, request)
-            reclaimed = _reclaim_expired_job(
-                store, response_id, stored, notify_ctx=ctx
-            )
+            reclaimed = _reclaim_expired_job(store, response_id, stored, notify_ctx=ctx)
             if reclaimed is not None:
                 stored = {**stored, **reclaimed}
             if not stream:
@@ -1107,9 +1110,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                         "id": message_id,
                         "role": "assistant",
                         "status": "completed",
-                        "content": [
-                            {"type": "output_text", "text": summary, "annotations": []}
-                        ],
+                        "content": [{"type": "output_text", "text": summary, "annotations": []}],
                     }
                 ],
                 "usage": {
@@ -1205,7 +1206,10 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     metrics = getattr(ctx, "metrics", None) or getattr(
                         getattr(ctx, "router", None), "metrics", None
                     )
-                    if getattr(ctx.settings.observability, "prometheus", True) and metrics is not None:
+                    if (
+                        getattr(ctx.settings.observability, "prometheus", True)
+                        and metrics is not None
+                    ):
                         if hasattr(metrics, "record_agent_access_denied"):
                             metrics.record_agent_access_denied()
                     key_id = getattr(claims, "key_id", None) if claims is not None else None
@@ -1248,9 +1252,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             owner_key_id = _owner_key_id_from_request(request)
             claims = getattr(request.state, "auth_claims", None)
             dropped_content_parts: list[str] = []
-            messages = responses_input_to_messages(
-                body, dropped_parts=dropped_content_parts
-            )
+            messages = responses_input_to_messages(body, dropped_parts=dropped_content_parts)
             if body.previous_response_id:
                 from daari.enterprise.audit import maybe_audit_tenancy_denied
 
@@ -1294,9 +1296,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 header=x_daari_tags,
                 metadata=getattr(body, "metadata", None),
                 baggage=baggage,
-                baggage_to_tags=bool(
-                    getattr(ctx.settings.routing, "baggage_to_tags", False)
-                ),
+                baggage_to_tags=bool(getattr(ctx.settings.routing, "baggage_to_tags", False)),
             )
             apply_cost_tier(body, meta)
             meta.dropped_content_parts = list(dropped_content_parts)
@@ -1547,7 +1547,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     if idem_slot is not None:
                         idem_slot.abandon()
                     ctx.metrics.record_error(status=503)
-                    raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
+                    raise HTTPException(
+                        status_code=503, detail=routing_failure_detail(exc)
+                    ) from exc
             if getattr(request.state, "request_quota_soft", False):
                 result.daari_meta.warning = "request_quota_warning"
             elif getattr(request.state, "budget_soft", False):

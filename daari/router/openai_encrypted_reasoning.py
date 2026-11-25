@@ -100,9 +100,7 @@ def messages_to_responses_input(messages: list[Message]) -> list[dict[str, Any]]
             item: dict[str, Any] = {
                 "type": "reasoning",
                 "encrypted_content": encrypted,
-                "summary": block.get("summary")
-                if isinstance(block.get("summary"), list)
-                else [],
+                "summary": block.get("summary") if isinstance(block.get("summary"), list) else [],
             }
             if isinstance(block.get("id"), str) and block["id"].strip():
                 item["id"] = block["id"]
@@ -168,6 +166,61 @@ def reasoning_encrypted_from_responses_output(output: Any) -> str | None:
         if isinstance(encrypted, str) and encrypted.strip():
             return encrypted.strip()
     return None
+
+
+def output_items_from_responses_output(output: Any) -> list[dict[str, Any]] | None:
+    """Copy reasoning / function_call / message items in upstream order (#2298).
+
+    Preserves every reasoning item (summary + encrypted_content) so the
+    Responses facade can re-emit the same interleaving the model produced.
+    """
+    if not isinstance(output, list):
+        return None
+    items: list[dict[str, Any]] = []
+    for item in output:
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        if item_type == "reasoning":
+            copied: dict[str, Any] = {
+                "type": "reasoning",
+                "id": item.get("id") or f"rs_{len(items)}",
+                "summary": item.get("summary")
+                if isinstance(item.get("summary"), list)
+                else (
+                    [{"type": "summary_text", "text": str(item.get("summary"))}]
+                    if item.get("summary")
+                    else []
+                ),
+            }
+            encrypted = item.get("encrypted_content")
+            if isinstance(encrypted, str) and encrypted.strip():
+                copied["encrypted_content"] = encrypted.strip()
+            items.append(copied)
+        elif item_type == "function_call":
+            items.append(
+                {
+                    "type": "function_call",
+                    "id": item.get("id") or f"fc_{len(items)}",
+                    "call_id": item.get("call_id") or item.get("id") or f"call_{len(items)}",
+                    "name": item.get("name") or "",
+                    "arguments": item.get("arguments") or "{}",
+                    "status": item.get("status") or "completed",
+                }
+            )
+        elif item_type == "message":
+            items.append(
+                {
+                    "type": "message",
+                    "id": item.get("id") or f"msg_{len(items)}",
+                    "status": item.get("status") or "completed",
+                    "role": item.get("role") or "assistant",
+                    "content": item.get("content")
+                    if item.get("content") is not None
+                    else [{"type": "output_text", "text": "", "annotations": []}],
+                }
+            )
+    return items or None
 
 
 def text_from_responses_output(output: Any) -> str:

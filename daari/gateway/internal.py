@@ -262,3 +262,6 @@ class InternalResponse(BaseModel):
     # Responses `reasoning` item text when the backend produced chain-of-thought (#1133).
     reasoning_content: str | None = None
     reasoning_encrypted: str | None = None
+    # Ordered Responses `output` items when the frontier path must not flatten
+    # interleaved reasoning / function_call / message turns (#2298).
+    output_items: list[dict[str, Any]] | None = None
