@@ -1296,6 +1296,25 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 64,
+      "title": "Stream fallback continue (midstream)",
+      "description": "Opt-in midstream continuation after a dying stream hop (`rate(daari_stream_fallback_continue_total[5m])`). Fires only when `routing.stream_fallback_continue` is enabled — not ordinary tier fallback. Series stays flat when the dial is off; place beside stream_incomplete / host failover pressure (#2304).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 264
+      },
+      "targets": [
+        {
+          "expr": "rate(daari_stream_fallback_continue_total[5m]) or vector(0)",
+          "legendFormat": "midstream continue/s",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

@@ -876,3 +876,25 @@ def test_grafana_dashboard_includes_budget_reservation_denied_panel():
     assert "reserve_in_flight" in description
     assert "budget_reservation" in description
     assert "flat" in description
+
+
+def test_grafana_dashboard_includes_stream_fallback_continue_panel():
+    """Opt-in midstream continue hops should chart on the overview (#2304)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "stream fallback continue" in p.get("title", "").lower()
+            or "midstream continue" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a stream_fallback_continue panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_stream_fallback_continue_total" in expr for expr in exprs)
+    assert any("rate(" in expr or "increase(" in expr for expr in exprs)
+    description = (panel.get("description") or "").lower()
+    assert "opt-in" in description or "opt in" in description
+    assert "stream_fallback_continue" in description
+    assert "midstream" in description or "mid-stream" in description or "dying" in description

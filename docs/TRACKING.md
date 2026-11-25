@@ -9595,6 +9595,15 @@ Responses reasoning items, and Messages `thinking` blocks surface it;
 cache keeps reasoning out of answer content. Covered by
 `tests/unit/test_local_thinking_capture.py`.
 
+### Grafana panel for stream_fallback_continue (#2304) ([#2304](https://github.com/naveenreddyalka/daari/issues/2304))
+
+<!-- tracking:#2304 -->
+**Status:** Done (2026-11-25). Overview dashboard + Helm copy add **Stream
+fallback continue (midstream)**
+(`rate(daari_stream_fallback_continue_total[5m])`); description notes
+opt-in `routing.stream_fallback_continue` and distinguishes ordinary tier
+fallback. Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
