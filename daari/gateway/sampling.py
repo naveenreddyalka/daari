@@ -237,11 +237,14 @@ def normalize_reasoning_effort(raw: Any) -> str | None:
 def apply_reasoning_exclude_to_delta(
     delta: dict[str, Any], *, exclude: bool
 ) -> dict[str, Any]:
-    """Drop OpenRouter ``reasoning`` from a stream delta when exclude is set (#2283)."""
-    if not exclude or "reasoning" not in delta:
+    """Drop reasoning fields from a stream delta when exclude is set (#2283/#2299)."""
+    if not exclude:
+        return delta
+    if "reasoning" not in delta and "reasoning_content" not in delta:
         return delta
     out = dict(delta)
     out.pop("reasoning", None)
+    out.pop("reasoning_content", None)
     return out
 
 

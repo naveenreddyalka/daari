@@ -888,10 +888,12 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 anthropic_content_with_encrypted_reasoning,
             )
 
-            # Pack OpenAI encrypted reasoning as redacted_thinking for replay (#2214).
+            # Pack OpenAI encrypted reasoning as redacted_thinking for replay (#2214);
+            # local-tier thinking becomes a plain thinking block (#2299).
             content_blocks = anthropic_content_with_encrypted_reasoning(
                 result.content or "",
                 reasoning_encrypted=getattr(result, "reasoning_encrypted", None),
+                reasoning_content=getattr(result, "reasoning_content", None),
             )
             from daari.router.anthropic_messages import finish_reason_to_anthropic_stop
 
