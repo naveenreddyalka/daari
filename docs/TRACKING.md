@@ -9563,6 +9563,17 @@ panel notes flat series when `budgets.reserve_in_flight` is off and the
 false; quiet when the flag is off or USD windows exist. Covered by
 `tests/unit/test_doctor_budget_reserve_in_flight.py`.
 
+### Time-bounded catalog rates (effective_to + baseline) ([#2297](https://github.com/naveenreddyalka/daari/issues/2297))
+
+<!-- tracking:#2297 -->
+**Status:** Done (2026-11-25). Pricing entries accept optional `effective_to`
+(ISO 8601 UTC) + `baseline` rate set; on/after the boundary cost resolution
+bills baseline rates. Malformed windows keep top-level rates with a
+rate-limited `pricing_effective_to_ignored` warning. `gpt-5.6` /
+`gpt-5.6-sol` ship promo $4/$20 through 2026-11-21 and baseline $5/$30
+(cached $0.50, 30m/12h writes 1.25×/2.5× baseline input). Covered by
+`tests/unit/test_pricing_effective_to.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

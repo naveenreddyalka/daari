@@ -260,8 +260,9 @@ def test_resolve_price_covers_september_2026_frontier_lineup():
         "gpt-6-astra": (10.0, 50.0, 1.00),
         "gpt-6.1-sol": (2.0, 10.0, 0.10),
         "gpt-6.1-terra": (1.0, 5.0, 0.05),
-        "gpt-5.6": (4.0, 20.0, 0.40),
-        "gpt-5.6-sol": (4.0, 20.0, 0.40),
+        # Promo ended 2026-11-21; default clock bills baseline $5/$30 (#2297).
+        "gpt-5.6": (5.0, 30.0, 0.50),
+        "gpt-5.6-sol": (5.0, 30.0, 0.50),
         "gpt-5.6-terra": (2.0, 12.0, 0.20),
         "gpt-5.6-luna": (0.20, 1.20, 0.02),
         # https://ai.google.dev/gemini-api/docs/pricing — intro rate through 2026-12-31
