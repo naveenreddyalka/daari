@@ -1903,17 +1903,17 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, Any]] = {
         "cache_write_30m_per_1m": 0.125,
         "cache_write_12h_per_1m": 0.25,
     },
-    # OpenAI GPT-5.6 / Sol: promotional $4/$20 at least through 2026-11-21
-    # (OpenAI changelog Aug 21 2026); standard $5/$30 after. Cache writes are
-    # 1.25× / 2.5× of the active input rate (#1843 / #2297).
-    # https://platform.openai.com/docs/changelog
+    # OpenAI GPT-5.6 / Sol: promotional $4/$20 until 2026-11-30 (Sol model
+    # card); standard $5/$30 on/after. Cache writes are 1.25× / 2.5× of the
+    # active input rate (#1843 / #2297 / #2468).
+    # https://developers.openai.com/api/docs/models/gpt-5.6-sol
     "gpt-5.6": {
         "input_per_1m": 4.00,
         "output_per_1m": 20.00,
         "cached_input_per_1m": 0.40,
         "cache_write_30m_per_1m": 5.00,
         "cache_write_12h_per_1m": 10.00,
-        "effective_to": "2026-11-21",
+        "effective_to": "2026-11-30",
         "baseline": {
             "input_per_1m": 5.00,
             "output_per_1m": 30.00,
@@ -1928,7 +1928,7 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, Any]] = {
         "cached_input_per_1m": 0.40,
         "cache_write_30m_per_1m": 5.00,
         "cache_write_12h_per_1m": 10.00,
-        "effective_to": "2026-11-21",
+        "effective_to": "2026-11-30",
         "baseline": {
             "input_per_1m": 5.00,
             "output_per_1m": 30.00,

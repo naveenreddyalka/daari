@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import date
 
 import httpx
 import pytest
@@ -260,7 +261,7 @@ def test_resolve_price_covers_september_2026_frontier_lineup():
         "gpt-6-astra": (10.0, 50.0, 1.00),
         "gpt-6.1-sol": (2.0, 10.0, 0.10),
         "gpt-6.1-terra": (1.0, 5.0, 0.05),
-        # Promo ended 2026-11-21; default clock bills baseline $5/$30 (#2297).
+        # Baseline $5/$30 once the promo ends 2026-11-30 (#2297 / #2468).
         "gpt-5.6": (5.0, 30.0, 0.50),
         "gpt-5.6-sol": (5.0, 30.0, 0.50),
         "gpt-5.6-terra": (2.0, 12.0, 0.20),
@@ -273,7 +274,9 @@ def test_resolve_price_covers_september_2026_frontier_lineup():
         "gemini-4-argon": (4.0, 20.0, 0.20),
     }
     for model, (inp, out, cached) in expected.items():
-        price = resolve_price(model, settings.pricing, fallback_per_1k=0.002)
+        price = resolve_price(
+            model, settings.pricing, fallback_per_1k=0.002, now=date(2026, 12, 1)
+        )
         assert price.is_fallback is False, model
         assert price.input_per_1m == pytest.approx(inp), model
         assert price.output_per_1m == pytest.approx(out), model
