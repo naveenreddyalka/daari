@@ -129,6 +129,8 @@ class ChatMessage(BaseModel):
     tool_calls: list[Any] | None = None
     # OpenRouter chat dialect: assistant reasoning text (#2283).
     reasoning: str | None = None
+    # OpenAI / DeepSeek / llama.cpp assistant reasoning channel (#2299).
+    reasoning_content: str | None = None
 
 
 class EmbeddingsRequest(BaseModel):
@@ -736,6 +738,7 @@ def build_chat_completion_payload(
                     role="assistant",
                     content=response.content,
                     reasoning=reasoning_text,
+                    reasoning_content=reasoning_text,
                 ),
                 finish_reason=response.finish_reason or "stop",
             )
@@ -785,6 +788,7 @@ def _openai_completion_body(
                     role="assistant",
                     content=result_content,
                     reasoning=reasoning_text,
+                    reasoning_content=reasoning_text,
                 ),
                 finish_reason=finish_reason or "stop",
             )

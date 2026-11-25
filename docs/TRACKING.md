@@ -9584,6 +9584,17 @@ that list so interleaved agentic turns survive; `_conversation_after`
 keeps each reasoning adjacent to the call it preceded. Flat chat-shaped
 results unchanged. Covered by `tests/unit/test_responses_output_order.py`.
 
+### Surface local-tier thinking (#2299) ([#2299](https://github.com/naveenreddyalka/daari/issues/2299))
+
+<!-- tracking:#2299 -->
+**Status:** Done (2026-11-25). `OllamaExecutor` captures `message.thinking`
+and `OpenAICompatExecutor` captures `message.reasoning_content` into
+`InternalResponse.reasoning_content`; stream deltas emit
+`reasoning_content` (and OpenRouter `reasoning`). Chat completions,
+Responses reasoning items, and Messages `thinking` blocks surface it;
+cache keeps reasoning out of answer content. Covered by
+`tests/unit/test_local_thinking_capture.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

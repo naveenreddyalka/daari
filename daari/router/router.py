@@ -377,6 +377,10 @@ class OllamaExecutor:
         message = data.get("message") or {}
         content = message.get("content") or ""
         tool_calls = message.get("tool_calls") or None
+        thinking = message.get("thinking")
+        reasoning_content = (
+            thinking.strip() if isinstance(thinking, str) and thinking.strip() else None
+        )
         latency_ms = int((time.perf_counter() - started) * 1000)
         input_tokens, output_tokens, estimated = ollama_token_usage(data, request, content)
         return InternalResponse(
@@ -384,6 +388,7 @@ class OllamaExecutor:
             model=model,
             finish_reason="tool_calls" if tool_calls else "stop",
             tool_calls=tool_calls,
+            reasoning_content=reasoning_content,
             daari_meta=DaariMeta(
                 tier=self.tier,
                 cache_hit=False,
@@ -2937,6 +2942,7 @@ class Router:
                 tool_calls_sent = False
                 pending_chunks: list[str] = []
                 tier_text_parts: list[str] = []
+                tier_thinking_parts: list[str] = []
                 tier_completion_chars = 0
                 reported_usage: tuple[int, int] | None = None
                 first_delta_at: float | None = None
@@ -3056,6 +3062,7 @@ class Router:
                     )
                     pending_chunks = []
                     tier_text_parts = []
+                    tier_thinking_parts: list[str] = []
                     content_sent = False
                     tool_calls_sent = False
                     tier_completion_chars = 0
@@ -3095,6 +3102,7 @@ class Router:
                                 )
                             message = event.get("message", {})
                             delta = message.get("content", "")
+                            thinking_delta = message.get("thinking") or ""
                             raw_tool_calls = message.get("tool_calls")
                             if raw_tool_calls and agent_flow:
                                 if not content_sent:
@@ -3108,6 +3116,19 @@ class Router:
                             elif not delta and raw_tool_calls:
                                 # Ask mode: model ignored the no-tools hint; degrade to text.
                                 delta = json.dumps(raw_tool_calls)
+                            if thinking_delta:
+                                if not content_sent:
+                                    pending_chunks.append(role_chunk)
+                                    content_sent = True
+                                last_delta_at = time.perf_counter()
+                                if first_delta_at is None:
+                                    first_delta_at = last_delta_at
+                                delta_count += 1
+                                tier_thinking_parts.append(thinking_delta)
+                                # OpenAI-compat + OpenRouter dialects (#2299/#2283).
+                                pending_chunks.append(
+                                    f"data: {json.dumps(chunk_payload(delta={'reasoning_content': thinking_delta, 'reasoning': thinking_delta}))}\n\n"
+                                )
                             if delta:
                                 if not content_sent:
                                     pending_chunks.append(role_chunk)
@@ -3359,9 +3380,11 @@ class Router:
                     )
 
                 streamed_text = "".join(tier_text_parts)
+                streamed_thinking = "".join(tier_thinking_parts).strip() or None
                 served = InternalResponse(
                     content=streamed_text,
                     model=ollama_model,
+                    reasoning_content=streamed_thinking,
                     daari_meta=DaariMeta(
                         tier=tier,
                         cache_hit=False,
@@ -4281,13 +4304,16 @@ class Router:
             stream_slot = None
             pending: list[str] = []
             text_block_open = False
+            thinking_block_open = False
             block_index = 0
             tool_use_sent = False
             completion_chars = 0
             tier_text_parts: list[str] = []
+            tier_thinking_parts: list[str] = []
             reported_usage: tuple[int, int] | None = None
             meta: dict[str, Any] = {}
             message_start = ""
+            stream_finish_reason = "stop"
 
             while not host_ok:
                 stream_slot = None
@@ -4408,10 +4434,12 @@ class Router:
                 pending = []
                 any_output = False
                 text_block_open = False
+                thinking_block_open = False
                 block_index = 0
                 tool_use_sent = False
                 completion_chars = 0
                 tier_text_parts = []
+                tier_thinking_parts: list[str] = []
                 reported_usage = None
                 stream_finish_reason = "stop"
                 saw_terminal = False
@@ -4447,11 +4475,51 @@ class Router:
                             )
                         message = event.get("message", {})
                         delta = message.get("content", "")
+                        thinking_delta = message.get("thinking") or ""
                         raw_tool_calls = message.get("tool_calls")
+                        if thinking_delta:
+                            if not any_output:
+                                pending.append(message_start)
+                                any_output = True
+                            if not thinking_block_open:
+                                pending.append(
+                                    sse(
+                                        "content_block_start",
+                                        {
+                                            "type": "content_block_start",
+                                            "index": block_index,
+                                            "content_block": {
+                                                "type": "thinking",
+                                                "thinking": "",
+                                            },
+                                            "daari_meta": meta,
+                                        },
+                                    )
+                                )
+                                thinking_block_open = True
+                            tier_thinking_parts.append(thinking_delta)
+                            pending.append(
+                                sse(
+                                    "content_block_delta",
+                                    {
+                                        "type": "content_block_delta",
+                                        "index": block_index,
+                                        "delta": {
+                                            "type": "thinking_delta",
+                                            "thinking": thinking_delta,
+                                        },
+                                        "daari_meta": meta,
+                                    },
+                                )
+                            )
                         if raw_tool_calls and agent_flow:
                             if not any_output:
                                 pending.append(message_start)
                                 any_output = True
+                            if thinking_block_open:
+                                pending.append(block_stop(block_index))
+                                thinking_block_open = False
+                                block_index += 1
                             if text_block_open:
                                 pending.append(block_stop(block_index))
                                 text_block_open = False
@@ -4497,6 +4565,10 @@ class Router:
                             if not any_output:
                                 pending.append(message_start)
                                 any_output = True
+                            if thinking_block_open:
+                                pending.append(block_stop(block_index))
+                                thinking_block_open = False
+                                block_index += 1
                             if not text_block_open:
                                 pending.append(text_block_start(block_index))
                                 text_block_open = True
@@ -4583,6 +4655,10 @@ class Router:
                     elif any_output:
                         for event in pending:
                             yield event
+                        if thinking_block_open:
+                            yield block_stop(block_index)
+                            thinking_block_open = False
+                            block_index += 1
                         if text_block_open:
                             yield block_stop(block_index)
                         log_gateway_event(
@@ -4633,11 +4709,13 @@ class Router:
                 continue
 
             streamed_text = "".join(tier_text_parts)
+            streamed_thinking = "".join(tier_thinking_parts).strip() or None
             local_finish = "tool_calls" if tool_use_sent else stream_finish_reason
             served = InternalResponse(
                 content=streamed_text,
                 model=model_name,
                 finish_reason=local_finish,
+                reasoning_content=streamed_thinking,
                 daari_meta=DaariMeta(
                     tier=tier,
                     cache_hit=False,
@@ -4928,6 +5006,10 @@ class Router:
             try:
                 for chunk in pending:
                     yield chunk
+                if thinking_block_open:
+                    yield block_stop(block_index)
+                    thinking_block_open = False
+                    block_index += 1
                 if text_block_open:
                     yield block_stop(block_index)
                 from daari.router.anthropic_messages import finish_reason_to_anthropic_stop
