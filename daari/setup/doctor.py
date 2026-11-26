@@ -2825,13 +2825,15 @@ def _check_model_lifecycle(settings: Settings) -> CheckResult:
         fields = anthropic_lifecycle_fields(name, settings)
         stage = str(fields.get("lifecycle") or "active").lower()
         retires = fields.get("retires_at")
+        migrate = str(fields.get("migrate_to") or "").strip()
         if stage == "retired":
-            retired.append(f"{label}={name}")
+            retired.append(f"{label}={name}" + (f" (migrate_to={migrate})" if migrate else ""))
         elif stage == "deprecated":
-            if retires:
-                deprecated.append(f"{label}={name} (shutdown {retires})")
-            else:
-                deprecated.append(f"{label}={name}")
+            notes = [f"shutdown {retires}"] if retires else []
+            if migrate:
+                notes.append(f"migrate_to={migrate}")
+            suffix = f" ({'; '.join(notes)})" if notes else ""
+            deprecated.append(f"{label}={name}{suffix}")
 
     if retired:
         return CheckResult(

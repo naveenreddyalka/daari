@@ -55,7 +55,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `scoped_cache_fleet` | Optional: `DAARI_FLEET_REPLICAS` > 1 with `cache.backend` not `redis` and any virtual key/team `cache_scope` other than `global` — tenant L0/L1 stays per-pod |
 | doctor `soft_budget_ratio` | Optional: `frontier.soft_budget_ratio=0` while request quotas, USD budget windows, or `rate_limit` RPM/TPM are set — soft 402/429 warnings disabled |
 | doctor `budget_reserve_in_flight` | Optional: `budgets.reserve_in_flight` true with no key/team USD budget windows — reservation is a silent no-op |
-| doctor `model_lifecycle` | Required when a configured tier/frontier/pool model has `lifecycle=retired`; optional tip when `deprecated` |
+| doctor `model_lifecycle` | Required when a configured tier/frontier/pool model has `lifecycle=retired`; optional tip when `deprecated` (names `shutdown` date and `migrate_to` successor). Shipped rows include the OpenAI 2026-10-23 / 2027-01-14 waves and Claude Opus 4.5 (`claude-opus-4-5`, `claude-opus-4-5-20251101`: announced 2026-11-23, retires 2027-01-22, migrate to `claude-opus-5-5`). `models.lifecycle_as_of` pins the clock for staged cutovers |
 | doctor `anthropic_speed_lifecycle` | Optional tip when configured models or recent spend still use a sunset Anthropic `speed=fast` combo (Opus 4.8 → Opus 5.5) |
 | doctor `key_expiry` | Optional: virtual keys expiring within `alerts.key_expiry_warn_days` (default 14) or expired-but-not-revoked — rotate before production 401s |
 | doctor `key_lockout` | Optional tip when `auth.key_lockout` is disabled; when Redis is reachable, lists currently locked key prefixes |

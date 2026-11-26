@@ -97,6 +97,9 @@ class RequestMeta(BaseModel):
     stream_include_usage: bool = False
     # Named boundaries.profiles overlay (X-Daari-Boundary-Profile / #171).
     boundary_profile: str | None = None
+    # Named guardrails.profiles binding from the virtual key / team (#1548).
+    # Never header-selectable: a client must not pick a looser profile.
+    guardrail_profile: str | None = None
     # L6 residency pin from virtual key / team (#466).
     region_pin: str | None = None
     # Expanded model allowlist (#708). None = that side does not restrict.
