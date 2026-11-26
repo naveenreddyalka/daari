@@ -9797,6 +9797,16 @@ Covered by `tests/unit/test_anthropic_auto_caching.py` and
 quiet when the flag is off or an Anthropic slot exists. Docs: doctor-health,
 budgets-frontier. Covered by `tests/unit/test_doctor_frontier_auto_caching.py`.
 
+
+### Doctor tip when upstream.retry.failover_on_http_5xx is on ([#2336](https://github.com/naveenreddyalka/daari/issues/2336))
+
+<!-- tracking:#2336 -->
+**Status:** Done (2026-11-26). Optional tip when
+`upstream.retry.failover_on_http_5xx` is true — any HTTP 500–599 (incl.
+501/522) burns retries; quiet when the dial is off (default). Covered by
+`tests/unit/test_doctor_failover_on_http_5xx.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
