@@ -9604,6 +9604,33 @@ fallback continue (midstream)**
 opt-in `routing.stream_fallback_continue` and distinguishes ordinary tier
 fallback. Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### End-user inventory + per-user block / cap overrides (#1547) ([#1547](https://github.com/naveenreddyalka/daari/issues/1547))
+
+<!-- tracking:#1547 -->
+**Status:** Done (2026-11-25). `GET /v1/daari/users` (admin / master key)
+pages the ledger-derived end-user inventory (`limit`/`offset`/`has_more`,
+`blocked` and `user_id` filters) with per-user requests, `client_ids`,
+`first_seen`/`last_seen`, and `spend.today_usd`/`lifetime_usd`.
+`PATCH /v1/daari/users/{user_id}` sets `blocked` (+`reason`) and
+`user_usd_cap`; both stores (`VirtualKeyStore` SQLite + Postgres, additive
+`end_user_overrides` table) back it. Every inference facade that binds
+`user` / `metadata.user_id` (chat, Responses, Messages, decisions, batches,
+images, OCR, moderations, rerank, extractions) calls `reject_end_user`:
+blocked → **403** `end_user_blocked`, cap over → **402** `budget_exceeded`
+(`scope=user`, cross-key spend) replacing the key's `user_daily_usd_cap`.
+CLI `daari users list|block|unblock|cap`. Audit `admin.users.*` /
+`users.*`. Covered by `tests/unit/test_end_users.py` and
+`tests/integration/test_gateway_flow.py`.
+
+### GPT-5.6 / Sol promo window ends 2026-11-30 ([#2468](https://github.com/naveenreddyalka/daari/issues/2468))
+
+<!-- tracking:#2468 -->
+**Status:** Done (2026-11-25). `gpt-5.6` / `gpt-5.6-sol` `effective_to`
+moves from 2026-11-21 to 2026-11-30 to match the live OpenAI Sol model card:
+promo $4/$20 (cached $0.40) through Nov 29, baseline $5/$30 (cached $0.50)
+on/after Nov 30. Clock-dependent catalog tests now pin `now`. Covered by
+`tests/unit/test_pricing_effective_to.py`.
+
 ### Hot-reload Settings from config.yaml ([#1234](https://github.com/naveenreddyalka/daari/issues/1234))
 
 <!-- tracking:#1234 -->
@@ -9673,6 +9700,38 @@ site via `RequestMeta.frontier_credential_source`, key over team) that #2314
 also defines. Drift math unchanged for global-only ledgers. Covered by
 `tests/unit/test_analytics_reconcile.py` and
 `tests/unit/test_spend_credential_source.py`.
+
+### Bounded + paginated report clients/users rollups ([#1552](https://github.com/naveenreddyalka/daari/issues/1552))
+
+<!-- tracking:#1552 -->
+**Status:** Done (2026-11-25). `UsageLedger.by_client` / `by_user` (SQLite and
+Postgres) take `limit` (default 100, max 500; `None` = every row for
+in-process team totals) and `offset`, sorted by requests desc.
+`GET /v1/daari/report` accepts `clients_limit` / `clients_offset` /
+`users_limit` / `users_offset` and returns `clients_total` / `clients_limit` /
+`clients_offset` / `clients_has_more` plus the `users_*` twins (same meta
+shape as keys/teams inventories); `teams` and `totals` still roll up every
+row, and team-scoped totals count only that team's clients. Docs: http-api
+(`## Report rollups`), savings-report. Covered by
+`tests/unit/test_report_rollup_pagination.py` and
+`tests/integration/test_gateway_flow.py`.
+
+### Observability: Prometheus and stats counters for Anthropic auto_caching applied vs client-preserved ([#2322](https://github.com/naveenreddyalka/daari/issues/2322))
+
+<!-- tracking:#2322 -->
+**Status:** Done (2026-11-25). `to_anthropic_payload` takes an optional
+`metrics` hook (wired from `FrontierExecutor.metrics`) and records
+`auto_caching_applied` when `frontier.auto_caching` injects top-level
+`cache_control` on an Anthropic L6 hop, or `auto_caching_client_preserved`
+when a caller-supplied top-level `cache_control` is forwarded verbatim (dial
+on or off). Non-Anthropic executors never build the Anthropic body, so they
+increment neither. Exposed on `GET /v1/daari/stats` and as
+`daari_auto_caching_applied_total` /
+`daari_auto_caching_client_preserved_total` (emitted at 0 when unused;
+team-scoped stats zero them like compact-to-fit). HELP text names both
+outcomes. No wire-shape change. Docs: metrics-prometheus, traces-stats.
+Covered by `tests/unit/test_anthropic_auto_caching.py` and
+`tests/unit/test_prometheus.py`.
 
 ### Doctor tip for frontier.auto_caching without an Anthropic L6 slot ([#2321](https://github.com/naveenreddyalka/daari/issues/2321))
 

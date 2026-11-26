@@ -14,7 +14,12 @@ curl -s 'http://127.0.0.1:11435/v1/daari/report?days=7' | python -m json.tool
 ```
 
 The report payload includes `clients`, `teams`, and `users` (per OpenAI `user`
-on each virtual-key `client_id`). Virtual keys with request-count caps also
+on each virtual-key `client_id`). The `clients` and `users` rollups are bounded
+(#1552): they return the top rows by requests, `clients_limit` / `users_limit`
+default **100** (max **500**), `clients_offset` / `users_offset` default **0**,
+and the body carries `clients_total` / `clients_has_more` (and the `users_*`
+twins) so a UI can page — `teams` and `totals` still cover every row. Virtual
+keys with request-count caps also
 contribute `request_quotas`: per-key `used` / `cap` / `remaining` plus
 `soft: true` when usage ≥ `frontier.soft_budget_ratio` (#519). Text and
 markdown `daari report` print that table; `daari report --format json` dumps

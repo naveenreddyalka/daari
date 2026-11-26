@@ -729,6 +729,7 @@ def to_anthropic_payload(
     stream: bool = False,
     prompt_cache: bool = False,
     auto_caching: bool = False,
+    metrics: Any = None,
 ) -> dict[str, Any]:
     system_blocks: list[dict[str, Any]] = []
     converted: list[dict[str, Any]] = []
@@ -822,12 +823,22 @@ def to_anthropic_payload(
     if isinstance(thread, dict) and thread.get("type") in {"create", "continue"}:
         payload["thread"] = dict(thread)
     # Top-level Anthropic auto caching (#2221): client-supplied wins over dial.
+    # Each outcome has its own Prom/stats counter so operators can tell the dial
+    # firing apart from callers already sending cache_control (#2322).
     client_cc = getattr(request.sampling, "cache_control", None)
     if isinstance(client_cc, dict) and client_cc:
         payload["cache_control"] = dict(client_cc)
+        _record_auto_caching(metrics, "record_auto_caching_client_preserved")
     elif auto_caching:
         payload["cache_control"] = {"type": "ephemeral"}
+        _record_auto_caching(metrics, "record_auto_caching_applied")
     return payload
+
+
+def _record_auto_caching(metrics: Any | None, name: str) -> None:
+    hook = getattr(metrics, name, None) if metrics is not None else None
+    if callable(hook):
+        hook()
 
 
 def _conversation_message(message: Message) -> dict[str, Any]:
