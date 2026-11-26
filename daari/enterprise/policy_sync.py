@@ -265,6 +265,29 @@ def apply_policy_to_runtime(
         if "enabled" in guardrails:
             settings.guardrails.enabled = bool(guardrails["enabled"])
             applied["guardrails.enabled"] = guardrails["enabled"]
+        if "profiles" in guardrails:
+            # Named per-key/team profiles travel fleet-wide (#1548). The whole
+            # mapping is replaced so a removed profile disappears everywhere.
+            from pydantic import ValidationError
+
+            from daari.config.settings import GuardrailSettings
+
+            try:
+                profiles = GuardrailSettings.model_validate(
+                    {"profiles": guardrails["profiles"] or {}}
+                ).profiles
+            except (ValidationError, TypeError) as exc:
+                log_gateway_event(
+                    "policy_sync_value_rejected",
+                    {"section": "guardrails", "key": "profiles", "error": str(exc)[:200]},
+                )
+            else:
+                settings.guardrails.profiles = profiles
+                applied["guardrails.profiles"] = sorted(profiles)
+                if router is not None and hasattr(router, "guardrail_profiles"):
+                    from daari.gateway.guardrails import profile_engines_from_settings
+
+                    router.guardrail_profiles = profile_engines_from_settings(settings)
 
     boundaries = config.get("boundaries")
     if isinstance(boundaries, dict) and hasattr(settings, "boundaries"):

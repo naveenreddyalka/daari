@@ -75,12 +75,16 @@ def _windows(policy: SsoKeyPolicy) -> list[BudgetWindow]:
 
 
 def _metadata(sso: SsoSettings, claim_value: str, policy: SsoKeyPolicy) -> dict[str, Any]:
-    return {
+    meta: dict[str, Any] = {
         "mapping_claim": sso.mapping_claim,
         "claim_value": claim_value,
         "boundary_profile": policy.boundary_profile,
         "allow_team_override": True,
     }
+    profile = str(policy.guardrail_profile or "").strip()
+    if profile:
+        meta["guardrail_profile"] = profile
+    return meta
 
 
 def _sync_sso_team_membership(
