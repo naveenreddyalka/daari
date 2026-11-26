@@ -65,6 +65,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `models.capabilities` | dict | `{}` |  |
 | `models.lifecycle` | dict | `{}` |  |
 | `models.reject_retired` | bool | `True` | When true (default), chat/messages/responses to a model whose catalog lifecycle is retired return HTTP 410 instead of routing (fail-closed). |
+| `models.lifecycle_as_of` | str | None | `None` | Optional YYYY-MM-DD operator clock for model-lifecycle retires_at checks (tests and staged cutovers). None uses the host UTC date. |
 | `models.speed_lifecycle` | dict | `{}` | Operator overrides for model+speed sunsets, merged over the shipped Anthropic Opus 4.8 fast-mode removal. Shape: {model_id: {speed, deprecated_at, removed_at, migrate_to}}. |
 | `models.degrade_deprecated_speed` | bool | `False` | When true, after a speed-lifecycle removed_at date strip ``speed`` and continue with soft_warning deprecated_speed_degraded instead of HTTP 400. |
 | `models.speed_lifecycle_as_of` | str | None | `None` | Optional YYYY-MM-DD operator clock for speed-lifecycle checks (tests and staged cutovers). None uses the host date. |

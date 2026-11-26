@@ -739,14 +739,24 @@ class Router:
     def _apply_lifecycle_warning(
         self, request: InternalRequest, response: InternalResponse
     ) -> None:
-        """Attach daari_meta.warning when the requested model is deprecated (#1521)."""
-        if not self.models_lifecycle:
-            return
+        """Attach daari_meta.warning when the requested model is deprecated (#1521).
+
+        Shipped lifecycle rows merge under the operator map, so an empty
+        ``models.lifecycle`` still warns for stock deprecated ids (#2439).
+        """
         from types import SimpleNamespace
 
         from daari.router.capabilities import anthropic_lifecycle_fields
 
-        settings = SimpleNamespace(models=SimpleNamespace(lifecycle=self.models_lifecycle))
+        configured = getattr(
+            getattr(self, "virtual_classify_settings", None), "models", None
+        )
+        settings = SimpleNamespace(
+            models=SimpleNamespace(
+                lifecycle=self.models_lifecycle,
+                lifecycle_as_of=getattr(configured, "lifecycle_as_of", None),
+            )
+        )
         stage = anthropic_lifecycle_fields(request.model or "", settings).get("lifecycle")
         if stage != "deprecated":
             return
