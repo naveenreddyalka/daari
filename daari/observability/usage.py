@@ -118,6 +118,47 @@ def _empty_totals() -> dict[str, Any]:
     }
 
 
+# Report `clients` / `users` rollups are bounded (#1552). Same defaults as the
+# keys/teams inventories so UIs page every admin list the same way.
+DEFAULT_ROLLUP_LIMIT = 100
+MAX_ROLLUP_LIMIT = 500
+
+
+def _clamp_rollup_page(limit: int | None, offset: int | None) -> tuple[int, int]:
+    try:
+        lim = DEFAULT_ROLLUP_LIMIT if limit is None else int(limit)
+    except (TypeError, ValueError):
+        lim = DEFAULT_ROLLUP_LIMIT
+    try:
+        off = 0 if offset is None else int(offset)
+    except (TypeError, ValueError):
+        off = 0
+    return max(1, min(lim, MAX_ROLLUP_LIMIT)), max(0, off)
+
+
+def page_rollup(
+    rows: list[dict[str, Any]], *, limit: int | None, offset: int | None
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Slice an already-sorted rollup; meta mirrors the keys/teams inventories."""
+    lim, off = _clamp_rollup_page(limit, offset)
+    page = rows[off : off + lim]
+    return page, {
+        "total": len(rows),
+        "limit": lim,
+        "offset": off,
+        "has_more": (off + len(page)) < len(rows),
+    }
+
+
+def _bound_rollup(
+    rows: list[dict[str, Any]], *, limit: int | None, offset: int
+) -> list[dict[str, Any]]:
+    """`limit=None` keeps every row for in-process rollups (team totals)."""
+    if limit is None:
+        return rows[max(0, int(offset or 0)) :]
+    return page_rollup(rows, limit=limit, offset=offset)[0]
+
+
 class UsageLedger:
     def __init__(self, path: str | Path, enabled: bool = True) -> None:
         self.path = Path(path).expanduser()
@@ -338,9 +379,18 @@ class UsageLedger:
             pass
 
     def by_client(
-        self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002
+        self,
+        days: int = 7,
+        *,
+        frontier_price_per_1k_tokens: float = 0.002,
+        limit: int | None = DEFAULT_ROLLUP_LIMIT,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """Per-client usage and savings attribution (Trust PRD T5b)."""
+        """Per-client usage and savings attribution (Trust PRD T5b).
+
+        Rows sort by requests desc and are bounded to ``limit`` (default 100,
+        max 500) from ``offset``; ``limit=None`` returns every row (#1552).
+        """
         if not self.enabled:
             return []
         cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
@@ -379,12 +429,21 @@ class UsageLedger:
                 entry["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
         for entry in clients.values():
             entry["estimated_saved_usd"] = round(entry["estimated_saved_usd"], 4)
-        return sorted(clients.values(), key=lambda entry: -entry["requests"])
+        ordered = sorted(clients.values(), key=lambda entry: -entry["requests"])
+        return _bound_rollup(ordered, limit=limit, offset=offset)
 
     def by_user(
-        self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002
+        self,
+        days: int = 7,
+        *,
+        frontier_price_per_1k_tokens: float = 0.002,
+        limit: int | None = DEFAULT_ROLLUP_LIMIT,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """Per end-user usage on each virtual-key client id (issue #410)."""
+        """Per end-user usage on each virtual-key client id (issue #410).
+
+        Bounded like :meth:`by_client` (#1552).
+        """
         if not self.enabled:
             return []
         cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
@@ -425,7 +484,8 @@ class UsageLedger:
                 entry["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
         for entry in users.values():
             entry["estimated_saved_usd"] = round(entry["estimated_saved_usd"], 4)
-        return sorted(users.values(), key=lambda entry: -entry["requests"])
+        ordered = sorted(users.values(), key=lambda entry: -entry["requests"])
+        return _bound_rollup(ordered, limit=limit, offset=offset)
 
     def _spend_for(
         self,

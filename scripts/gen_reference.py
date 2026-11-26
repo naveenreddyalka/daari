@@ -153,6 +153,17 @@ def render_api_reference() -> str:
             "`admin.events.list` (actor, role, limit, team scope, returned count; event "
             "bodies are not copied).",
             "",
+            "## Report rollups",
+            "",
+            "`GET /v1/daari/report` bounds its `clients` and `users` rollups the same "
+            "way: query `clients_limit` / `users_limit` (default **100**, max **500**) "
+            "and `clients_offset` / `users_offset` (default **0**). Rows sort by "
+            "requests descending. The body carries `clients_total`, `clients_limit`, "
+            "`clients_offset`, `clients_has_more` and the matching `users_*` fields so "
+            "UIs can page; `teams` and `totals` are still computed from every row, not "
+            "just the returned page. With `team_id`, totals count only that team's "
+            "clients.",
+            "",
             "## Request / event log",
             "",
             "`GET /v1/daari/events` (analyst / master, or a virtual key on the same "

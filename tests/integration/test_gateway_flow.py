@@ -654,6 +654,94 @@ async def test_report_endpoint_tracks_route_and_stream_usage(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_report_rollups_are_bounded_and_paginated(app):
+    """#1552: clients/users rollups page with limit/offset/total/has_more."""
+    ledger = app.state.ctx.router.usage_ledger
+    for index in range(7):
+        for _ in range(7 - index):
+            ledger.record(tier="L3", client_id=f"client-{index}", prompt_chars=8)
+    for index in range(5):
+        for _ in range(5 - index):
+            ledger.record(tier="L3", client_id="client-0", user_id=f"user-{index}", prompt_chars=4)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        default = (await client.get("/v1/daari/report?days=1")).json()
+        paged = (
+            await client.get(
+                "/v1/daari/report?days=1&clients_limit=3&clients_offset=3"
+                "&users_limit=2&users_offset=1"
+            )
+        ).json()
+        clamped = (
+            await client.get("/v1/daari/report?days=1&clients_limit=9999&users_limit=0")
+        ).json()
+
+    assert len(default["clients"]) == 7
+    assert default["clients_total"] == 7
+    assert default["clients_limit"] == 100
+    assert default["clients_offset"] == 0
+    assert default["clients_has_more"] is False
+    assert default["users_total"] >= 5
+    assert default["users_limit"] == 100
+    assert default["users_has_more"] is False
+
+    assert [row["client_id"] for row in paged["clients"]] == ["client-3", "client-4", "client-5"]
+    assert paged["clients_total"] == 7
+    assert paged["clients_limit"] == 3
+    assert paged["clients_offset"] == 3
+    assert paged["clients_has_more"] is True
+    assert len(paged["users"]) == 2
+    assert paged["users_limit"] == 2
+    assert paged["users_offset"] == 1
+    assert paged["users_has_more"] is True
+
+    assert clamped["clients_limit"] == 500
+    assert clamped["users_limit"] == 1
+    assert len(clamped["users"]) == 1
+    assert clamped["users_has_more"] is True
+
+
+@pytest.mark.asyncio
+async def test_report_rollup_pages_respect_team_scope(settings, tmp_path):
+    """#1552: page totals count only the scoped team's clients; teams stay whole."""
+    application, ledger, _headers = _budgeted_app(settings, tmp_path, team_month_usd=5.0)
+    team_id = application.state.virtual_key_store.list_teams()[0].team_id
+    for client_id, count in (("key-a", 3), ("key-b", 2), ("outsider", 9)):
+        for _ in range(count):
+            ledger.record(tier="L3", client_id=client_id, user_id="u", prompt_chars=4)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        scoped = (
+            await client.get(
+                f"/v1/daari/report?days=1&team_id={team_id}&clients_limit=1",
+                headers={"Authorization": "Bearer master"},
+            )
+        ).json()
+        unscoped = (
+            await client.get(
+                "/v1/daari/report?days=1&clients_limit=1",
+                headers={"Authorization": "Bearer master"},
+            )
+        ).json()
+
+    assert scoped["team_id"] == team_id
+    assert [row["client_id"] for row in scoped["clients"]] == ["key-a"]
+    assert scoped["clients_total"] == 2
+    assert scoped["clients_has_more"] is True
+    assert scoped["users_total"] == 2
+    assert {row["client_id"] for row in scoped["users"]} == {"key-a", "key-b"}
+    assert [team["team"] for team in scoped["teams"]] == ["eng"]
+    assert scoped["teams"][0]["requests"] == 5
+
+    assert [row["client_id"] for row in unscoped["clients"]] == ["outsider"]
+    assert unscoped["clients_total"] == 3
+    assert unscoped["clients_has_more"] is True
+    assert unscoped["teams"][0]["requests"] == 5
+
+
+@pytest.mark.asyncio
 async def test_provider_reported_tokens_reach_api_and_ledger(app, monkeypatch):
     """#156: usage must be the provider's counts, not chars/4, end to end."""
 
