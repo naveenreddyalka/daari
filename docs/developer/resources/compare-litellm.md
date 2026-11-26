@@ -296,4 +296,21 @@ default `temperature=1` and let it through. **Watch:** if daari ever pins
 default `anthropic-version` to `2026-10-21`, strip the sampling trio
 unconditionally for all Anthropic ids (not only the Fable/Mythos table).
 
+### Claude Opus 4.5 deprecation window (#2439)
+
+Anthropic's Claude Platform release notes (2026-11-23) deprecate
+`claude-opus-4-5` / `claude-opus-4-5-20251101` with API retirement on
+**2027-01-22** and Claude Opus 5.5 as the migration target. daari ships the
+window in the on-box lifecycle catalog (`_DEFAULT_MODEL_LIFECYCLE`,
+operator `models.lifecycle` keys still win): `/v1/models` shows
+`lifecycle=deprecated`, `shutdown_date` / `retires_at` `2027-01-22`, and
+`migrate_to: claude-opus-5-5`; Chat / Messages / Responses keep serving with
+`daari_meta.warning=model_deprecated` until the cutover, then default
+`models.reject_retired` returns **410 `model_retired`**; `daari doctor`
+`model_lifecycle` tips while any tier / frontier / pool slot still points at
+4.5. `models.lifecycle_as_of: YYYY-MM-DD` rehearses the cutover before the
+date. LiteLLM relies on its hosted `model_prices_and_context_window.json`
+refresh plus the provider's own 404; there is no local deprecation calendar
+or pre-cutover warning.
+
 Measured on the same Ollama corpus: [benchmark vs LiteLLM](benchmark-vs-litellm.md). Short matrix: [compare](compare.md).
