@@ -35,6 +35,8 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert any("daari_cache_write_tokens_total" in row for row in body)
     assert any("daari_cost_input_usd_total" in row for row in body)
     assert any("daari_cost_output_usd_total" in row for row in body)
+    assert any("daari_responses_truncation_auto_total" in row for row in body)
+    assert any("daari_responses_truncation_rejected_total" in row for row in body)
     assert any("daari_server_tool_cost_usd_total" in row for row in body)
     # Orphaned mid-table prose would end the contiguous body early.
     assert body[-1].startswith("| `daari_escalations_total")
@@ -71,3 +73,7 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     cost_row = next(row for row in body if "daari_cost_input_usd_total" in row)
     assert "output" in cost_row.lower()
     assert "stats" in cost_row.lower() or "cost_input_usd" in cost_row
+    truncation_row = next(row for row in body if "daari_responses_truncation_auto_total" in row)
+    assert "context_length_exceeded" in truncation_row
+    assert "responses_truncation_auto" in truncation_row
+    assert "responses_truncation_rejected" in truncation_row

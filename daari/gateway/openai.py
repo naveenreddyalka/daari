@@ -2035,6 +2035,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "mcp_tool_calls": {},
                     "compact_to_fit_applied": 0,
                     "compact_to_fit_tokens_dropped": 0,
+                    "responses_truncation_auto": 0,
+                    "responses_truncation_rejected": 0,
+                    "responses_truncation_tokens_dropped": 0,
                     "mcp_grant_denied": 0,
                     "agent_access_denied": 0,
                     "cost_input_usd": 0.0,
@@ -2066,6 +2069,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "compact_to_fit_applied": int(full.get("compact_to_fit_applied") or 0),
                 "compact_to_fit_tokens_dropped": int(
                     full.get("compact_to_fit_tokens_dropped") or 0
+                ),
+                "responses_truncation_auto": int(full.get("responses_truncation_auto") or 0),
+                "responses_truncation_rejected": int(
+                    full.get("responses_truncation_rejected") or 0
+                ),
+                "responses_truncation_tokens_dropped": int(
+                    full.get("responses_truncation_tokens_dropped") or 0
                 ),
                 "mcp_grant_denied": int(full.get("mcp_grant_denied") or 0),
                 "agent_access_denied": int(full.get("agent_access_denied") or 0),
