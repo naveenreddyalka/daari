@@ -3512,6 +3512,7 @@ class Router:
                     outcome.note("L6", draft=draft_used)
                     l6_first_at: float | None = None
                     relayed_tool_calls = False
+                    relayed_finish: str | None = None
                     relay_incomplete = False
                     l6_settled = False
                     relayed_text = ""
@@ -3543,6 +3544,9 @@ class Router:
                         yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
 
                         for event in prefetched:
+                            if isinstance(event, dict) and event.get("finish_reason"):
+                                relayed_finish = str(event["finish_reason"])
+                                continue
                             if isinstance(event, dict) and event.get("tool_calls"):
                                 relayed_tool_calls = True
                                 yield f"data: {json.dumps(chunk_payload(delta={'tool_calls': event['tool_calls']}))}\n\n"
@@ -3654,7 +3658,13 @@ class Router:
                         )
                         finish_trace("L6")
                         return
-                    finish_reason = "tool_calls" if relayed_tool_calls else "stop"
+                    # Mirror the upstream terminal reason (max_tokens → length,
+                    # pause_turn, refusal …) instead of a synthesized stop (#2331).
+                    from daari.router.stream_terminal import resolve_stream_finish_reason
+
+                    finish_reason = resolve_stream_finish_reason(
+                        relayed_finish, tool_calls_sent=relayed_tool_calls
+                    )
                     yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
                     bill = self._anthropic_stream_bill(relayed_text, fallback_model=served.model)
                     yield usage_chunk(
@@ -4120,6 +4130,7 @@ class Router:
         from daari.router.deadline import guard_upstream
 
         relayed: list[str] = []
+        relayed_finish: str | None = None
         try:
             guard_upstream("L6")
             l6_request = await self._frontier_request(request)
@@ -4128,6 +4139,9 @@ class Router:
                 escalated_from=from_tier,
                 local_confidence=None,
             ):
+                if isinstance(event, dict) and event.get("finish_reason"):
+                    relayed_finish = str(event["finish_reason"])
+                    continue
                 delta = event if isinstance(event, str) else ""
                 if not delta:
                     continue
@@ -4154,7 +4168,10 @@ class Router:
             return
 
         relayed_text = "".join(relayed)
-        yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+        from daari.router.stream_terminal import resolve_stream_finish_reason
+
+        finish_reason = resolve_stream_finish_reason(relayed_finish)
+        yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
         bill = self._anthropic_stream_bill(relayed_text, fallback_model=None)
         yield usage_chunk(
             len(relayed_text),

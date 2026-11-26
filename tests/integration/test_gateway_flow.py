@@ -5728,3 +5728,181 @@ async def test_stream_missing_terminal_not_successful_stop(app, monkeypatch):
     assert errors[-1].get("type") == "stream_incomplete"
     assert "stop" not in finish_reasons
 
+
+
+def _frontier_sse_fixture(settings, monkeypatch, *, stop_reason: str, tool_use: bool = False):
+    """Real FrontierExecutor over a mocked Anthropic upstream ending ``stop_reason`` (#2331)."""
+    from daari.router.frontier import FrontierExecutor
+
+    settings.frontier.enabled = True
+    settings.frontier.confidence_threshold = 0.99
+    settings.frontier.provider = "anthropic"
+    settings.frontier.model = "claude-sonnet-4-0"
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    settings.server.sse_keepalive_seconds = 0
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+    if tool_use:
+        blocks = (
+            'event: content_block_start\ndata: {"type":"content_block_start","index":0,'
+            '"content_block":{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}}\n\n'
+            'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,'
+            '"delta":{"type":"input_json_delta","partial_json":"{\\"q\\":\\"x\\"}"}}\n\n'
+            'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n'
+        )
+        content = [{"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {"q": "x"}}]
+    else:
+        blocks = (
+            'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,'
+            '"delta":{"type":"text_delta","text":"FRONTIER TEXT"}}\n\n'
+        )
+        content = [{"type": "text", "text": "FRONTIER TEXT"}]
+    sse_body = (
+        'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1",'
+        '"usage":{"input_tokens":5,"output_tokens":0}}}\n\n'
+        + blocks
+        + 'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"'
+        + stop_reason
+        + '","stop_sequence":null},"usage":{"output_tokens":7}}\n\n'
+        'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+    )
+
+    def handler(request):
+        import httpx
+
+        payload = json.loads(request.content)
+        if payload.get("stream"):
+            return httpx.Response(
+                200, content=sse_body.encode(), headers={"content-type": "text/event-stream"}
+            )
+        return httpx.Response(
+            200,
+            json={
+                "id": "msg_1",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-sonnet-4-0",
+                "content": content,
+                "stop_reason": stop_reason,
+                "usage": {"input_tokens": 5, "output_tokens": 7},
+            },
+        )
+
+    import httpx
+
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.ctx.router.frontier = FrontierExecutor(
+        base_url="https://api.anthropic.com",
+        default_model="claude-sonnet-4-0",
+        api_key="sk-ant-test",
+        provider="anthropic",
+        transport=httpx.MockTransport(handler),
+    )
+    application.state.ctx.router.frontier_enabled = True
+
+    async def short_local(request: InternalRequest, **kwargs) -> InternalResponse:
+        return InternalResponse(
+            content="no",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=1),
+        )
+
+    async def short_stream(request: InternalRequest, **kwargs):
+        yield {"message": {"content": "no"}}
+        yield {"done": True, "done_reason": "stop"}
+
+    for tier in ("ollama", "ollama_l3", "ollama_l4", "ollama_l5"):
+        exe = getattr(application.state.ctx.router, tier)
+        monkeypatch.setattr(exe, "execute", short_local)
+        monkeypatch.setattr(exe, "stream", short_stream)
+    return application
+
+
+def _chat_finish_reasons(text: str) -> list[str]:
+    out = []
+    for line in text.splitlines():
+        if not line.startswith("data: ") or line.strip() == "data: [DONE]":
+            continue
+        payload = json.loads(line[6:])
+        for choice in payload.get("choices") or []:
+            if choice.get("finish_reason"):
+                out.append(choice["finish_reason"])
+    return out
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_relay_frontier_max_tokens_is_length(settings, monkeypatch):
+    """Relayed L6 Anthropic stream ending max_tokens → terminal finish_reason length (#2331)."""
+    application = _frontier_sse_fixture(settings, monkeypatch, stop_reason="max_tokens")
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "escalate stream please"}],
+                "stream": True,
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200, response.text
+    assert "FRONTIER TEXT" in response.text
+    assert _chat_finish_reasons(response.text) == ["length"]
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_relay_frontier_tool_use_is_tool_calls(settings, monkeypatch):
+    """Relayed L6 Anthropic stream ending tool_use → finish_reason tool_calls (#2331)."""
+    application = _frontier_sse_fixture(
+        settings, monkeypatch, stop_reason="tool_use", tool_use=True
+    )
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "escalate stream please"}],
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {"name": "lookup", "parameters": {"type": "object"}},
+                    }
+                ],
+                "stream": True,
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200, response.text
+    assert "toolu_1" in response.text
+    assert _chat_finish_reasons(response.text) == ["tool_calls"]
+
+
+@pytest.mark.asyncio
+async def test_messages_stream_frontier_max_tokens_stop_reason(settings, monkeypatch):
+    """/v1/messages stream escalated to L6 mirrors upstream max_tokens (#2331)."""
+    application = _frontier_sse_fixture(settings, monkeypatch, stop_reason="max_tokens")
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/messages",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "escalate stream please"}],
+                "max_tokens": 64,
+                "stream": True,
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert "FRONTIER TEXT" in response.text
+    deltas = []
+    for line in response.text.splitlines():
+        if not line.startswith("data: "):
+            continue
+        event = json.loads(line[6:])
+        if event.get("type") == "message_delta":
+            deltas.append(event)
+    assert deltas
+    assert deltas[-1]["delta"]["stop_reason"] == "max_tokens"

@@ -67,3 +67,18 @@ def normalize_stream_finish_reason(raw: str | None) -> str | None:
     if token in _SUCCESS_FINISH_REASONS:
         return token
     return None
+
+
+def resolve_stream_finish_reason(upstream: str | None, *, tool_calls_sent: bool = False) -> str:
+    """Terminal ``finish_reason`` for a relayed stream (#2331).
+
+    Mirrors the upstream token when one arrived (``max_tokens`` → ``length``,
+    ``tool_use`` → ``tool_calls``, ``pause_turn`` / ``refusal`` / ``content_filter``
+    verbatim); only synthesizes ``stop`` / ``tool_calls`` when upstream said
+    nothing or said a plain stop after tool calls were relayed.
+    """
+    token = (upstream or "").strip().lower()
+    normalized = normalize_stream_finish_reason(token) or token or None
+    if normalized is None or (normalized == "stop" and tool_calls_sent):
+        return "tool_calls" if tool_calls_sent else "stop"
+    return normalized
