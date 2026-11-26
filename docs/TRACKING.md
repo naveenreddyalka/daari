@@ -9635,6 +9635,20 @@ staged cutovers / hermetic tests. Doctor `model_lifecycle` tip names
 shutdown + `migrate_to`. Docs: config, doctor-health, compare-litellm.
 Covered by `tests/unit/test_opus_45_lifecycle.py`.
 
+### Team/key BYOK signs modality + passthrough L6 doors ([#2313](https://github.com/naveenreddyalka/daari/issues/2313))
+
+<!-- tracking:#2313 -->
+**Status:** Done (2026-11-25). `resolve_l6_targets()` takes a `FrontierBinding`
+(`frontier_binding_from_request()` derives it from auth claims with the same
+key-over-team precedence as chat): a bound `frontier_api_key` replaces
+`slot.pick_key()`, a bound `frontier_pool` filters to the named slot, and an
+unknown pin or unresolvable ref raises `FrontierBindingError`, which images
+(generations/edits/variations), ASR frontier fallback, OCR, moderations,
+rerank, and decisions surface as 502 `frontier_binding_error` — never a silent
+fallback to the global key. Unbound requests are byte-for-byte unchanged.
+Extractions (#2412) can reuse the same helper. Docs: virtual-keys guide.
+Covered by `tests/unit/test_team_frontier_byok_doors.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

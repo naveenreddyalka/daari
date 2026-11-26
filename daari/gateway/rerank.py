@@ -11,8 +11,11 @@ from pydantic import BaseModel, Field
 
 from daari.gateway.client_errors import summarize_upstream_failure
 from daari.gateway.l6_passthrough import (
+    FrontierBindingError,
     L6Target,
     RegionUnavailable,
+    frontier_binding_error_response,
+    frontier_binding_from_request,
     is_slot_failure,
     post_l6,
     region_pin_from_request,
@@ -224,12 +227,19 @@ async def handle_rerank(request: Request, body: RerankRequest) -> Any:
     pin = region_pin_from_request(request)
     try:
         targets = resolve_l6_targets(
-            settings, region_pin=pin, default_model="rerank-english-v3.0"
+            settings,
+            region_pin=pin,
+            default_model="rerank-english-v3.0",
+            binding=frontier_binding_from_request(request),
         )
     except RegionUnavailable as exc:
         log_gateway_event("rerank_region_unavailable", {"pin": exc.pin})
         abandon_slot(idem_slot)
         return _error(400, "region_unavailable", str(exc))
+    except FrontierBindingError as exc:
+        log_gateway_event("rerank_frontier_binding_error", {"error": str(exc)})
+        abandon_slot(idem_slot)
+        return frontier_binding_error_response(exc)
     if not targets:
         log_gateway_event("rerank_unavailable", {"reason": "frontier_disabled_or_no_key"})
         abandon_slot(idem_slot)

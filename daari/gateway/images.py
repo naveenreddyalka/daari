@@ -12,8 +12,11 @@ from pydantic import BaseModel, Field
 
 from daari.gateway.client_errors import request_deadline_response, summarize_upstream_failure
 from daari.gateway.l6_passthrough import (
+    FrontierBindingError,
     L6Target,
     RegionUnavailable,
+    frontier_binding_error_response,
+    frontier_binding_from_request,
     is_slot_failure,
     post_l6,
     region_pin_from_request,
@@ -455,12 +458,19 @@ async def handle_images_generations(
     default_model = images_default_model(settings)
     try:
         targets = resolve_l6_targets(
-            settings, region_pin=pin, default_model=default_model
+            settings,
+            region_pin=pin,
+            default_model=default_model,
+            binding=frontier_binding_from_request(request),
         )
     except RegionUnavailable as exc:
         log_gateway_event("images_region_unavailable", {"pin": exc.pin})
         abandon_slot(idem_slot)
         return _error(400, "region_unavailable", str(exc))
+    except FrontierBindingError as exc:
+        log_gateway_event("images_frontier_binding_error", {"error": str(exc)})
+        abandon_slot(idem_slot)
+        return frontier_binding_error_response(exc)
     if not targets:
         log_gateway_event("images_unavailable", {"reason": "frontier_disabled_or_no_key"})
         abandon_slot(idem_slot)
@@ -722,11 +732,17 @@ async def handle_images_edits(
     default_model = images_default_model(settings)
     try:
         targets = resolve_l6_targets(
-            settings, region_pin=pin, default_model=default_model
+            settings,
+            region_pin=pin,
+            default_model=default_model,
+            binding=frontier_binding_from_request(request),
         )
     except RegionUnavailable as exc:
         log_gateway_event("images_edits_region_unavailable", {"pin": exc.pin})
         return _error(400, "region_unavailable", str(exc))
+    except FrontierBindingError as exc:
+        log_gateway_event("images_edits_frontier_binding_error", {"error": str(exc)})
+        return frontier_binding_error_response(exc)
     if not targets:
         log_gateway_event("images_edits_unavailable", {"reason": "frontier_disabled_or_no_key"})
         return _error(501, "not_implemented", _UNAVAILABLE)
@@ -956,11 +972,17 @@ async def handle_images_variations(
     default_model = images_default_model(settings)
     try:
         targets = resolve_l6_targets(
-            settings, region_pin=pin, default_model=default_model
+            settings,
+            region_pin=pin,
+            default_model=default_model,
+            binding=frontier_binding_from_request(request),
         )
     except RegionUnavailable as exc:
         log_gateway_event("images_variations_region_unavailable", {"pin": exc.pin})
         return _error(400, "region_unavailable", str(exc))
+    except FrontierBindingError as exc:
+        log_gateway_event("images_variations_frontier_binding_error", {"error": str(exc)})
+        return frontier_binding_error_response(exc)
     if not targets:
         log_gateway_event(
             "images_variations_unavailable", {"reason": "frontier_disabled_or_no_key"}

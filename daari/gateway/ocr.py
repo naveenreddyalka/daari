@@ -15,7 +15,11 @@ from pydantic import BaseModel, Field
 
 from daari.gateway.client_errors import request_deadline_response, summarize_upstream_failure
 from daari.gateway.l6_passthrough import (
+    FrontierBinding,
+    FrontierBindingError,
     RegionUnavailable,
+    frontier_binding_error_response,
+    frontier_binding_from_request,
     is_slot_failure,
     post_l6,
     region_pin_from_request,
@@ -157,9 +161,12 @@ def _error(status: int, code: str, message: str) -> JSONResponse:
 
 
 def resolve_ocr_targets(
-    settings: Any, *, region_pin: str | None = None
+    settings: Any,
+    *,
+    region_pin: str | None = None,
+    binding: FrontierBinding | None = None,
 ) -> list[OcrTarget]:
-    """Local OCR/base_url or vision model first; else L6 slots."""
+    """Local OCR/base_url or vision model first; else L6 slots (BYOK-aware, #2313)."""
     ocr = getattr(settings, "ocr", None)
     upstream = getattr(settings, "upstream", None)
     local_timeout = float(getattr(upstream, "local_timeout_seconds", 120.0) or 120.0)
@@ -193,7 +200,10 @@ def resolve_ocr_targets(
             ]
 
     l6 = resolve_l6_targets(
-        settings, region_pin=region_pin, default_model=model or "mistral-ocr-latest"
+        settings,
+        region_pin=region_pin,
+        default_model=model or "mistral-ocr-latest",
+        binding=binding,
     )
     return [
         OcrTarget(
@@ -534,11 +544,17 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
 
     pin = region_pin_from_request(request)
     try:
-        targets = resolve_ocr_targets(settings, region_pin=pin)
+        targets = resolve_ocr_targets(
+            settings, region_pin=pin, binding=frontier_binding_from_request(request)
+        )
     except RegionUnavailable as exc:
         log_gateway_event("ocr_region_unavailable", {"pin": exc.pin})
         abandon_slot(idem_slot)
         return _error(400, "region_unavailable", str(exc))
+    except FrontierBindingError as exc:
+        log_gateway_event("ocr_frontier_binding_error", {"error": str(exc)})
+        abandon_slot(idem_slot)
+        return frontier_binding_error_response(exc)
     if not targets:
         log_gateway_event("ocr_unavailable", {"reason": "no_local_or_frontier"})
         abandon_slot(idem_slot)
