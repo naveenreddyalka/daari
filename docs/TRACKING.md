@@ -9721,6 +9721,23 @@ can see local truncation. `tool_calls` finishes unchanged (#2234). Docs:
 caching-and-trust. Covered by `tests/unit/test_cache_finish_reason_gate.py`
 and `tests/integration/test_gateway_flow.py`.
 
+### Spend rows record credential source + frontier slot (team BYOK invoices) ([#2314](https://github.com/naveenreddyalka/daari/issues/2314))
+
+<!-- tracking:#2314 -->
+**Status:** Done (2026-11-25). `spend_requests` gains additive
+`credential_source` (`global` | `team` | `key`; empty off-frontier and on
+pre-migration rows) and `frontier_slot_id` columns on SQLite (`_migrate()`)
+and Postgres (`ADD COLUMN IF NOT EXISTS`). `FrontierPool` stamps the winning
+slot + signing credential on `daari_meta` and the request's `SpendContext`
+(key-over-team precedence via `binding_credential_source`, mirrored from
+`effective_binding`); router L6 record sites copy them onto every billed row,
+including relayed streams. `daari_meta.credential_source` /
+`frontier_slot_id` surface on frontier-served replies. Export/CSV, `--group-by
+credential_source,frontier_slot_id`, and a **frontier spend by credential**
+rollup in `daari report` / `GET /v1/daari/report`
+(`frontier_credential_spend`) expose the split. Docs: chargeback guide.
+Covered by `tests/unit/test_spend_credential_source.py`.
+
 ### Cost-true multi_agent nested usage per declared subagent model ([#1553](https://github.com/naveenreddyalka/daari/issues/1553))
 
 <!-- tracking:#1553 -->

@@ -46,7 +46,36 @@ until filters using the session API key — no separate CLI or curl step.
 
 `--since` accepts an ISO-8601 timestamp or a relative window (`7d`, `12h`). Optional `until` (HTTP) is the exclusive upper bound with the same formats. `--key`, `--team`, `--user`, and `--tier` are exact filters (`--tier` matches the ledger column: `asr`, `translation`, `tts`, `embed`, `L3`–`L6`, …). `--model` is a SQL `LIKE` pattern (e.g. `%:cloud` for Ollama cloud egress). `--usage-speed` is exact `fast` or `standard` (Anthropic fast mode). CSV and JSONL both stream one row at a time. The HTTP export returns JSON `{rows, total, limit, offset, has_more}` by default, or CSV when `format=csv`.
 
-Each row has: timestamp, request id, key id, team id, client id, **user id** (OpenAI `user` / end-user when present), model, tier, input / output / cached tokens, `cost_usd` (what this request cost; $0 on local tiers), `cost_avoided_usd` (the frontier price those tokens would have paid), and a cache-hit flag.
+Each row has: timestamp, request id, key id, team id, client id, **user id** (OpenAI `user` / end-user when present), model, tier, input / output / cached tokens, `cost_usd` (what this request cost; $0 on local tiers), `cost_avoided_usd` (the frontier price those tokens would have paid), a cache-hit flag, and — on frontier rows — `credential_source` and `frontier_slot_id`.
+
+### Which invoice did this land on? (team BYOK)
+
+With per-team / per-key frontier bindings, L6 spend splits across provider
+invoices: the operator's global key, a team-bound key, or a key-bound key.
+Every billed row records which credential signed the request and which
+`frontier.providers` slot won:
+
+| column | values | meaning |
+| --- | --- | --- |
+| `credential_source` | `global` \| `team` \| `key` | credential that signed L6 (key binding wins over team, same precedence as the binding itself); empty on non-frontier rows and rows written before the column existed |
+| `frontier_slot_id` | slot id (`openai`, `anthropic-eu`, …) | the `frontier.providers` entry that served; single-provider configs use the provider name |
+
+The same values surface on `daari_meta.credential_source` /
+`daari_meta.frontier_slot_id` of frontier-served Chat, Responses, and Messages
+replies. A `frontier_pool` pin alone (no bound key) still signs with the slot's
+shared key and records `global`.
+
+Reconcile a tenant's invoice against the ledger with either dimension:
+
+```bash
+daari spend report --since 30d --group-by credential_source,frontier_slot_id --format csv
+daari spend report --since 30d --team platform --group-by credential_source
+daari spend export --since 30d --format csv --team platform   # rows carry both columns
+```
+
+`daari report` (and `GET /v1/daari/report`) adds a **frontier spend by
+credential** rollup (`frontier_credential_spend`: credential × slot → requests,
+`cost_usd`) so the split is visible without a separate export.
 
 `daari spend report --team T --by-user` answers "which member of team T spent what" for the window: one line per `user_id` with request count, `cost_usd`, and `cost_avoided_usd`. Rollup sums match the team total from `spend export --team T`.
 
@@ -56,7 +85,7 @@ Chat rows without a provider fall back to `model`. Pass exactly one of
 `--by-user` or `--by-tool`.
 
 For Anthropic-parity dimension reports, use `--group-by` with one or more of
-`model,team,key,user,tier,usage_speed,service_tier` and optional
+`model,team,key,user,tier,usage_speed,service_tier,credential_source,frontier_slot_id` and optional
 `--bucket day|month|hour` (UTC keys; minute grain is out of scope)
 (UTC). Example matching Admin API usage-by-dimension:
 

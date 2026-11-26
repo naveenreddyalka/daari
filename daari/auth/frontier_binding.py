@@ -116,3 +116,39 @@ def effective_binding(
     api_key = key_api_key or team_api_key
     pool = key_pool or team_pool
     return api_key, pool
+
+
+CREDENTIAL_SOURCE_GLOBAL = "global"
+CREDENTIAL_SOURCE_TEAM = "team"
+CREDENTIAL_SOURCE_KEY = "key"
+
+
+def binding_credential_source(
+    *,
+    key_api_key: str | None = None,
+    team_api_key: str | None = None,
+) -> str | None:
+    """Which credential signs L6 for this binding (#2314); None when unbound.
+
+    Mirrors ``effective_binding`` precedence: key over team. A pool pin alone
+    still signs with the slot's shared (global) key, so it is not a source.
+    """
+    if key_api_key:
+        return CREDENTIAL_SOURCE_KEY
+    if team_api_key:
+        return CREDENTIAL_SOURCE_TEAM
+    return None
+
+
+def credential_source_for_meta(meta: Any) -> str:
+    """``global`` | ``team`` | ``key`` for the request about to hit L6 (#2314).
+
+    A bound ``frontier_api_key`` without a recorded origin is attributed to the
+    key, the most specific scope that can set it directly.
+    """
+    explicit = getattr(meta, "frontier_credential_source", None)
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+    if getattr(meta, "frontier_api_key", None):
+        return CREDENTIAL_SOURCE_KEY
+    return CREDENTIAL_SOURCE_GLOBAL

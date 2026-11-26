@@ -2322,6 +2322,22 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ),
                 team_id=scope,
             )
+            # Frontier spend split by signing credential × slot (team BYOK invoices, #2314).
+            payload["frontier_credential_spend"] = []
+            spend_ledger = getattr(ctx.router, "spend_ledger", None)
+            by_credential = getattr(spend_ledger, "by_credential", None)
+            if getattr(spend_ledger, "enabled", False) and callable(by_credential):
+                from datetime import datetime, timedelta, timezone
+
+                since = (
+                    datetime.now(timezone.utc) - timedelta(days=max(1, days))
+                ).isoformat()
+                try:
+                    payload["frontier_credential_spend"] = by_credential(
+                        since=since, team_id=scope
+                    )
+                except Exception:
+                    payload["frontier_credential_spend"] = []
             # Trust PRD T1d: false-hit rates + answer diversity per category.
             trust: dict[str, Any] = {}
             feedback = ctx.router.feedback_store
