@@ -9650,6 +9650,14 @@ returns 410. New `models.lifecycle_as_of` operator clock (YYYY-MM-DD) for
 staged cutovers / hermetic tests. Doctor `model_lifecycle` tip names
 shutdown + `migrate_to`. Docs: config, doctor-health, compare-litellm.
 Covered by `tests/unit/test_opus_45_lifecycle.py`.
+### Gemini 4 Carbon / Argon intro window through 2026-11-30 ([#2469](https://github.com/naveenreddyalka/daari/issues/2469))
+
+<!-- tracking:#2469 -->
+**Status:** Done (2026-11-25). `gemini-4-carbon` / `gemini-4-argon` ship
+the introductory $2/$10 (cached $0.10) with `effective_to: 2026-12-01` and
+a `baseline` of list $4/$20 (cached $0.20), so turns before Dec 1 UTC no
+longer bill 2× list. `models/`-prefixed ids resolve the same window. Covered
+by `tests/unit/test_pricing_effective_to.py`.
 
 ## How to update
 
