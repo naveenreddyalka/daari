@@ -867,11 +867,15 @@ def _governed_responses_meta(
         user=(user or "").strip() or None,
         request_id=request_id_from_request(request),
     )
+    claims = getattr(request.state, "auth_claims", None)
     apply_auth_claims_to_meta(
         meta,
-        getattr(request.state, "auth_claims", None),
+        claims,
         model_groups=getattr(ctx.settings, "model_groups", None),
     )
+    from daari.gateway.mcp_policy import apply_server_tool_subset_to_meta
+
+    apply_server_tool_subset_to_meta(meta, claims, ctx.settings)
     headers = getattr(request, "headers", None)
     if headers is not None:
         meta.authorization_bearer = bearer_from_authorization(headers.get("authorization"))
