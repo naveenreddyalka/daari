@@ -9613,6 +9613,22 @@ promo $4/$20 (cached $0.40) through Nov 29, baseline $5/$30 (cached $0.50)
 on/after Nov 30. Clock-dependent catalog tests now pin `now`. Covered by
 `tests/unit/test_pricing_effective_to.py`.
 
+### Hot-reload Settings from config.yaml ([#1234](https://github.com/naveenreddyalka/daari/issues/1234))
+
+<!-- tracking:#1234 -->
+**Status:** Done (2026-11-25). `POST /v1/daari/reload-config` (admin /
+master-key gate shared with `PATCH /v1/daari/config`) re-reads
+`config.yaml` + profile + env, live-applies the safe editor subset through
+the shared `apply_live_config` path, and returns `{ok, changed_keys,
+requires_restart}`; unsafe keys (bind, TLS, backends, stores) are reported,
+never swapped. Invalid YAML / schema / `secret://` failures → **400** with
+prior settings kept. Clears ephemeral PATCH overrides, records
+`config.reload` audit. Unix `SIGHUP` on `daari serve` runs the same path
+(`server.sighup_reload`, default on; no-op on Windows / non-main-thread
+loops); `serve` re-applies CLI flags on reload. Covered by
+`tests/unit/test_config_hot_reload.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ### Named guardrail profiles bindable per key/team ([#1548](https://github.com/naveenreddyalka/daari/issues/1548))
 
 <!-- tracking:#1548 -->
