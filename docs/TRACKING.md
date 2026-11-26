@@ -9654,7 +9654,6 @@ returns 410. New `models.lifecycle_as_of` operator clock (YYYY-MM-DD) for
 staged cutovers / hermetic tests. Doctor `model_lifecycle` tip names
 shutdown + `migrate_to`. Docs: config, doctor-health, compare-litellm.
 Covered by `tests/unit/test_opus_45_lifecycle.py`.
->>>>>>> origin/main
 
 ## How to update
 
