@@ -18,6 +18,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from daari.auth.end_users import (
+    END_USER_OVERRIDES_SQLITE_SCHEMA,
+    EndUserOverride,
+    SqliteEndUserOverrides,
+)
 from daari.auth.model_access import coerce_names, decode_names, encode_names
 
 _UNSET = object()
@@ -283,6 +288,8 @@ CREATE TABLE IF NOT EXISTS key_hits (
 );
 CREATE INDEX IF NOT EXISTS idx_key_hits_key_ts ON key_hits(key_id, ts);
 """
+# Per-end-user block / cap overrides live beside keys (#1547); additive table.
+_SCHEMA += END_USER_OVERRIDES_SQLITE_SCHEMA
 
 # Versioned keys/teams backup document (#548). Bump when the export shape changes.
 KEYS_EXPORT_SCHEMA = 1
@@ -2057,6 +2064,39 @@ class VirtualKeyStore:
                     return False
             last_at[key_id] = current
             return True
+
+    # -- end-user overrides (#1547) ------------------------------------------
+
+    @property
+    def _end_users(self) -> SqliteEndUserOverrides:
+        return SqliteEndUserOverrides(self._connect, self._lock)
+
+    def get_end_user(self, user_id: str) -> EndUserOverride | None:
+        if not self.enabled:
+            return None
+        return self._end_users.get(user_id)
+
+    def list_end_users(self) -> list[EndUserOverride]:
+        if not self.enabled:
+            return []
+        return self._end_users.list()
+
+    def set_end_user_blocked(
+        self, user_id: str, blocked: bool, *, reason: str | None = None
+    ) -> EndUserOverride:
+        if not self.enabled:
+            raise RuntimeError("virtual key store is disabled")
+        return self._end_users.set_blocked(user_id, blocked, reason=reason)
+
+    def set_end_user_cap(self, user_id: str, daily_usd: float) -> EndUserOverride:
+        if not self.enabled:
+            raise RuntimeError("virtual key store is disabled")
+        return self._end_users.set_cap(user_id, daily_usd)
+
+    def delete_end_user(self, user_id: str) -> bool:
+        if not self.enabled:
+            return False
+        return self._end_users.delete(user_id)
 
     def check_rpm(self, key: VirtualKey) -> bool:
         """Return True if the request is within the RPM limit (and record the hit)."""

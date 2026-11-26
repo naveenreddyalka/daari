@@ -9604,6 +9604,24 @@ fallback continue (midstream)**
 opt-in `routing.stream_fallback_continue` and distinguishes ordinary tier
 fallback. Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### End-user inventory + per-user block / cap overrides (#1547) ([#1547](https://github.com/naveenreddyalka/daari/issues/1547))
+
+<!-- tracking:#1547 -->
+**Status:** Done (2026-11-25). `GET /v1/daari/users` (admin / master key)
+pages the ledger-derived end-user inventory (`limit`/`offset`/`has_more`,
+`blocked` and `user_id` filters) with per-user requests, `client_ids`,
+`first_seen`/`last_seen`, and `spend.today_usd`/`lifetime_usd`.
+`PATCH /v1/daari/users/{user_id}` sets `blocked` (+`reason`) and
+`user_usd_cap`; both stores (`VirtualKeyStore` SQLite + Postgres, additive
+`end_user_overrides` table) back it. Every inference facade that binds
+`user` / `metadata.user_id` (chat, Responses, Messages, decisions, batches,
+images, OCR, moderations, rerank, extractions) calls `reject_end_user`:
+blocked → **403** `end_user_blocked`, cap over → **402** `budget_exceeded`
+(`scope=user`, cross-key spend) replacing the key's `user_daily_usd_cap`.
+CLI `daari users list|block|unblock|cap`. Audit `admin.users.*` /
+`users.*`. Covered by `tests/unit/test_end_users.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ### GPT-5.6 / Sol promo window ends 2026-11-30 ([#2468](https://github.com/naveenreddyalka/daari/issues/2468))
 
 <!-- tracking:#2468 -->
