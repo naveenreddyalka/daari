@@ -94,6 +94,52 @@ Pull later with `ollama pull gpt-oss-safeguard:20b`. Doctor tips
 `ollama_safeguard_unused` when the host lists a `gpt-oss-safeguard` tag but
 no decision rule uses it.
 
+## Named profiles per key / team
+
+`guardrails.profiles.<name>` declares named policies with the same shape as
+the top-level block; virtual keys and teams bind one by name and the router
+resolves it per request with **key → team → global** precedence (the same
+layering MCP tool policy uses). Profiles are built even when the global
+block is `enabled: false`, so one tenant can run strict redaction while the
+default stays off. Everything is evaluated on-box — no guardrail service hop —
+and applies equally to local-tier answers that never leave the machine (#1548).
+
+```yaml
+guardrails:
+  enabled: false                 # global default: no chat guardrails
+  profiles:
+    strict:                      # enabled defaults to true inside a profile
+      output_rules:
+        - name: ssn
+          pattern: '\d{3}-\d{2}-\d{4}'
+          action: redact
+    lenient:
+      output_rules:
+        - name: noop
+          pattern: 'never-matches'
+    exempt:
+      enabled: false             # bound tenants skip chat guardrails entirely
+```
+
+```bash
+daari keys team-create research --guardrail-profile lenient
+daari keys create --name analyst --team research --guardrail-profile strict  # key wins
+daari keys update <key_id> --guardrail-profile ""                           # clear → team/global
+```
+
+The binding lives in `metadata.guardrail_profile` on the key or team (also
+settable through `enterprise.sso.key_mappings.<claim>.guardrail_profile` for
+IdP-minted keys). Unknown names fail loudly: `daari keys create/update` and
+`team-create/team-update` exit 1, and a `guardrails.profiles` / SSO mapping
+mismatch is a config validation error at load. A profile removed after keys
+were bound keeps the global engine and records a `guardrail_profile_unknown`
+trace step rather than dropping coverage. Streaming semantics are the
+profile's own `stream_mode` / `stream_holdback_chars`, identical to the
+global engine. `enterprise.policy_sync` distributes `guardrails.profiles`
+fleet-wide (the mapping is replaced as a whole). `PATCH /v1/daari/config`
+still accepts only `guardrails.log_blocked_content`; profiles are
+file/restart or policy_sync.
+
 ## Verify
 
 Send a prompt containing a classic injection phrase; expect `tier=guardrail`.
