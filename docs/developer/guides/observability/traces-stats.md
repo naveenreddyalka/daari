@@ -37,6 +37,17 @@ Successful trims also set `daari_meta.compact_to_fit` (`messages_before` /
 `messages_after`, plus `tokens_before` / `tokens_after`) when
 `X-Daari-Meta: true`. The same fields are on the `compact_to_fit` trace
 step (no step when the message count is unchanged).
+`responses_truncation_auto` increments once per `/v1/responses` request whose
+`truncation: "auto"` input was actually compacted to the serving-tier window;
+the same compact adds `tokens_before - tokens_after` to
+`responses_truncation_tokens_dropped` (and to the shared compact-to-fit
+counters above). `responses_truncation_rejected` increments once per
+OpenAI-shaped `context_length_exceeded` 400 (`truncation` omitted / `disabled`,
+or `auto` that still cannot fit). Within-window and unknown-window requests
+leave all three at 0. Prometheus counterparts are
+`daari_responses_truncation_auto_total` /
+`daari_responses_truncation_rejected_total` /
+`daari_responses_truncation_tokens_dropped_total`.
 `auto_caching_applied` increments once per Anthropic L6 hop where
 `frontier.auto_caching` injected top-level `cache_control` because the client
 sent none; `auto_caching_client_preserved` increments once per Anthropic L6 hop
