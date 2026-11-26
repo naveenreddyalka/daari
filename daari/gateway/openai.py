@@ -569,11 +569,21 @@ def _enforce_batch_item_budgets(
     """Fail frontier-capable items when the creating key is over budget (#441)."""
     from daari.gateway.batches import BatchGovernance, BatchItemRejected
 
+    store = getattr(ctx, "virtual_key_store", None)
+    if meta.user and store is not None and hasattr(store, "get_end_user"):
+        # Admin block applies to every batch item naming the user (#1547).
+        from daari.auth.end_users import end_user_blocked_error
+
+        try:
+            override = store.get_end_user(meta.user)
+        except Exception:
+            override = None
+        if override is not None and override.blocked:
+            raise BatchItemRejected(end_user_blocked_error(meta.user, reason=override.reason))
     if not isinstance(governance, BatchGovernance) or governance.kind != "virtual":
         return
     if not _batch_frontier_allowed(ctx, meta):
         return
-    store = getattr(ctx, "virtual_key_store", None)
     if store is None:
         return
     key = None
@@ -587,7 +597,7 @@ def _enforce_batch_item_budgets(
     ledger = getattr(ctx.router, "usage_ledger", None)
     if ledger is None or not getattr(ledger, "enabled", False):
         return
-    from daari.auth.budgets import budget_error, budget_status, user_daily_cap_exceeded
+    from daari.auth.budgets import budget_error, budget_status
 
     client = meta.client_id or governance.client_id or governance.key_id or ""
     pricing = getattr(ctx.settings, "pricing", None)
@@ -613,17 +623,20 @@ def _enforce_batch_item_budgets(
                 scope=exceeded.scope,
             )
         )
-    if float(getattr(key, "user_daily_usd_cap", 0) or 0) > 0 and meta.user:
-        user_err = user_daily_cap_exceeded(
-            key,
+    if meta.user:
+        from daari.auth.end_users import end_user_denial
+
+        user_denial = end_user_denial(
+            store,
             ledger,
+            key=key,
             client_id=client,
             user_id=meta.user,
             pricing=pricing,
             fallback_per_1k=fallback,
         )
-        if user_err is not None:
-            raise BatchItemRejected(user_err)
+        if user_denial is not None:
+            raise BatchItemRejected(user_denial[1])
 
 
 def _governance_from_batch_request(request: Request, body: BatchCreateRequest) -> Any:
@@ -1130,6 +1143,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 apply_service_tier_allowlist_degrade,
                 reject_disallowed_model,
                 reject_disallowed_service_tier,
+                reject_end_user,
                 reject_model_group_budget,
                 reject_model_max_budget,
                 reject_retired_model,
@@ -1155,35 +1169,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             apply_service_tier_allowlist_degrade(body, request)
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
-            # Per-end-user daily cap on shared virtual keys (#410). Checked here
-            # (not middleware) because the OpenAI `user` field lives in the body.
-            claims = getattr(request.state, "auth_claims", None)
-            vk = getattr(claims, "virtual_key", None) if claims is not None else None
-            if (
-                vk is not None
-                and float(getattr(vk, "user_daily_usd_cap", 0) or 0) > 0
-                and meta.user
-            ):
-                from daari.auth.budgets import user_daily_cap_exceeded
-
-                ledger = ctx.router.usage_ledger
-                client = meta.client_id or getattr(claims, "key_id", None) or ""
-                pricing = getattr(ctx.settings, "pricing", None)
-                fallback = float(ctx.settings.usage.frontier_price_per_1k_tokens or 0.002)
-                exceeded = (
-                    user_daily_cap_exceeded(
-                        vk,
-                        ledger,
-                        client_id=client,
-                        user_id=meta.user,
-                        pricing=pricing,
-                        fallback_per_1k=fallback,
-                    )
-                    if ledger is not None
-                    else None
-                )
-                if exceeded is not None:
-                    return JSONResponse(status_code=402, content={"error": exceeded})
+            # Per-end-user block / daily cap on shared virtual keys (#410, #1547).
+            # Checked here (not middleware) because the OpenAI `user` field
+            # lives in the body.
+            user_denied = reject_end_user(request, ctx.settings, meta.user)
+            if user_denied is not None:
+                return user_denied
             internal = _prepare_internal_request(
                 body,
                 default_model=ctx.settings.models.l3,
@@ -2035,6 +2026,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "mcp_tool_calls": {},
                     "compact_to_fit_applied": 0,
                     "compact_to_fit_tokens_dropped": 0,
+                    "auto_caching_applied": 0,
+                    "auto_caching_client_preserved": 0,
                     "mcp_grant_denied": 0,
                     "agent_access_denied": 0,
                     "cost_input_usd": 0.0,
@@ -2066,6 +2059,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "compact_to_fit_applied": int(full.get("compact_to_fit_applied") or 0),
                 "compact_to_fit_tokens_dropped": int(
                     full.get("compact_to_fit_tokens_dropped") or 0
+                ),
+                "auto_caching_applied": int(full.get("auto_caching_applied") or 0),
+                "auto_caching_client_preserved": int(
+                    full.get("auto_caching_client_preserved") or 0
                 ),
                 "mcp_grant_denied": int(full.get("mcp_grant_denied") or 0),
                 "agent_access_denied": int(full.get("agent_access_denied") or 0),
@@ -2138,8 +2135,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/daari/report")
         async def daari_report(
-            request: Request, days: int = 7, team_id: str | None = None
+            request: Request,
+            days: int = 7,
+            team_id: str | None = None,
+            clients_limit: int | None = None,
+            clients_offset: int | None = None,
+            users_limit: int | None = None,
+            users_offset: int | None = None,
         ) -> dict[str, Any]:
+            """Usage report; `clients` / `users` rollups page like keys/teams (#1552)."""
+            from daari.observability.usage import page_rollup
+
             ctx: AppContext = request.app.state.ctx
             role = _require_role(request, ctx, "analyst")
             scope = _admin_team_scope(request, role, team_id)
@@ -2170,15 +2176,19 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "soft_budget_ratio": ctx.settings.frontier.soft_budget_ratio,
                 "budget_state": ctx.router._frontier_budget_state(),
             }
+            # Full rollups stay in-process for team totals and scope filtering;
+            # only the paged slice ships in the body.
             payload["clients"] = ledger.by_client(
                 days=max(1, days),
                 frontier_price_per_1k_tokens=ctx.settings.usage.frontier_price_per_1k_tokens,
+                limit=None,
             )
             by_user = getattr(ledger, "by_user", None)
             payload["users"] = (
                 by_user(
                     days=max(1, days),
                     frontier_price_per_1k_tokens=ctx.settings.usage.frontier_price_per_1k_tokens,
+                    limit=None,
                 )
                 if callable(by_user)
                 else []
@@ -2342,6 +2352,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             except Exception:
                 trust["diversity"] = {}
             payload["cache_trust"] = trust
+            for rollup, lim, off in (
+                ("clients", clients_limit, clients_offset),
+                ("users", users_limit, users_offset),
+            ):
+                rows, page = page_rollup(payload[rollup], limit=lim, offset=off)
+                payload[rollup] = rows
+                for field_name, value in page.items():
+                    payload[f"{rollup}_{field_name}"] = value
             return payload
 
         @router.get("/v1/daari/spend/export")
@@ -3636,6 +3654,123 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     },
                 )
             return row
+
+        @router.get("/v1/daari/users")
+        async def daari_users_list(
+            request: Request,
+            limit: int | None = None,
+            offset: int | None = None,
+            blocked: bool | None = None,
+            user_id: str | None = None,
+        ) -> dict[str, Any]:
+            """Ledger-derived end-user inventory with block / cap overrides (#1547)."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_admin_role(request, ctx)
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.gateway.admin_read import end_users_inventory
+
+            store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+                ctx, "virtual_key_store", None
+            )
+            ledger = getattr(ctx.router, "usage_ledger", None)
+            result = end_users_inventory(
+                store,
+                ledger=ledger,
+                pricing=getattr(ctx.settings, "pricing", None),
+                fallback_per_1k=float(
+                    getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
+                ),
+                limit=limit,
+                offset=offset,
+                blocked=blocked,
+                user_id=user_id,
+            )
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="admin.users.list",
+                detail={
+                    "limit": result.get("limit"),
+                    "offset": result.get("offset"),
+                    "total": result.get("total"),
+                    "returned": len(result.get("users") or []),
+                    "blocked": blocked,
+                },
+            )
+            return result
+
+        @router.patch("/v1/daari/users/{user_id}")
+        async def daari_users_patch(request: Request, user_id: str) -> dict[str, Any]:
+            """Block / unblock an end-user or set their daily USD cap override (#1547)."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_admin_role(request, ctx)
+            try:
+                body = await request.json()
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="JSON body required") from exc
+            if not isinstance(body, dict) or not {"blocked", "user_usd_cap"}.intersection(body):
+                raise HTTPException(status_code=400, detail="blocked or user_usd_cap is required")
+            store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+                ctx, "virtual_key_store", None
+            )
+            if store is None or not hasattr(store, "set_end_user_blocked"):
+                raise HTTPException(status_code=503, detail="virtual key store is not configured")
+            from daari.auth.end_users import coerce_user_usd_cap, normalize_end_user_id
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.gateway.admin_read import end_user_row
+
+            try:
+                named = normalize_end_user_id(user_id)
+                actions: list[tuple[str, dict[str, Any]]] = []
+                if "blocked" in body:
+                    flag = body.get("blocked")
+                    if not isinstance(flag, bool):
+                        raise ValueError("blocked must be true or false")
+                    reason = body.get("reason")
+                    if reason is not None and not isinstance(reason, str):
+                        raise ValueError("reason must be a string")
+                    store.set_end_user_blocked(named, flag, reason=reason)
+                    actions.append(
+                        (
+                            "admin.users.block" if flag else "admin.users.unblock",
+                            {"user_id": named, "reason": (reason or "").strip() or None},
+                        )
+                    )
+                if "user_usd_cap" in body:
+                    cap = coerce_user_usd_cap(body.get("user_usd_cap"))
+                    store.set_end_user_cap(named, cap)
+                    actions.append(("admin.users.cap", {"user_id": named, "user_usd_cap": cap}))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            override = store.get_end_user(named)
+            usage = None
+            ledger = getattr(ctx.router, "usage_ledger", None)
+            if ledger is not None and getattr(ledger, "enabled", False):
+                try:
+                    usage = next(
+                        (
+                            row
+                            for row in ledger.end_users(
+                                pricing=getattr(ctx.settings, "pricing", None),
+                                fallback_per_1k=float(
+                                    getattr(
+                                        ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002
+                                    )
+                                    or 0.002
+                                ),
+                            )
+                            if row.get("user_id") == named
+                        ),
+                        None,
+                    )
+                except Exception:
+                    usage = None
+            audit = audit_log_from_settings(ctx.settings)
+            actor = request.headers.get("x-daari-actor", "api")
+            for action, detail in actions:
+                audit.record(actor=actor, role=role, action=action, detail=detail)
+                log_gateway_event(action.replace(".", "_"), {**detail, "actor": actor})
+            return end_user_row(named, usage=usage, override=override)
 
         @router.post("/v1/org-learning/sync")
         async def org_learning_sync(request: Request) -> dict[str, Any]:

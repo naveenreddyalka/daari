@@ -424,6 +424,66 @@ def reject_model_max_budget(
     return None
 
 
+def reject_end_user(
+    request: Any,
+    settings: Any,
+    user_id: str | None,
+) -> JSONResponse | None:
+    """403 for an admin-blocked end-user, 402 when their daily cap is spent (#1547).
+
+    Covers the per-user override registry first, then the key-level
+    ``user_daily_usd_cap``; every inference facade that binds ``user`` calls
+    this once before any upstream work.
+    """
+    named = (user_id or "").strip()
+    if not named:
+        return None
+    from daari.auth.end_users import end_user_denial
+
+    app_state = getattr(getattr(request, "app", None), "state", None)
+    ctx = getattr(app_state, "ctx", None) if app_state is not None else None
+    store = getattr(app_state, "virtual_key_store", None) if app_state is not None else None
+    if store is None and ctx is not None:
+        store = getattr(ctx, "virtual_key_store", None)
+    router = getattr(ctx, "router", None) if ctx is not None else None
+    ledger = getattr(router, "usage_ledger", None) if router is not None else None
+    claims = getattr(getattr(request, "state", None), "auth_claims", None)
+    key = getattr(claims, "virtual_key", None) if claims is not None else None
+    client = (
+        getattr(claims, "client_id", None)
+        or getattr(key, "client_id", None)
+        or getattr(claims, "key_id", None)
+        or ""
+    )
+    pricing = getattr(settings, "pricing", None)
+    fallback = float(
+        getattr(getattr(settings, "usage", None), "frontier_price_per_1k_tokens", 0.002) or 0.002
+    )
+    denial = end_user_denial(
+        store,
+        ledger,
+        key=key,
+        client_id=str(client),
+        user_id=named,
+        pricing=pricing,
+        fallback_per_1k=fallback,
+    )
+    if denial is None:
+        return None
+    status, error = denial
+    metrics = getattr(ctx, "metrics", None) if ctx is not None else None
+    if metrics is not None and hasattr(metrics, "record_reject"):
+        try:
+            metrics.record_reject("end_user_blocked" if status == 403 else "budget")
+        except Exception:
+            pass
+    log_gateway_event(
+        "end_user_blocked" if status == 403 else "end_user_cap_exceeded",
+        {"user_id": named, "client_id": str(client), "status": status},
+    )
+    return JSONResponse(status_code=status, content={"error": error})
+
+
 def _team_for_claims(request: Any, claims: Any) -> Any:
     vk = getattr(claims, "virtual_key", None) if claims is not None else None
     team_id = getattr(claims, "selected_team_id", None) if claims is not None else None
