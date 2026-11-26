@@ -1980,21 +1980,33 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, Any]] = {
         "output_per_1m": 3.75,
         "cached_input_per_1m": 0.075,
     },
-    # Gemini 4 Carbon / Argon: post-intro standard from 2026-12-01 ($4/$20,
-    # cache read $0.20). Introductory window through 2026-11-30 was $2/$10 /
-    # $0.10 cache. Longer keys win over any gemini-4 / gemini-3 prefix match
-    # for dated/vendor ids (`models/gemini-4-carbon`, etc.). Batch/Flex and
-    # Priority use the existing service_tier multipliers — no separate
-    # Gemini batch surface. https://aistudio.google.com/docs/pricing
+    # Gemini 4 Carbon / Argon: introductory $2/$10 ($0.10 cache read) through
+    # 2026-11-30; list $4/$20 ($0.20 cache) from 2026-12-01 (#2469). Longer
+    # keys win over any gemini-4 / gemini-3 prefix match for dated/vendor ids
+    # (`models/gemini-4-carbon`, etc.). Batch/Flex and Priority use the
+    # existing service_tier multipliers — no separate Gemini batch surface.
+    # https://aistudio.google.com/docs/pricing
     "gemini-4-carbon": {
-        "input_per_1m": 4.00,
-        "output_per_1m": 20.00,
-        "cached_input_per_1m": 0.20,
+        "input_per_1m": 2.00,
+        "output_per_1m": 10.00,
+        "cached_input_per_1m": 0.10,
+        "effective_to": "2026-12-01",
+        "baseline": {
+            "input_per_1m": 4.00,
+            "output_per_1m": 20.00,
+            "cached_input_per_1m": 0.20,
+        },
     },
     "gemini-4-argon": {
-        "input_per_1m": 4.00,
-        "output_per_1m": 20.00,
-        "cached_input_per_1m": 0.20,
+        "input_per_1m": 2.00,
+        "output_per_1m": 10.00,
+        "cached_input_per_1m": 0.10,
+        "effective_to": "2026-12-01",
+        "baseline": {
+            "input_per_1m": 4.00,
+            "output_per_1m": 20.00,
+            "cached_input_per_1m": 0.20,
+        },
     },
     # xAI Grok 4.7 (LiteLLM 1.105 RC day-one, 2026-10-04): lab $2/$6,
     # cache read $0.50. OpenRouter list is ~$1.6/$4.8 — we ship the lab bar.

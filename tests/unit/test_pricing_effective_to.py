@@ -156,6 +156,32 @@ def test_shipped_gpt56_promo_window_flips_at_boundary(model):
     assert after.cache_write_12h_per_1m == pytest.approx(12.50)
 
 
+@pytest.mark.parametrize(
+    "model",
+    [
+        "gemini-4-carbon",
+        "gemini-4-argon",
+        "models/gemini-4-carbon",
+        "models/gemini-4-argon",
+    ],
+)
+def test_shipped_gemini4_intro_window_flips_at_boundary(model):
+    settings = Settings()
+    intro = resolve_price(
+        model, settings.pricing, fallback_per_1k=0.002, now=date(2026, 11, 30)
+    )
+    listed = resolve_price(
+        model, settings.pricing, fallback_per_1k=0.002, now=date(2026, 12, 1)
+    )
+    assert intro.is_fallback is False
+    assert intro.input_per_1m == pytest.approx(2.0)
+    assert intro.output_per_1m == pytest.approx(10.0)
+    assert intro.cached_input_per_1m == pytest.approx(0.10)
+    assert listed.input_per_1m == pytest.approx(4.0)
+    assert listed.output_per_1m == pytest.approx(20.0)
+    assert listed.cached_input_per_1m == pytest.approx(0.20)
+
+
 def test_longest_key_match_unchanged_across_window():
     settings = Settings()
     for when in (date(2026, 11, 20), date(2026, 11, 25)):
