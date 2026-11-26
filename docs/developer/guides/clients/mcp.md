@@ -256,6 +256,55 @@ A denied server never leaves the machine: `tools/list` hides that server's
 denial as a denied tool (`-32003` / `MCP_ERR_TOOL_DENIED`, with `data.server`
 set), and the egress client refuses to POST. Audit rows include the server id.
 
+### Per-server tool allowlists
+
+A server grant is all-or-nothing; `server_tools` narrows a granted
+`mcp_servers` id to named tools (LiteLLM `mcp_tool_permissions` equivalent)
+without editing the server config or restarting the egress server. The
+effective catalog is the **intersection**: the server's own `tools/list`
+∩ `servers.allow/deny` ∩ the caller's `server_tools[<id>]` ∩ any client-side
+`allowed_tools` / `mcp_toolset` config. Values are tool-name globs, matched
+case-insensitively. A server that is not named stays unrestricted; an empty
+list **fails closed** (no tools from that server). Per server, key beats team
+beats global — the same rule as `allow`.
+
+```yaml
+integrations:
+  mcp_policy:
+    server_tools:
+      shell: []                        # nobody gets shell tools
+  mcp_team_policies:
+    finance:
+      server_tools:
+        github: ["search_*", "get_file"]
+```
+
+```bash
+daari keys create finance-bot --team finance \
+  --mcp-server-tools 'github=search_*' \
+  --mcp-server-tools 'weather=get_forecast,get_alerts'
+daari keys show <key_id>   # prints mcp server tools: github=search_* weather=…
+```
+
+Enforcement points:
+
+- `/mcp` `tools/list` (incl. `mcp_aggregate_egress` `{id}__{tool}` entries)
+  hides tools outside the subset; a server with an empty subset also loses its
+  coarse `mcp_<id>` stub. `_meta.cacheScope` flips to `private`.
+- `/mcp` `tools/call` on a filtered-out tool returns `-32003`
+  (`Tool denied by policy`, `data.server` set) and an `mcp.tools/call` deny
+  audit row. A coarse `mcp_<id>` call (`@mcp <id> <tool> …`) is parsed by the
+  egress client, which refuses the POST and returns `isError: true` with
+  `daari_meta.warning = mcp_tool_denied`.
+- Responses `type: mcp` and Messages `mcp_servers` / `mcp_toolset`
+  (server-side MCP) expose only the subset to the model; a model that still
+  names a denied tool gets the `mcp_tool_denied` text as the tool result
+  instead of an upstream call.
+
+Unset `server_tools` leaves today's behavior unchanged. A key whose
+`metadata.mcp` only sets `server_tools` counts as an MCP grant under
+`require_key_access_defined`.
+
 ### Client allowlists
 
 A second gate matches the *client identity* that opens `/mcp` — not which tools
