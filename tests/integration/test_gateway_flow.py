@@ -654,6 +654,94 @@ async def test_report_endpoint_tracks_route_and_stream_usage(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_report_rollups_are_bounded_and_paginated(app):
+    """#1552: clients/users rollups page with limit/offset/total/has_more."""
+    ledger = app.state.ctx.router.usage_ledger
+    for index in range(7):
+        for _ in range(7 - index):
+            ledger.record(tier="L3", client_id=f"client-{index}", prompt_chars=8)
+    for index in range(5):
+        for _ in range(5 - index):
+            ledger.record(tier="L3", client_id="client-0", user_id=f"user-{index}", prompt_chars=4)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        default = (await client.get("/v1/daari/report?days=1")).json()
+        paged = (
+            await client.get(
+                "/v1/daari/report?days=1&clients_limit=3&clients_offset=3"
+                "&users_limit=2&users_offset=1"
+            )
+        ).json()
+        clamped = (
+            await client.get("/v1/daari/report?days=1&clients_limit=9999&users_limit=0")
+        ).json()
+
+    assert len(default["clients"]) == 7
+    assert default["clients_total"] == 7
+    assert default["clients_limit"] == 100
+    assert default["clients_offset"] == 0
+    assert default["clients_has_more"] is False
+    assert default["users_total"] >= 5
+    assert default["users_limit"] == 100
+    assert default["users_has_more"] is False
+
+    assert [row["client_id"] for row in paged["clients"]] == ["client-3", "client-4", "client-5"]
+    assert paged["clients_total"] == 7
+    assert paged["clients_limit"] == 3
+    assert paged["clients_offset"] == 3
+    assert paged["clients_has_more"] is True
+    assert len(paged["users"]) == 2
+    assert paged["users_limit"] == 2
+    assert paged["users_offset"] == 1
+    assert paged["users_has_more"] is True
+
+    assert clamped["clients_limit"] == 500
+    assert clamped["users_limit"] == 1
+    assert len(clamped["users"]) == 1
+    assert clamped["users_has_more"] is True
+
+
+@pytest.mark.asyncio
+async def test_report_rollup_pages_respect_team_scope(settings, tmp_path):
+    """#1552: page totals count only the scoped team's clients; teams stay whole."""
+    application, ledger, _headers = _budgeted_app(settings, tmp_path, team_month_usd=5.0)
+    team_id = application.state.virtual_key_store.list_teams()[0].team_id
+    for client_id, count in (("key-a", 3), ("key-b", 2), ("outsider", 9)):
+        for _ in range(count):
+            ledger.record(tier="L3", client_id=client_id, user_id="u", prompt_chars=4)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        scoped = (
+            await client.get(
+                f"/v1/daari/report?days=1&team_id={team_id}&clients_limit=1",
+                headers={"Authorization": "Bearer master"},
+            )
+        ).json()
+        unscoped = (
+            await client.get(
+                "/v1/daari/report?days=1&clients_limit=1",
+                headers={"Authorization": "Bearer master"},
+            )
+        ).json()
+
+    assert scoped["team_id"] == team_id
+    assert [row["client_id"] for row in scoped["clients"]] == ["key-a"]
+    assert scoped["clients_total"] == 2
+    assert scoped["clients_has_more"] is True
+    assert scoped["users_total"] == 2
+    assert {row["client_id"] for row in scoped["users"]} == {"key-a", "key-b"}
+    assert [team["team"] for team in scoped["teams"]] == ["eng"]
+    assert scoped["teams"][0]["requests"] == 5
+
+    assert [row["client_id"] for row in unscoped["clients"]] == ["outsider"]
+    assert unscoped["clients_total"] == 3
+    assert unscoped["clients_has_more"] is True
+    assert unscoped["teams"][0]["requests"] == 5
+
+
+@pytest.mark.asyncio
 async def test_provider_reported_tokens_reach_api_and_ledger(app, monkeypatch):
     """#156: usage must be the provider's counts, not chars/4, end to end."""
 
@@ -2119,6 +2207,204 @@ async def test_user_attribution_and_per_user_cap(settings, tmp_path):
     assert users[("key-a", "alice")]["requests"] >= 1
     assert users[("key-a", "unknown")]["requests"] >= 1
     assert users[("key-a", "bob")]["requests"] >= 1
+
+
+def _end_user_app(settings, tmp_path):
+    """Issue #1547: two shared keys, one ledger, master key for the admin plane."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.observability.usage import UsageLedger
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    key_a = store.create("agent-a", client_id="key-a", user_daily_usd_cap=5.0)
+    key_b = store.create("agent-b", client_id="key-b")
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = store
+    application.state.ctx.virtual_key_store = store
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    application.state.ctx.router.usage_ledger = ledger
+
+    async def local_answer(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=1),
+        )
+
+    application.state.ctx.router.ollama.execute = local_answer
+    return (
+        application,
+        store,
+        ledger,
+        {"Authorization": f"Bearer {key_a.plaintext}"},
+        {"Authorization": f"Bearer {key_b.plaintext}"},
+    )
+
+
+def _chat(user: str, text: str = "hi") -> dict:
+    return {"model": "daari", "user": user, "messages": [{"role": "user", "content": text}]}
+
+
+@pytest.mark.asyncio
+async def test_blocked_end_user_is_403_across_keys(settings, tmp_path):
+    """Issue #1547: an admin block on one end-user stops them on every shared key."""
+    from daari.enterprise.audit import AuditLog
+
+    app, store, ledger, headers_a, headers_b = _end_user_app(settings, tmp_path)
+    admin = {"Authorization": "Bearer master", "x-daari-actor": "ops-bob"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        before = await client.post("/v1/chat/completions", json=_chat("mallory"), headers=headers_a)
+        assert before.status_code == 200
+
+        blocked = await client.patch(
+            "/v1/daari/users/mallory",
+            json={"blocked": True, "reason": "offboarded"},
+            headers=admin,
+        )
+        assert blocked.status_code == 200, blocked.text
+        assert blocked.json()["user_id"] == "mallory"
+        assert blocked.json()["blocked"] is True
+        assert blocked.json()["reason"] == "offboarded"
+
+        on_a = await client.post("/v1/chat/completions", json=_chat("mallory"), headers=headers_a)
+        on_b = await client.post("/v1/chat/completions", json=_chat("mallory"), headers=headers_b)
+        anthropic = await client.post(
+            "/v1/messages",
+            json={
+                "model": "daari",
+                "max_tokens": 16,
+                "metadata": {"user_id": "mallory"},
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+            headers=headers_a,
+        )
+        responses = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": "hi", "user": "mallory"},
+            headers=headers_a,
+        )
+        other_user = await client.post(
+            "/v1/chat/completions", json=_chat("alice"), headers=headers_a
+        )
+        unblocked = await client.patch(
+            "/v1/daari/users/mallory", json={"blocked": False}, headers=admin
+        )
+        after = await client.post("/v1/chat/completions", json=_chat("mallory"), headers=headers_a)
+
+    for denied in (on_a, on_b, anthropic, responses):
+        assert denied.status_code == 403, denied.text
+        err = denied.json()["error"]
+        assert err["type"] == "end_user_blocked"
+        assert err["user_id"] == "mallory"
+    assert other_user.status_code == 200
+    assert unblocked.status_code == 200
+    assert unblocked.json()["blocked"] is False
+    assert after.status_code == 200
+
+    actions = [
+        row["action"]
+        for row in AuditLog(settings.enterprise.audit_path).list(limit=50)
+        if row["action"].startswith("admin.users.")
+    ]
+    assert "admin.users.block" in actions
+    assert "admin.users.unblock" in actions
+    audit_rows = AuditLog(settings.enterprise.audit_path).list(limit=50, action="admin.users.block")
+    assert audit_rows and audit_rows[0]["actor"] == "ops-bob"
+    assert audit_rows[0]["detail"]["user_id"] == "mallory"
+
+
+@pytest.mark.asyncio
+async def test_end_user_cap_override_beats_key_cap(settings, tmp_path):
+    """Issue #1547: a per-user USD cap overrides the key's user_daily_usd_cap (402)."""
+    app, store, ledger, headers_a, headers_b = _end_user_app(settings, tmp_path)
+    admin = {"Authorization": "Bearer master"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Key cap is $5/day; alice has spent $1.50 across both shared keys.
+        _frontier_spend_user(ledger, "key-a", "alice", 1.0)
+        _frontier_spend_user(ledger, "key-b", "alice", 0.5)
+        under_key_cap = await client.post(
+            "/v1/chat/completions", json=_chat("alice"), headers=headers_a
+        )
+        assert under_key_cap.status_code == 200
+
+        capped = await client.patch(
+            "/v1/daari/users/alice", json={"user_usd_cap": 1.25}, headers=admin
+        )
+        assert capped.status_code == 200, capped.text
+        assert capped.json()["user_usd_cap"] == 1.25
+
+        over = await client.post("/v1/chat/completions", json=_chat("alice"), headers=headers_a)
+        over_b = await client.post("/v1/chat/completions", json=_chat("alice"), headers=headers_b)
+        bob = await client.post("/v1/chat/completions", json=_chat("bob"), headers=headers_a)
+
+        raised = await client.patch(
+            "/v1/daari/users/alice", json={"user_usd_cap": 10.0}, headers=admin
+        )
+        again = await client.post("/v1/chat/completions", json=_chat("alice"), headers=headers_a)
+
+    for denied in (over, over_b):
+        assert denied.status_code == 402, denied.text
+        err = denied.json()["error"]
+        assert err["type"] == "budget_exceeded"
+        assert err["scope"] == "user"
+        assert err["user_id"] == "alice"
+        assert err["budget_usd"] == 1.25
+        assert err["spend_usd"] >= 1.5
+    assert bob.status_code == 200
+    assert raised.status_code == 200
+    assert again.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_end_user_inventory_paginates_and_is_admin_gated(settings, tmp_path):
+    """Issue #1547: GET /v1/daari/users is ledger-derived, paginated, master-key gated."""
+    app, store, ledger, headers_a, headers_b = _end_user_app(settings, tmp_path)
+    admin = {"Authorization": "Bearer master"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        for user in ("alice", "bob", "carol"):
+            ok = await client.post("/v1/chat/completions", json=_chat(user), headers=headers_a)
+            assert ok.status_code == 200
+        _frontier_spend_user(ledger, "key-b", "alice", 0.25)
+        await client.patch("/v1/daari/users/carol", json={"blocked": True}, headers=admin)
+        await client.patch("/v1/daari/users/dave", json={"user_usd_cap": 2.0}, headers=admin)
+
+        denied = await client.get("/v1/daari/users", headers=headers_a)
+        page1 = await client.get("/v1/daari/users?limit=2", headers=admin)
+        page2 = await client.get("/v1/daari/users?limit=2&offset=2", headers=admin)
+        only_blocked = await client.get("/v1/daari/users?blocked=true", headers=admin)
+
+    assert denied.status_code == 403
+    assert page1.status_code == 200, page1.text
+    body = page1.json()
+    assert body["total"] == 4
+    assert body["limit"] == 2 and body["offset"] == 0
+    assert body["has_more"] is True
+    assert len(body["users"]) == 2
+    rest = page2.json()
+    assert rest["has_more"] is False
+    assert len(rest["users"]) == 2
+    rows = {row["user_id"]: row for row in body["users"] + rest["users"]}
+    assert set(rows) == {"alice", "bob", "carol", "dave"}
+    alice = rows["alice"]
+    assert alice["requests"] >= 2
+    assert sorted(alice["client_ids"]) == ["key-a", "key-b"]
+    assert alice["first_seen"] and alice["last_seen"]
+    assert alice["spend"]["today_usd"] == pytest.approx(0.25)
+    assert alice["spend"]["lifetime_usd"] == pytest.approx(0.25)
+    assert alice["blocked"] is False
+    assert rows["carol"]["blocked"] is True
+    assert rows["dave"]["requests"] == 0
+    assert rows["dave"]["user_usd_cap"] == 2.0
+    assert rows["dave"]["first_seen"] is None
+    assert "unknown" not in rows
+    assert [row["user_id"] for row in only_blocked.json()["users"]] == ["carol"]
 
 
 @pytest.mark.asyncio
