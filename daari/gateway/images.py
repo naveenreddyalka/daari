@@ -425,6 +425,7 @@ async def handle_images_generations(
     )
     from daari.gateway.model_access import (
         reject_disallowed_model,
+        reject_end_user,
         reject_frontier_passthrough,
         reject_retired_model,
     )
@@ -477,6 +478,10 @@ async def handle_images_generations(
     if retired is not None:
         abandon_slot(idem_slot)
         return retired
+    user_denied = reject_end_user(request, settings, body.user)
+    if user_denied is not None:
+        abandon_slot(idem_slot)
+        return user_denied
 
     from daari.gateway.guardrails import (
         apply_endpoint_input_policy,
@@ -662,6 +667,7 @@ async def handle_images_edits(
     """POST /v1/images/edits — multipart L6 passthrough (#1097)."""
     from daari.gateway.model_access import (
         reject_disallowed_model,
+        reject_end_user,
         reject_frontier_passthrough,
         reject_retired_model,
     )
@@ -738,6 +744,9 @@ async def handle_images_edits(
     retired = reject_retired_model(request, resolved_model, settings)
     if retired is not None:
         return retired
+    user_denied = reject_end_user(request, settings, user)
+    if user_denied is not None:
+        return user_denied
 
     from daari.gateway.guardrails import (
         apply_endpoint_input_policy,
@@ -909,6 +918,7 @@ async def handle_images_variations(
     """POST /v1/images/variations — multipart L6 passthrough (#1098)."""
     from daari.gateway.model_access import (
         reject_disallowed_model,
+        reject_end_user,
         reject_frontier_passthrough,
         reject_retired_model,
     )
@@ -974,6 +984,9 @@ async def handle_images_variations(
     retired = reject_retired_model(request, resolved_model, settings)
     if retired is not None:
         return retired
+    user_denied = reject_end_user(request, settings, user)
+    if user_denied is not None:
+        return user_denied
 
     count = int(n or 1)
     form: dict[str, str] = {

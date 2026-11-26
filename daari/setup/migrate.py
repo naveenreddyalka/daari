@@ -94,6 +94,10 @@ PG_STORE_COLUMNS: dict[str, dict[str, frozenset[str]]] = {
             }
         ),
         "team_members": frozenset({"subject", "team_id"}),
+        # Per-end-user block / cap overrides (#1547).
+        "end_user_overrides": frozenset(
+            {"user_id", "blocked", "user_usd_cap", "reason", "created_at", "updated_at"}
+        ),
     },
     "postgres.audit": {
         "daari_audit": frozenset(
@@ -351,6 +355,8 @@ def _pending_virtual_keys(conn: sqlite3.Connection) -> list[str]:
         ):
             if col not in team_cols:
                 pending.append(f"teams.{col}")
+    if not _cols(conn, "end_user_overrides"):
+        pending.append("end_user_overrides: create")
     return pending
 
 

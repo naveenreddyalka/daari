@@ -118,6 +118,47 @@ def _empty_totals() -> dict[str, Any]:
     }
 
 
+# Report `clients` / `users` rollups are bounded (#1552). Same defaults as the
+# keys/teams inventories so UIs page every admin list the same way.
+DEFAULT_ROLLUP_LIMIT = 100
+MAX_ROLLUP_LIMIT = 500
+
+
+def _clamp_rollup_page(limit: int | None, offset: int | None) -> tuple[int, int]:
+    try:
+        lim = DEFAULT_ROLLUP_LIMIT if limit is None else int(limit)
+    except (TypeError, ValueError):
+        lim = DEFAULT_ROLLUP_LIMIT
+    try:
+        off = 0 if offset is None else int(offset)
+    except (TypeError, ValueError):
+        off = 0
+    return max(1, min(lim, MAX_ROLLUP_LIMIT)), max(0, off)
+
+
+def page_rollup(
+    rows: list[dict[str, Any]], *, limit: int | None, offset: int | None
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Slice an already-sorted rollup; meta mirrors the keys/teams inventories."""
+    lim, off = _clamp_rollup_page(limit, offset)
+    page = rows[off : off + lim]
+    return page, {
+        "total": len(rows),
+        "limit": lim,
+        "offset": off,
+        "has_more": (off + len(page)) < len(rows),
+    }
+
+
+def _bound_rollup(
+    rows: list[dict[str, Any]], *, limit: int | None, offset: int
+) -> list[dict[str, Any]]:
+    """`limit=None` keeps every row for in-process rollups (team totals)."""
+    if limit is None:
+        return rows[max(0, int(offset or 0)) :]
+    return page_rollup(rows, limit=limit, offset=offset)[0]
+
+
 class UsageLedger:
     def __init__(self, path: str | Path, enabled: bool = True) -> None:
         self.path = Path(path).expanduser()
@@ -338,9 +379,18 @@ class UsageLedger:
             pass
 
     def by_client(
-        self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002
+        self,
+        days: int = 7,
+        *,
+        frontier_price_per_1k_tokens: float = 0.002,
+        limit: int | None = DEFAULT_ROLLUP_LIMIT,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """Per-client usage and savings attribution (Trust PRD T5b)."""
+        """Per-client usage and savings attribution (Trust PRD T5b).
+
+        Rows sort by requests desc and are bounded to ``limit`` (default 100,
+        max 500) from ``offset``; ``limit=None`` returns every row (#1552).
+        """
         if not self.enabled:
             return []
         cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
@@ -379,12 +429,21 @@ class UsageLedger:
                 entry["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
         for entry in clients.values():
             entry["estimated_saved_usd"] = round(entry["estimated_saved_usd"], 4)
-        return sorted(clients.values(), key=lambda entry: -entry["requests"])
+        ordered = sorted(clients.values(), key=lambda entry: -entry["requests"])
+        return _bound_rollup(ordered, limit=limit, offset=offset)
 
     def by_user(
-        self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002
+        self,
+        days: int = 7,
+        *,
+        frontier_price_per_1k_tokens: float = 0.002,
+        limit: int | None = DEFAULT_ROLLUP_LIMIT,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """Per end-user usage on each virtual-key client id (issue #410)."""
+        """Per end-user usage on each virtual-key client id (issue #410).
+
+        Bounded like :meth:`by_client` (#1552).
+        """
         if not self.enabled:
             return []
         cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
@@ -425,7 +484,112 @@ class UsageLedger:
                 entry["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
         for entry in users.values():
             entry["estimated_saved_usd"] = round(entry["estimated_saved_usd"], 4)
-        return sorted(users.values(), key=lambda entry: -entry["requests"])
+        ordered = sorted(users.values(), key=lambda entry: -entry["requests"])
+        return _bound_rollup(ordered, limit=limit, offset=offset)
+
+    def end_users(
+        self,
+        *,
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+        day: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Every named end-user the ledger has seen, across keys (#1547).
+
+        Unattributed ``unknown`` rows are not end-users and are skipped. Spend
+        is priced per model like the budget pre-checks; ``today_usd`` uses the
+        given UTC ``day``.
+        """
+        if not self.enabled:
+            return []
+        today = day or _today()
+        try:
+            with self._lock, self._connect() as conn:
+                base = conn.execute(
+                    "SELECT user_id, MIN(day), MAX(day), SUM(requests), SUM(cache_hits),"
+                    " SUM(CASE WHEN tier = ? THEN requests ELSE 0 END),"
+                    " COUNT(DISTINCT client_id)"
+                    " FROM user_usage WHERE user_id != 'unknown' GROUP BY user_id",
+                    (FRONTIER_TIER,),
+                ).fetchall()
+                clients = conn.execute(
+                    "SELECT DISTINCT user_id, client_id FROM user_usage"
+                    " WHERE user_id != 'unknown'"
+                ).fetchall()
+                priced = conn.execute(
+                    "SELECT user_id, model, day = ?, COALESCE(SUM(input_tokens), 0),"
+                    " COALESCE(SUM(output_tokens), 0) FROM user_usage"
+                    f" WHERE user_id != 'unknown' AND {_metered_spend_sql()}"
+                    " GROUP BY user_id, model, day = ?",
+                    (today, FRONTIER_TIER, _CLOUD_MODEL_LIKE, today),
+                ).fetchall()
+        except Exception:
+            return []
+        rows: dict[str, dict[str, Any]] = {}
+        for user_id, first, last, requests, cache_hits, frontier, _n_clients in base:
+            rows[str(user_id)] = {
+                "user_id": str(user_id),
+                "requests": int(requests or 0),
+                "cache_hits": int(cache_hits or 0),
+                "frontier_requests": int(frontier or 0),
+                "local_requests": int(requests or 0) - int(frontier or 0),
+                "client_ids": [],
+                "first_seen": first,
+                "last_seen": last,
+                "spend": {"today_usd": 0.0, "lifetime_usd": 0.0},
+            }
+        for user_id, client_id in clients:
+            entry = rows.get(str(user_id))
+            if entry is not None:
+                entry["client_ids"].append(str(client_id))
+        for user_id, model, is_today, input_tokens, output_tokens in priced:
+            entry = rows.get(str(user_id))
+            if entry is None:
+                continue
+            usd = cost_usd(
+                model or None,
+                input_tokens,
+                output_tokens,
+                pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+            entry["spend"]["lifetime_usd"] += usd
+            if is_today:
+                entry["spend"]["today_usd"] += usd
+        for entry in rows.values():
+            entry["client_ids"].sort()
+            entry["spend"] = {k: round(v, 6) for k, v in entry["spend"].items()}
+        return sorted(rows.values(), key=lambda entry: entry["user_id"])
+
+    def frontier_spend_usd_for_end_user(
+        self,
+        user_id: str,
+        *,
+        window: str = "day",
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+        day: str | None = None,
+        month: str | None = None,
+    ) -> float:
+        """USD one end-user spent on L6 across every key (#1547 cap overrides)."""
+        named = (user_id or "").strip()
+        if not self.enabled or not named:
+            return 0.0
+        if window in {"lifetime", "total", "all"}:
+            where, params = "user_id = ?", (named,)
+        elif window == "month":
+            where, params = "user_id = ? AND day LIKE ?", (named, (month or _today()[:7]) + "-%")
+        elif window == "day":
+            where, params = "user_id = ? AND day = ?", (named, day or _today())
+        else:
+            raise ValueError(f"window must be 'day', 'month', or 'lifetime', got {window!r}")
+        return self._spend_for(
+            where,
+            params,
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+            table="user_usage",
+        )
 
     def _spend_for(
         self,

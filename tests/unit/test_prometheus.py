@@ -116,6 +116,40 @@ class TestRenderPrometheus:
         assert "daari_compact_to_fit_applied_total 1" in text
         assert "daari_compact_to_fit_tokens_dropped_total 0" in text
 
+    def test_auto_caching_zero_on_empty_metrics(self):
+        """Exporter must emit auto_caching series even when unused (#2322)."""
+        text = render_prometheus(Metrics())
+        assert "# TYPE daari_auto_caching_applied_total counter" in text
+        assert "daari_auto_caching_applied_total 0" in text
+        assert "# TYPE daari_auto_caching_client_preserved_total counter" in text
+        assert "daari_auto_caching_client_preserved_total 0" in text
+
+    def test_auto_caching_help_documents_both_outcomes(self):
+        text = render_prometheus(Metrics())
+        applied_help = next(
+            line for line in text.splitlines()
+            if line.startswith("# HELP daari_auto_caching_applied_total")
+        )
+        preserved_help = next(
+            line for line in text.splitlines()
+            if line.startswith("# HELP daari_auto_caching_client_preserved_total")
+        )
+        assert "auto_caching" in applied_help and "cache_control" in applied_help
+        assert "client" in preserved_help.lower() and "cache_control" in preserved_help
+
+    def test_auto_caching_increments_on_record(self):
+        """Dial injects vs client-supplied wins increment their own series (#2322)."""
+        metrics = Metrics()
+        metrics.record_auto_caching_applied()
+        metrics.record_auto_caching_applied()
+        metrics.record_auto_caching_client_preserved()
+        text = render_prometheus(metrics)
+        assert "daari_auto_caching_applied_total 2" in text
+        assert "daari_auto_caching_client_preserved_total 1" in text
+        snap = metrics.snapshot(include_histograms=True)
+        assert snap["auto_caching_applied"] == 2
+        assert snap["auto_caching_client_preserved"] == 1
+
     def test_mcp_grant_denied_zero_on_empty_metrics(self):
         """Exporter must emit mcp_grant_denied series even when unused (#1390)."""
         text = render_prometheus(Metrics())
