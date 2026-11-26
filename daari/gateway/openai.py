@@ -2039,6 +2039,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "agent_access_denied": 0,
                     "cost_input_usd": 0.0,
                     "cost_output_usd": 0.0,
+                    "regional_processing_applied": {},
+                    "regional_processing_uplift_usd": {},
                 }
             from daari.gateway.systemone import breaker_snapshot
             from daari.router.breaker_inventory import inventory_from_ctx
@@ -2096,6 +2098,18 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ),
                 "cost_input_usd": float(full.get("cost_input_usd") or 0.0),
                 "cost_output_usd": float(full.get("cost_output_usd") or 0.0),
+                "regional_processing_applied": {
+                    str(region): int(count)
+                    for region, count in dict(
+                        full.get("regional_processing_applied") or {}
+                    ).items()
+                },
+                "regional_processing_uplift_usd": {
+                    str(region): float(amount)
+                    for region, amount in dict(
+                        full.get("regional_processing_uplift_usd") or {}
+                    ).items()
+                },
             }
             perf = getattr(getattr(ctx, "router", None), "virtual_model_perf", None)
             if perf is not None and hasattr(perf, "snapshot"):

@@ -9659,6 +9659,24 @@ a `baseline` of list $4/$20 (cached $0.20), so turns before Dec 1 UTC no
 longer bill 2× list. `models/`-prefixed ids resolve the same window. Covered
 by `tests/unit/test_pricing_effective_to.py`.
 
+### Observability: Prometheus and stats for OpenAI regional processing 1.10× uplift by region ([#2323](https://github.com/naveenreddyalka/daari/issues/2323))
+
+<!-- tracking:#2323 -->
+**Status:** Done (2026-11-25). `_ledger_record` calls
+`metrics.record_regional_processing(region, uplift_usd)` on every L6 settle
+where `regional_processing_factor(region_pin, served_model)` returns 1.10
+(residency pin `us`/`eu`/`au`/`in`/`jp`/`ca`/`sg`/`kr`/`gb`/`ae` on a
+post-2026-03-05 OpenAI model); `uplift_usd` is `billed - billed / 1.10`, so
+provider-reported and daari-priced totals attribute the same surcharge share.
+Unpinned, pre-cutoff, non-OpenAI, and local serves never increment. Exposed as
+`daari_regional_processing_applied_total{region}` /
+`daari_regional_processing_uplift_usd_total{region}` (HELP/TYPE always
+emitted; label series only once recorded) and as region → count / USD maps
+`regional_processing_applied` / `regional_processing_uplift_usd` on
+`GET /v1/daari/stats` (team-scoped stats zero them). No new dependencies.
+Docs: metrics-prometheus, traces-stats. Covered by
+`tests/unit/test_regional_uplift_metrics.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -49,6 +49,17 @@ deny when `server.virtual_keys.agent_access_default_deny` fail-closed applies
 because the virtual key (and team) has no agent grant. Flag-off, master key,
 and granted keys do not increment it. The Prometheus counterpart is
 `daari_agent_access_denied_total` (no-op when `observability.prometheus=false`).
+`regional_processing_applied` and `regional_processing_uplift_usd` are
+region → count / USD maps for the OpenAI regional-processing 1.10× surcharge:
+a frontier request whose residency pin (`us` / `eu` / `au` / `in` / `jp` /
+`ca` / `sg` / `kr` / `gb` / `ae`) and served model make
+`regional_processing_factor` return 1.10 adds one to `applied[region]` and
+`billed - billed / 1.10` to `uplift_usd[region]`. Unpinned requests,
+pre-2026-03-05 OpenAI models, non-OpenAI models, and local tiers leave both
+maps empty (`{}`); team-scoped stats zero them like the other fleet-wide
+counters. Prometheus counterparts are
+`daari_regional_processing_applied_total{region}` /
+`daari_regional_processing_uplift_usd_total{region}`.
 
 ## Retention
 

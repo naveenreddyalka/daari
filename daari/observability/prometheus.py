@@ -333,6 +333,30 @@ def render_prometheus(
             f"daari_server_tool_cost_usd_total{_labels(tool=str(tool))} {usd}"
         )
 
+    lines.append(
+        "# HELP daari_regional_processing_applied_total Frontier requests billed "
+        "at the OpenAI regional-processing 1.10x uplift, by residency pin "
+        "(regional_processing_factor == 1.10 only)."
+    )
+    lines.append("# TYPE daari_regional_processing_applied_total counter")
+    regional_applied = snap.get("regional_processing_applied") or {}
+    for region, count in sorted(regional_applied.items()):
+        lines.append(
+            f"daari_regional_processing_applied_total{_labels(region=str(region))} {int(count)}"
+        )
+    lines.append(
+        "# HELP daari_regional_processing_uplift_usd_total Cumulative USD surcharge "
+        "attributable to the 1.10x regional-processing uplift "
+        "(billed - billed / 1.10), by residency pin."
+    )
+    lines.append("# TYPE daari_regional_processing_uplift_usd_total counter")
+    regional_usd = snap.get("regional_processing_uplift_usd") or {}
+    for region, amount in sorted(regional_usd.items()):
+        lines.append(
+            f"daari_regional_processing_uplift_usd_total{_labels(region=str(region))} "
+            f"{float(amount or 0.0)}"
+        )
+
     lines.append("# HELP daari_upstream_retries_total Transient upstream failures retried.")
     lines.append("# TYPE daari_upstream_retries_total counter")
     lines.append(f"daari_upstream_retries_total {snap.get('upstream_retries', 0)}")

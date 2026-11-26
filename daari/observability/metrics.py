@@ -370,6 +370,10 @@ class Metrics:
     cost_output_usd: float = 0.0
     # Server-side tool fee USD by tool type (pricing.server_tools keys) (#2288).
     server_tool_cost_usd: dict[str, float] = field(default_factory=dict)
+    # OpenAI regional-processing 1.10× uplift by residency pin: request count
+    # and billed − pre-uplift USD (#2323).
+    regional_processing_applied: dict[str, int] = field(default_factory=dict)
+    regional_processing_uplift_usd: dict[str, float] = field(default_factory=dict)
     # Opt-in per-team request/error counters (#1997). Off → no team dims.
     team_metrics: bool = False
     team_allowlist: frozenset[str] = field(default_factory=frozenset)
@@ -870,6 +874,23 @@ class Metrics:
                     self.server_tool_cost_usd.get(name, 0.0) + usd
                 )
 
+    def record_regional_processing(self, *, region: str | None, uplift_usd: float) -> None:
+        """One request billed at the regional-processing 1.10× under ``region`` (#2323).
+
+        ``uplift_usd`` is billed − pre-uplift (``total - total / 1.10``).
+        """
+        label = str(region or "").strip().lower()
+        if not label:
+            return
+        usd = max(0.0, float(uplift_usd or 0.0))
+        with self._lock:
+            self.regional_processing_applied[label] = (
+                self.regional_processing_applied.get(label, 0) + 1
+            )
+            self.regional_processing_uplift_usd[label] = (
+                self.regional_processing_uplift_usd.get(label, 0.0) + usd
+            )
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -947,6 +968,12 @@ class Metrics:
                 "cost_input_usd": float(self.cost_input_usd),
                 "cost_output_usd": float(self.cost_output_usd),
                 "server_tool_cost_usd": dict(sorted(self.server_tool_cost_usd.items())),
+                "regional_processing_applied": dict(
+                    sorted(self.regional_processing_applied.items())
+                ),
+                "regional_processing_uplift_usd": dict(
+                    sorted(self.regional_processing_uplift_usd.items())
+                ),
                 "decision_classifier": dict(self.decision_classifier),
                 "decision_classifier_latency": {
                     "count": self.decision_classifier_latency.count,

@@ -36,6 +36,8 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert any("daari_cost_input_usd_total" in row for row in body)
     assert any("daari_cost_output_usd_total" in row for row in body)
     assert any("daari_server_tool_cost_usd_total" in row for row in body)
+    assert any("daari_regional_processing_applied_total" in row for row in body)
+    assert any("daari_regional_processing_uplift_usd_total" in row for row in body)
     # Orphaned mid-table prose would end the contiguous body early.
     assert body[-1].startswith("| `daari_escalations_total")
 
@@ -71,3 +73,9 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     cost_row = next(row for row in body if "daari_cost_input_usd_total" in row)
     assert "output" in cost_row.lower()
     assert "stats" in cost_row.lower() or "cost_input_usd" in cost_row
+    regional_row = next(
+        row for row in body if "daari_regional_processing_applied_total" in row
+    )
+    assert "region" in regional_row
+    assert "1.10" in regional_row
+    assert "regional_processing_uplift_usd" in regional_row

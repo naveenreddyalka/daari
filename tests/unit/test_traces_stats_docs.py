@@ -13,3 +13,6 @@ def test_traces_stats_docs_mention_cliff_maps() -> None:
     assert "rejects" in text
     assert "backend_summary" in text
     assert "metrics-prometheus.md" in text
+    assert "regional_processing_applied" in text
+    assert "regional_processing_uplift_usd" in text
+    assert "daari_regional_processing_uplift_usd_total" in text
