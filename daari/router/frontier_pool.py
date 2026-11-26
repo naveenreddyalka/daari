@@ -32,6 +32,7 @@ from daari.router.http_pool import pool_limits_from_settings
 from daari.auth.frontier_binding import (
     FrontierBindingError,
     record_frontier_binding,
+    credential_source_for_meta,
     resolve_bound_key,
 )
 from daari.security.secret_refs import SecretRefError, current_secret
@@ -159,6 +160,23 @@ class FrontierPool:
     # models.retention_authorized — expressly authorized ZDR exceptions (#2284).
     retention_authorized: tuple[str, ...] = ()
     _last_executor: FrontierExecutor | None = field(default=None, init=False, repr=False)
+    # Credential source / slot of the most recent attempt, for stream ledger
+    # rows that have no response object to carry daari_meta (#2314).
+    last_credential_source: str | None = field(default=None, init=False, repr=False)
+    last_frontier_slot_id: str | None = field(default=None, init=False, repr=False)
+
+    def _note_binding(self, slot: ProviderSlot, request: InternalRequest) -> str:
+        """Record which credential signs this attempt on the pool + spend context."""
+        source = credential_source_for_meta(request.meta)
+        self.last_credential_source = source
+        self.last_frontier_slot_id = slot.id
+        from daari.observability.spend import current_spend_context
+
+        bound = current_spend_context()
+        if bound is not None:
+            bound.credential_source = source
+            bound.frontier_slot_id = slot.id
+        return source
 
     @property
     def last_param_compat(self) -> Any:
@@ -258,6 +276,7 @@ class FrontierPool:
                 continue
             # Rotate the key onto the executor for this attempt.
             slot.executor.api_key = key
+            credential_source = self._note_binding(slot, request)
             from daari.router.openrouter import openrouter_base_for_region
 
             original_base = str(getattr(slot.executor, "base_url", "") or "")
@@ -303,6 +322,8 @@ class FrontierPool:
                 add_step("frontier_ok", provider=slot.id, model=response.model)
                 # Surface which provider won for ledger/meta.
                 response.daari_meta.provider_id = slot.id
+                response.daari_meta.credential_source = credential_source
+                response.daari_meta.frontier_slot_id = slot.id
                 served_region = slot.region or (
                     normalize_region(region_pin)
                     if regional_base != original_base
@@ -403,6 +424,7 @@ class FrontierPool:
                 errors.append(f"{slot.id}:no_key")
                 continue
             slot.executor.api_key = key
+            self._note_binding(slot, request)
             try:
                 self._last_executor = slot.executor
                 async for event in slot.executor.stream(

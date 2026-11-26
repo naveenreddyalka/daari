@@ -1561,6 +1561,18 @@ class Router:
             model=response.daari_meta.model or response.model,
         )
 
+    @staticmethod
+    def _stamp_spend_binding(bound: Any, meta: DaariMeta | None) -> None:
+        """Copy credential_source / frontier_slot_id from served meta onto the spend row (#2314)."""
+        if meta is None:
+            return
+        source = getattr(meta, "credential_source", None)
+        slot_id = getattr(meta, "frontier_slot_id", None)
+        if source:
+            bound.credential_source = str(source)
+        if slot_id:
+            bound.frontier_slot_id = str(slot_id)
+
     def _ledger_record(self, request: InternalRequest, response: InternalResponse) -> None:
         if self.usage_ledger is None:
             return
@@ -1581,6 +1593,9 @@ class Router:
         reported_speed = getattr(response.daari_meta, "usage_speed", None)
         if bound is not None and reported_speed:
             bound.usage_speed = reported_speed
+        if bound is not None:
+            # Winning frontier slot + signing credential for invoice split (#2314).
+            self._stamp_spend_binding(bound, response.daari_meta)
         # Bill the tier actually served (e.g. after service_tier degrade) (#1885).
         served_tier = getattr(response.daari_meta, "service_tier", None)
         if bound is not None and served_tier:
@@ -3675,6 +3690,7 @@ class Router:
                             cached_tok = bill[0].daari_meta.cached_tokens
                             if cached_tok is not None:
                                 bound.cached_tokens = int(cached_tok)
+                            self._stamp_spend_binding(bound, bill[0].daari_meta)
                             # Served stream tier (priority success or degrade) (#1885).
                             served_stream_tier = bill[0].daari_meta.service_tier or getattr(
                                 self.frontier, "last_stream_service_tier", None
@@ -3725,6 +3741,8 @@ class Router:
                     if bill[0] is not None:
                         flight_meta.model = bill[0].daari_meta.model
                         flight_meta.provider_id = bill[0].daari_meta.provider_id
+                        flight_meta.credential_source = bill[0].daari_meta.credential_source
+                        flight_meta.frontier_slot_id = bill[0].daari_meta.frontier_slot_id
                         flight_meta.usage_speed = bill[0].daari_meta.usage_speed
                         flight_meta.input_tokens = bill[0].daari_meta.input_tokens
                         flight_meta.output_tokens = bill[0].daari_meta.output_tokens
@@ -7072,6 +7090,7 @@ class Router:
         tokens = (int(in_tok or 0), int(out_tok or 0))
         model = getattr(self.frontier, "default_model", None) or fallback_model
         stream_tier = getattr(self.frontier, "last_stream_service_tier", None)
+        slot_id = getattr(self.frontier, "last_frontier_slot_id", None)
         served = InternalResponse(
             content=content,
             model=model or "",
@@ -7080,6 +7099,8 @@ class Router:
                 cache_hit=False,
                 executor="frontier",
                 provider_id=getattr(self.frontier, "provider", None) or "frontier",
+                credential_source=getattr(self.frontier, "last_credential_source", None),
+                frontier_slot_id=slot_id,
                 model=model,
                 input_tokens=tokens[0],
                 output_tokens=tokens[1],
