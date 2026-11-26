@@ -9722,6 +9722,23 @@ team-scoped stats zero them like compact-to-fit). HTTP contract unchanged.
 Docs: metrics-prometheus, traces-stats. Covered by
 `tests/unit/test_responses_truncation.py` and `tests/unit/test_prometheus.py`.
 
+### Cost-true multi_agent nested usage per declared subagent model ([#1553](https://github.com/naveenreddyalka/daari/issues/1553))
+
+<!-- tracking:#1553 -->
+**Status:** Done (2026-11-25). `nested_agent_usages` copies a subagent's
+declared `model` (aliases `model_id`, `agent.model`, and per-output-item
+`agent.model`) onto each row. New `pricing.multi_agent_cost_breakdown` bills
+every nested row that carries tokens at its own `resolve_price` rate (parent
+model when undeclared) and the parent remainder — plus cached-read /
+cache-write dims — at the parent rate, with service-tier / residency / speed
+multipliers on all rows; each priced row gets `cost_usd`. `_ledger_record`
+uses it on the catalog-billed L6 path (provider `usage.cost` still wins), so
+`daari_meta.cost_usd` / `cost_input_usd` / `cost_output_usd`, cost headers,
+budgets, and the spend ledger agree. #1500 undercount-sum metering is
+unchanged. Docs: budgets-frontier (Responses multi_agent subagent pricing),
+compare-litellm. Covered by `tests/unit/test_responses_multi_agent.py` and
+`tests/unit/test_token_accounting.py`.
+
 ### Bounded + paginated report clients/users rollups ([#1552](https://github.com/naveenreddyalka/daari/issues/1552))
 
 <!-- tracking:#1552 -->

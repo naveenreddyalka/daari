@@ -47,6 +47,9 @@ def nested_agent_usages(data: dict[str, Any]) -> list[dict[str, Any]]:
     OpenAI's published Responses multi_agent schema aggregates subagent tokens
     into top-level ``usage``. Some payloads (or future schema) also expose a
     breakdown via ``agent_usages`` / ``usage_by_agent`` / ``usage.agents``.
+
+    A row's declared subagent model (``model`` / ``model_id`` / ``agent.model``)
+    is copied as ``model`` so spend can bill it at its own catalog rate (#1553).
     """
     if not isinstance(data, dict):
         return []
@@ -76,6 +79,9 @@ def nested_agent_usages(data: dict[str, Any]) -> list[dict[str, Any]]:
             if isinstance(item_usage, dict) and agent_id:
                 row = dict(item_usage)
                 row.setdefault("agent_id", agent_id)
+                item_model = _declared_model(item) or _declared_model(agent)
+                if item_model and not _declared_model(row):
+                    row["model"] = item_model
                 candidates.append(row)
 
     rows: list[dict[str, Any]] = []
@@ -99,9 +105,10 @@ def nested_agent_usages(data: dict[str, Any]) -> list[dict[str, Any]]:
         )
         cost_raw = raw.get("cost")
         cost = float(cost_raw) if isinstance(cost_raw, (int, float)) else None
+        model = _declared_model(raw)
         if agent_id is None and inp is None and out is None and cost is None:
             continue
-        key = (str(agent_id or ""), inp, out, cost)
+        key = (str(agent_id or ""), inp, out, cost, model)
         if key in seen:
             continue
         seen.add(key)
@@ -114,8 +121,27 @@ def nested_agent_usages(data: dict[str, Any]) -> list[dict[str, Any]]:
             row["output_tokens"] = out
         if cost is not None:
             row["cost"] = cost
+        if model is not None:
+            row["model"] = model
         rows.append(row)
     return rows
+
+
+def _declared_model(raw: Any) -> str | None:
+    """Subagent model id from ``model`` / ``model_id`` / nested ``agent.model``."""
+    if not isinstance(raw, dict):
+        return None
+    for key in ("model", "model_id"):
+        value = raw.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    agent = raw.get("agent")
+    if isinstance(agent, dict):
+        for key in ("model", "model_id"):
+            value = agent.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
 
 
 def openai_token_usage(
