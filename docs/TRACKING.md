@@ -9677,6 +9677,15 @@ emitted; label series only once recorded) and as region → count / USD maps
 Docs: metrics-prometheus, traces-stats. Covered by
 `tests/unit/test_regional_uplift_metrics.py`.
 
+### Doctor tip for frontier.auto_caching without an Anthropic L6 slot ([#2321](https://github.com/naveenreddyalka/daari/issues/2321))
+
+<!-- tracking:#2321 -->
+**Status:** Done (2026-11-25). `daari doctor` optional tip
+`frontier_auto_caching` when the flag is on and no L6 slot is Anthropic-shaped
+(`infer_frontier_kind` on the scalar provider or pool entry `id`/`base_url`);
+quiet when the flag is off or an Anthropic slot exists. Docs: doctor-health,
+budgets-frontier. Covered by `tests/unit/test_doctor_frontier_auto_caching.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
