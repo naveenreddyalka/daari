@@ -568,6 +568,83 @@ def cost_usd(
     ).total
 
 
+def multi_agent_cost_breakdown(
+    model: str | None,
+    input_tokens: int,
+    output_tokens: int,
+    agent_usage: list[dict[str, Any]],
+    pricing: object,
+    *,
+    fallback_per_1k: float,
+    cached_input_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    cache_ttl: str | None = None,
+    service_tier: str | None = None,
+    region_pin: str | None = None,
+    usage_speed: str | None = None,
+    now: date | datetime | None = None,
+) -> CostBreakdown:
+    """Cost-true multi_agent split: each nested row at its declared model (#1553).
+
+    ``input_tokens`` / ``output_tokens`` are the metered totals (parent +
+    subagents, see ``openai_token_usage``). Rows that carry tokens are billed
+    with ``resolve_price`` on their own ``model`` — or the parent ``model`` when
+    undeclared — and the remainder (the parent's own turn, plus every cache
+    dimension) stays at the parent rate. Each priced row gets ``cost_usd`` so
+    ``daari_meta.agent_usage`` shows the attribution. Rows without tokens
+    (provider-cost-only) are left alone.
+    """
+    multipliers = dict(
+        service_tier=service_tier,
+        region_pin=region_pin,
+        usage_speed=usage_speed,
+        now=now,
+    )
+    nested_in = 0
+    nested_out = 0
+    input_usd = 0.0
+    output_usd = 0.0
+    for row in agent_usage or []:
+        if not isinstance(row, dict):
+            continue
+        row_in = row.get("input_tokens")
+        row_out = row.get("output_tokens")
+        if row_in is None and row_out is None:
+            continue
+        row_in = max(0, int(row_in or 0))
+        row_out = max(0, int(row_out or 0))
+        row_model = row.get("model")
+        billed_model = row_model if isinstance(row_model, str) and row_model.strip() else model
+        parts = cost_breakdown(
+            billed_model,
+            row_in,
+            row_out,
+            pricing,
+            fallback_per_1k=fallback_per_1k,
+            **multipliers,
+        )
+        row["cost_usd"] = parts.total
+        nested_in += row_in
+        nested_out += row_out
+        input_usd += parts.input_usd
+        output_usd += parts.output_usd
+    remainder = cost_breakdown(
+        model,
+        max(0, int(input_tokens) - nested_in),
+        max(0, int(output_tokens) - nested_out),
+        pricing,
+        fallback_per_1k=fallback_per_1k,
+        cached_input_tokens=cached_input_tokens,
+        cache_write_tokens=cache_write_tokens,
+        cache_ttl=cache_ttl,
+        **multipliers,
+    )
+    return CostBreakdown(
+        input_usd=input_usd + remainder.input_usd,
+        output_usd=output_usd + remainder.output_usd,
+    )
+
+
 def _cache_write_rate(price: ResolvedPrice, cache_ttl: str | None) -> float:
     """TTL-keyed write rates; missing/5m keeps today's input (or cache_write_per_1m).
 
