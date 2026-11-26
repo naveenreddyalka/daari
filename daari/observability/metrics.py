@@ -334,6 +334,11 @@ class Metrics:
     deadline_exhausted: int = 0
     compact_to_fit_applied: int = 0
     compact_to_fit_tokens_dropped: int = 0
+    # Responses ``truncation`` dial: auto compactions vs context_length_exceeded
+    # 400s, plus estimated tokens dropped by auto (#2306).
+    responses_truncation_auto: int = 0
+    responses_truncation_rejected: int = 0
+    responses_truncation_tokens_dropped: int = 0
     # Anthropic L6 top-level cache_control: frontier.auto_caching injected vs a
     # caller-supplied one forwarded verbatim (#2322). Non-Anthropic hops: neither.
     auto_caching_applied: int = 0
@@ -683,6 +688,16 @@ class Metrics:
             self.compact_to_fit_applied += 1
             self.compact_to_fit_tokens_dropped += max(0, int(tokens_dropped))
 
+    def record_responses_truncation_auto(self, *, tokens_dropped: int = 0) -> None:
+        """Responses ``truncation: auto`` actually compacted oversized input (#2306)."""
+        with self._lock:
+            self.responses_truncation_auto += 1
+            self.responses_truncation_tokens_dropped += max(0, int(tokens_dropped))
+
+    def record_responses_truncation_rejected(self) -> None:
+        """Responses input rejected with ``context_length_exceeded`` 400 (#2306)."""
+        with self._lock:
+            self.responses_truncation_rejected += 1
     def record_auto_caching_applied(self) -> None:
         """``frontier.auto_caching`` injected top-level ``cache_control`` on an Anthropic hop."""
         with self._lock:
@@ -943,6 +958,9 @@ class Metrics:
                 "deadline_exhausted": self.deadline_exhausted,
                 "compact_to_fit_applied": self.compact_to_fit_applied,
                 "compact_to_fit_tokens_dropped": self.compact_to_fit_tokens_dropped,
+                "responses_truncation_auto": self.responses_truncation_auto,
+                "responses_truncation_rejected": self.responses_truncation_rejected,
+                "responses_truncation_tokens_dropped": self.responses_truncation_tokens_dropped,
                 "auto_caching_applied": self.auto_caching_applied,
                 "auto_caching_client_preserved": self.auto_caching_client_preserved,
                 "stream_fallback_continue": self.stream_fallback_continue,
