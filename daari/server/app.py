@@ -210,6 +210,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 {"host": "127.0.0.1", "port": bound},
             )
             app.state.metrics_listen_port = bound
+        from daari.server.config_reload import install_sighup_reload
+
+        remove_sighup = install_sighup_reload(app)
         try:
             yield
         finally:
@@ -220,6 +223,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
             begin_shutdown(app)
+            if remove_sighup is not None:
+                remove_sighup()
             await await_budget_alert_tasks(app, timeout=BUDGET_ALERT_DRAIN_TIMEOUT_SECONDS)
             if metrics_stop is not None:
                 await metrics_stop()

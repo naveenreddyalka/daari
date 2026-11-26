@@ -312,6 +312,15 @@ class ServerSettings(BaseModel):
             "terminationGracePeriodSeconds above this plus preStop sleep."
         ),
     )
+    sighup_reload: bool = Field(
+        default=True,
+        description=(
+            "Unix only: SIGHUP on the serve process re-reads config.yaml and "
+            "live-applies the safe subset, same as POST /v1/daari/reload-config "
+            "(#1234). Set false to leave SIGHUP at its default action. No-op on "
+            "Windows. Env: DAARI_SERVER__SIGHUP_RELOAD."
+        ),
+    )
 
     def master_keys(self) -> list[str]:
         from daari.server.auth import normalize_master_keys

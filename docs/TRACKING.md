@@ -9604,6 +9604,22 @@ fallback continue (midstream)**
 opt-in `routing.stream_fallback_continue` and distinguishes ordinary tier
 fallback. Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Hot-reload Settings from config.yaml ([#1234](https://github.com/naveenreddyalka/daari/issues/1234))
+
+<!-- tracking:#1234 -->
+**Status:** Done (2026-11-25). `POST /v1/daari/reload-config` (admin /
+master-key gate shared with `PATCH /v1/daari/config`) re-reads
+`config.yaml` + profile + env, live-applies the safe editor subset through
+the shared `apply_live_config` path, and returns `{ok, changed_keys,
+requires_restart}`; unsafe keys (bind, TLS, backends, stores) are reported,
+never swapped. Invalid YAML / schema / `secret://` failures → **400** with
+prior settings kept. Clears ephemeral PATCH overrides, records
+`config.reload` audit. Unix `SIGHUP` on `daari serve` runs the same path
+(`server.sighup_reload`, default on; no-op on Windows / non-main-thread
+loops); `serve` re-applies CLI flags on reload. Covered by
+`tests/unit/test_config_hot_reload.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -1047,6 +1047,31 @@ async def test_reload_caches_endpoint_refreshes_app_context_handles(app, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_reload_config_endpoint_applies_file_changes_live(app, tmp_path, monkeypatch):
+    """Edit config.yaml → reload-config → the next request sees it (#1234)."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config = tmp_path / ".daari" / "config.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_text("routing:\n  prefer: cost\nserver:\n  port: 19999\n", encoding="utf-8")
+    assert app.state.ctx.router.model_preference != "cost"
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        reloaded = await client.post("/v1/daari/reload-config")
+        assert reloaded.status_code == 200, reloaded.text
+        body = reloaded.json()
+        assert body["ok"] is True
+        assert "routing.prefer" in body["changed_keys"]
+        assert "server.port" in body["requires_restart"]
+        assert app.state.ctx.router.model_preference == "cost"
+        assert app.state.ctx.settings.server.port != 19999
+
+        config.write_text("routing: [broken\n", encoding="utf-8")
+        broken = await client.post("/v1/daari/reload-config")
+    assert broken.status_code == 400
+    assert app.state.ctx.router.model_preference == "cost"
+
+
+@pytest.mark.asyncio
 async def test_org_learning_sync_endpoint_refreshes_profile(app, monkeypatch):
     async def fake_sync() -> bool:
         app.state.ctx.router.model_preference = "accuracy"

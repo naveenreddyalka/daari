@@ -1939,21 +1939,27 @@ def serve(
     ),
 ) -> None:
     """Start the daari HTTP daemon."""
-    settings = (Settings.load(strict=True) if strict else Settings.load()).model_copy(deep=True)
-    if no_frontier:
-        settings.frontier.enabled = False
-    resolved_org = org or os.environ.get("DAARI_ORG_ID")
-    if resolved_org:
-        settings.enterprise.enabled = True
-        settings.enterprise.org_id = resolved_org
-    if tls_cert is not None:
-        settings.server.tls.cert_file = tls_cert
-    if tls_key is not None:
-        settings.server.tls.key_file = tls_key
-    if tls_client_ca is not None:
-        settings.server.tls.client_ca = tls_client_ca
-    if graceful_timeout is not None:
-        settings.server.graceful_timeout_seconds = float(graceful_timeout)
+
+    def _load_settings() -> Settings:
+        # Re-run on reload-config / SIGHUP so CLI flags survive a re-read (#1234).
+        loaded = (Settings.load(strict=True) if strict else Settings.load()).model_copy(deep=True)
+        if no_frontier:
+            loaded.frontier.enabled = False
+        resolved_org = org or os.environ.get("DAARI_ORG_ID")
+        if resolved_org:
+            loaded.enterprise.enabled = True
+            loaded.enterprise.org_id = resolved_org
+        if tls_cert is not None:
+            loaded.server.tls.cert_file = tls_cert
+        if tls_key is not None:
+            loaded.server.tls.key_file = tls_key
+        if tls_client_ca is not None:
+            loaded.server.tls.client_ca = tls_client_ca
+        if graceful_timeout is not None:
+            loaded.server.graceful_timeout_seconds = float(graceful_timeout)
+        return loaded
+
+    settings = _load_settings()
     from daari.server.master_key_gate import master_key_gate_error
 
     gate_err = master_key_gate_error(settings)
@@ -1985,6 +1991,9 @@ def serve(
         typer.echo(f"  ✗ secret_refs: {exc}", err=True)
         typer.echo("Fix the ref (see: daari doctor) and retry.", err=True)
         raise typer.Exit(code=1) from None
+    app_state = getattr(app_instance, "state", None)
+    if app_state is not None:
+        app_state.settings_loader = _load_settings
     grace = float(getattr(settings.server, "graceful_timeout_seconds", 30.0) or 0.0)
     from daari.server.shutdown import begin_shutdown
 
