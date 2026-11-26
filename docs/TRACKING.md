@@ -9686,6 +9686,21 @@ a `baseline` of list $4/$20 (cached $0.20), so turns before Dec 1 UTC no
 longer bill 2× list. `models/`-prefixed ids resolve the same window. Covered
 by `tests/unit/test_pricing_effective_to.py`.
 
+### Bounded + paginated report clients/users rollups ([#1552](https://github.com/naveenreddyalka/daari/issues/1552))
+
+<!-- tracking:#1552 -->
+**Status:** Done (2026-11-25). `UsageLedger.by_client` / `by_user` (SQLite and
+Postgres) take `limit` (default 100, max 500; `None` = every row for
+in-process team totals) and `offset`, sorted by requests desc.
+`GET /v1/daari/report` accepts `clients_limit` / `clients_offset` /
+`users_limit` / `users_offset` and returns `clients_total` / `clients_limit` /
+`clients_offset` / `clients_has_more` plus the `users_*` twins (same meta
+shape as keys/teams inventories); `teams` and `totals` still roll up every
+row, and team-scoped totals count only that team's clients. Docs: http-api
+(`## Report rollups`), savings-report. Covered by
+`tests/unit/test_report_rollup_pagination.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ### Observability: Prometheus and stats counters for Anthropic auto_caching applied vs client-preserved ([#2322](https://github.com/naveenreddyalka/daari/issues/2322))
 
 <!-- tracking:#2322 -->

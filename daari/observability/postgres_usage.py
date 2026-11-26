@@ -9,7 +9,13 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from daari.observability.usage import FRONTIER_TIER, _empty_totals, notify_recorded
+from daari.observability.usage import (
+    DEFAULT_ROLLUP_LIMIT,
+    FRONTIER_TIER,
+    _bound_rollup,
+    _empty_totals,
+    notify_recorded,
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS usage (
@@ -258,7 +264,12 @@ class PostgresUsageLedger:
             pass
 
     def by_client(
-        self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002
+        self,
+        days: int = 7,
+        *,
+        frontier_price_per_1k_tokens: float = 0.002,
+        limit: int | None = DEFAULT_ROLLUP_LIMIT,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         if not self.enabled:
             return []
@@ -300,10 +311,16 @@ class PostgresUsageLedger:
                 entry["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
         for entry in clients.values():
             entry["estimated_saved_usd"] = round(entry["estimated_saved_usd"], 4)
-        return sorted(clients.values(), key=lambda entry: -entry["requests"])
+        ordered = sorted(clients.values(), key=lambda entry: -entry["requests"])
+        return _bound_rollup(ordered, limit=limit, offset=offset)
 
     def by_user(
-        self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002
+        self,
+        days: int = 7,
+        *,
+        frontier_price_per_1k_tokens: float = 0.002,
+        limit: int | None = DEFAULT_ROLLUP_LIMIT,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         if not self.enabled:
             return []
@@ -347,7 +364,8 @@ class PostgresUsageLedger:
                 entry["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
         for entry in users.values():
             entry["estimated_saved_usd"] = round(entry["estimated_saved_usd"], 4)
-        return sorted(users.values(), key=lambda entry: -entry["requests"])
+        ordered = sorted(users.values(), key=lambda entry: -entry["requests"])
+        return _bound_rollup(ordered, limit=limit, offset=offset)
 
     def frontier_spend_usd_for_user(
         self,

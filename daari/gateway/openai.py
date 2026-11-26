@@ -2135,8 +2135,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/daari/report")
         async def daari_report(
-            request: Request, days: int = 7, team_id: str | None = None
+            request: Request,
+            days: int = 7,
+            team_id: str | None = None,
+            clients_limit: int | None = None,
+            clients_offset: int | None = None,
+            users_limit: int | None = None,
+            users_offset: int | None = None,
         ) -> dict[str, Any]:
+            """Usage report; `clients` / `users` rollups page like keys/teams (#1552)."""
+            from daari.observability.usage import page_rollup
+
             ctx: AppContext = request.app.state.ctx
             role = _require_role(request, ctx, "analyst")
             scope = _admin_team_scope(request, role, team_id)
@@ -2167,15 +2176,19 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "soft_budget_ratio": ctx.settings.frontier.soft_budget_ratio,
                 "budget_state": ctx.router._frontier_budget_state(),
             }
+            # Full rollups stay in-process for team totals and scope filtering;
+            # only the paged slice ships in the body.
             payload["clients"] = ledger.by_client(
                 days=max(1, days),
                 frontier_price_per_1k_tokens=ctx.settings.usage.frontier_price_per_1k_tokens,
+                limit=None,
             )
             by_user = getattr(ledger, "by_user", None)
             payload["users"] = (
                 by_user(
                     days=max(1, days),
                     frontier_price_per_1k_tokens=ctx.settings.usage.frontier_price_per_1k_tokens,
+                    limit=None,
                 )
                 if callable(by_user)
                 else []
@@ -2323,6 +2336,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             except Exception:
                 trust["diversity"] = {}
             payload["cache_trust"] = trust
+            for rollup, lim, off in (
+                ("clients", clients_limit, clients_offset),
+                ("users", users_limit, users_offset),
+            ):
+                rows, page = page_rollup(payload[rollup], limit=lim, offset=off)
+                payload[rollup] = rows
+                for field_name, value in page.items():
+                    payload[f"{rollup}_{field_name}"] = value
             return payload
 
         @router.get("/v1/daari/spend/export")
