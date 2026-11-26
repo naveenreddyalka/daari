@@ -105,6 +105,9 @@ class RequestMeta(BaseModel):
     # Expanded model allowlist (#708). None = that side does not restrict.
     key_model_patterns: list[str] | None = None
     team_model_patterns: list[str] | None = None
+    # Resolved per-server MCP tool-name allowlist (#1288). None = unrestricted;
+    # the egress client falls back to the global mcp_policy.server_tools block.
+    mcp_server_tools: dict[str, list[str]] | None = None
     # Chargeback attribution (#709). Folded into cache keys only when
     # cache_scope is team or key (#768); global leaves hashes unchanged.
     key_id: str | None = None

@@ -25,13 +25,16 @@ from daari.gateway.mcp_policy import (
     CLIENT_DENIED,
     TOOL_DENIED,
     McpServerPolicy,
+    McpServerToolSubset,
     McpToolPolicy,
+    apply_server_tool_subset_to_meta,
     audit_client_decision,
     audit_tool_call,
     resolve_client_identity,
     resolve_client_policy,
     resolve_policy,
     resolve_server_policy,
+    resolve_server_tool_subset,
     server_id_from_provider,
     virtual_key_lacks_mcp_grant,
 )
@@ -280,17 +283,34 @@ def _provider_catalog(ctx: AppContext, *, skip_mcp_providers: bool = False) -> l
     return tools
 
 
+def _server_tools_deny(
+    server_tools: McpServerToolSubset | None,
+    server: str | None,
+    egress_tool: str | None,
+) -> bool:
+    """Per-server tool subset (#1288). A coarse ``mcp_<id>`` stub has no upstream
+    tool name yet, so it is hidden only when the subset is empty (fail closed);
+    the egress client enforces the parsed tool name at call time."""
+    if server_tools is None or server is None or not server_tools.restricts(server):
+        return False
+    if egress_tool is None:
+        return server_tools.for_server(server) == ()
+    return not server_tools.allows(server, egress_tool)
+
+
 def _catalog_item_allowed(
     item: dict[str, Any],
     policy: McpToolPolicy | None,
     server_policy: McpServerPolicy | None,
+    server_tools: McpServerToolSubset | None = None,
 ) -> bool:
     if policy is not None and not policy.allows(item["name"]):
         return False
-    if server_policy is not None:
-        sid = server_id_from_provider(item.get("provider_id"))
-        if sid is not None and not server_policy.allows(sid):
-            return False
+    sid = server_id_from_provider(item.get("provider_id"))
+    if server_policy is not None and sid is not None and not server_policy.allows(sid):
+        return False
+    if _server_tools_deny(server_tools, sid, item.get("egress_tool")):
+        return False
     return True
 
 
@@ -298,6 +318,7 @@ def _tool_catalog(
     ctx: AppContext,
     policy: McpToolPolicy | None = None,
     server_policy: McpServerPolicy | None = None,
+    server_tools: McpServerToolSubset | None = None,
     *,
     skip_mcp_providers: bool | None = None,
 ) -> list[dict[str, Any]]:
@@ -307,9 +328,13 @@ def _tool_catalog(
         *_core_catalog(),
         *_provider_catalog(ctx, skip_mcp_providers=skip_mcp_providers),
     ]
-    if policy is None and server_policy is None:
+    if policy is None and server_policy is None and server_tools is None:
         return catalog
-    return [item for item in catalog if _catalog_item_allowed(item, policy, server_policy)]
+    return [
+        item
+        for item in catalog
+        if _catalog_item_allowed(item, policy, server_policy, server_tools)
+    ]
 
 
 async def _aggregated_egress_catalog(
@@ -317,6 +342,7 @@ async def _aggregated_egress_catalog(
     request: Request | None,
     policy: McpToolPolicy | None,
     server_policy: McpServerPolicy | None,
+    server_tools: McpServerToolSubset | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch per-server egress tools; degrade on failure (#1294)."""
     if not ingress_aggregate_egress_enabled(ctx.settings):
@@ -371,7 +397,7 @@ async def _aggregated_egress_catalog(
                 "provider_id": f"mcp:{sid}",
                 "egress_tool": upstream,
             }
-            if not _catalog_item_allowed(item, policy, server_policy):
+            if not _catalog_item_allowed(item, policy, server_policy, server_tools):
                 continue
             seen.add(namespaced)
             items.append(item)
@@ -404,11 +430,14 @@ def _mcp_list_tools(
 def _list_cache_scope(
     policy: McpToolPolicy | None,
     server_policy: McpServerPolicy | None = None,
+    server_tools: McpServerToolSubset | None = None,
 ) -> str:
     """Kong-style: public only when no ACL allow/deny filters the catalog (#979)."""
     if policy is not None and (policy.allow or policy.deny):
         return "private"
     if server_policy is not None and server_policy.is_restrictive():
+        return "private"
+    if server_tools is not None and server_tools.is_restrictive():
         return "private"
     return "public"
 
@@ -424,6 +453,7 @@ def _list_cache_meta(
     ctx: AppContext,
     policy: McpToolPolicy | None,
     server_policy: McpServerPolicy | None,
+    server_tools: McpServerToolSubset | None = None,
 ) -> dict[str, Any]:
     cache = getattr(getattr(ctx.settings, "integrations", None), "mcp_list_cache", None)
     ttl_ms = int(getattr(cache, "ttl_ms", 60_000) or 0)
@@ -431,7 +461,7 @@ def _list_cache_meta(
         ttl_ms = 0
     return {
         "ttlMs": ttl_ms,
-        "cacheScope": _list_cache_scope(policy, server_policy),
+        "cacheScope": _list_cache_scope(policy, server_policy, server_tools),
     }
 
 
@@ -519,19 +549,22 @@ async def _tools_list_payload(
     ctx: AppContext,
     policy: McpToolPolicy | None = None,
     server_policy: McpServerPolicy | None = None,
+    server_tools: McpServerToolSubset | None = None,
     *,
     legacy: bool = False,
     request: Request | None = None,
     protocol: str | None = None,
 ) -> dict[str, Any]:
     """tools/list body with MCP 2026-07-28 _meta cache hints (#979, #1294, #1730)."""
-    catalog = list(_tool_catalog(ctx, policy, server_policy))
+    catalog = list(_tool_catalog(ctx, policy, server_policy, server_tools))
     if ingress_aggregate_egress_enabled(ctx.settings):
-        catalog.extend(await _aggregated_egress_catalog(ctx, request, policy, server_policy))
+        catalog.extend(
+            await _aggregated_egress_catalog(ctx, request, policy, server_policy, server_tools)
+        )
     tools = catalog if legacy else _mcp_list_tools_from_catalog(catalog)
     payload: dict[str, Any] = {
         "tools": tools,
-        "_meta": _list_cache_meta(ctx, policy, server_policy),
+        "_meta": _list_cache_meta(ctx, policy, server_policy, server_tools),
     }
     if not legacy and _protocol_requires_list_result_type(protocol):
         payload["resultType"] = "complete"
@@ -636,6 +669,7 @@ class _Governance:
         self.claims = getattr(request.state, "auth_claims", None)
         self.policy = resolve_policy(self.claims, ctx.settings)
         self.server_policy = resolve_server_policy(self.claims, ctx.settings)
+        self.server_tools = resolve_server_tool_subset(self.claims, ctx.settings)
         self.client_policy = resolve_client_policy(self.claims, ctx.settings)
         self._request = request
         self._ctx = ctx
@@ -649,17 +683,21 @@ class _Governance:
         self.header_name = (request.headers.get("mcp-name") or "").strip()
         self.transport = transport
 
-    def _server_for_tool(self, name: str) -> str | None:
+    def _server_and_egress_tool(self, name: str) -> tuple[str | None, str | None]:
+        """(server_id, upstream tool) for a catalog name; upstream is None for stubs."""
         catalog = {item["name"]: item for item in _tool_catalog(self._ctx)}
         item = catalog.get(name.strip().lower()) or {}
         sid = server_id_from_provider(item.get("provider_id"))
         if sid is not None:
-            return sid
+            return sid, item.get("egress_tool")
         if ingress_aggregate_egress_enabled(self._ctx.settings):
             parsed = resolve_aggregated_egress_tool(name, self._ctx.settings)
             if parsed is not None:
-                return parsed[0]
-        return None
+                return parsed
+        return None, None
+
+    def _server_for_tool(self, name: str) -> str | None:
+        return self._server_and_egress_tool(name)[0]
 
     def denied_tool(self, name: str) -> tuple[str, str | None] | None:
         """Return (tool, server_id|None) the caller may not call, else None."""
@@ -669,10 +707,12 @@ class _Governance:
             if not candidate:
                 continue
             tool = candidate.strip().lower()
+            server, egress_tool = self._server_and_egress_tool(tool)
             if not self.policy.allows(tool):
-                return tool, self._server_for_tool(tool)
-            server = self._server_for_tool(tool)
+                return tool, server
             if server is not None and not self.server_policy.allows(server):
+                return tool, server
+            if _server_tools_deny(self.server_tools, server, egress_tool):
                 return tool, server
         return None
 
@@ -895,11 +935,13 @@ def _governed_meta(
     from daari.providers.mcp_token_exchange import bearer_from_authorization
     from daari.server.auth import apply_auth_claims_to_meta
 
+    claims = getattr(request.state, "auth_claims", None)
     apply_auth_claims_to_meta(
         meta,
-        getattr(request.state, "auth_claims", None),
+        claims,
         model_groups=getattr(ctx.settings, "model_groups", None),
     )
+    apply_server_tool_subset_to_meta(meta, claims, ctx.settings)
     meta.authorization_bearer = bearer_from_authorization(request.headers.get("authorization"))
     return meta
 
@@ -1312,12 +1354,13 @@ def _mcp_server_rate_limited_response(
 
 def _tool_call_result_payload(name: str, tool_response: MCPQueryResponse) -> dict[str, Any]:
     if not tool_response.ok:
-        err = (
-            tool_response.result.get("error")
-            if isinstance(tool_response.result, dict)
-            else tool_response.result
-        )
-        return _text_result(json.dumps(err), is_error=True)
+        result = tool_response.result
+        if isinstance(result, dict) and "error" in result:
+            return _text_result(json.dumps(result["error"]), is_error=True)
+        if isinstance(result, dict) and "content" in result:
+            # Egress policy denials arrive as content + daari_meta.warning (#1288).
+            return _text_result(str(result.get("content") or ""), is_error=True)
+        return _text_result(json.dumps(result), is_error=True)
     if name.strip().lower() == "stats":
         text = json.dumps(tool_response.result)
     elif isinstance(tool_response.result, dict) and "content" in tool_response.result:
@@ -1417,6 +1460,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                             ctx,
                             governance.policy,
                             governance.server_policy,
+                            governance.server_tools,
                             legacy=True,
                             request=request,
                         ),
@@ -1636,6 +1680,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                                 ctx,
                                 governance.policy,
                                 governance.server_policy,
+                                governance.server_tools,
                                 request=request,
                                 protocol=requested_meta or DEFAULT_PROTOCOL_VERSION,
                             ),
