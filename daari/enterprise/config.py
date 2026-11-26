@@ -27,6 +27,8 @@ class SsoKeyPolicy(BaseModel):
     tier_cap: str | None = None
     team: str | None = None
     boundary_profile: str | None = None
+    # Named guardrails.profiles entry stamped into key metadata at mint (#1548).
+    guardrail_profile: str | None = None
     budget_windows: list[dict[str, Any]] = Field(default_factory=list)
     # Relative duration (`8h`, `30d`) or ISO-8601. Empty = never expires (#331).
     key_ttl: str | None = None

@@ -2586,6 +2586,45 @@ class GuardrailSettings(BaseModel):
             "/v1/daari/config ownership (config editor)."
         ),
     )
+    # Named profiles bound per virtual key / team via metadata.guardrail_profile
+    # (#1548). Resolved per request: key → team → this global block. Built even
+    # when the global block is disabled, so tenants can opt in selectively.
+    profiles: dict[str, "GuardrailProfileSettings"] = Field(
+        default_factory=dict,
+        description=(
+            "Named chat guardrail profiles (#1548). Each value has the same shape "
+            "as this block (enabled defaults to true inside a profile). Virtual "
+            "keys and teams bind one by name via metadata.guardrail_profile "
+            "(`daari keys create --guardrail-profile`); precedence is key → team → "
+            "global. A profile with enabled: false exempts bound tenants. "
+            "Distributed by enterprise policy_sync. File/restart only. Chat path "
+            "only: ignored under integrations.mcp_guardrails."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _profiles_are_flat(self) -> GuardrailSettings:
+        for name, profile in (self.profiles or {}).items():
+            if not str(name or "").strip():
+                raise ValueError("guardrails.profiles: profile name must be non-empty")
+            if getattr(profile, "profiles", None):
+                raise ValueError(f"guardrails.profiles.{name}.profiles: profiles cannot nest")
+        return self
+
+
+class GuardrailProfileSettings(GuardrailSettings):
+    """One `guardrails.profiles.<name>` entry (#1548): same shape, active when bound."""
+
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Profiles are active once bound to a key or team; set false to exempt "
+            "bound tenants from chat guardrails entirely."
+        ),
+    )
+
+
+GuardrailSettings.model_rebuild()
 
 
 class BoundariesSettings(RuntimeSettings):
@@ -3502,6 +3541,29 @@ class Settings(BaseSettings):
             "team and key."
         ),
     )
+
+    @model_validator(mode="after")
+    def _sso_guardrail_profiles_exist(self) -> Settings:
+        """SSO key policies may only name declared guardrails.profiles (#1548)."""
+        sso = getattr(getattr(self, "enterprise", None), "sso", None)
+        if sso is None:
+            return self
+        known = set(getattr(self.guardrails, "profiles", None) or {})
+        policies = [
+            (f"key_mappings.{claim}", policy)
+            for claim, policy in (getattr(sso, "key_mappings", None) or {}).items()
+        ]
+        default = getattr(sso, "default_policy", None)
+        if default is not None:
+            policies.append(("default_policy", default))
+        for label, policy in policies:
+            name = str(getattr(policy, "guardrail_profile", None) or "").strip()
+            if name and name not in known:
+                raise ValueError(
+                    f"enterprise.sso.{label}.guardrail_profile: "
+                    f"unknown guardrail profile {name!r} (declare it under guardrails.profiles)"
+                )
+        return self
 
     @classmethod
     def load(cls, config_path: Path | None = None, *, strict: bool | None = None) -> Settings:

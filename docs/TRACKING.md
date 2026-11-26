@@ -9620,6 +9620,21 @@ loops); `serve` re-applies CLI flags on reload. Covered by
 `tests/unit/test_config_hot_reload.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Named guardrail profiles bindable per key/team ([#1548](https://github.com/naveenreddyalka/daari/issues/1548))
+
+<!-- tracking:#1548 -->
+**Status:** Done (2026-11-25). `guardrails.profiles.<name>` reuses the
+`GuardrailSettings` shape (`enabled` defaults true inside a profile; nesting
+rejected). Keys/teams bind via `metadata.guardrail_profile`
+(`daari keys create|update|team-create|team-update --guardrail-profile`, SSO
+`key_mappings.*.guardrail_profile`); router resolves key → team → global per
+request on chat, Anthropic, and Responses paths, including buffered /
+incremental streams. Unknown names exit 1 on the CLI and fail Settings
+validation for SSO mappings; a missing profile at request time keeps the global
+engine and logs `guardrail_profile_unknown`. `policy_sync` distributes
+`guardrails.profiles`. Covered by `tests/unit/test_guardrail_profiles.py` and
+`tests/integration/test_gateway_flow.py::test_guardrail_profiles_bound_per_key_and_team`.
+
 ### Claude Opus 4.5 deprecation lifecycle (retires 2027-01-22 → Opus 5.5) ([#2439](https://github.com/naveenreddyalka/daari/issues/2439))
 
 <!-- tracking:#2439 -->

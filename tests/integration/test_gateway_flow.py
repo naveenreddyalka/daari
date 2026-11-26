@@ -4793,6 +4793,144 @@ async def test_chat_guardrail_block_returns_per_rule_message(settings, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_guardrail_profiles_bound_per_key_and_team(settings, tmp_path, monkeypatch):
+    """Two keys, two profiles, same prompt → different redaction (#1548).
+
+    Precedence is key → team → global: the global engine is off, ``strict``
+    redacts SSN-shaped output, ``lenient`` leaves it alone. Chat, Anthropic
+    and Responses paths all resolve the same per-request engine.
+    """
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.config.settings import GuardrailRuleSettings, GuardrailSettings
+
+    settings.guardrails = GuardrailSettings(
+        enabled=False,
+        profiles={
+            "strict": {
+                "output_rules": [
+                    GuardrailRuleSettings(
+                        name="ssn", pattern=r"\d{3}-\d{2}-\d{4}", action="redact"
+                    )
+                ]
+            },
+            "lenient": {
+                "output_rules": [GuardrailRuleSettings(name="noop", pattern="never-zzz")]
+            },
+        },
+    )
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    lenient_team = store.create_team("lenient-team", metadata={"guardrail_profile": "lenient"})
+    strict_key = store.create("strict", client_id="strict", metadata={"guardrail_profile": "strict"})
+    team_key = store.create("via-team", client_id="via-team", team="lenient-team")
+    # Key binding wins over the team binding.
+    override_key = store.create(
+        "override",
+        client_id="override",
+        team="lenient-team",
+        metadata={"guardrail_profile": "strict"},
+    )
+    unbound_key = store.create("unbound", client_id="unbound")
+    assert lenient_team.metadata["guardrail_profile"] == "lenient"
+
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = store
+    application.state.ctx.virtual_key_store = store
+
+    async def echo(request: InternalRequest) -> InternalResponse:
+        content = next(m.content for m in reversed(request.messages) if m.role == "user")
+        return InternalResponse(
+            content=f"Your SSN is {content}",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=1),
+        )
+
+    mock_all_ollama_executors(monkeypatch, application.state.ctx.router, echo)
+    prompt = "123-45-6789"
+
+    async def echo_stream(request: InternalRequest):
+        yield {"message": {"content": "Your SSN is "}}
+        yield {"message": {"content": prompt}}
+        yield {"message": {"content": ""}, "done": True}
+
+    for attr in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        monkeypatch.setattr(getattr(application.state.ctx.router, attr), "stream", echo_stream)
+
+    async def stream_chat(client: AsyncClient, plaintext: str) -> str:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "llama3.2:3b",
+                "stream": True,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            headers={"Authorization": f"Bearer {plaintext}", "X-Daari-No-Cache": "true"},
+        )
+        assert response.status_code == 200, response.text
+        texts = []
+        for line in response.text.splitlines():
+            if not line.startswith("data: ") or line.endswith("[DONE]"):
+                continue
+            payload = json.loads(line[len("data: ") :])
+            for choice in payload.get("choices", []):
+                texts.append(choice.get("delta", {}).get("content") or "")
+        return "".join(texts)
+
+    async def chat(client: AsyncClient, plaintext: str) -> str:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            headers={"Authorization": f"Bearer {plaintext}", "X-Daari-No-Cache": "true"},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()["choices"][0]["message"]["content"]
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        assert await chat(client, strict_key.plaintext) == "Your SSN is <redacted>"
+        assert await chat(client, team_key.plaintext) == f"Your SSN is {prompt}"
+        assert await chat(client, override_key.plaintext) == "Your SSN is <redacted>"
+        assert await chat(client, unbound_key.plaintext) == f"Your SSN is {prompt}"
+
+        # Buffered stream semantics: the bound profile scans the full answer
+        # before the first byte, exactly like the global engine does.
+        assert await stream_chat(client, strict_key.plaintext) == "Your SSN is <redacted>"
+        assert await stream_chat(client, team_key.plaintext) == f"Your SSN is {prompt}"
+
+        anthropic = await client.post(
+            "/v1/messages",
+            json={
+                "model": "llama3.2:3b",
+                "max_tokens": 64,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            headers={"x-api-key": strict_key.plaintext, "anthropic-version": "2023-06-01"},
+        )
+        assert anthropic.status_code == 200, anthropic.text
+        assert anthropic.json()["content"][0]["text"] == "Your SSN is <redacted>"
+
+        responses = await client.post(
+            "/v1/responses",
+            json={"model": "llama3.2:3b", "input": prompt},
+            headers={"Authorization": f"Bearer {strict_key.plaintext}"},
+        )
+        assert responses.status_code == 200, responses.text
+        texts = [
+            part["text"]
+            for item in responses.json()["output"]
+            if item.get("type") == "message"
+            for part in item.get("content", [])
+            if part.get("type") == "output_text"
+        ]
+        assert texts == ["Your SSN is <redacted>"]
+
+
+@pytest.mark.asyncio
 async def test_stream_fallback_continue_after_mid_chunk_death(app, monkeypatch):
     """#2003: opt-in mid-stream continue yields fallback tokens on same SSE id."""
     router = app.state.ctx.router
