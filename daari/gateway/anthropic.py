@@ -546,6 +546,11 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 getattr(request.state, "auth_claims", None),
                 model_groups=getattr(ctx.settings, "model_groups", None),
             )
+            from daari.gateway.mcp_policy import apply_server_tool_subset_to_meta
+
+            apply_server_tool_subset_to_meta(
+                meta, getattr(request.state, "auth_claims", None), ctx.settings
+            )
             meta.authorization_bearer = bearer_from_authorization(
                 request.headers.get("authorization")
             )
@@ -593,35 +598,13 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             apply_service_tier_allowlist_degrade(body, request)
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
-            # Per-end-user daily cap on shared virtual keys (#1933). metadata.user_id
-            # is the Anthropic convention (OpenAI uses top-level user).
-            claims = getattr(request.state, "auth_claims", None)
-            vk = getattr(claims, "virtual_key", None) if claims is not None else None
-            if (
-                vk is not None
-                and float(getattr(vk, "user_daily_usd_cap", 0) or 0) > 0
-                and meta.user
-            ):
-                from daari.auth.budgets import user_daily_cap_exceeded
+            # Per-end-user block / daily cap on shared virtual keys (#1933, #1547).
+            # metadata.user_id is the Anthropic convention (OpenAI uses top-level user).
+            from daari.gateway.model_access import reject_end_user
 
-                ledger = ctx.router.usage_ledger
-                client = meta.client_id or getattr(claims, "key_id", None) or ""
-                pricing = getattr(ctx.settings, "pricing", None)
-                fallback = float(ctx.settings.usage.frontier_price_per_1k_tokens or 0.002)
-                exceeded = (
-                    user_daily_cap_exceeded(
-                        vk,
-                        ledger,
-                        client_id=client,
-                        user_id=meta.user,
-                        pricing=pricing,
-                        fallback_per_1k=fallback,
-                    )
-                    if ledger is not None
-                    else None
-                )
-                if exceeded is not None:
-                    return JSONResponse(status_code=402, content={"error": exceeded})
+            user_denied = reject_end_user(request, ctx.settings, meta.user)
+            if user_denied is not None:
+                return user_denied
             if (
                 mcp_ss_enabled
                 and tools_mode != "strip"

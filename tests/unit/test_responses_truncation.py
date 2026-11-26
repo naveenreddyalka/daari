@@ -231,3 +231,133 @@ async def test_frontier_disabled_uses_l6_window_when_configured(settings):
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "context_length_exceeded"
     assert not hasattr(fake, "last_request")
+
+
+def _truncation_counts(app) -> tuple[int, int, int]:
+    snap = app.state.ctx.metrics.snapshot(include_histograms=True)
+    return (
+        int(snap.get("responses_truncation_auto") or 0),
+        int(snap.get("responses_truncation_rejected") or 0),
+        int(snap.get("responses_truncation_tokens_dropped") or 0),
+    )
+
+
+@pytest.mark.asyncio
+async def test_auto_compaction_increments_truncation_counters(settings):
+    """Successful ``truncation: auto`` increments auto + tokens dropped (#2306)."""
+    from daari.observability.prometheus import render_prometheus
+
+    app = _app(settings)
+    _tiny_windows(app, l3=40)
+    _mock_route(app)
+    assert _truncation_counts(app) == (0, 0, 0)
+    turns = [{"role": "user", "content": f"turn-{i} " + ("y" * 80)} for i in range(8)]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": turns, "truncation": "auto"},
+            headers={"X-Daari-Meta": "true"},
+        )
+    assert response.status_code == 200, response.text
+    compact = response.json()["daari_meta"]["compact_to_fit"]
+    auto, rejected, dropped = _truncation_counts(app)
+    assert auto == 1
+    assert rejected == 0
+    assert dropped == compact["tokens_before"] - compact["tokens_after"] > 0
+    text = render_prometheus(app.state.ctx.metrics)
+    assert "daari_responses_truncation_auto_total 1" in text
+    assert f"daari_responses_truncation_tokens_dropped_total {dropped}" in text
+    assert "daari_responses_truncation_rejected_total 0" in text
+
+
+@pytest.mark.asyncio
+async def test_disabled_reject_increments_rejected_counter(settings):
+    """``context_length_exceeded`` 400 increments rejected only (#2306)."""
+    from daari.observability.prometheus import render_prometheus
+
+    app = _app(settings)
+    _tiny_windows(app, l3=40)
+    _mock_route(app)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        disabled = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": _oversized_input(), "truncation": "disabled"},
+        )
+        omitted = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": _oversized_input()},
+        )
+    for response in (disabled, omitted):
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "context_length_exceeded"
+    assert _truncation_counts(app) == (0, 2, 0)
+    text = render_prometheus(app.state.ctx.metrics)
+    assert "daari_responses_truncation_rejected_total 2" in text
+    assert "daari_responses_truncation_auto_total 0" in text
+
+
+@pytest.mark.asyncio
+async def test_within_window_leaves_truncation_counters_at_zero(settings):
+    app = _app(settings)
+    _tiny_windows(app, l3=10_000)
+    _mock_route(app)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": "short", "truncation": "auto"},
+        )
+    assert response.status_code == 200
+    assert _truncation_counts(app) == (0, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_stats_exposes_responses_truncation_counters(settings):
+    app = _app(settings)
+    _tiny_windows(app, l3=40)
+    _mock_route(app)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        before = await client.get("/v1/daari/stats")
+        assert before.status_code == 200
+        assert before.json()["responses_truncation_auto"] == 0
+        assert before.json()["responses_truncation_rejected"] == 0
+        assert before.json()["responses_truncation_tokens_dropped"] == 0
+        rejected = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": _oversized_input(), "truncation": "disabled"},
+        )
+        assert rejected.status_code == 400
+        turns = [{"role": "user", "content": f"t{i} " + ("y" * 80)} for i in range(8)]
+        compacted = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": turns, "truncation": "auto"},
+        )
+        assert compacted.status_code == 200, compacted.text
+        after = await client.get("/v1/daari/stats")
+    body = after.json()
+    assert body["responses_truncation_auto"] == 1
+    assert body["responses_truncation_rejected"] == 1
+    assert body["responses_truncation_tokens_dropped"] > 0
+
+
+def test_auto_still_over_window_after_compact_counts_as_rejected():
+    """Unit-level: auto that cannot fit the window records rejected, not auto (#2306)."""
+    from daari.gateway.responses_truncation import apply_responses_truncation
+    from daari.observability.metrics import Metrics
+
+    metrics = Metrics()
+    request = InternalRequest(
+        messages=[
+            Message(role="system", content="s" * 400),
+            Message(role="user", content="u" * 400),
+        ],
+        model="daari",
+        sampling=SamplingParams(truncation="auto"),
+    )
+    _, error = apply_responses_truncation(
+        request, context_windows={"L3": 40}, metrics=metrics
+    )
+    assert error is not None and error.status_code == 400
+    snap = metrics.snapshot(include_histograms=True)
+    assert snap["responses_truncation_rejected"] == 1
+    assert snap["responses_truncation_auto"] == 0
+    assert snap["responses_truncation_tokens_dropped"] == 0

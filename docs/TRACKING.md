@@ -9604,6 +9604,54 @@ fallback continue (midstream)**
 opt-in `routing.stream_fallback_continue` and distinguishes ordinary tier
 fallback. Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Per-key tool-name allowlist subset for mcp_servers ([#1288](https://github.com/naveenreddyalka/daari/issues/1288))
+
+<!-- tracking:#1288 -->
+**Status:** Done (2026-11-25). `mcp_policy.server_tools` /
+`mcp_team_policies.<team>.server_tools` / virtual-key
+`metadata.mcp.server_tools` map an `mcp_servers` id to tool-name globs;
+effective catalog = server tools ∩ servers.allow/deny ∩ subset, empty list
+fails closed, unset preserves prior behavior, key over team over global per
+server. Honored on `/mcp` `tools/list` + `tools/call` (incl. aggregated
+`{id}__{tool}` and coarse `mcp_<id>` stubs via `RequestMeta.mcp_server_tools`
+→ egress `mcp_tool_denied`), Responses `type: mcp`, and Messages
+`mcp_servers` / `mcp_toolset`. `daari keys create --mcp-server-tools
+id=tool,tool`; `server_tools` counts as an MCP grant for
+`require_key_access_defined`. Docs: [mcp.md](developer/guides/clients/mcp.md#per-server-tool-allowlists),
+[config.md](developer/reference/config.md). Covered by
+`tests/unit/test_mcp_policy.py`, `tests/integration/test_mcp_governance.py`,
+`tests/unit/test_responses_server_side_mcp.py`,
+`tests/unit/test_messages_server_side_mcp.py`, `tests/unit/test_virtual_keys.py`,
+`tests/unit/test_mcp_server_tools_docs.py`.
+
+### End-user inventory + per-user block / cap overrides (#1547) ([#1547](https://github.com/naveenreddyalka/daari/issues/1547))
+
+<!-- tracking:#1547 -->
+**Status:** Done (2026-11-25). `GET /v1/daari/users` (admin / master key)
+pages the ledger-derived end-user inventory (`limit`/`offset`/`has_more`,
+`blocked` and `user_id` filters) with per-user requests, `client_ids`,
+`first_seen`/`last_seen`, and `spend.today_usd`/`lifetime_usd`.
+`PATCH /v1/daari/users/{user_id}` sets `blocked` (+`reason`) and
+`user_usd_cap`; both stores (`VirtualKeyStore` SQLite + Postgres, additive
+`end_user_overrides` table) back it. Every inference facade that binds
+`user` / `metadata.user_id` (chat, Responses, Messages, decisions, batches,
+images, OCR, moderations, rerank, extractions) calls `reject_end_user`:
+blocked → **403** `end_user_blocked`, cap over → **402** `budget_exceeded`
+(`scope=user`, cross-key spend) replacing the key's `user_daily_usd_cap`.
+CLI `daari users list|block|unblock|cap`. Audit `admin.users.*` /
+`users.*`. Covered by `tests/unit/test_end_users.py` and
+`tests/integration/test_gateway_flow.py`.
+
+### GPT-5.6 / Sol promo window ends 2026-11-30 ([#2468](https://github.com/naveenreddyalka/daari/issues/2468))
+
+<!-- tracking:#2468 -->
+**Status:** Done (2026-11-25). `gpt-5.6` / `gpt-5.6-sol` `effective_to`
+moves from 2026-11-21 to 2026-11-30 to match the live OpenAI Sol model card:
+promo $4/$20 (cached $0.40) through Nov 29, baseline $5/$30 (cached $0.50)
+on/after Nov 30. Clock-dependent catalog tests now pin `now`. Covered by
+`tests/unit/test_pricing_effective_to.py`.
+
+
 ### Hot-reload Settings from config.yaml ([#1234](https://github.com/naveenreddyalka/daari/issues/1234))
 
 <!-- tracking:#1234 -->
@@ -9658,6 +9706,87 @@ the introductory $2/$10 (cached $0.10) with `effective_to: 2026-12-01` and
 a `baseline` of list $4/$20 (cached $0.20), so turns before Dec 1 UTC no
 longer bill 2× list. `models/`-prefixed ids resolve the same window. Covered
 by `tests/unit/test_pricing_effective_to.py`.
+
+### Observability: Prometheus and stats counters for Responses truncation auto and rejected ([#2306](https://github.com/naveenreddyalka/daari/issues/2306))
+
+<!-- tracking:#2306 -->
+**Status:** Done (2026-11-25). `apply_responses_truncation` records
+`responses_truncation_auto` (+ `responses_truncation_tokens_dropped`,
+`tokens_before - tokens_after`) when `truncation: "auto"` actually compacts,
+and `responses_truncation_rejected` on every `context_length_exceeded` 400
+(omitted / `disabled`, or `auto` that still cannot fit). Exposed on
+`GET /v1/daari/stats` and as `daari_responses_truncation_auto_total` /
+`daari_responses_truncation_rejected_total` /
+`daari_responses_truncation_tokens_dropped_total` (emitted at 0 when unused;
+team-scoped stats zero them like compact-to-fit). HTTP contract unchanged.
+Docs: metrics-prometheus, traces-stats. Covered by
+`tests/unit/test_responses_truncation.py` and `tests/unit/test_prometheus.py`.
+
+### Spend rows record credential source + frontier slot (team BYOK invoices) ([#2314](https://github.com/naveenreddyalka/daari/issues/2314))
+
+<!-- tracking:#2314 -->
+**Status:** Done (2026-11-25). `spend_requests` gains additive
+`credential_source` (`global` | `team` | `key`; empty off-frontier and on
+pre-migration rows) and `frontier_slot_id` columns on SQLite (`_migrate()`)
+and Postgres (`ADD COLUMN IF NOT EXISTS`). `FrontierPool` stamps the winning
+slot + signing credential on `daari_meta` and the request's `SpendContext`
+(key-over-team precedence via `binding_credential_source`, mirrored from
+`effective_binding`); router L6 record sites copy them onto every billed row,
+including relayed streams. `daari_meta.credential_source` /
+`frontier_slot_id` surface on frontier-served replies. Export/CSV, `--group-by
+credential_source,frontier_slot_id`, and a **frontier spend by credential**
+rollup in `daari report` / `GET /v1/daari/report`
+(`frontier_credential_spend`) expose the split. Docs: chargeback guide.
+Covered by `tests/unit/test_spend_credential_source.py`.
+
+### Cost-true multi_agent nested usage per declared subagent model ([#1553](https://github.com/naveenreddyalka/daari/issues/1553))
+
+<!-- tracking:#1553 -->
+**Status:** Done (2026-11-25). `nested_agent_usages` copies a subagent's
+declared `model` (aliases `model_id`, `agent.model`, and per-output-item
+`agent.model`) onto each row. New `pricing.multi_agent_cost_breakdown` bills
+every nested row that carries tokens at its own `resolve_price` rate (parent
+model when undeclared) and the parent remainder — plus cached-read /
+cache-write dims — at the parent rate, with service-tier / residency / speed
+multipliers on all rows; each priced row gets `cost_usd`. `_ledger_record`
+uses it on the catalog-billed L6 path (provider `usage.cost` still wins), so
+`daari_meta.cost_usd` / `cost_input_usd` / `cost_output_usd`, cost headers,
+budgets, and the spend ledger agree. #1500 undercount-sum metering is
+unchanged. Docs: budgets-frontier (Responses multi_agent subagent pricing),
+compare-litellm. Covered by `tests/unit/test_responses_multi_agent.py` and
+`tests/unit/test_token_accounting.py`.
+
+### Bounded + paginated report clients/users rollups ([#1552](https://github.com/naveenreddyalka/daari/issues/1552))
+
+<!-- tracking:#1552 -->
+**Status:** Done (2026-11-25). `UsageLedger.by_client` / `by_user` (SQLite and
+Postgres) take `limit` (default 100, max 500; `None` = every row for
+in-process team totals) and `offset`, sorted by requests desc.
+`GET /v1/daari/report` accepts `clients_limit` / `clients_offset` /
+`users_limit` / `users_offset` and returns `clients_total` / `clients_limit` /
+`clients_offset` / `clients_has_more` plus the `users_*` twins (same meta
+shape as keys/teams inventories); `teams` and `totals` still roll up every
+row, and team-scoped totals count only that team's clients. Docs: http-api
+(`## Report rollups`), savings-report. Covered by
+`tests/unit/test_report_rollup_pagination.py` and
+`tests/integration/test_gateway_flow.py`.
+
+### Observability: Prometheus and stats counters for Anthropic auto_caching applied vs client-preserved ([#2322](https://github.com/naveenreddyalka/daari/issues/2322))
+
+<!-- tracking:#2322 -->
+**Status:** Done (2026-11-25). `to_anthropic_payload` takes an optional
+`metrics` hook (wired from `FrontierExecutor.metrics`) and records
+`auto_caching_applied` when `frontier.auto_caching` injects top-level
+`cache_control` on an Anthropic L6 hop, or `auto_caching_client_preserved`
+when a caller-supplied top-level `cache_control` is forwarded verbatim (dial
+on or off). Non-Anthropic executors never build the Anthropic body, so they
+increment neither. Exposed on `GET /v1/daari/stats` and as
+`daari_auto_caching_applied_total` /
+`daari_auto_caching_client_preserved_total` (emitted at 0 when unused;
+team-scoped stats zero them like compact-to-fit). HELP text names both
+outcomes. No wire-shape change. Docs: metrics-prometheus, traces-stats.
+Covered by `tests/unit/test_anthropic_auto_caching.py` and
+`tests/unit/test_prometheus.py`.
 
 ### Doctor tip for frontier.auto_caching without an Anthropic L6 slot ([#2321](https://github.com/naveenreddyalka/daari/issues/2321))
 

@@ -399,7 +399,7 @@ rates. Current flagship and workhorse models, USD per 1M tokens:
 | `gpt-6.1-terra` | 1.00 | 0.05 | 1.25 | 5.00 | OpenAI (2026-10-26); ≥272K input → $2 / $7.50; tools via Responses; `reasoning.effort=none` allowed |
 | `chat-latest` | 5.00 | 0.50 | — | 30.00 | Rolling ChatGPT Instant alias (updated 2026-10-07); underlying snapshot moves — prefer `gpt-6-astra` for production pins |
 | `gpt-6-luna` | 0.10 | 0.01 | — | 0.50 | Chat/Responses. `POST /v1/decisions` is input-only: $0.10 in, $0.01 cached, $0 out |
-| `gpt-5.6` / `gpt-5.6-sol` | 4.00 | 0.40 | — | 20.00 | OpenAI promo through 2026-11-21 ([Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)) |
+| `gpt-5.6` / `gpt-5.6-sol` | 4.00 | 0.40 | — | 20.00 | OpenAI promo until 2026-11-30 ([Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)); baseline $5 / $0.50 / $30 on/after (`effective_to`) |
 | `gpt-5.6-terra` | 2.00 | 0.20 | — | 12.00 | OpenAI API pricing (historical pin; prefer `gpt-6.1-terra`) |
 | `gpt-5.6-luna` | 0.20 | 0.02 | — | 1.20 | OpenAI API pricing |
 | `gemini-3.8-flash` | 0.75 | 0.075 | — | 3.75 | [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) intro rate through 2026-12-31 |
@@ -477,6 +477,25 @@ hand-marking every system block. A request that already sends top-level
 `frontier.prompt_cache` last-system marking still apply. Non-Anthropic
 executors never see the field. With the flag on but no Anthropic-shaped L6
 slot, the inject is a no-op — `daari doctor` tips `frontier_auto_caching`.
+
+### Responses multi_agent subagent pricing
+
+Responses `multi_agent.enabled` runs on L6 and the metered totals already
+include subagent tokens (#1500). When the provider omits `usage.cost`, daari
+bills from `pricing.models` — and nested agent rows (`agent_usages` /
+`usage_by_agent` / `usage.agents` / per-output-item `usage`) that declare a
+subagent model (`model`, `model_id`, or `agent.model`) are priced at **that**
+model's catalog rate via `resolve_price` (longest-prefix match, `alias_of`,
+`effective_to` windows all apply). Rows without a model, and the parent's own
+remainder (total minus nested tokens, plus every cached-read / cache-write
+dimension), bill at the parent request model. Service-tier, residency, and
+Anthropic `speed` multipliers apply to every row. `daari_meta.agent_usage`
+keeps the rows with `model` when known and a per-row `cost_usd`; the request's
+`cost_usd` / `cost_input_usd` / `cost_output_usd`, `X-Daari-Cost*` headers,
+budgets, and the `daari spend` ledger all see the same cost-true total.
+A provider-reported `usage.cost` still wins over catalog math. The day-level
+`usage` table stays one row per request under the parent model (token totals
+only); use `daari spend export` for per-request USD.
 
 ## Providers / fallback
 

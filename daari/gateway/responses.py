@@ -867,11 +867,15 @@ def _governed_responses_meta(
         user=(user or "").strip() or None,
         request_id=request_id_from_request(request),
     )
+    claims = getattr(request.state, "auth_claims", None)
     apply_auth_claims_to_meta(
         meta,
-        getattr(request.state, "auth_claims", None),
+        claims,
         model_groups=getattr(ctx.settings, "model_groups", None),
     )
+    from daari.gateway.mcp_policy import apply_server_tool_subset_to_meta
+
+    apply_server_tool_subset_to_meta(meta, claims, ctx.settings)
     headers = getattr(request, "headers", None)
     if headers is not None:
         meta.authorization_bearer = bearer_from_authorization(headers.get("authorization"))
@@ -898,6 +902,7 @@ def _reject_responses_model(
         apply_service_tier_allowlist_degrade,
         reject_disallowed_model,
         reject_disallowed_service_tier,
+        reject_end_user,
         reject_model_max_budget,
         reject_retired_model,
     )
@@ -911,6 +916,9 @@ def _reject_responses_model(
     budget = reject_model_max_budget(request, model, ctx.settings)
     if budget is not None:
         return budget
+    user_denied = reject_end_user(request, ctx.settings, getattr(meta, "user", None))
+    if user_denied is not None:
+        return user_denied
     tier_denied = reject_disallowed_service_tier(request, service_tier=service_tier)
     if tier_denied is not None:
         return tier_denied

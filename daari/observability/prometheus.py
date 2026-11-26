@@ -357,6 +357,50 @@ def render_prometheus(
         f"daari_compact_to_fit_tokens_dropped_total {snap.get('compact_to_fit_tokens_dropped', 0)}"
     )
     lines.append(
+        "# HELP daari_responses_truncation_auto_total Responses truncation=auto "
+        "requests whose oversized input was compacted to the serving-tier window."
+    )
+    lines.append("# TYPE daari_responses_truncation_auto_total counter")
+    lines.append(
+        f"daari_responses_truncation_auto_total {snap.get('responses_truncation_auto', 0)}"
+    )
+    lines.append(
+        "# HELP daari_responses_truncation_rejected_total Responses requests "
+        "rejected with context_length_exceeded (truncation disabled/omitted, "
+        "or auto could not fit the window)."
+    )
+    lines.append("# TYPE daari_responses_truncation_rejected_total counter")
+    lines.append(
+        "daari_responses_truncation_rejected_total "
+        f"{snap.get('responses_truncation_rejected', 0)}"
+    )
+    lines.append(
+        "# HELP daari_responses_truncation_tokens_dropped_total Estimated tokens "
+        "removed by Responses truncation=auto (tokens_before - tokens_after)."
+    )
+    lines.append("# TYPE daari_responses_truncation_tokens_dropped_total counter")
+    lines.append(
+        "daari_responses_truncation_tokens_dropped_total "
+        f"{snap.get('responses_truncation_tokens_dropped', 0)}"
+    )
+    lines.append(
+        "# HELP daari_auto_caching_applied_total Anthropic L6 hops where "
+        "frontier.auto_caching injected top-level cache_control because the "
+        "client sent none."
+    )
+    lines.append("# TYPE daari_auto_caching_applied_total counter")
+    lines.append(f"daari_auto_caching_applied_total {snap.get('auto_caching_applied', 0)}")
+    lines.append(
+        "# HELP daari_auto_caching_client_preserved_total Anthropic L6 hops where "
+        "a client-supplied top-level cache_control was forwarded verbatim "
+        "(client wins over frontier.auto_caching)."
+    )
+    lines.append("# TYPE daari_auto_caching_client_preserved_total counter")
+    lines.append(
+        "daari_auto_caching_client_preserved_total "
+        f"{snap.get('auto_caching_client_preserved', 0)}"
+    )
+    lines.append(
         "# HELP daari_stream_fallback_continue_total Streaming hops that "
         "continued on the next tier/slot after mid-stream upstream death."
     )

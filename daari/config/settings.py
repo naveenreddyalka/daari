@@ -1934,17 +1934,17 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, Any]] = {
         "cache_write_30m_per_1m": 0.125,
         "cache_write_12h_per_1m": 0.25,
     },
-    # OpenAI GPT-5.6 / Sol: promotional $4/$20 at least through 2026-11-21
-    # (OpenAI changelog Aug 21 2026); standard $5/$30 after. Cache writes are
-    # 1.25× / 2.5× of the active input rate (#1843 / #2297).
-    # https://platform.openai.com/docs/changelog
+    # OpenAI GPT-5.6 / Sol: promotional $4/$20 until 2026-11-30 (Sol model
+    # card); standard $5/$30 on/after. Cache writes are 1.25× / 2.5× of the
+    # active input rate (#1843 / #2297 / #2468).
+    # https://developers.openai.com/api/docs/models/gpt-5.6-sol
     "gpt-5.6": {
         "input_per_1m": 4.00,
         "output_per_1m": 20.00,
         "cached_input_per_1m": 0.40,
         "cache_write_30m_per_1m": 5.00,
         "cache_write_12h_per_1m": 10.00,
-        "effective_to": "2026-11-21",
+        "effective_to": "2026-11-30",
         "baseline": {
             "input_per_1m": 5.00,
             "output_per_1m": 30.00,
@@ -1959,7 +1959,7 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, Any]] = {
         "cached_input_per_1m": 0.40,
         "cache_write_30m_per_1m": 5.00,
         "cache_write_12h_per_1m": 10.00,
-        "effective_to": "2026-11-21",
+        "effective_to": "2026-11-30",
         "baseline": {
             "input_per_1m": 5.00,
             "output_per_1m": 30.00,
@@ -2800,11 +2800,22 @@ class McpToolPolicySettings(BaseModel):
             "mcp_policy / mcp_team_policies / virtual-key metadata.mcp.clients."
         ),
     )
+    server_tools: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-server tool-name allowlist keyed by mcp_servers id (issue #1288): "
+            "tool-name globs the caller may list/call on that server, intersected "
+            "with the server's own catalog and servers.allow/deny. Unlisted servers "
+            "are unrestricted; an empty list exposes no tools from that server "
+            "(fail closed). Key over team over global per server. Nested under "
+            "mcp_policy / mcp_team_policies / virtual-key metadata.mcp.server_tools."
+        ),
+    )
     require_key_access_defined: bool = Field(
         default=False,
         description=(
             "When true, virtual keys with no MCP grant in metadata.mcp "
-            "(allow / deny / servers.allow / servers.deny) fail initialize "
+            "(allow / deny / servers.allow / servers.deny / server_tools) fail initialize "
             "(HTTP 403 JSON-RPC -32003), get an empty tools/list, and "
             "tools/call deny on /mcp and /v1/mcp/query (#1352, #1389). "
             "Master key and flag-off behavior unchanged. Default false. "

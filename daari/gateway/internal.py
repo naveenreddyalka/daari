@@ -105,6 +105,9 @@ class RequestMeta(BaseModel):
     # Expanded model allowlist (#708). None = that side does not restrict.
     key_model_patterns: list[str] | None = None
     team_model_patterns: list[str] | None = None
+    # Resolved per-server MCP tool-name allowlist (#1288). None = unrestricted;
+    # the egress client falls back to the global mcp_policy.server_tools block.
+    mcp_server_tools: dict[str, list[str]] | None = None
     # Chargeback attribution (#709). Folded into cache keys only when
     # cache_scope is team or key (#768); global leaves hashes unchanged.
     key_id: str | None = None
@@ -146,6 +149,8 @@ class RequestMeta(BaseModel):
     frontier_api_key: str | None = None
     # Optional named frontier.providers slot id for this tenant (#2216).
     frontier_pool: str | None = None
+    # Origin of frontier_api_key for ledger attribution: team | key (#2314).
+    frontier_credential_source: str | None = None
 
 
 class InternalRequest(BaseModel):
@@ -179,6 +184,10 @@ class DaariMeta(BaseModel):
     provider_id: str | None = None
     # L6 slot region label when a frontier provider served the request (#466).
     region: str | None = None
+    # Which credential signed L6: global | team | key, plus the winning
+    # frontier.providers slot id (#2314). None on non-frontier responses.
+    credential_source: str | None = None
+    frontier_slot_id: str | None = None
     tool: str | None = None
     latency_ms: int = 0
     model: str | None = None

@@ -320,3 +320,81 @@ def teams_inventory(
         )
         rows.append(redact_team(team, key_count=key_count, spend=spend))
     return {"teams": rows, **_page_meta(total, limit=lim, offset=off, returned=len(rows))}
+
+
+def _empty_end_user_row(user_id: str) -> dict[str, Any]:
+    return {
+        "user_id": user_id,
+        "requests": 0,
+        "cache_hits": 0,
+        "frontier_requests": 0,
+        "local_requests": 0,
+        "client_ids": [],
+        "first_seen": None,
+        "last_seen": None,
+        "spend": {"today_usd": 0.0, "lifetime_usd": 0.0},
+    }
+
+
+def end_user_row(
+    user_id: str,
+    *,
+    usage: dict[str, Any] | None = None,
+    override: Any = None,
+) -> dict[str, Any]:
+    """Inventory row: ledger-derived usage merged with admin overrides (#1547)."""
+    row = dict(usage) if usage else _empty_end_user_row(user_id)
+    row["user_id"] = user_id
+    row["blocked"] = bool(getattr(override, "blocked", False)) if override is not None else False
+    row["user_usd_cap"] = (
+        float(getattr(override, "user_usd_cap", 0.0) or 0.0) if override is not None else 0.0
+    )
+    row["reason"] = getattr(override, "reason", None) if override is not None else None
+    row["override_updated_at"] = (
+        (getattr(override, "updated_at", None) or None) if override is not None else None
+    )
+    return row
+
+
+def end_users_inventory(
+    store: Any,
+    *,
+    ledger: Any = None,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+    limit: int | None = None,
+    offset: int | None = None,
+    blocked: bool | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Paginated end-user inventory from the usage ledger plus overrides (#1547).
+
+    Users with an override but no ledger rows (pre-emptive blocks) still appear.
+    """
+    lim, off = _clamp_page(limit=limit, offset=offset)
+    usage_rows: dict[str, dict[str, Any]] = {}
+    if ledger is not None and getattr(ledger, "enabled", False) and hasattr(ledger, "end_users"):
+        try:
+            for entry in ledger.end_users(pricing=pricing, fallback_per_1k=fallback_per_1k) or []:
+                usage_rows[str(entry.get("user_id") or "")] = entry
+        except Exception:
+            usage_rows = {}
+    overrides: dict[str, Any] = {}
+    if store is not None and getattr(store, "enabled", True) and hasattr(store, "list_end_users"):
+        try:
+            overrides = {o.user_id: o for o in (store.list_end_users() or [])}
+        except Exception:
+            overrides = {}
+    ids = sorted(set(usage_rows) | set(overrides))
+    ids = [uid for uid in ids if uid]
+    wanted = (user_id or "").strip()
+    if wanted:
+        ids = [uid for uid in ids if uid == wanted]
+    rows = [
+        end_user_row(uid, usage=usage_rows.get(uid), override=overrides.get(uid)) for uid in ids
+    ]
+    if blocked is not None:
+        rows = [row for row in rows if bool(row["blocked"]) == bool(blocked)]
+    total = len(rows)
+    page = rows[off : off + lim]
+    return {"users": page, **_page_meta(total, limit=lim, offset=off, returned=len(page))}

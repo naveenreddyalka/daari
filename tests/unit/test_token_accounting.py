@@ -261,7 +261,7 @@ def test_resolve_price_covers_september_2026_frontier_lineup():
         "gpt-6-astra": (10.0, 50.0, 1.00),
         "gpt-6.1-sol": (2.0, 10.0, 0.10),
         "gpt-6.1-terra": (1.0, 5.0, 0.05),
-        # Promo ended 2026-11-21; default clock bills baseline $5/$30 (#2297).
+        # Baseline $5/$30 once the promo ends 2026-11-30 (#2297 / #2468).
         "gpt-5.6": (5.0, 30.0, 0.50),
         "gpt-5.6-sol": (5.0, 30.0, 0.50),
         "gpt-5.6-terra": (2.0, 12.0, 0.20),
@@ -412,3 +412,139 @@ def test_json_shape_unchanged_for_clients():
     payload = build_chat_completion_payload(response, prompt_chars=8, include_daari_meta=False)
     assert set(payload["usage"]) == {"prompt_tokens", "completion_tokens", "total_tokens"}
     json.dumps(payload)
+
+
+# --- multi_agent nested rows priced per declared model (#1553) --------------
+
+
+def _multi_agent_pricing() -> PricingSettings:
+    return PricingSettings(
+        models={
+            "parent-model": {"input_per_1m": 10.0, "output_per_1m": 30.0},
+            "cheap-sub": {"input_per_1m": 1.0, "output_per_1m": 2.0},
+            "pricey-sub": {"input_per_1m": 100.0, "output_per_1m": 200.0},
+        }
+    )
+
+
+def test_multi_agent_cost_breakdown_prices_each_declared_model():
+    from daari.pricing import cost_breakdown, multi_agent_cost_breakdown
+
+    pricing = _multi_agent_pricing()
+    rows = [
+        {"agent_id": "a", "model": "cheap-sub", "input_tokens": 400_000, "output_tokens": 80_000},
+        {"agent_id": "b", "model": "pricey-sub", "input_tokens": 300_000, "output_tokens": 60_000},
+    ]
+    parts = multi_agent_cost_breakdown(
+        "parent-model",
+        800_000,
+        160_000,
+        rows,
+        pricing,
+        fallback_per_1k=0.002,
+    )
+    kw = dict(pricing=pricing, fallback_per_1k=0.002)
+    # Remainder (800k-700k, 160k-140k) is the parent's own turn at the parent rate.
+    expected = (
+        cost_breakdown("parent-model", 100_000, 20_000, **kw).total
+        + cost_breakdown("cheap-sub", 400_000, 80_000, **kw).total
+        + cost_breakdown("pricey-sub", 300_000, 60_000, **kw).total
+    )
+    assert parts.total == pytest.approx(expected)
+    assert parts.total != pytest.approx(cost_breakdown("parent-model", 800_000, 160_000, **kw).total)
+    assert rows[0]["cost_usd"] == pytest.approx(cost_breakdown("cheap-sub", 400_000, 80_000, **kw).total)
+    assert rows[1]["cost_usd"] == pytest.approx(
+        cost_breakdown("pricey-sub", 300_000, 60_000, **kw).total
+    )
+
+
+def test_multi_agent_cost_breakdown_falls_back_to_parent_model_when_undeclared():
+    from daari.pricing import cost_breakdown, multi_agent_cost_breakdown
+
+    pricing = _multi_agent_pricing()
+    rows = [
+        {"agent_id": "a", "input_tokens": 400_000, "output_tokens": 80_000},
+        {"agent_id": "b", "input_tokens": 300_000, "output_tokens": 60_000},
+    ]
+    parts = multi_agent_cost_breakdown(
+        "parent-model", 800_000, 160_000, rows, pricing, fallback_per_1k=0.002
+    )
+    parent_only = cost_breakdown(
+        "parent-model", 800_000, 160_000, pricing, fallback_per_1k=0.002
+    )
+    assert parts.total == pytest.approx(parent_only.total)
+    assert parts.input_usd == pytest.approx(parent_only.input_usd)
+    assert parts.output_usd == pytest.approx(parent_only.output_usd)
+    assert rows[0]["cost_usd"] == pytest.approx(
+        cost_breakdown("parent-model", 400_000, 80_000, pricing, fallback_per_1k=0.002).total
+    )
+
+
+def test_multi_agent_cost_breakdown_keeps_cache_dims_and_multipliers_on_parent():
+    """Cache reads/writes and tier/speed multipliers still apply (parent remainder)."""
+    from daari.pricing import cost_breakdown, multi_agent_cost_breakdown
+
+    pricing = PricingSettings(
+        models={
+            "parent-model": {
+                "input_per_1m": 10.0,
+                "output_per_1m": 30.0,
+                "cached_input_per_1m": 1.0,
+            },
+            "cheap-sub": {"input_per_1m": 1.0, "output_per_1m": 2.0},
+        }
+    )
+    rows = [{"agent_id": "a", "model": "cheap-sub", "input_tokens": 100_000, "output_tokens": 10_000}]
+    parts = multi_agent_cost_breakdown(
+        "parent-model",
+        300_000,
+        40_000,
+        rows,
+        pricing,
+        fallback_per_1k=0.002,
+        cached_input_tokens=50_000,
+        service_tier="priority",
+    )
+    expected = (
+        cost_breakdown(
+            "parent-model",
+            200_000,
+            30_000,
+            pricing,
+            fallback_per_1k=0.002,
+            cached_input_tokens=50_000,
+            service_tier="priority",
+        ).total
+        + cost_breakdown(
+            "cheap-sub", 100_000, 10_000, pricing, fallback_per_1k=0.002, service_tier="priority"
+        ).total
+    )
+    assert parts.total == pytest.approx(expected)
+
+
+def test_multi_agent_cost_breakdown_without_nested_tokens_matches_cost_breakdown():
+    from daari.pricing import cost_breakdown, multi_agent_cost_breakdown
+
+    pricing = _multi_agent_pricing()
+    rows = [{"agent_id": "a", "model": "cheap-sub", "cost": 0.01}]
+    parts = multi_agent_cost_breakdown(
+        "parent-model", 1_000, 100, rows, pricing, fallback_per_1k=0.002
+    )
+    assert parts.total == pytest.approx(
+        cost_breakdown("parent-model", 1_000, 100, pricing, fallback_per_1k=0.002).total
+    )
+    assert "cost_usd" not in rows[0]
+
+
+def test_openai_token_usage_undercount_sum_preserved_with_models():
+    """Model on nested rows must not change #1500 undercount summation."""
+    from daari.observability.tokens import openai_token_usage
+
+    payload = {
+        "usage": {"input_tokens": 100, "output_tokens": 20},
+        "agent_usages": [
+            {"agent_id": "a", "model": "gpt-6-luna", "input_tokens": 400, "output_tokens": 80},
+            {"agent_id": "b", "model": "gpt-6.1-sol", "input_tokens": 300, "output_tokens": 60},
+        ],
+    }
+    assert openai_token_usage(payload, prompt_chars=10, content="x") == (800, 160, False)
