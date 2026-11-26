@@ -5370,6 +5370,55 @@ async def test_messages_stream_stop_reason_from_finish_reason(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_length_truncated_local_turn_served_honestly_but_never_l0(app, monkeypatch):
+    """A max_tokens-truncated local answer re-executes on repeat; complete ones hit L0 (#2330)."""
+    calls: list[str] = []
+
+    async def truncated_execute(request: InternalRequest) -> InternalResponse:
+        calls.append(request.messages[-1].content or "")
+        truncated = "truncated" in (request.messages[-1].content or "")
+        return InternalResponse(
+            content="partial answer" if truncated else "complete answer",
+            model="llama3.2:3b",
+            finish_reason="length" if truncated else "stop",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=5),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", truncated_execute)
+    truncated_payload = {
+        "model": "llama3.2:3b",
+        "messages": [{"role": "user", "content": "truncated turn"}],
+        "max_tokens": 4,
+    }
+    complete_payload = {
+        "model": "llama3.2:3b",
+        "messages": [{"role": "user", "content": "complete turn"}],
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+
+        async def chat(payload: dict) -> dict:
+            response = await client.post(
+                "/v1/chat/completions", json=payload, headers=META_HEADERS
+            )
+            assert response.status_code == 200
+            return response.json()
+
+        first = await chat(truncated_payload)
+        second = await chat(truncated_payload)
+        third = await chat(complete_payload)
+        fourth = await chat(complete_payload)
+
+    assert first["choices"][0]["finish_reason"] == "length"
+    assert second["choices"][0]["finish_reason"] == "length"
+    assert second["daari_meta"]["tier"] == "L3", "truncated turn must not replay from L0"
+    assert third["daari_meta"]["tier"] == "L3"
+    assert fourth["daari_meta"]["tier"] == "L0"
+    assert fourth["choices"][0]["finish_reason"] == "stop"
+    assert calls == ["truncated turn", "truncated turn", "complete turn"]
+
+
+@pytest.mark.asyncio
 async def test_stream_abort_finish_reason_not_successful_stop(app, monkeypatch):
     """Upstream abort must not look like a clean stop to the client (#2241)."""
 
