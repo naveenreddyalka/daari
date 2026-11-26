@@ -461,11 +461,28 @@ def _retirement_passed(retires_at: Any, *, today: Any = None) -> bool:
     return retire_day <= today
 
 
+def _lifecycle_as_of(settings: Any) -> Any:
+    """Operator ``models.lifecycle_as_of`` clock as a date, or None for host UTC (#2439)."""
+    from datetime import date
+
+    models = getattr(settings, "models", None) if settings is not None else None
+    raw = getattr(models, "lifecycle_as_of", None) if models is not None else None
+    day = _lifecycle_date_only(raw)
+    if not day:
+        return None
+    try:
+        return date.fromisoformat(day)
+    except ValueError:
+        return None
+
+
 def anthropic_lifecycle_fields(model_id: str, settings: Any = None) -> dict[str, Any]:
     """Lifecycle stage + optional dates for Anthropic model cards (#1507 / #1653).
 
     Merges shipped OpenAI retirement defaults under operator ``models.lifecycle``.
-    When ``retires_at`` is on or before today, ``deprecated`` promotes to ``retired``.
+    When ``retires_at`` is on or before today (or ``models.lifecycle_as_of``),
+    ``deprecated`` promotes to ``retired``. ``migrate_to`` is carried through
+    when the row names a successor (#2439).
     """
     from daari.config.settings import merged_model_lifecycle
     from daari.pricing import matching_model_key
@@ -480,13 +497,17 @@ def anthropic_lifecycle_fields(model_id: str, settings: Any = None) -> dict[str,
         stage = "active"
     deprecated_at = overrides.get("deprecated_at")
     retires_at = overrides.get("retires_at")
-    if stage == "deprecated" and _retirement_passed(retires_at):
+    if stage == "deprecated" and _retirement_passed(retires_at, today=_lifecycle_as_of(settings)):
         stage = "retired"
-    return {
+    fields: dict[str, Any] = {
         "lifecycle": stage,
         "deprecated_at": deprecated_at if deprecated_at else None,
         "retires_at": retires_at if retires_at else None,
     }
+    migrate_to = str(overrides.get("migrate_to") or "").strip()
+    if migrate_to:
+        fields["migrate_to"] = migrate_to
+    return fields
 
 
 def openai_lifecycle_fields(model_id: str, settings: Any = None) -> dict[str, Any]:
