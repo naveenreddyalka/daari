@@ -835,6 +835,76 @@ def engine_from_settings(settings: Any) -> GuardrailEngine | None:
     return engine_from_block(getattr(settings, "guardrails", None), settings=settings)
 
 
+# Virtual key / team metadata field naming a `guardrails.profiles` entry (#1548).
+PROFILE_METADATA_FIELD = "guardrail_profile"
+
+
+def profile_engines_from_settings(settings: Any) -> dict[str, GuardrailEngine | None]:
+    """Build one engine per `guardrails.profiles.<name>` (#1548).
+
+    Independent of the global block's `enabled`, so tenants can opt in while
+    the default stays off. A profile with `enabled: false` maps to None: bound
+    tenants are exempt rather than falling back to the global engine.
+    """
+    block = getattr(settings, "guardrails", None)
+    profiles = getattr(block, "profiles", None) or {}
+    return {
+        str(name): engine_from_block(profile, settings=settings)
+        for name, profile in profiles.items()
+    }
+
+
+def profile_name_from_metadata(metadata: Any) -> str | None:
+    if not isinstance(metadata, dict):
+        return None
+    raw = metadata.get(PROFILE_METADATA_FIELD)
+    if not isinstance(raw, str):
+        return None
+    return raw.strip() or None
+
+
+def resolve_profile_name(key_metadata: Any, team_metadata: Any) -> str | None:
+    """Key binding wins over team binding; None means use the global engine."""
+    return profile_name_from_metadata(key_metadata) or profile_name_from_metadata(team_metadata)
+
+
+def validate_profile_name(name: Any, settings: Any) -> str | None:
+    """Normalise a binding; unknown names raise so misconfiguration fails loudly."""
+    text = str(name or "").strip()
+    if not text:
+        return None
+    known = getattr(getattr(settings, "guardrails", None), "profiles", None) or {}
+    if text not in known:
+        declared = ", ".join(sorted(known)) or "none declared"
+        raise ValueError(
+            f"unknown guardrail profile {text!r} (guardrails.profiles: {declared})"
+        )
+    return text
+
+
+def bound_profile_name(request: Any) -> str | None:
+    """Profile the auth layer stamped on ``request.meta`` (key → team)."""
+    meta = getattr(request, "meta", None)
+    name = str(getattr(meta, PROFILE_METADATA_FIELD, None) or "").strip()
+    return name or None
+
+
+def engine_for_request(
+    base: GuardrailEngine | None,
+    profiles: dict[str, GuardrailEngine | None] | None,
+    request: Any,
+) -> GuardrailEngine | None:
+    """Per-request engine: the bound profile when declared, else the global one.
+
+    An unknown profile name keeps the global engine so a renamed profile never
+    silently drops coverage; the router logs the miss once per request.
+    """
+    name = bound_profile_name(request)
+    if name is None or name not in (profiles or {}):
+        return base
+    return (profiles or {})[name]
+
+
 def _rule_from_settings(row: Any) -> GuardrailRule:
     kind = str(getattr(row, "kind", None) or "deny")
     on_error_raw = str(getattr(row, "on_error", None) or "warn").strip().lower()
