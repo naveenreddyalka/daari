@@ -11,40 +11,30 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-11-25)
+## Where daari stands (verified in-tree, 2026-11-25 evening)
 
-**Loop velocity.** Overnight main shipped the whole 405–407 band —
-time-bounded `effective_to` catalog rates with baseline fallback (#2459),
-interleaved reasoning output order on `/v1/responses` (#2460), local-tier
-thinking on chat/Responses/Messages (#2461) — plus the
-`stream_fallback_continue` Grafana panel (#2462) from the midstream band.
-Open bands 474–498 still in flight.
+**Loop velocity.** Morning prd-cycle filed 499–502 (tenant-BYOK breaker,
+`context_management`, LiteLLM 1.111.0 compare floor, overnight fence) and
+merged. Overnight main still owns 405–407 + midstream panel (#2459–#2462).
+Open bands 474–502 still in flight.
 
-**Outward.** **LiteLLM 1.111.0 went STABLE 11-25 01:42 UTC**: per-model
-TPM/RPM limit maps on budgets + customers with v3-limiter enforcement,
-access groups from principal attribute rules, customer portal (beta),
-Rust-path `/v1/messages`, refused-leg billing, transcription billed from
-provider-reported seconds, Claude Code subagent traffic kept off other
-agents' tier pins. **1.108.17 LTS** (11-24) + 1.110.4/1.109.5 backports.
-**1.112.0-rc.1** cut: `--control-plane` managing dataplanes (fleet usage +
-audit sinks), gpt-live-1 WebRTC + billing, opt-in priority queues on
-429/529, and the **credential-scoped cooldown fix (#53431)** — one caller's
-bad key no longer cools a shared deployment. **Portkey 2.34.0/2.34.1**
-(11-24/11-25): MCP OAuth client-credentials `resource` +
-`extra_token_params`, SSRF trusted-host hardening, Bedrock native
-Responses, bundled-pricing fallback. **OpenRouter 11-24 API**: Batches
-results endpoint, BYOK `is_exclusive`, speech `output_delivery`, Responses
-**`context_management`**, guardrail `allow_safety_retention_openai`.
-OpenAI/Anthropic/Kong/Ollama/vLLM/MCP flat past known items.
+**Outward (delta since morning).** Competitors otherwise flat: LiteLLM still
+**1.111.0 GA** + **1.112.0-rc.1** (FOCUS 1.5 schema break + control plane +
+priority queues — hold GA beyond the filed floor); Portkey 2.34.1;
+OpenRouter 11-24 wire still the newest (Batches `/results`, speech
+`output_delivery`, BYOK `is_exclusive`). OpenAI model card reconfirmed:
+**GPT-5.6 Sol promo through 2026-11-30**. Google AI Studio: **Carbon/Argon
+intro $2/$10 through 2026-11-30**, list from Dec 1. Ollama 0.40.18 / vLLM
+0.34 / Kong AI GW 2.3.2 unchanged.
 
-**Inward theme: multi-tenant blast radius + context contract.** Verified:
-a team-BYOK bound key (`request.meta.frontier_api_key`) that 401s records
-`slot.breaker.record_failure()` on the **shared** frontier slot breaker
-(`frontier_pool.py` ~L293–300/–L392; only 429/529 excluded) — three bad
-calls from one tenant open the fleet-shared circuit for everyone (the
-LiteLLM #53431 class, unfixed here). `context_management` has zero
-handling on-box while `compact_to_fit` + `/compact` already exist. Compare
-floor still cites 1.109.1 against a 1.111.0 GA world.
+**Inward theme: promo-window honesty now that `effective_to` ships.**
+Verified 2026-11-25: `resolve_price("gpt-5.6-sol")` → **$5/$30** because
+catalog `effective_to` is still **2026-11-21** — OpenAI invoice is still
+$4/$20 until Nov 30 (~25%/50% overbill). `gemini-4-carbon` /
+`gemini-4-argon` ship Dec-1 list with **no** promo window — Google still
+lists intro $2/$10 through Nov 30 (2× overbill). Speech drops
+`output_delivery`; batches have no `GET …/results`. Morning breaker /
+`context_management` gaps remain open.
 
 ---
 
@@ -52,45 +42,28 @@ floor still cites 1.109.1 against a 1.111.0 GA world.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 499 | Tenant-BYOK auth failures (401/403 on a bound key) must not open the **shared** frontier slot breaker — one tenant's stale key is a cross-tenant DoS today | 4 | 2 | LiteLLM 1.112.0-rc.1 (#53431, rc-only) | Credential source is known on-box per attempt; breaker should gate provider health, not caller mistakes | Filed [#2463](https://github.com/naveenreddyalka/daari/issues/2463) |
-| 500 | Honor `context_management` on `/v1/responses` — OpenRouter 11-24 schema; silently dropped on every leg today | 3 | 2 | OpenRouter /responses | `compact_to_fit` engine + `/compact` already on-box; local legs get real trims, `daari_meta` reports them | Filed [#2464](https://github.com/naveenreddyalka/daari/issues/2464) |
-| 501 | Promote compare floor to **LiteLLM 1.111.0 GA + 1.108.17 LTS** (per-model TPM/RPM, attribute access groups, customer portal) | 2 | 1 | LiteLLM release notes | Parity predates the GA (per-model limits #2240; pin hygiene #2267) — say so with links | Filed [#2465](https://github.com/naveenreddyalka/daari/issues/2465) |
-| 502 | Integration fence for the 11-24/11-25 overnight effective_to + reasoning-order + local-thinking + stream-fallback-panel wave | 2 | 2 | — (testability) | Hermetic cross-door pins for the shipped band | Filed [#2466](https://github.com/naveenreddyalka/daari/issues/2466) |
-| 494 | Ship OpenAI healthcare catalog rates + capabilities (four `*-healthcare` ids; no invented cache-write; no Flex/Batch; Fast 2×; promo ≤2026-12-31) | 4 | 2 | OpenAI pricing / LiteLLM catalog | Day-0 on-box invoice for clinical pins; local tiers absorb cheap loops | Filed [#2453](https://github.com/naveenreddyalka/daari/issues/2453) |
-| 495 | Doctor + docs: PHI/BAA honesty and medical-index web-search requirement for healthcare configs | 3 | 1 | OpenAI Help Center BAA notes | Preflight stops “model id = HIPAA” lies | Filed [#2454](https://github.com/naveenreddyalka/daari/issues/2454) |
-| 496 | Honor `configuration_update` + `additional_tools` on `/v1/responses` — today non-message types are silently dropped | 4 | 2 | OpenAI Responses / Keep-prefix guide | Append-only GPT-6.2 clients keep wire shape through the edge | Filed [#2455](https://github.com/naveenreddyalka/daari/issues/2455) |
-| 497 | Refresh `chat-latest` catalog note for the 2026-11-24 snapshot; steer production pins to GPT-6.2 | 2 | 1 | OpenAI changelog | Honest rolling-alias comment on-box | Filed [#2456](https://github.com/naveenreddyalka/daari/issues/2456) |
-| 498 | Integration fence for the 11-24 night reservation-ops + healthcare follow-through wave | 2 | 2 | — (testability) | Hermetic 402 reservation denial + panel/doctor pins | Filed [#2457](https://github.com/naveenreddyalka/daari/issues/2457) |
-| 491 | Honor `X-Daari-Deadline-Ms` on extractions / moderations / rerank / decisions | 3 | 2 | Kong request timeouts | One deadline arithmetic refuses before frontier spend | Filed [#2447](https://github.com/naveenreddyalka/daari/issues/2447) |
-| 492 | Grafana panel for `daari_server_tool_cost_usd_total{tool}` | 2 | 1 | LiteLLM hosted analytics | Tool fees ≠ tokens; FinOps loop | Filed [#2448](https://github.com/naveenreddyalka/daari/issues/2448) |
-| 493 | Integration fence for the 11-24 evening deadline-modality + tool-fee-metrics wave | 2 | 2 | — (testability) | Hermetic 504 + tool-fee settle | Filed [#2449](https://github.com/naveenreddyalka/daari/issues/2449) |
-| 487 | Pin Claude Opus 4.5 deprecation lifecycle (retire 2027-01-22 → Opus 5.5) | 4 | 1 | Anthropic platform notes | `/v1/models` + doctor show the cutover | Filed [#2439](https://github.com/naveenreddyalka/daari/issues/2439) |
-| 486 | EFS honesty for `models.retention_authorized` | 4 | 2 | Anthropic EFS console | Override is an honest EFS exception | Filed [#2440](https://github.com/naveenreddyalka/daari/issues/2440) |
-| 489 | Prometheus + stats for `zdr_retention_required` refusals | 3 | 1 | LiteLLM spend/guardrail metrics | Graph impossible ZDR+Fable asks | Filed [#2441](https://github.com/naveenreddyalka/daari/issues/2441) |
-| 488 | Promote LiteLLM LTS compare floor to **1.108.16** | 2 | 1 | LiteLLM LTS notes | Honest procurement floor | Filed [#2442](https://github.com/naveenreddyalka/daari/issues/2442) |
-| 490 | Integration fence for Fable param_compat + ZDR retention + Opus/EFS wave | 2 | 2 | — (testability) | Hermetic overnight pins | Filed [#2443](https://github.com/naveenreddyalka/daari/issues/2443) |
-| 484 | Honor `reasoning.exclude` on `/v1/responses` | 3 | 1 | OpenRouter /responses | Same strip as chat (#2433) | Filed [#2434](https://github.com/naveenreddyalka/daari/issues/2434) |
-| 485 | Fence for OCR pages-billing + reasoning-object wave | 2 | 2 | — (testability) | Hermetic proof | Filed [#2435](https://github.com/naveenreddyalka/daari/issues/2435) |
-| 479 | Ship Gemini 4 Neon catalog rates + capabilities + `xhigh` | 4 | 2 | Google AI Studio / LiteLLM | Day-0 ledger match | Filed [#2426](https://github.com/naveenreddyalka/daari/issues/2426) |
-| 480 | Operator dial to omit `X-Daari-*` response headers | 3 | 2 | LiteLLM `include_litellm_headers` | Clean OpenAI-shaped surface | Filed [#2427](https://github.com/naveenreddyalka/daari/issues/2427) |
-| 481 | Bill Priority rates + cached image tokens on image legs | 3 | 2 | LiteLLM 1.112.0-dev.2 | Priority vision matches invoice | Filed [#2428](https://github.com/naveenreddyalka/daari/issues/2428) |
-| 482 | Honor OpenRouter `provider.zdr` / `data_collection` on image/video | 3 | 2 | OpenRouter native | One edge for data-policy | Filed [#2429](https://github.com/naveenreddyalka/daari/issues/2429) |
-| 483 | Fence for MCP secret / Neon / omit-headers / image-priority wave | 2 | 2 | — (testability) | Hermetic proof | Filed [#2430](https://github.com/naveenreddyalka/daari/issues/2430) |
-| 474 | Operator data-policy floor for marketplace legs | 4 | 2 | OpenRouter (reactive) | One on-box floor | Filed [#2418](https://github.com/naveenreddyalka/daari/issues/2418) |
-| 475–478 | Cache-Control; refuse `previous_response_id`; TTS duration; fence | 2–3 | 1–2 | LiteLLM 1.112.0-dev.2 | RFC + loud refuse + duration math | Filed [#2419](https://github.com/naveenreddyalka/daari/issues/2419)–[#2422](https://github.com/naveenreddyalka/daari/issues/2422) |
-| 469–473 | Linked-billing refuses; TTS `input_references`; Extractions BYOK; fence | 2–4 | 1–2 | Anthropic / OpenRouter | Bill-to + voice + tenant Extractions | Filed [#2409](https://github.com/naveenreddyalka/daari/issues/2409)–[#2413](https://github.com/naveenreddyalka/daari/issues/2413) |
-| 464–468 | Server-tool replay; bill-to; Flex wind-down; Ollama facade tools; fence | 2–4 | 1–2 | LiteLLM / Anthropic / Ollama | Wire-shape + facade tool loop | Filed [#2402](https://github.com/naveenreddyalka/daari/issues/2402)–[#2406](https://github.com/naveenreddyalka/daari/issues/2406) |
-| 459–463 | Deferred tools; Sol end **11-30**; Live catalog; exhausted-key; BYOK price fence | 2–4 | 1–3 | OpenRouter / OpenAI / LiteLLM | Agent + FinOps honesty | Filed [#2392](https://github.com/naveenreddyalka/daari/issues/2392)–[#2396](https://github.com/naveenreddyalka/daari/issues/2396) |
-| 454–458 | Fable/Mythos param_compat; 6.2 chat-leg cache; introspect; stream no-dup; fence | 2–5 | 1–2 | LiteLLM / Anthropic | Flagship wire-shape | **454 Shipped** (#2437); open [#2385](https://github.com/naveenreddyalka/daari/issues/2385)–[#2388](https://github.com/naveenreddyalka/daari/issues/2388) |
-| 449–453 | GPT-6.2 param_compat; Ultrafast; store:false; background windows; fence | 2–5 | 1–2 | OpenAI / LiteLLM | 6.2 day-0 + follow-through | **449 Shipped** (#2417); open [#2375](https://github.com/naveenreddyalka/daari/issues/2375)–[#2378](https://github.com/naveenreddyalka/daari/issues/2378) |
-| 444–448 | GPT-6.2 catalog; SEP-3415; long-tool-name fence; speech discovery; fence | 2–4 | 1–3 | OpenAI / MCP | Day-0 catalog + Events | Filed [#2367](https://github.com/naveenreddyalka/daari/issues/2367)–[#2371](https://github.com/naveenreddyalka/daari/issues/2371) |
-| 434–443 | successor_model; zero_retention; overload; Hydrogen; alerts; rate_limited_by; 1.111; fences | 2–4 | 1–3 | LiteLLM / Google | Tenancy + ops dials | Filed [#2346](https://github.com/naveenreddyalka/daari/issues/2346)–[#2363](https://github.com/naveenreddyalka/daari/issues/2363) |
-| 424–433 | Truncated-cache; stream honesty; Responses `incomplete`; vLLM 0.34; 5xx/finish_reason Prom; HF; watermark | 2–4 | 1–3 | OpenAI / Kong / LiteLLM | Terminal + ops honesty | Filed [#2330](https://github.com/naveenreddyalka/daari/issues/2330)–[#2340](https://github.com/naveenreddyalka/daari/issues/2340) |
-| 414–423 | Team BYOK modality + credential attribution + reconcile + binding Prom + auto_caching/residency + LTS + fences | 2–4 | 1–3 | LiteLLM / Portkey / Kong | Tenant credential + cache dials | Filed [#2313](https://github.com/naveenreddyalka/daari/issues/2313)–[#2325](https://github.com/naveenreddyalka/daari/issues/2325) |
-| 409–413 | Midstream tool-call safety + truncation Prom/Grafana | 2–5 | 1–2 | LiteLLM 1.111-dev | Local loops must not double-fire | Grafana panel **Shipped** (#2462); open [#2306](https://github.com/naveenreddyalka/daari/issues/2306)/[#2307](https://github.com/naveenreddyalka/daari/issues/2307) |
-| 405–408 | effective_to promos; Responses order; local thinking; fence | 2–4 | 2–3 | Kong / LiteLLM | Honest ledger + reasoning | **405–407 Shipped** (#2459–#2461); fence open [#2300](https://github.com/naveenreddyalka/daari/issues/2300) |
-| 385–404 | Extractions + OCR + reasoning + ZDR + deadlines + tool-fee ops; MCP cancel / pins / llama.cpp / refused-leg / cost panels | 2–4 | 1–3 | LiteLLM / OpenRouter / Kong / Anthropic | Same-box agent + FinOps | Open [#2269](https://github.com/naveenreddyalka/daari/issues/2269)–[#2291](https://github.com/naveenreddyalka/daari/issues/2291); Shipped #2265–#2268, #2272–#2273, #2398–#2401, #2415–#2416, #2432–#2433, **#2438**, **#2445–#2446**, **#2451–#2452** |
+| 503 | Move `gpt-5.6` / `gpt-5.6-sol` `effective_to` to **2026-11-30** — catalog already bills baseline while OpenAI promo is live | 5 | 1 | OpenAI model card / pricing | Day-accurate on-box ledger; wrong cliff kills savings trust | Filed [#2468](https://github.com/naveenreddyalka/daari/issues/2468) |
+| 504 | Gemini 4 Carbon/Argon intro $2/$10/$0.10 through 2026-11-30 via `effective_to` + Dec-1 baseline — catalog already at list | 4 | 1 | Google AI Studio pricing | Same time-bounded engine as Sol; stop 2× overbill | Filed [#2469](https://github.com/naveenreddyalka/daari/issues/2469) |
+| 505 | Honor speech `output_delivery` (`stream` / `url` via FileStore; ZDR → stream) | 3 | 2 | OpenRouter TTS | Local FileStore URLs, not vendor blob | Filed [#2470](https://github.com/naveenreddyalka/daari/issues/2470) |
+| 506 | `GET /v1/batches/{id}/results` JSONL convenience (OpenRouter 11-24) | 3 | 2 | OpenRouter Batches | Same on-box output_file bytes; one hop for OR SDK | Filed [#2471](https://github.com/naveenreddyalka/daari/issues/2471) |
+| 507 | Integration fence for the 11-25 evening promo-window + speech/batches wave | 2 | 2 | — (testability) | Hermetic FinOps + wire-shape pins | Filed [#2472](https://github.com/naveenreddyalka/daari/issues/2472) |
+| 499 | Tenant-BYOK auth failures must not open the **shared** frontier slot breaker | 4 | 2 | LiteLLM 1.112.0-rc.1 (#53431) | Credential source known on-box | Filed [#2463](https://github.com/naveenreddyalka/daari/issues/2463) |
+| 500 | Honor `context_management` on `/v1/responses` | 3 | 2 | OpenRouter /responses | `compact_to_fit` + `/compact` already on-box | Filed [#2464](https://github.com/naveenreddyalka/daari/issues/2464) |
+| 501 | Promote compare floor to **LiteLLM 1.111.0 GA + 1.108.17 LTS** | 2 | 1 | LiteLLM release notes | Parity predates the GA | Filed [#2465](https://github.com/naveenreddyalka/daari/issues/2465) |
+| 502 | Integration fence for the 11-24/11-25 overnight wave | 2 | 2 | — (testability) | Hermetic cross-door pins | Filed [#2466](https://github.com/naveenreddyalka/daari/issues/2466) |
+| 494–498 | Healthcare catalog; PHI/BAA doctor; `configuration_update`/`additional_tools`; chat-latest note; night fence | 2–4 | 1–2 | OpenAI / Keep-prefix | Clinical pins + Responses item honesty | Filed [#2453](https://github.com/naveenreddyalka/daari/issues/2453)–[#2457](https://github.com/naveenreddyalka/daari/issues/2457) |
+| 491–493 | Deadline on remaining L6 doors; tool-fee Grafana; evening fence | 2–3 | 1–2 | Kong / LiteLLM | One deadline arithmetic + FinOps | Filed [#2447](https://github.com/naveenreddyalka/daari/issues/2447)–[#2449](https://github.com/naveenreddyalka/daari/issues/2449) |
+| 486–490 | Opus 4.5 lifecycle; EFS honesty; zdr_retention Prom; LTS 1.108.16; fence | 2–4 | 1–2 | Anthropic / LiteLLM | Cutover + retention truth | Filed [#2439](https://github.com/naveenreddyalka/daari/issues/2439)–[#2443](https://github.com/naveenreddyalka/daari/issues/2443) |
+| 479–485 | Neon; omit headers; Priority image; image ZDR; fence; reasoning.exclude; OCR fence | 2–4 | 1–2 | Google / LiteLLM / OpenRouter | Catalog + wire-shape | Filed [#2426](https://github.com/naveenreddyalka/daari/issues/2426)–[#2435](https://github.com/naveenreddyalka/daari/issues/2435) |
+| 474–478 | Marketplace data-policy floor; Cache-Control; previous_response_id refuse; TTS duration; fence | 2–4 | 1–2 | OpenRouter / LiteLLM | Policy + duration math | Filed [#2418](https://github.com/naveenreddyalka/daari/issues/2418)–[#2422](https://github.com/naveenreddyalka/daari/issues/2422) |
+| 459–473 | Deferred tools; Sol end; Live; exhausted-key; BYOK fence; linked-billing; TTS refs; Extractions BYOK; facade tools; Flex; fences | 2–4 | 1–3 | OpenRouter / OpenAI / Anthropic | Agent + FinOps honesty | Filed [#2392](https://github.com/naveenreddyalka/daari/issues/2392)–[#2413](https://github.com/naveenreddyalka/daari/issues/2413) |
+| 444–458 | GPT-6.2 / Fable day-0 + param_compat follow-through | 2–5 | 1–2 | OpenAI / LiteLLM / Anthropic | Flagship wire-shape | **449/454 Shipped**; open [#2367](https://github.com/naveenreddyalka/daari/issues/2367)–[#2388](https://github.com/naveenreddyalka/daari/issues/2388) |
+| 405–443 | effective_to; reasoning order; local thinking; midstream; BYOK tenancy; truncation; vLLM; ops dials | 2–5 | 1–3 | LiteLLM / Kong / OpenAI | Honest ledger + ops | **405–407 + midstream panel Shipped**; open through [#2363](https://github.com/naveenreddyalka/daari/issues/2363) |
+| 385–404 | Extractions / OCR / reasoning / ZDR / deadlines / tool-fee / MCP / llama.cpp | 2–4 | 1–3 | LiteLLM / OpenRouter / Kong | Same-box agent + FinOps | Open [#2269](https://github.com/naveenreddyalka/daari/issues/2269)–[#2291](https://github.com/naveenreddyalka/daari/issues/2291); many Shipped |
 | 62–67 | End-user inventory; guardrail profiles; web-ui pagination; nested usage | 4–5 | 2–3 | OpenRouter / LiteLLM / Portkey | Ledger meters; finish the console | Open (agent:working) |
+| 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — needs long session | Open |
+| 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (≥60m session) | Parked |
+| 8 | Full DCR; A2A; Realtime/WS; OpenAI Live; stdio MCP; M365; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM | Demand-triggered | Watch |
 | 19 | Config ownership for `routing.compact_to_fit.*` | 3 | 2 | LiteLLM config ownership | Shipped | Shipped |
 | 20 | Doctor tip when compact_to_fit is enabled | 2 | 1 | — (ops honesty) | Shipped | Shipped |
 | 21 | Hermetic pin: compact_to_fit in config + routing-tiers | 2 | 1 | — (docs regression) | Shipped | Shipped |
@@ -101,104 +74,71 @@ floor still cites 1.109.1 against a 1.111.0 GA world.
 | 26 | Refuse MCP `initialize` when key has no grant | 4 | 1 | LiteLLM initialize 403 | Shipped | Shipped |
 | 27 | Stats for estimated tokens dropped by compact-to-fit | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
 | 28 | Refresh compare-litellm for LiteLLM 1.104 GA | 2 | 1 | LiteLLM release notes | Shipped | Shipped |
-| 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — needs long session | Open |
-| 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (≥60m session) | Parked |
-| 8 | Full DCR; A2A; Realtime/WS; OpenAI Live; stdio MCP; M365; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM | Demand-triggered | Watch |
 
 Watch rows (do not file yet): **1.112.0-rc.1** remainder (control plane,
-gpt-live-1 WebRTC, priority queues on 429/529, Lens, FIPS 140-3 — hold GA;
-501 covers the 1.111.0 GA floor); Portkey 2.34.1 MCP OAuth
-`extra_token_params` (daari's oauth mint already sends scope/audience/
-resource — file only on demand for arbitrary params); OpenRouter Batches
-`GET /batches/{id}/results` + BYOK `is_exclusive` + guardrail
-`allow_safety_retention_openai` (fold with 495-class retention honesty when
-OR guardrail authoring lands); OpenRouter `allow_provisional_providers`;
-Anthropic EFS **webhook relay** (486 is docs/doctor only); MCP next
-**2027-03-30**; Opus 4.8 fast removal **11-30**; Sol promo → $5/$30 on
-**2026-11-30** (460; 405 shipped); Astra/Sol for Law + Rosalind (Trusted
-Access — demand-triggered with row 8 HIPAA BAA); incomplete
-synthetic-stream event (fold 426); semantic-router 1.2.0; Kong OSS 3.9.5 +
-AI GW 2.3.2; vLLM 0.34 remainder; Portkey MCP policies; A2A 1.1 RC; SCIM +
-multi-issuer SSO; Microsoft Web IQ `/v1/search`.
+gpt-live-1 WebRTC, priority queues, Lens, FIPS 140-3, **FOCUS 1.5**
+`ServiceProviderName` export — hold GA; 501 covers the 1.111.0 floor);
+Portkey MCP OAuth `extra_token_params` (mint already sends
+scope/audience/resource); OpenRouter BYOK `is_exclusive` + guardrail
+`allow_safety_retention_openai` (fold with retention honesty); OpenRouter
+`allow_provisional_providers`; Anthropic EFS webhook relay; MCP next
+**2027-03-30**; Opus 4.8 fast removal **11-30** (lifecycle shield shipped);
+Sol promo → baseline on **2026-11-30** (503 fixes the cliff; docs-only
+honesty sibling remains); Astra/Sol for Law + Rosalind (row 8);
+semantic-router / Kong / vLLM / A2A / SCIM / Web IQ — demand-triggered.
 
 Verified fine this run — don't re-audit: per-key-per-model rpm/tpm/rpd/tpd
-already shipped (#1592/#2240 — LiteLLM 1.111 parity predates the GA);
-`prompt_cache_key`/`prompt_cache_options` parsed + forwarded
-(`gateway/sampling.py`); session pins are prefix-hash-guarded (#2267 —
-immune to the litellm subagent pin-bleed class); oauth mint sends
-scope/audience/resource; budget reservation Grafana + doctor tip
-(#2451/#2452); overnight ZDR retention refuse (#2438).
+(#1592/#2240); `prompt_cache_key`/`prompt_cache_options`; session pin
+prefix-hash (#2267); oauth mint scope/audience/resource; budget reservation
+Grafana + doctor (#2451/#2452); ZDR retention refuse (#2438); Opus 4.8
+speed lifecycle shield (#2053); morning 499–502 filing still accurate.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Billing + tenancy + data-policy + lifecycle + healthcare truth** —
-   **tenant-BYOK breaker scoping (499)**; healthcare catalog (494) + PHI/BAA
-   honesty (495); Opus 4.5 lifecycle (487); EFS honesty (486); Neon (479);
-   Priority/cached-image (481); image ZDR (482); marketplace floor (474); TTS
-   duration (477); linked-billing (469–470); Extractions BYOK (472); Flex
-   wind-down (466); Sol → 11-30 (460); Live catalog (461); zero_retention
-   (435); deadline on remaining L6 doors (491). effective_to shipped.
-2. **Honest terminal outcomes + frontier wire-shape** —
-   **`context_management` (500)**; `configuration_update` / `additional_tools`
-   (496); reasoning.exclude on /v1/responses (484); previous_response_id refuse
-   (476); store:false developer (451); Responses `incomplete` (426); truncated
-   cache (424); stream honesty (425); overload envelopes (436). GPT-6.2 + Fable
-   param_compat + Responses output order shipped.
-3. **Nothing goes stale quietly** — **compare floor 1.111.0 GA + 1.108.17 LTS
-   (501)**; chat-latest 11-24 note (497); zdr_retention Prom (489); LTS
-   1.108.16 compare (488); tool-fee Grafana (492); omit X-Daari headers (480);
-   Cache-Control (475); exhausted-key discovery (462); performance alerts
-   (440); `rate_limited_by` (441); deprecation exposure (434); 5xx /
-   auto_caching doctor+Prom (429–430, 419–420).
-4. **Agent-protocol + tool-loop + voice fidelity** — TTS `input_references`
-   (471); Ollama facade tools (467); deferred tools (459); MCP Events (445).
-   Local thinking + reasoning order shipped.
-5. **Local engine floor + discovery + honest compare + fences** — speech
-   discovery (447); Live catalog (461); 1.111/1.112 watch (442); vLLM 0.34
-   (427); fences through **502**; then 62–67.
+1. **Billing truth this week** — **Sol/5.6 `effective_to` → Nov 30 (503)**;
+   **Carbon/Argon intro window (504)**; healthcare catalog (494); Opus 4.5
+   lifecycle (487); Neon (479); Priority/cached-image (481); marketplace
+   floor (474); Sol docs honesty sibling; Flex wind-down (466).
+2. **Tenancy + data-policy blast radius** — tenant-BYOK breaker (499); EFS
+   honesty (486); image ZDR (482); Extractions BYOK (472); zero_retention
+   (435); deadline on remaining L6 doors (491).
+3. **Frontier wire-shape** — `context_management` (500); speech
+   `output_delivery` (505); batches `/results` (506);
+   `configuration_update`/`additional_tools` (496); reasoning.exclude (484);
+   previous_response_id refuse (476); Responses `incomplete` (426).
+4. **Nothing goes stale quietly** — compare 1.111.0 floor (501); chat-latest
+   note (497); zdr_retention Prom (489); tool-fee Grafana (492); omit
+   headers (480); Cache-Control (475); performance alerts (440).
+5. **Agent-protocol + local floor + fences** — TTS refs (471); facade tools
+   (467); deferred tools (459); MCP Events (445); vLLM 0.34 (427); fences
+   through **507**; then 62–67.
 
 ---
 
 ## Changelog
 
-- **2026-11-25 (LiteLLM 1.111.0 GA; tenant-BYOK breaker blast radius;
-  sibling unpark #4)** — Unparked the night PR first (pinned rows 19–28
-  deleted outright this time; restored verbatim, merged main, auto-merge
-  landed it). Outward: LiteLLM 1.111.0 STABLE + 1.108.17 LTS +
-  1.112.0-rc.1 (control plane, #53431 credential cooldown fix); Portkey
-  2.34.0/2.34.1; OpenRouter Batches results + `context_management` +
-  `is_exclusive`. Inward: shared-breaker poisoning by tenant 401s verified;
-  `context_management` unhandled; compare floor stale. Filed: breaker
-  scoping (499); context_management (500); compare 1.111.0 floor (501);
-  overnight fence (502). 405–407 + midstream panel Shipped (#2459–#2462).
+- **2026-11-25 evening (promo-window honesty + OpenRouter speech/batches)** —
+  Outward flat vs morning (LiteLLM 1.111.0 / 1.112.0-rc.1; Portkey 2.34.1;
+  OR 11-24). Inward: after `effective_to` shipped, Sol/5.6 cliff still at
+  Nov 21 while OpenAI promo runs through Nov 30; Carbon/Argon catalog at
+  Dec-1 list with no intro window; speech drops `output_delivery`; no
+  batches `/results`. Filed: Sol effective_to fix (503); Carbon/Argon
+  intro window (504); speech output_delivery (505); batches results (506);
+  evening fence (507).
 
-- **2026-11-24 night (OpenAI healthcare + Responses items; reservation ops)** —
-  Outward: OpenAI healthcare model configurations + chat-latest snapshot
-  refresh; GPT-6.2 keep-prefix `configuration_update` / `additional_tools`
-  still dropped on-box. Competitors otherwise flat vs pm (LiteLLM 1.110.3,
-  Ollama 0.40.18). Inward: audited #2451/#2452; longest-prefix invents
-  healthcare cache-writes; no BAA doctor tip. Filed: healthcare catalog (494);
-  PHI/BAA honesty (495); configuration_update/additional_tools (496);
-  chat-latest note (497); night fence (498). 385–404 band +#2451/#2452 Shipped.
+- **2026-11-25 (LiteLLM 1.111.0 GA; tenant-BYOK breaker blast radius)** —
+  Filed breaker scoping (499); context_management (500); compare 1.111.0
+  floor (501); overnight fence (502). 405–407 + midstream panel Shipped.
 
-- **2026-11-24 pm (deadline doors + tool-fee panel; sibling unpark)** —
-  Unparked morning PR. LiteLLM 1.110.3/1.109.4; Ollama 0.40.18. Filed
-  deadline on remaining L6 doors (491); tool-fee panel (492); evening fence
-  (493). #2445/#2446 Shipped.
+- **2026-11-24 night → 11-14** — Condensed: healthcare + Responses items
+  (494–498); deadline/tool-fee (491–493); Opus/EFS/ZDR (486–490);
+  Neon/omit-headers/Priority image (479–485); OR data-policy + TTS
+  (474–478); linked billing + Flex + facade (464–473); Fable/6.2/Live
+  (444–463); 1.110/Hydrogen/alerts (434–443); truncation + vLLM
+  (424–433); BYOK + midstream + thinking (405–423).
 
-- **2026-11-24 (Anthropic EFS + Opus 4.5 + LiteLLM 1.108.16)** — Filed Opus
-  lifecycle (487); EFS doctor/docs (486); zdr_retention Prom (489); LTS
-  1.108.16 (488); overnight fence (490). 454 + #2284 Shipped.
-
-- **2026-11-23 → 11-14** — Condensed: reasoning.exclude (484–485); Neon /
-  omit headers / Priority image / image ZDR (479–483); OR data-policy +
-  Cache-Control + TTS (474–478); linked billing + Flex + facade tools
-  (464–473); Fable/6.2/deferred/Live (454–463); GPT-6.2 day-0 (444–453);
-  1.110/Hydrogen/alerts (434–443); truncation + vLLM (424–433); BYOK +
-  midstream + thinking (405–423).
-
-- **2026-11-13 → 10-28** — Condensed: Extractions / refused-leg / llama.cpp
-  v1.0; CMA + 1.108.x; coding-router / Gemini 4 / Kong 2.3.0 through Apache
-  2.0 and this PRD's creation. #2141 needs human close.
+- **2026-11-13 → 10-28** — Condensed: Extractions / refused-leg /
+  llama.cpp; CMA + 1.108.x; coding-router / Gemini 4 / Kong through
+  Apache 2.0 and this PRD's creation.
