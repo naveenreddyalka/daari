@@ -370,6 +370,9 @@ class Metrics:
     cost_output_usd: float = 0.0
     # Server-side tool fee USD by tool type (pricing.server_tools keys) (#2288).
     server_tool_cost_usd: dict[str, float] = field(default_factory=dict)
+    # source:outcome → count for team/key BYOK frontier bindings (#2316).
+    # Fixed enums (key|team|- × signed|pin_unmatched|unresolvable) — no tenant ids.
+    frontier_binding: dict[str, int] = field(default_factory=dict)
     # Opt-in per-team request/error counters (#1997). Off → no team dims.
     team_metrics: bool = False
     team_allowlist: frozenset[str] = field(default_factory=frozenset)
@@ -870,6 +873,22 @@ class Metrics:
                     self.server_tool_cost_usd.get(name, 0.0) + usd
                 )
 
+    def record_frontier_binding(self, *, outcome: str, source: str | None) -> None:
+        """Team/key BYOK binding consumed at L6: signed, pin_unmatched, unresolvable (#2316).
+
+        ``source`` is the layer that supplied the binding side (``key`` | ``team``);
+        anything else buckets as ``-``. Unknown outcomes bucket as ``unresolvable``.
+        """
+        outcome_label = (outcome or "").strip().lower()
+        if outcome_label not in {"signed", "pin_unmatched", "unresolvable"}:
+            outcome_label = "unresolvable"
+        source_label = (source or "").strip().lower()
+        if source_label not in {"key", "team"}:
+            source_label = "-"
+        key = f"{source_label}:{outcome_label}"
+        with self._lock:
+            self.frontier_binding[key] = self.frontier_binding.get(key, 0) + 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -947,6 +966,7 @@ class Metrics:
                 "cost_input_usd": float(self.cost_input_usd),
                 "cost_output_usd": float(self.cost_output_usd),
                 "server_tool_cost_usd": dict(sorted(self.server_tool_cost_usd.items())),
+                "frontier_binding": dict(sorted(self.frontier_binding.items())),
                 "decision_classifier": dict(self.decision_classifier),
                 "decision_classifier_latency": {
                     "count": self.decision_classifier_latency.count,

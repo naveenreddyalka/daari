@@ -29,8 +29,21 @@ from daari.router.circuit_breaker import CircuitBreaker, counts_as_hard_provider
 from daari.router.retry import RetryPolicy, is_retryable, resolve_upstream_policy, status_of
 from daari.router.frontier import FrontierExecutor
 from daari.router.http_pool import pool_limits_from_settings
-from daari.auth.frontier_binding import FrontierBindingError, resolve_bound_key
+from daari.auth.frontier_binding import (
+    FrontierBindingError,
+    record_frontier_binding,
+    resolve_bound_key,
+)
 from daari.security.secret_refs import SecretRefError, current_secret
+
+
+def _pool_metrics(slots: list[ProviderSlot]) -> Any:
+    """Shared Metrics sink: router stamps the same instance on every slot executor."""
+    for slot in slots:
+        metrics = getattr(getattr(slot, "executor", None), "metrics", None)
+        if metrics is not None:
+            return metrics
+    return None
 
 
 def _slots_for_request(request: InternalRequest, slots: list[ProviderSlot]) -> list[ProviderSlot]:
@@ -41,6 +54,11 @@ def _slots_for_request(request: InternalRequest, slots: list[ProviderSlot]) -> l
     wanted = str(pin).strip()
     matched = [slot for slot in slots if slot.id == wanted]
     if not matched:
+        record_frontier_binding(
+            _pool_metrics(slots),
+            outcome="pin_unmatched",
+            source=getattr(request.meta, "frontier_pool_source", None),
+        )
         raise FrontierBindingError(
             f"frontier_pool {wanted!r} is not a configured provider slot",
             status_code=502,
@@ -52,7 +70,15 @@ def _key_for_slot(slot: ProviderSlot, request: InternalRequest) -> str | None:
     """Resolve per-attempt key; team/key BYOK overrides slot rotation (#2216)."""
     bound = getattr(request.meta, "frontier_api_key", None)
     if bound:
-        return resolve_bound_key(bound)
+        metrics = getattr(slot.executor, "metrics", None)
+        source = getattr(request.meta, "frontier_api_key_source", None)
+        try:
+            key = resolve_bound_key(bound)
+        except FrontierBindingError:
+            record_frontier_binding(metrics, outcome="unresolvable", source=source)
+            raise
+        record_frontier_binding(metrics, outcome="signed", source=source)
+        return key
     return slot.pick_key()
 
 

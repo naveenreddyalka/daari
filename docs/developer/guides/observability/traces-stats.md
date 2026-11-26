@@ -49,6 +49,14 @@ deny when `server.virtual_keys.agent_access_default_deny` fail-closed applies
 because the virtual key (and team) has no agent grant. Flag-off, master key,
 and granted keys do not increment it. The Prometheus counterpart is
 `daari_agent_access_denied_total` (no-op when `observability.prometheus=false`).
+`frontier_binding` maps `"<source>:<outcome>"` → count for team/key BYOK
+frontier bindings consumed at L6: `source` is `key` or `team` (whichever
+layer supplied that binding side; key wins), `outcome` is `signed` (an L6
+attempt signed with the bound credential), `pin_unmatched` (`frontier_pool`
+names no configured slot → 502), or `unresolvable` (`secret://` ref failed
+or resolved empty → 502). Global-key traffic never increments; the map is
+empty until the first bound request. The Prometheus counterpart is
+`daari_frontier_binding_total{source,outcome}`.
 
 ## Retention
 

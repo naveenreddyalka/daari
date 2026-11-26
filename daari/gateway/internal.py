@@ -146,6 +146,9 @@ class RequestMeta(BaseModel):
     frontier_api_key: str | None = None
     # Optional named frontier.providers slot id for this tenant (#2216).
     frontier_pool: str | None = None
+    # Which layer supplied each binding side (key | team) for outcome counters (#2316).
+    frontier_api_key_source: str | None = None
+    frontier_pool_source: str | None = None
 
 
 class InternalRequest(BaseModel):
