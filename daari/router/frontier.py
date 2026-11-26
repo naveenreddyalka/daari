@@ -483,6 +483,7 @@ class FrontierExecutor:
             stream=stream,
             prompt_cache=self.prompt_cache,
             auto_caching=self.auto_caching,
+            metrics=self.metrics,
         )
         # Bridge OpenAI reasoning_effort into param_compat for Claude 5.5 none→
         # thinking disabled (#2188). Stripped again after compat (not an Anthropic field).
