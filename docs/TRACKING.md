@@ -9604,6 +9604,22 @@ fallback continue (midstream)**
 opt-in `routing.stream_fallback_continue` and distinguishes ordinary tier
 fallback. Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Hot-reload Settings from config.yaml ([#1234](https://github.com/naveenreddyalka/daari/issues/1234))
+
+<!-- tracking:#1234 -->
+**Status:** Done (2026-11-25). `POST /v1/daari/reload-config` (admin /
+master-key gate shared with `PATCH /v1/daari/config`) re-reads
+`config.yaml` + profile + env, live-applies the safe editor subset through
+the shared `apply_live_config` path, and returns `{ok, changed_keys,
+requires_restart}`; unsafe keys (bind, TLS, backends, stores) are reported,
+never swapped. Invalid YAML / schema / `secret://` failures → **400** with
+prior settings kept. Clears ephemeral PATCH overrides, records
+`config.reload` audit. Unix `SIGHUP` on `daari serve` runs the same path
+(`server.sighup_reload`, default on; no-op on Windows / non-main-thread
+loops); `serve` re-applies CLI flags on reload. Covered by
+`tests/unit/test_config_hot_reload.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ### Named guardrail profiles bindable per key/team ([#1548](https://github.com/naveenreddyalka/daari/issues/1548))
 
 <!-- tracking:#1548 -->
@@ -9634,6 +9650,14 @@ returns 410. New `models.lifecycle_as_of` operator clock (YYYY-MM-DD) for
 staged cutovers / hermetic tests. Doctor `model_lifecycle` tip names
 shutdown + `migrate_to`. Docs: config, doctor-health, compare-litellm.
 Covered by `tests/unit/test_opus_45_lifecycle.py`.
+### Gemini 4 Carbon / Argon intro window through 2026-11-30 ([#2469](https://github.com/naveenreddyalka/daari/issues/2469))
+
+<!-- tracking:#2469 -->
+**Status:** Done (2026-11-25). `gemini-4-carbon` / `gemini-4-argon` ship
+the introductory $2/$10 (cached $0.10) with `effective_to: 2026-12-01` and
+a `baseline` of list $4/$20 (cached $0.20), so turns before Dec 1 UTC no
+longer bill 2× list. `models/`-prefixed ids resolve the same window. Covered
+by `tests/unit/test_pricing_effective_to.py`.
 
 ### Cost-true multi_agent nested usage per declared subagent model ([#1553](https://github.com/naveenreddyalka/daari/issues/1553))
 
