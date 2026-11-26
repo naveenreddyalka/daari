@@ -9624,6 +9624,22 @@ id=tool,tool`; `server_tools` counts as an MCP grant for
 `tests/unit/test_messages_server_side_mcp.py`, `tests/unit/test_virtual_keys.py`,
 `tests/unit/test_mcp_server_tools_docs.py`.
 
+### Hot-reload Settings from config.yaml ([#1234](https://github.com/naveenreddyalka/daari/issues/1234))
+
+<!-- tracking:#1234 -->
+**Status:** Done (2026-11-25). `POST /v1/daari/reload-config` (admin /
+master-key gate shared with `PATCH /v1/daari/config`) re-reads
+`config.yaml` + profile + env, live-applies the safe editor subset through
+the shared `apply_live_config` path, and returns `{ok, changed_keys,
+requires_restart}`; unsafe keys (bind, TLS, backends, stores) are reported,
+never swapped. Invalid YAML / schema / `secret://` failures → **400** with
+prior settings kept. Clears ephemeral PATCH overrides, records
+`config.reload` audit. Unix `SIGHUP` on `daari serve` runs the same path
+(`server.sighup_reload`, default on; no-op on Windows / non-main-thread
+loops); `serve` re-applies CLI flags on reload. Covered by
+`tests/unit/test_config_hot_reload.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ### Named guardrail profiles bindable per key/team ([#1548](https://github.com/naveenreddyalka/daari/issues/1548))
 
 <!-- tracking:#1548 -->
