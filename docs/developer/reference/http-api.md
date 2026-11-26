@@ -47,6 +47,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/v1/daari/mcp/activity` | Daari Mcp Activity List |
 | `POST` | `/v1/daari/mcp/activity/{request_id}/abort` | Daari Mcp Activity Abort |
 | `POST` | `/v1/daari/reload-caches` | Daari Reload Caches |
+| `POST` | `/v1/daari/reload-config` | Daari Reload Config |
 | `GET` | `/v1/daari/report` | Daari Report |
 | `GET` | `/v1/daari/route/preview` | Daari Route Preview Get |
 | `POST` | `/v1/daari/route/preview` | Daari Route Preview Post |
@@ -112,6 +113,10 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 `GET` / `PATCH /v1/daari/config` (when `observability.config_editor` is on) expose per-field `ownership` (`source` / `editable` / `diverged`) for the safe subset, including `routing.decision_classifier.*`, `routing.compact_to_fit.*`, `routing.signal_overrides` (full list replacement), `routing.virtual_models` (full map replacement), `routing.virtual_model_latency_slo_ms` (full map replacement; keys must exist in `virtual_models`; ignored by selection in ordered mode), `routing.baggage_to_tags`, `systemone.base_url`, `observability.structured_json_logs`, `observability.team_metrics`, `observability.otel_include_request_tags`, `guardrails.log_blocked_content`, `security.offline_mode`, `security.offline_allow_hosts`, and MCP knobs (`integrations.mcp_oauth.local_as` / `protected_resource`, `integrations.mcp_aggregate_egress.enabled`, `integrations.mcp_registry.enabled`, `integrations.mcp_policy.require_key_access_defined`, `integrations.mcp_servers` as `{id, rpm, tpm}` ceiling rows). Secrets such as `integrations.mcp_oauth.signing_secret`, `security.at_rest_key`, and MCP server tokens stay non-editable and are omitted from the payload.
 
 **Auth:** With SSO off and a master key set, `PATCH` (and other admin surfaces) require the master key — virtual keys get **403**. `GET` keeps viewer-style read access for virtual keys (safe subset only). With SSO on, role gates apply (`analyst` for GET, `admin_min_role` for PATCH). With no master key (sandbox hatch), writes stay open; `daari doctor` warns that the config editor is ungoverned.
+
+## Config reload
+
+`POST /v1/daari/reload-config` (admin / master key; same gate as `PATCH /v1/daari/config` and `reload-caches`) re-reads `~/.daari/config.yaml` (plus profile and `DAARI_*` env layers) without a restart. The safe live-tune subset above is applied in place and listed in `changed_keys`; any other key that differs on disk (listen bind, TLS, backends, stores, …) is left untouched and listed in `requires_restart`. Response: `{ok, trigger, path, changed_keys, requires_restart}`. Invalid YAML, a failed `secret://` ref, or a value the schema rejects returns **400** and keeps the previous settings. A successful reload clears runtime-only overrides from earlier ephemeral `PATCH` calls (the file wins) and records a `config.reload` audit row. On Unix, `SIGHUP` to the `daari serve` process triggers the same path (`server.sighup_reload`, default on; no-op on Windows). In-flight requests are never dropped.
 
 ## Traces compact_to_fit
 
