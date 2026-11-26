@@ -125,6 +125,34 @@ def _fake_runner(issues, prs):
     return runner
 
 
+def test_fetch_issues_walks_every_page_so_newest_p1_is_visible():
+    """Regression: 143 open auto-dev issues, both P1s past the first 100-row page."""
+    module = _load_module()
+    page_one = [_issue(n, created=f"2026-09-{(n % 28) + 1:02d}T00:00:00Z") for n in range(1, 101)]
+    page_two = [_issue(2469, labels=("auto-dev", "P1"), created="2026-11-25T00:00:00Z")]
+    calls: list[list[str]] = []
+
+    def runner(args):
+        calls.append(args)
+        joined = " ".join(args)
+        if "pullRequests" in joined:
+            return json.dumps(
+                {"data": {"repository": {"pullRequests": {"nodes": [], "pageInfo": {"hasNextPage": False}}}}}
+            )
+        if any(arg.startswith("after=") for arg in args):
+            payload = {"nodes": page_two, "pageInfo": {"hasNextPage": False, "endCursor": None}}
+        else:
+            payload = {"nodes": page_one, "pageInfo": {"hasNextPage": True, "endCursor": "cursor-1"}}
+        return json.dumps({"data": {"repository": {"issues": payload}}})
+
+    issues = module.fetch_issues(runner=runner)
+    assert len(issues) == 101
+    issue_calls = [c for c in calls if "pullRequests" not in " ".join(c)]
+    assert len(issue_calls) == 2
+    assert "after=cursor-1" in issue_calls[1]
+    assert module.pick(issues, [])["number"] == 2469
+
+
 def test_cli_pick_prints_issue_number(capsys):
     module = _load_module()
     runner = _fake_runner([_issue(70, labels=("auto-dev", "P1"))], [])
