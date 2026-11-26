@@ -170,6 +170,7 @@ def run_doctor(
     body_cap_tip = _check_body_cap_below_provider(cfg)
     if body_cap_tip is not None:
         results.append(body_cap_tip)
+    results.append(_check_frontier_auto_caching(cfg))
     results.append(_check_model_lifecycle(cfg))
     results.append(_check_anthropic_speed_lifecycle(cfg))
     zdr_retention_tip = _check_zdr_retention_required(cfg)
@@ -928,6 +929,58 @@ def _check_body_cap_below_provider(settings: Settings) -> CheckResult | None:
             f"(raised 2026-10-28); BYOK clients may 413 here first. Raise via "
             f"DAARI_SERVER__MAX_BODY_BYTES on gateway-only hosts, or keep the "
             f"tight default when co-hosting local models"
+        ),
+        optional=True,
+    )
+
+
+def _anthropic_l6_slot_configured(settings: Settings) -> bool:
+    """True when any L6 slot is sent native Anthropic Messages payloads (#2321).
+
+    Mirrors ``build_frontier_pool``: pool entries are keyed by ``id`` (the
+    executor's ``provider``), so an ``id`` of ``anthropic``/``claude`` or an
+    ``anthropic.com`` ``base_url`` counts; the scalar shorthand uses
+    ``frontier.provider``.
+    """
+    from daari.router.anthropic_messages import infer_frontier_kind
+
+    frontier = settings.frontier
+    providers = list(getattr(frontier, "providers", None) or [])
+    if not providers:
+        return infer_frontier_kind(frontier.provider, frontier.base_url) == "anthropic"
+    for entry in providers:
+        provider = str(getattr(entry, "id", "") or getattr(entry, "provider", "") or "")
+        base_url = str(getattr(entry, "base_url", "") or "")
+        if infer_frontier_kind(provider, base_url) == "anthropic":
+            return True
+    return False
+
+
+def _check_frontier_auto_caching(settings: Settings) -> CheckResult:
+    """Tip when frontier.auto_caching is on but no L6 slot is Anthropic-shaped (#2321)."""
+    enabled = bool(getattr(settings.frontier, "auto_caching", False))
+    if not enabled:
+        return CheckResult(
+            name="frontier_auto_caching",
+            ok=True,
+            detail="frontier.auto_caching=false",
+            optional=True,
+        )
+    if _anthropic_l6_slot_configured(settings):
+        return CheckResult(
+            name="frontier_auto_caching",
+            ok=True,
+            detail="frontier.auto_caching with an Anthropic L6 slot configured",
+            optional=True,
+        )
+    return CheckResult(
+        name="frontier_auto_caching",
+        ok=False,
+        detail=(
+            "frontier.auto_caching=true but no Anthropic-shaped L6 slot is "
+            "configured (provider/id anthropic or claude, or an anthropic.com "
+            "base_url) — the top-level cache_control inject is a no-op on every "
+            "hop; add an Anthropic slot to frontier.providers or turn the flag off"
         ),
         optional=True,
     )
