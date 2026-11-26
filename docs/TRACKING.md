@@ -9707,6 +9707,20 @@ a `baseline` of list $4/$20 (cached $0.20), so turns before Dec 1 UTC no
 longer bill 2× list. `models/`-prefixed ids resolve the same window. Covered
 by `tests/unit/test_pricing_effective_to.py`.
 
+### Team/key BYOK signs modality + passthrough L6 doors ([#2313](https://github.com/naveenreddyalka/daari/issues/2313))
+
+<!-- tracking:#2313 -->
+**Status:** Done (2026-11-25). `resolve_l6_targets()` takes a `FrontierBinding`
+(`frontier_binding_from_request()` derives it from auth claims with the same
+key-over-team precedence as chat): a bound `frontier_api_key` replaces
+`slot.pick_key()`, a bound `frontier_pool` filters to the named slot, and an
+unknown pin or unresolvable ref raises `FrontierBindingError`, which images
+(generations/edits/variations), ASR frontier fallback, OCR, moderations,
+rerank, and decisions surface as 502 `frontier_binding_error` — never a silent
+fallback to the global key. Unbound requests are byte-for-byte unchanged.
+Extractions (#2412) can reuse the same helper. Docs: virtual-keys guide.
+Covered by `tests/unit/test_team_frontier_byok_doors.py`.
+
 ### Observability: Prometheus and stats counters for Responses truncation auto and rejected ([#2306](https://github.com/naveenreddyalka/daari/issues/2306))
 
 <!-- tracking:#2306 -->
