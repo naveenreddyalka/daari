@@ -44,6 +44,20 @@ def report_markdown(payload: dict[str, Any], *, days: int = 7) -> str:
     lines.append(f"**Estimated saved:** ${totals.get('estimated_saved_usd', 0.0):.4f}")
     lines.append("")
 
+    credential_spend = payload.get("frontier_credential_spend") or []
+    if credential_spend:
+        lines.append("## Frontier spend by credential")
+        lines.append("")
+        lines.append("| credential | slot | requests | cost $ |")
+        lines.append("| --- | --- | ---: | ---: |")
+        for row in credential_spend:
+            lines.append(
+                f"| {row.get('credential_source') or '(unknown)'} |"
+                f" {row.get('frontier_slot_id') or '(none)'} |"
+                f" {int(row.get('requests', 0))} | {float(row.get('cost_usd', 0.0)):.4f} |"
+            )
+        lines.append("")
+
     quotas = payload.get("request_quotas") or []
     if quotas:
         lines.append("## Request quotas")
