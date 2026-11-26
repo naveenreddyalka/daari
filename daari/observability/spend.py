@@ -39,6 +39,8 @@ _COLUMNS = (
     "cache_hit",
     "usage_speed",
     "service_tier",
+    "credential_source",
+    "frontier_slot_id",
 )
 
 EXPORT_FIELDS = (
@@ -61,6 +63,8 @@ EXPORT_FIELDS = (
     "cache_hit",
     "usage_speed",
     "service_tier",
+    "credential_source",
+    "frontier_slot_id",
 )
 
 GROUP_BY_DIMS = (
@@ -71,6 +75,8 @@ GROUP_BY_DIMS = (
     "tier",
     "usage_speed",
     "service_tier",
+    "credential_source",
+    "frontier_slot_id",
 )
 _GROUP_BY_COLUMNS = {
     "model": "model",
@@ -80,6 +86,8 @@ _GROUP_BY_COLUMNS = {
     "tier": "tier",
     "usage_speed": "usage_speed",
     "service_tier": "service_tier",
+    "credential_source": "credential_source",
+    "frontier_slot_id": "frontier_slot_id",
 }
 
 _SQLITE_SCHEMA = """
@@ -103,7 +111,8 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     cache_hit INTEGER NOT NULL DEFAULT 0,
     usage_speed TEXT NOT NULL DEFAULT '',
     service_tier TEXT NOT NULL DEFAULT '',
-    credential_source TEXT NOT NULL DEFAULT ''
+    credential_source TEXT NOT NULL DEFAULT '',
+    frontier_slot_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_spend_requests_ts ON spend_requests (ts);
 CREATE INDEX IF NOT EXISTS idx_spend_requests_key ON spend_requests (key_id);
@@ -131,7 +140,8 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     cache_hit INTEGER NOT NULL DEFAULT 0,
     usage_speed TEXT NOT NULL DEFAULT '',
     service_tier TEXT NOT NULL DEFAULT '',
-    credential_source TEXT NOT NULL DEFAULT ''
+    credential_source TEXT NOT NULL DEFAULT '',
+    frontier_slot_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_spend_requests_ts ON spend_requests (ts);
 CREATE INDEX IF NOT EXISTS idx_spend_requests_key ON spend_requests (key_id);
@@ -168,15 +178,20 @@ _PG_SPEND_SERVICE_TIER_MIGRATE = (
     "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS "
     "service_tier TEXT NOT NULL DEFAULT ''"
 )
-# Which frontier credential signed the row (#2315): global | team | key;
-# empty for non-frontier rows and rows written before the column existed.
-CREDENTIAL_SOURCES = ("global", "team", "key")
+# Which credential signed L6 (global | team | key) + winning slot id (#2314).
 _SPEND_CREDENTIAL_SOURCE_MIGRATE = (
     "ALTER TABLE spend_requests ADD COLUMN credential_source TEXT NOT NULL DEFAULT ''"
 )
 _PG_SPEND_CREDENTIAL_SOURCE_MIGRATE = (
     "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS "
     "credential_source TEXT NOT NULL DEFAULT ''"
+)
+_SPEND_FRONTIER_SLOT_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN frontier_slot_id TEXT NOT NULL DEFAULT ''"
+)
+_PG_SPEND_FRONTIER_SLOT_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS "
+    "frontier_slot_id TEXT NOT NULL DEFAULT ''"
 )
 
 
@@ -200,8 +215,10 @@ class SpendContext:
     cached_tokens: int = 0
     cache_write_tokens: int = 0
     cache_ttl: str | None = None
-    # team | key when a BYOK binding signed L6; empty means the global key (#2315).
+    # Signing credential (global | team | key) and frontier slot id, stamped
+    # by the frontier pool when a slot wins (#2314). Empty off L6.
     credential_source: str = ""
+    frontier_slot_id: str = ""
 
 
 _spend_ctx: ContextVar[SpendContext | None] = ContextVar("daari_spend_ctx", default=None)
@@ -276,14 +293,6 @@ def compute_request_usd(
     return 0.0, round(max(0.0, avoided), 8)
 
 
-def billed_credential_source(*, tier: str, bound_source: str) -> str:
-    """``global`` / ``team`` / ``key`` for frontier rows; empty otherwise (#2315)."""
-    if (tier or "").upper() != FRONTIER_TIER:
-        return ""
-    source = (bound_source or "").strip().lower()
-    return source if source in CREDENTIAL_SOURCES else "global"
-
-
 def export_dict(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "timestamp": row["ts"],
@@ -305,6 +314,8 @@ def export_dict(row: dict[str, Any]) -> dict[str, Any]:
         "cache_hit": bool(row["cache_hit"]),
         "usage_speed": row.get("usage_speed") or "",
         "service_tier": row.get("service_tier") or "",
+        "credential_source": row.get("credential_source") or "",
+        "frontier_slot_id": row.get("frontier_slot_id") or "",
     }
 
 
@@ -441,6 +452,8 @@ class SpendLedger:
             conn.execute(_SPEND_SERVICE_TIER_MIGRATE)
         if columns and "credential_source" not in columns:
             conn.execute(_SPEND_CREDENTIAL_SOURCE_MIGRATE)
+        if columns and "frontier_slot_id" not in columns:
+            conn.execute(_SPEND_FRONTIER_SLOT_MIGRATE)
         if columns:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_spend_requests_user ON spend_requests (user_id)"
@@ -475,6 +488,7 @@ class SpendLedger:
         usage_speed: str = "",
         service_tier: str = "",
         credential_source: str = "",
+        frontier_slot_id: str = "",
     ) -> None:
         if not self.enabled:
             return
@@ -486,8 +500,8 @@ class SpendLedger:
                         ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,
                         input_tokens, output_tokens, cached_tokens, cache_write_tokens,
                         cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier,
-                        credential_source
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        credential_source, frontier_slot_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         ts or _now_iso(),
@@ -509,6 +523,7 @@ class SpendLedger:
                         usage_speed or "",
                         service_tier or "",
                         credential_source or "",
+                        frontier_slot_id or "",
                     ),
                 )
         except Exception:
@@ -553,10 +568,6 @@ class SpendLedger:
         user = kwargs.get("user_id")
         if user is None:
             user = bound.user_id
-        credential_source = billed_credential_source(
-            tier=str(kwargs.get("tier") or ""),
-            bound_source=getattr(bound, "credential_source", "") or "",
-        )
         self.record(
             ts=kwargs.get("ts"),
             request_id=bound.request_id or str(kwargs.get("request_id") or ""),
@@ -576,7 +587,12 @@ class SpendLedger:
             cache_hit=bool(kwargs.get("cache_hit")),
             usage_speed=str(getattr(bound, "usage_speed", None) or ""),
             service_tier=str(getattr(bound, "service_tier", None) or ""),
-            credential_source=credential_source,
+            credential_source=str(
+                kwargs.get("credential_source") or getattr(bound, "credential_source", "") or ""
+            ),
+            frontier_slot_id=str(
+                kwargs.get("frontier_slot_id") or getattr(bound, "frontier_slot_id", "") or ""
+            ),
         )
 
     def count_rows(
@@ -642,7 +658,8 @@ class SpendLedger:
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,"
             " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
-            " cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier"
+            " cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier,"
+            " credential_source, frontier_slot_id"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
         )
         if limit is not None:
@@ -812,6 +829,51 @@ class SpendLedger:
             for tool, requests, cost, avoided in rows
         ]
 
+    def by_credential(
+        self,
+        *,
+        since: str,
+        team_id: str | None = None,
+        key_id: str | None = None,
+        until: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Frontier spend split by signing credential × slot for invoice reconciliation (#2314).
+
+        Rows written before the column existed show ``credential_source``
+        ``""`` so operators can see what predates attribution.
+        """
+        if not self.enabled:
+            return []
+        ph = "%s" if hasattr(self, "dsn") else "?"
+        where, params = _where(since, key_id, team_id, ph, until=until)
+        sql = (
+            "SELECT credential_source, frontier_slot_id, COUNT(*), SUM(cost_usd),"
+            " SUM(cost_avoided_usd) FROM spend_requests"
+            f" WHERE {where} AND (credential_source != '' OR tier = '{FRONTIER_TIER}')"
+            " GROUP BY credential_source, frontier_slot_id"
+            " ORDER BY SUM(cost_usd) DESC, credential_source, frontier_slot_id"
+        )
+        try:
+            with self._lock, self._connect() as conn:
+                if hasattr(self, "dsn"):
+                    with conn.cursor() as cur:
+                        cur.execute(sql, params)
+                        rows = cur.fetchall()
+                else:
+                    rows = conn.execute(sql, params).fetchall()
+        except Exception:
+            return []
+        return [
+            {
+                "credential_source": source or "",
+                "frontier_slot_id": slot or "",
+                "requests": int(requests or 0),
+                "cost_usd": float(cost or 0.0),
+                "cost_avoided_usd": float(avoided or 0.0),
+            }
+            for source, slot, requests, cost, avoided in rows
+        ]
+
     def prune_before(self, cutoff_iso: str, *, dry_run: bool = False) -> int:
         if not self.enabled:
             return 0
@@ -901,6 +963,7 @@ class PostgresSpendLedger(SpendLedger):
                     cur.execute(_PG_SPEND_USAGE_SPEED_MIGRATE)
                     cur.execute(_PG_SPEND_SERVICE_TIER_MIGRATE)
                     cur.execute(_PG_SPEND_CREDENTIAL_SOURCE_MIGRATE)
+                    cur.execute(_PG_SPEND_FRONTIER_SLOT_MIGRATE)
                     cur.execute(
                         "CREATE INDEX IF NOT EXISTS idx_spend_requests_user "
                         "ON spend_requests (user_id)"
@@ -940,6 +1003,7 @@ class PostgresSpendLedger(SpendLedger):
         usage_speed: str = "",
         service_tier: str = "",
         credential_source: str = "",
+        frontier_slot_id: str = "",
     ) -> None:
         if not self.enabled:
             return
@@ -952,10 +1016,9 @@ class PostgresSpendLedger(SpendLedger):
                             ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,
                             input_tokens, output_tokens, cached_tokens, cache_write_tokens,
                             cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier,
-                            credential_source
-                        ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                        )
+                            credential_source, frontier_slot_id
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                  %s, %s, %s)
                         """,
                         (
                             ts or _now_iso(),
@@ -977,6 +1040,7 @@ class PostgresSpendLedger(SpendLedger):
                             usage_speed or "",
                             service_tier or "",
                             credential_source or "",
+                            frontier_slot_id or "",
                         ),
                     )
                 conn.commit()
@@ -1048,7 +1112,8 @@ class PostgresSpendLedger(SpendLedger):
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,"
             " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
-            " cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier"
+            " cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier,"
+            " credential_source, frontier_slot_id"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
         )
         if limit is not None:

@@ -116,6 +116,30 @@ class TestRenderPrometheus:
         assert "daari_compact_to_fit_applied_total 1" in text
         assert "daari_compact_to_fit_tokens_dropped_total 0" in text
 
+    def test_responses_truncation_zero_on_empty_metrics(self):
+        """Exporter must emit Responses truncation series even when unused (#2306)."""
+        text = render_prometheus(Metrics())
+        assert "# TYPE daari_responses_truncation_auto_total counter" in text
+        assert "daari_responses_truncation_auto_total 0" in text
+        assert "# TYPE daari_responses_truncation_rejected_total counter" in text
+        assert "daari_responses_truncation_rejected_total 0" in text
+        assert "# TYPE daari_responses_truncation_tokens_dropped_total counter" in text
+        assert "daari_responses_truncation_tokens_dropped_total 0" in text
+
+    def test_responses_truncation_increments_on_record(self):
+        """Auto compaction and hard rejects increment their own series (#2306)."""
+        metrics = Metrics()
+        metrics.record_responses_truncation_auto(tokens_dropped=30)
+        metrics.record_responses_truncation_auto()
+        metrics.record_responses_truncation_rejected()
+        text = render_prometheus(metrics)
+        assert "daari_responses_truncation_auto_total 2" in text
+        assert "daari_responses_truncation_tokens_dropped_total 30" in text
+        assert "daari_responses_truncation_rejected_total 1" in text
+        snap = metrics.snapshot(include_histograms=True)
+        assert snap["responses_truncation_auto"] == 2
+        assert snap["responses_truncation_tokens_dropped"] == 30
+        assert snap["responses_truncation_rejected"] == 1
     def test_auto_caching_zero_on_empty_metrics(self):
         """Exporter must emit auto_caching series even when unused (#2322)."""
         text = render_prometheus(Metrics())

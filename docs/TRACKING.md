@@ -9722,6 +9722,38 @@ also defines. Drift math unchanged for global-only ledgers. Covered by
 `tests/unit/test_analytics_reconcile.py` and
 `tests/unit/test_spend_credential_source.py`.
 
+### Observability: Prometheus and stats counters for Responses truncation auto and rejected ([#2306](https://github.com/naveenreddyalka/daari/issues/2306))
+
+<!-- tracking:#2306 -->
+**Status:** Done (2026-11-25). `apply_responses_truncation` records
+`responses_truncation_auto` (+ `responses_truncation_tokens_dropped`,
+`tokens_before - tokens_after`) when `truncation: "auto"` actually compacts,
+and `responses_truncation_rejected` on every `context_length_exceeded` 400
+(omitted / `disabled`, or `auto` that still cannot fit). Exposed on
+`GET /v1/daari/stats` and as `daari_responses_truncation_auto_total` /
+`daari_responses_truncation_rejected_total` /
+`daari_responses_truncation_tokens_dropped_total` (emitted at 0 when unused;
+team-scoped stats zero them like compact-to-fit). HTTP contract unchanged.
+Docs: metrics-prometheus, traces-stats. Covered by
+`tests/unit/test_responses_truncation.py` and `tests/unit/test_prometheus.py`.
+
+### Spend rows record credential source + frontier slot (team BYOK invoices) ([#2314](https://github.com/naveenreddyalka/daari/issues/2314))
+
+<!-- tracking:#2314 -->
+**Status:** Done (2026-11-25). `spend_requests` gains additive
+`credential_source` (`global` | `team` | `key`; empty off-frontier and on
+pre-migration rows) and `frontier_slot_id` columns on SQLite (`_migrate()`)
+and Postgres (`ADD COLUMN IF NOT EXISTS`). `FrontierPool` stamps the winning
+slot + signing credential on `daari_meta` and the request's `SpendContext`
+(key-over-team precedence via `binding_credential_source`, mirrored from
+`effective_binding`); router L6 record sites copy them onto every billed row,
+including relayed streams. `daari_meta.credential_source` /
+`frontier_slot_id` surface on frontier-served replies. Export/CSV, `--group-by
+credential_source,frontier_slot_id`, and a **frontier spend by credential**
+rollup in `daari report` / `GET /v1/daari/report`
+(`frontier_credential_spend`) expose the split. Docs: chargeback guide.
+Covered by `tests/unit/test_spend_credential_source.py`.
+
 ### Cost-true multi_agent nested usage per declared subagent model ([#1553](https://github.com/naveenreddyalka/daari/issues/1553))
 
 <!-- tracking:#1553 -->

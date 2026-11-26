@@ -2031,6 +2031,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "mcp_tool_calls": {},
                     "compact_to_fit_applied": 0,
                     "compact_to_fit_tokens_dropped": 0,
+                    "responses_truncation_auto": 0,
+                    "responses_truncation_rejected": 0,
+                    "responses_truncation_tokens_dropped": 0,
                     "auto_caching_applied": 0,
                     "auto_caching_client_preserved": 0,
                     "mcp_grant_denied": 0,
@@ -2064,6 +2067,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "compact_to_fit_applied": int(full.get("compact_to_fit_applied") or 0),
                 "compact_to_fit_tokens_dropped": int(
                     full.get("compact_to_fit_tokens_dropped") or 0
+                ),
+                "responses_truncation_auto": int(full.get("responses_truncation_auto") or 0),
+                "responses_truncation_rejected": int(
+                    full.get("responses_truncation_rejected") or 0
+                ),
+                "responses_truncation_tokens_dropped": int(
+                    full.get("responses_truncation_tokens_dropped") or 0
                 ),
                 "auto_caching_applied": int(full.get("auto_caching_applied") or 0),
                 "auto_caching_client_preserved": int(
@@ -2322,6 +2332,22 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ),
                 team_id=scope,
             )
+            # Frontier spend split by signing credential × slot (team BYOK invoices, #2314).
+            payload["frontier_credential_spend"] = []
+            spend_ledger = getattr(ctx.router, "spend_ledger", None)
+            by_credential = getattr(spend_ledger, "by_credential", None)
+            if getattr(spend_ledger, "enabled", False) and callable(by_credential):
+                from datetime import datetime, timedelta, timezone
+
+                since = (
+                    datetime.now(timezone.utc) - timedelta(days=max(1, days))
+                ).isoformat()
+                try:
+                    payload["frontier_credential_spend"] = by_credential(
+                        since=since, team_id=scope
+                    )
+                except Exception:
+                    payload["frontier_credential_spend"] = []
             # Trust PRD T1d: false-hit rates + answer diversity per category.
             trust: dict[str, Any] = {}
             feedback = ctx.router.feedback_store
