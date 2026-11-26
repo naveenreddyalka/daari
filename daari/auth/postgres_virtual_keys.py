@@ -1123,6 +1123,60 @@ class PostgresVirtualKeyStore:
             conn.commit()
         return True
 
+    def update_guardrail_profile(self, key_id: str, profile: str | None) -> bool:
+        """Bind (or clear) a key's guardrails.profiles name (#1548)."""
+        if self._inner is not None:
+            return self._inner.update_guardrail_profile(key_id, profile)
+        if not self.enabled:
+            return False
+        from daari.auth.virtual_keys import _write_guardrail_profile
+
+        name = str(profile or "").strip()
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata_json FROM virtual_keys"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (key_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return False
+                meta = _write_guardrail_profile(_parse_metadata(row[0]), name)
+                cur.execute(
+                    "UPDATE virtual_keys SET metadata_json = %s"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (json.dumps(meta), key_id),
+                )
+            conn.commit()
+        return True
+
+    def update_team_guardrail_profile(self, team_id: str, profile: str | None) -> bool:
+        """Bind (or clear) a team's guardrails.profiles name (#1548)."""
+        if self._inner is not None:
+            return self._inner.update_team_guardrail_profile(team_id, profile)
+        if not self.enabled:
+            return False
+        from daari.auth.virtual_keys import _write_guardrail_profile
+
+        name = str(profile or "").strip()
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata_json FROM teams WHERE team_id = %s",
+                    (team_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return False
+                meta = _write_guardrail_profile(_parse_metadata(row[0] if len(row) else None), name)
+                cur.execute(
+                    "UPDATE teams SET metadata_json = %s WHERE team_id = %s",
+                    (json.dumps(meta), team_id),
+                )
+            conn.commit()
+        return True
+
     def grant_budget_boost(
         self,
         key_id: str,

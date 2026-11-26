@@ -265,7 +265,9 @@ async def test_router_warns_and_clears_ultrafast_on_unsupported_model(tmp_path):
     )
     response = await router.route(request)
     assert request.sampling.service_tier is None
-    assert response.daari_meta.warning == "ultrafast_unsupported_model"
+    # gpt-4o-mini sits in the shipped deprecated wave, so the lifecycle
+    # warning rides along without an operator map (#2439).
+    assert response.daari_meta.warning == "ultrafast_unsupported_model; model_deprecated"
 
 
 @pytest.mark.asyncio

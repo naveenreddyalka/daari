@@ -79,6 +79,12 @@ and grant keys/teams via `metadata.agents_access: true` or
 `metadata.allowed_agents`. Ungranted virtual keys get HTTP 403; master key
 unchanged. Details: [virtual keys](../features/virtual-keys.md#agent-access-multi_agent).
 
+Per-tenant **chat guardrails**: `--guardrail-profile <name>` on `keys create`
+/ `keys update` / `team-create` / `team-update` binds a named
+`guardrails.profiles` entry via `metadata.guardrail_profile`; key beats team
+beats the global block, and undeclared names exit 1 (#1548). See
+[Guardrails → Named profiles](../features/guardrails.md#named-profiles-per-key--team).
+
 ## Rate limits
 
 Defaults apply to every key (including the master key). A virtual key's `--rpm` / `--tpm` override the global defaults for that key. `0` means unlimited. Chat and embeddings charge TPM from request characters (`len // 4`, minimum 1). `POST /v1/audio/transcriptions` and `POST /v1/audio/translations` charge `len(file_bytes) // 4` so a large upload is not counted as one token. Teams can also set aggregate ceilings with `daari keys team-create --rpm/--tpm` (or `team-update`); those counters use `rpm:team:{team_id}` / `tpm:team:{team_id}` and are checked after per-key limits so N keys on one team share one budget (#546).
@@ -287,6 +293,7 @@ enterprise:
         rpm: 120
         tier_cap: L4
         boundary_profile: fintech
+        # guardrail_profile: strict   # must exist under guardrails.profiles (#1548)
       contractors:
         tier_cap: L3
         key_ttl: 8h

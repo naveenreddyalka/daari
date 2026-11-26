@@ -76,6 +76,12 @@ def _guardrails_from_settings(settings: Settings) -> Any | None:
     return engine_from_settings(settings)
 
 
+def _guardrail_profiles_from_settings(settings: Settings) -> dict[str, Any]:
+    from daari.gateway.guardrails import profile_engines_from_settings
+
+    return profile_engines_from_settings(settings)
+
+
 def _boundaries_from_settings(settings: Settings, *, embedder: Any = None) -> Any | None:
     from daari.gateway.boundaries import (
         BoundaryEngine,
@@ -520,6 +526,7 @@ class Router:
         frontier_slim_prompts: bool = True,
         frontier_max_history: int = 8,
         guardrails: Any | None = None,
+        guardrail_profiles: dict[str, Any] | None = None,
         audit: Any | None = None,
         boundaries: Any | None = None,
         capability_catalog: Any | None = None,
@@ -655,6 +662,9 @@ class Router:
         self.frontier_slim_prompts = frontier_slim_prompts
         self.frontier_max_history = frontier_max_history
         self.guardrails = guardrails
+        # Named guardrails.profiles engines keyed by name (#1548). None value =
+        # profile declared with enabled: false (bound tenants exempt).
+        self.guardrail_profiles: dict[str, Any] = dict(guardrail_profiles or {})
         self.audit = audit
         self.boundaries = boundaries
         self.capability_catalog = capability_catalog
@@ -729,14 +739,24 @@ class Router:
     def _apply_lifecycle_warning(
         self, request: InternalRequest, response: InternalResponse
     ) -> None:
-        """Attach daari_meta.warning when the requested model is deprecated (#1521)."""
-        if not self.models_lifecycle:
-            return
+        """Attach daari_meta.warning when the requested model is deprecated (#1521).
+
+        Shipped lifecycle rows merge under the operator map, so an empty
+        ``models.lifecycle`` still warns for stock deprecated ids (#2439).
+        """
         from types import SimpleNamespace
 
         from daari.router.capabilities import anthropic_lifecycle_fields
 
-        settings = SimpleNamespace(models=SimpleNamespace(lifecycle=self.models_lifecycle))
+        configured = getattr(
+            getattr(self, "virtual_classify_settings", None), "models", None
+        )
+        settings = SimpleNamespace(
+            models=SimpleNamespace(
+                lifecycle=self.models_lifecycle,
+                lifecycle_as_of=getattr(configured, "lifecycle_as_of", None),
+            )
+        )
         stage = anthropic_lifecycle_fields(request.model or "", settings).get("lifecycle")
         if stage != "deprecated":
             return
@@ -973,13 +993,38 @@ class Router:
         self._record(l6_response, started)
         return l6_response
 
+    def _guardrails_for(self, request: InternalRequest | None, *, log_miss: bool = False) -> Any:
+        """Per-request engine: bound guardrails.profiles entry, else global (#1548)."""
+        if request is None:
+            return self.guardrails
+        from daari.gateway.guardrails import bound_profile_name
+
+        name = bound_profile_name(request)
+        if name is None:
+            return self.guardrails
+        if name not in self.guardrail_profiles:
+            # Renamed/removed profile keeps global coverage; surface the miss once.
+            if log_miss:
+                from daari.gateway.request_log import log_gateway_event
+
+                add_step("guardrail_profile_unknown", profile=name)
+                log_gateway_event("guardrail_profile_unknown", {"profile": name})
+            return self.guardrails
+        return self.guardrail_profiles[name]
+
     def _apply_guardrail_hits(
-        self, hits: list[Any], *, warning: str | None, text: str | None = None
+        self,
+        hits: list[Any],
+        *,
+        warning: str | None,
+        text: str | None = None,
+        engine: Any = None,
     ) -> None:
         from daari.gateway.guardrails import format_blocked_content_for_log
         from daari.gateway.request_log import log_gateway_event
 
-        log_blocked = bool(getattr(self.guardrails, "log_blocked_content", False))
+        engine = engine if engine is not None else self.guardrails
+        log_blocked = bool(getattr(engine, "log_blocked_content", False))
         for hit in hits:
             step_kwargs: dict[str, Any] = {
                 "stage": hit.stage,
@@ -1046,9 +1091,9 @@ class Router:
         except Exception:
             return
 
-    def _incremental_output_scanner(self) -> Any | None:
+    def _incremental_output_scanner(self, request: InternalRequest | None = None) -> Any | None:
         """Holdback scanner when guardrails.stream_mode=incremental (#375)."""
-        engine = self.guardrails
+        engine = self._guardrails_for(request)
         if engine is None or not getattr(engine, "enabled", False):
             return None
         if not getattr(engine, "output_rules", None):
@@ -1072,7 +1117,9 @@ class Router:
             stream_text = getattr(scanner, "_raw", None)
         if not isinstance(stream_text, str):
             stream_text = None
-        self._apply_guardrail_hits(hits, warning=warning, text=stream_text)
+        self._apply_guardrail_hits(
+            hits, warning=warning, text=stream_text, engine=getattr(scanner, "engine", None)
+        )
         from daari.gateway.request_log import log_gateway_event
 
         log_gateway_event(
@@ -1128,48 +1175,55 @@ class Router:
                     policy.refusal_tier = "boundary"
                     return policy
                 policy.warning = f"boundary_out:{decision.reason}"
-        if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
+        guardrails = self._guardrails_for(request, log_miss=True)
+        if guardrails is not None and getattr(guardrails, "enabled", False):
             input_text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
-            check_input = getattr(self.guardrails, "check_input_async", None)
+            check_input = getattr(guardrails, "check_input_async", None)
             if check_input is not None:
                 inbound = await check_input(request)
             else:
-                inbound = self.guardrails.check_input(request)
+                inbound = guardrails.check_input(request)
             if inbound.hits:
-                self._apply_guardrail_hits(inbound.hits, warning=inbound.warning, text=input_text)
+                self._apply_guardrail_hits(
+                    inbound.hits, warning=inbound.warning, text=input_text, engine=guardrails
+                )
             if inbound.blocked:
-                denial = getattr(inbound, "block_message", None) or self.guardrails.block_message
+                denial = getattr(inbound, "block_message", None) or guardrails.block_message
                 policy.refusal = blocked_response(request, denial)
                 policy.refusal_tier = "guardrail"
                 return policy
             policy.warning = inbound.warning or policy.warning
             # Opt-in scan of role=tool / tool_result payloads (#387). Mutates
             # request in place on redact so cache keys and execute see scrubbed text.
-            if getattr(self.guardrails, "scan_tool_results", False):
+            if getattr(guardrails, "scan_tool_results", False):
                 tool_text = "\n".join(m.content or "" for m in request.messages if m.role == "tool")
-                tool_scan = self.guardrails.check_tool_results(request)
+                tool_scan = guardrails.check_tool_results(request)
                 if tool_scan.hits:
                     self._apply_guardrail_hits(
-                        tool_scan.hits, warning=tool_scan.warning, text=tool_text
+                        tool_scan.hits, warning=tool_scan.warning, text=tool_text, engine=guardrails
                     )
                 if tool_scan.blocked:
-                    denial = (
-                        getattr(tool_scan, "block_message", None) or self.guardrails.block_message
-                    )
+                    denial = getattr(tool_scan, "block_message", None) or guardrails.block_message
                     policy.refusal = blocked_response(request, denial)
                     policy.refusal_tier = "guardrail"
                     return policy
                 policy.warning = tool_scan.warning or policy.warning
         return policy
 
-    def _apply_output_policy(self, response: InternalResponse) -> InternalResponse:
+    def _apply_output_policy(
+        self, response: InternalResponse, *, request: InternalRequest | None = None
+    ) -> InternalResponse:
         """Output guardrails. Returns the response the client should receive."""
-        if self.guardrails is None or not getattr(self.guardrails, "enabled", False):
+        guardrails = self._guardrails_for(request)
+        if guardrails is None or not getattr(guardrails, "enabled", False):
             return response
-        outbound = self.guardrails.check_output(response)
+        outbound = guardrails.check_output(response)
         if outbound.hits:
             self._apply_guardrail_hits(
-                outbound.hits, warning=outbound.warning, text=response.content or ""
+                outbound.hits,
+                warning=outbound.warning,
+                text=response.content or "",
+                engine=guardrails,
             )
         if outbound.response is not None:
             response = outbound.response
@@ -1177,18 +1231,24 @@ class Router:
             response.daari_meta.warning = outbound.warning
         return response
 
-    async def _apply_output_policy_async(self, response: InternalResponse) -> InternalResponse:
+    async def _apply_output_policy_async(
+        self, response: InternalResponse, *, request: InternalRequest | None = None
+    ) -> InternalResponse:
         """Async output guardrails with decision-rule offload (#1610)."""
-        if self.guardrails is None or not getattr(self.guardrails, "enabled", False):
+        guardrails = self._guardrails_for(request)
+        if guardrails is None or not getattr(guardrails, "enabled", False):
             return response
-        check_output = getattr(self.guardrails, "check_output_async", None)
+        check_output = getattr(guardrails, "check_output_async", None)
         if check_output is not None:
             outbound = await check_output(response)
         else:
-            outbound = self.guardrails.check_output(response)
+            outbound = guardrails.check_output(response)
         if outbound.hits:
             self._apply_guardrail_hits(
-                outbound.hits, warning=outbound.warning, text=response.content or ""
+                outbound.hits,
+                warning=outbound.warning,
+                text=response.content or "",
+                engine=guardrails,
             )
         if outbound.response is not None:
             response = outbound.response
@@ -1264,7 +1324,7 @@ class Router:
             raise
         if boundary_meta is not None:
             response.daari_meta.boundary = boundary_meta
-        response = await self._apply_output_policy_async(response)
+        response = await self._apply_output_policy_async(response, request=request)
         if input_warning and not response.daari_meta.warning:
             response.daari_meta.warning = input_warning
         self._apply_lifecycle_warning(request, response)
@@ -3413,7 +3473,7 @@ class Router:
                     add_step("escalate", to="L6", local_confidence=confidence, relay=True)
                     log_gateway_event("stream_frontier_relay", {"from": tier, "to": "L6"})
                     relayed: list[str] = []
-                    scanner = self._incremental_output_scanner()
+                    scanner = self._incremental_output_scanner(request)
                     outcome.note("L6", draft=draft_used)
                     l6_first_at: float | None = None
                     relayed_tool_calls = False
@@ -3702,7 +3762,7 @@ class Router:
                 # client byte; incremental replays deltas through a holdback scanner
                 # so secrets spanning chunks never leak (#154, #375).
                 scanner = (
-                    self._incremental_output_scanner()
+                    self._incremental_output_scanner(request)
                     if not tool_calls_sent and served.content.strip()
                     else None
                 )
@@ -3741,7 +3801,7 @@ class Router:
                         served = served.model_copy(update={"content": scanner.scanned_text})
                         incremental_emitted = True
                     elif not tool_calls_sent and served.content.strip():
-                        served = await self._apply_output_policy_async(served)
+                        served = await self._apply_output_policy_async(served, request=request)
 
                     served_tier = served.daari_meta.tier or tier
                     served_model = served.daari_meta.model or served.model or ollama_model
@@ -4868,7 +4928,7 @@ class Router:
                         latency_ms = int((time.perf_counter() - stream_started) * 1000)
                         record_served(served, latency_ms)
                         return
-                scanner = self._incremental_output_scanner()
+                scanner = self._incremental_output_scanner(request)
                 if scanner is not None and served.content == streamed_text:
                     # Replay local deltas through the holdback scanner.
                     out_events: list[str] = [message_start, text_block_start(0)]
@@ -4956,7 +5016,7 @@ class Router:
                     self._record_stream_guardrail(scanner)
                     served = served.model_copy(update={"content": scanner.scanned_text})
                 else:
-                    served = await self._apply_output_policy_async(served)
+                    served = await self._apply_output_policy_async(served, request=request)
 
             if served.content != streamed_text and not tool_use_sent:
                 outcome.note(served.daari_meta.tier or tier)
@@ -6744,10 +6804,11 @@ class Router:
             return False
         if self.org_pool is not None:
             return False
-        if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
-            if getattr(self.guardrails, "output_rules", None):
+        guardrails = self._guardrails_for(request)
+        if guardrails is not None and getattr(guardrails, "enabled", False):
+            if getattr(guardrails, "output_rules", None):
                 # Incremental mode scans relay deltas with a holdback (#375).
-                if getattr(self.guardrails, "stream_mode", "buffered") != "incremental":
+                if getattr(guardrails, "stream_mode", "buffered") != "incremental":
                     return False
         if not self._frontier_reachable(request):
             return False
@@ -7894,6 +7955,7 @@ class AppContext:
             frontier_compress_ratio=settings.frontier.compress_target_ratio,
             max_tier_for_chat=settings.routing.max_tier_for_chat,
             guardrails=_guardrails_from_settings(settings),
+            guardrail_profiles=_guardrail_profiles_from_settings(settings),
             audit=audit_log_from_settings(settings),
             boundaries=_boundaries_from_settings(settings, embedder=embedder),
             capability_catalog=_catalog_from_settings(settings),

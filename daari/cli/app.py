@@ -145,6 +145,19 @@ def parse_rate_family_flag(raw: str) -> tuple[str, dict[str, int]]:
     return name, entry
 
 
+def _validated_guardrail_profile(raw: str | None, settings: Settings) -> str | None:
+    """Fail loudly when --guardrail-profile names an undeclared profile (#1548)."""
+    if raw is None:
+        return None
+    from daari.gateway.guardrails import validate_profile_name
+
+    try:
+        return validate_profile_name(raw, settings)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+
 @keys_app.command("create")
 def keys_create(
     name: str = typer.Argument(..., help="Human label for the key"),
@@ -259,6 +272,11 @@ def keys_create(
         "--rate-family",
         help="Modality family ceiling as name:rpm or name:rpm:tpm (e.g. images:10). Repeatable.",
     ),
+    guardrail_profile: str | None = typer.Option(
+        None,
+        "--guardrail-profile",
+        help="Named guardrails.profiles entry for this key (overrides the team's) (#1548).",
+    ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
@@ -266,6 +284,7 @@ def keys_create(
     from daari.auth.virtual_keys import coerce_priority, expiry_from, normalize_cache_scope
 
     settings = get_settings()
+    profile_name = _validated_guardrail_profile(guardrail_profile, settings)
     store = virtual_key_store_from_settings(settings)
     try:
         extra = coalesce_windows(
@@ -310,6 +329,9 @@ def keys_create(
             raise typer.Exit(code=1) from exc
         metadata = dict(metadata or {})
         metadata["rate_families"] = families
+    if profile_name:
+        metadata = dict(metadata or {})
+        metadata["guardrail_profile"] = profile_name
     try:
         expires_at = expiry_from(expires)
         scope = normalize_cache_scope(cache_scope)
@@ -361,6 +383,8 @@ def keys_create(
     typer.echo(f"cache_scope: {created.key.cache_scope}")
     typer.echo(f"priority: {created.key.priority}")
     typer.echo(f"max_in_flight: {created.key.max_in_flight}")
+    if profile_name:
+        typer.echo(f"guardrail_profile: {profile_name}")
     typer.echo("")
     typer.echo("Store this token now — it will not be shown again:")
     typer.echo(created.plaintext)
@@ -427,6 +451,11 @@ def keys_update(
         "--allowed-ip",
         help="Replace the key client IP/CIDR allowlist. Repeatable (#2144).",
     ),
+    guardrail_profile: str | None = typer.Option(
+        None,
+        "--guardrail-profile",
+        help="Bind a guardrails.profiles name to this key; empty string clears (#1548).",
+    ),
 ) -> None:
     """Update a virtual key's model allowlist (#708) or daily request/token caps."""
     import json
@@ -445,15 +474,20 @@ def keys_update(
         and not model_group
         and not signal_override
         and not allowed_ip
+        and guardrail_profile is None
     ):
         typer.echo(
             "pass --rpd, --user-rpd, --tpd, --user-tpd, --allowed-model,"
-            " --model-group, --signal-override, and/or --allowed-ip",
+            " --model-group, --signal-override, --allowed-ip, and/or --guardrail-profile",
             err=True,
         )
         raise typer.Exit(code=1)
     settings = get_settings()
+    profile_name = _validated_guardrail_profile(guardrail_profile, settings)
     store = virtual_key_store_from_settings(settings)
+    if guardrail_profile is not None and not store.update_guardrail_profile(key_id, profile_name):
+        typer.echo(f"No active key {key_id}", err=True)
+        raise typer.Exit(code=1)
     if rpd is not None and not store.update_rpd(key_id, rpd):
         typer.echo(f"No active key {key_id}", err=True)
         raise typer.Exit(code=1)
@@ -514,6 +548,8 @@ def keys_update(
         typer.echo(f"signal_overrides: {len(key.signal_overrides)}")
     if key is not None and key.allowed_ips is not None:
         typer.echo(f"allowed_ips: {', '.join(key.allowed_ips)}")
+    if key is not None and guardrail_profile is not None:
+        typer.echo(f"guardrail_profile: {(key.metadata or {}).get('guardrail_profile') or '-'}")
     _audit_log_from_settings().record(
         actor=os.environ.get("USER") or "cli",
         role="admin",
@@ -1029,6 +1065,11 @@ def keys_team_create(
         "--allowed-ip",
         help="Client IPv4/IPv6 address or CIDR every key on this team may use. Repeatable (#2144).",
     ),
+    guardrail_profile: str | None = typer.Option(
+        None,
+        "--guardrail-profile",
+        help="Named guardrails.profiles entry for every key on this team (#1548).",
+    ),
 ) -> None:
     """Create a team whose caps apply to every key that joins it."""
     import json
@@ -1040,6 +1081,7 @@ def keys_team_create(
     from daari.router.signals import coerce_signal_overrides, encode_signal_overrides
 
     settings = get_settings()
+    profile_name = _validated_guardrail_profile(guardrail_profile, settings)
     store = virtual_key_store_from_settings(settings)
     try:
         extra = coalesce_windows(
@@ -1082,12 +1124,15 @@ def keys_team_create(
             max_in_flight=max_in_flight,
             signal_overrides=team_rules,
             allowed_ips=allowed_ip or None,
+            metadata={"guardrail_profile": profile_name} if profile_name else None,
         )
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
+    if profile_name:
+        typer.echo(f"guardrail_profile: {profile_name}")
     if team.region_pin:
         typer.echo(f"region:  {team.region_pin}")
     if team.allowed_models:
@@ -1182,6 +1227,11 @@ def keys_team_update(
         "--allowed-ip",
         help="Replace the team client IP/CIDR allowlist. Repeatable (#2144).",
     ),
+    guardrail_profile: str | None = typer.Option(
+        None,
+        "--guardrail-profile",
+        help="Bind a guardrails.profiles name to this team; empty string clears (#1548).",
+    ),
 ) -> None:
     """Update a team's budget windows (#464) and optional rpm/tpm/rpd/tpd."""
     import json
@@ -1193,6 +1243,7 @@ def keys_team_update(
     from daari.router.signals import coerce_signal_overrides, encode_signal_overrides
 
     settings = get_settings()
+    profile_name = _validated_guardrail_profile(guardrail_profile, settings)
     store = virtual_key_store_from_settings(settings)
     try:
         extra = coalesce_windows(
@@ -1240,6 +1291,12 @@ def keys_team_update(
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
         team = store.get_team(team_id) or team
+    if guardrail_profile is not None:
+        if not store.update_team_guardrail_profile(team_id, profile_name):
+            typer.echo(f"No team {team_id}", err=True)
+            raise typer.Exit(code=1)
+        team = store.get_team(team_id) or team
+        typer.echo(f"guardrail_profile: {profile_name or '-'}")
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
     if team.rpm or team.tpm:
