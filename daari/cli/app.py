@@ -197,6 +197,14 @@ def keys_create(
         "--mcp-client-deny",
         help="MCP client identity the key may never accept. Repeatable; deny wins.",
     ),
+    mcp_server_tools: list[str] = typer.Option(
+        [],
+        "--mcp-server-tools",
+        help=(
+            "Per-server tool allowlist: <server_id>=<tool>,<tool> (globs ok). "
+            "Repeatable; '<server_id>=' grants no tools (fail closed)."
+        ),
+    ),
     expires: str | None = typer.Option(
         None,
         "--expires",
@@ -274,6 +282,16 @@ def keys_create(
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     metadata: dict | None = None
+    server_tools_meta: dict[str, list[str]] = {}
+    for item in mcp_server_tools:
+        server_id, sep, tools = item.partition("=")
+        server_id = server_id.strip()
+        if not sep or not server_id:
+            typer.echo(
+                f"--mcp-server-tools expects <server_id>=<tool>,<tool>; got {item!r}", err=True
+            )
+            raise typer.Exit(code=1)
+        server_tools_meta[server_id] = [t.strip() for t in tools.split(",") if t.strip()]
     if (
         mcp_allow
         or mcp_deny
@@ -281,6 +299,7 @@ def keys_create(
         or mcp_server_deny
         or mcp_client_allow
         or mcp_client_deny
+        or server_tools_meta
     ):
         mcp_meta: dict = {}
         if mcp_allow or mcp_deny:
@@ -296,6 +315,8 @@ def keys_create(
                 "allow": list(mcp_client_allow),
                 "deny": list(mcp_client_deny),
             }
+        if server_tools_meta:
+            mcp_meta["server_tools"] = server_tools_meta
         metadata = {"mcp": mcp_meta}
     if rate_family:
         families: dict[str, dict[str, int]] = {}
@@ -647,6 +668,14 @@ def keys_show(key_id: str = typer.Argument(..., help="key_id from `daari keys li
         c_deny = (clients or {}).get("deny") or []
         if c_allow or c_deny:
             typer.echo(f"mcp clients: allow={c_allow or '-'} deny={c_deny or '-'}")
+        server_tools = mcp_meta.get("server_tools")
+        if isinstance(server_tools, dict) and server_tools:
+            rendered = " ".join(
+                f"{sid}={','.join(tools) if tools else '(none)'}"
+                for sid, tools in server_tools.items()
+                if isinstance(tools, list)
+            )
+            typer.echo(f"mcp server tools: {rendered}")
     windows = key.budget_windows or ()
     if windows:
         parts = []

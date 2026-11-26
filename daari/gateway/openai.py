@@ -1103,6 +1103,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 getattr(request.state, "auth_claims", None),
                 model_groups=getattr(ctx.settings, "model_groups", None),
             )
+            from daari.gateway.mcp_policy import apply_server_tool_subset_to_meta
+
+            apply_server_tool_subset_to_meta(
+                meta, getattr(request.state, "auth_claims", None), ctx.settings
+            )
             # Align virtual-model daily quota with enforce_rate_limits key_id (#2240).
             if not getattr(meta, "key_id", None):
                 rl_key = getattr(request.state, "rate_limit_key_id", None)

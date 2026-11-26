@@ -546,6 +546,11 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 getattr(request.state, "auth_claims", None),
                 model_groups=getattr(ctx.settings, "model_groups", None),
             )
+            from daari.gateway.mcp_policy import apply_server_tool_subset_to_meta
+
+            apply_server_tool_subset_to_meta(
+                meta, getattr(request.state, "auth_claims", None), ctx.settings
+            )
             meta.authorization_bearer = bearer_from_authorization(
                 request.headers.get("authorization")
             )

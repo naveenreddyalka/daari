@@ -9604,6 +9604,26 @@ fallback continue (midstream)**
 opt-in `routing.stream_fallback_continue` and distinguishes ordinary tier
 fallback. Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Per-key tool-name allowlist subset for mcp_servers ([#1288](https://github.com/naveenreddyalka/daari/issues/1288))
+
+<!-- tracking:#1288 -->
+**Status:** Done (2026-11-25). `mcp_policy.server_tools` /
+`mcp_team_policies.<team>.server_tools` / virtual-key
+`metadata.mcp.server_tools` map an `mcp_servers` id to tool-name globs;
+effective catalog = server tools ∩ servers.allow/deny ∩ subset, empty list
+fails closed, unset preserves prior behavior, key over team over global per
+server. Honored on `/mcp` `tools/list` + `tools/call` (incl. aggregated
+`{id}__{tool}` and coarse `mcp_<id>` stubs via `RequestMeta.mcp_server_tools`
+→ egress `mcp_tool_denied`), Responses `type: mcp`, and Messages
+`mcp_servers` / `mcp_toolset`. `daari keys create --mcp-server-tools
+id=tool,tool`; `server_tools` counts as an MCP grant for
+`require_key_access_defined`. Docs: [mcp.md](developer/guides/clients/mcp.md#per-server-tool-allowlists),
+[config.md](developer/reference/config.md). Covered by
+`tests/unit/test_mcp_policy.py`, `tests/integration/test_mcp_governance.py`,
+`tests/unit/test_responses_server_side_mcp.py`,
+`tests/unit/test_messages_server_side_mcp.py`, `tests/unit/test_virtual_keys.py`,
+`tests/unit/test_mcp_server_tools_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
