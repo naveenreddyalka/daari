@@ -9668,6 +9668,23 @@ a `baseline` of list $4/$20 (cached $0.20), so turns before Dec 1 UTC no
 longer bill 2× list. `models/`-prefixed ids resolve the same window. Covered
 by `tests/unit/test_pricing_effective_to.py`.
 
+### Observability: Prometheus and stats counters for Anthropic auto_caching applied vs client-preserved ([#2322](https://github.com/naveenreddyalka/daari/issues/2322))
+
+<!-- tracking:#2322 -->
+**Status:** Done (2026-11-25). `to_anthropic_payload` takes an optional
+`metrics` hook (wired from `FrontierExecutor.metrics`) and records
+`auto_caching_applied` when `frontier.auto_caching` injects top-level
+`cache_control` on an Anthropic L6 hop, or `auto_caching_client_preserved`
+when a caller-supplied top-level `cache_control` is forwarded verbatim (dial
+on or off). Non-Anthropic executors never build the Anthropic body, so they
+increment neither. Exposed on `GET /v1/daari/stats` and as
+`daari_auto_caching_applied_total` /
+`daari_auto_caching_client_preserved_total` (emitted at 0 when unused;
+team-scoped stats zero them like compact-to-fit). HELP text names both
+outcomes. No wire-shape change. Docs: metrics-prometheus, traces-stats.
+Covered by `tests/unit/test_anthropic_auto_caching.py` and
+`tests/unit/test_prometheus.py`.
+
 ### Doctor tip for frontier.auto_caching without an Anthropic L6 slot ([#2321](https://github.com/naveenreddyalka/daari/issues/2321))
 
 <!-- tracking:#2321 -->
