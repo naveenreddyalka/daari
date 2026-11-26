@@ -101,7 +101,6 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 ## Report rollups
 
 `GET /v1/daari/report` bounds its `clients` and `users` rollups the same way: query `clients_limit` / `users_limit` (default **100**, max **500**) and `clients_offset` / `users_offset` (default **0**). Rows sort by requests descending. The body carries `clients_total`, `clients_limit`, `clients_offset`, `clients_has_more` and the matching `users_*` fields so UIs can page; `teams` and `totals` are still computed from every row, not just the returned page. With `team_id`, totals count only that team's clients.
-
 ## Admin end-user inventory and overrides
 
 `GET /v1/daari/users` (admin / master key) pages every named end-user the usage ledger has seen across keys (OpenAI `user` / Anthropic `metadata.user_id`; unattributed `unknown` rows are skipped) with the same `limit` / `offset` / `total` / `has_more` conventions as keys and teams, plus optional `blocked=true|false` and `user_id` filters. Each row carries `requests`, `frontier_requests`, `local_requests`, `cache_hits`, `client_ids` (keys the user appeared on), `first_seen` / `last_seen` (UTC day), `spend.today_usd` / `spend.lifetime_usd` (priced like budget pre-checks), and the override fields `blocked`, `reason`, `user_usd_cap`, `override_updated_at`. Users with an override but no ledger rows (pre-emptive blocks) still appear with zero usage. Reads audit `admin.users.list`.
