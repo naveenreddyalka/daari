@@ -35,6 +35,8 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert any("daari_cache_write_tokens_total" in row for row in body)
     assert any("daari_cost_input_usd_total" in row for row in body)
     assert any("daari_cost_output_usd_total" in row for row in body)
+    assert any("daari_responses_truncation_auto_total" in row for row in body)
+    assert any("daari_responses_truncation_rejected_total" in row for row in body)
     assert any("daari_server_tool_cost_usd_total" in row for row in body)
     assert any("daari_frontier_binding_total" in row for row in body)
     assert any("daari_auto_caching_applied_total" in row for row in body)
@@ -78,6 +80,10 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     for token in ("signed", "pin_unmatched", "unresolvable", "`key`", "`team`"):
         assert token in binding_row
     assert "frontier_binding" in binding_row
+    truncation_row = next(row for row in body if "daari_responses_truncation_auto_total" in row)
+    assert "context_length_exceeded" in truncation_row
+    assert "responses_truncation_auto" in truncation_row
+    assert "responses_truncation_rejected" in truncation_row
     auto_caching_row = next(row for row in body if "daari_auto_caching_applied_total" in row)
     assert "frontier.auto_caching" in auto_caching_row
     assert "cache_control" in auto_caching_row

@@ -61,6 +61,12 @@ def resolve_responses_window(
     return 0
 
 
+def _record(metrics: Any | None, name: str, **kwargs: Any) -> None:
+    hook = getattr(metrics, name, None) if metrics is not None else None
+    if callable(hook):
+        hook(**kwargs)
+
+
 def apply_responses_truncation(
     request: InternalRequest,
     *,
@@ -72,6 +78,8 @@ def apply_responses_truncation(
     ``truncation`` omitted or ``disabled`` → 400 when over the known window.
     ``auto`` → engage compact-to-fit against that window and record telemetry.
     Unknown windows leave the request unchanged (fail open on size).
+    Every ``context_length_exceeded`` 400 bumps ``responses_truncation_rejected``;
+    a successful ``auto`` compact bumps ``responses_truncation_auto`` (#2306).
     """
     mode = getattr(request.sampling, "truncation", None)
     if mode is not None and mode not in _SUPPORTED:
@@ -90,6 +98,7 @@ def apply_responses_truncation(
             "responses_truncation_rejected",
             {"truncation": effective, "estimated": estimated, "window": window},
         )
+        _record(metrics, "record_responses_truncation_rejected")
         return request, context_length_exceeded_response(
             estimated=estimated, window=window
         )
@@ -114,12 +123,14 @@ def apply_responses_truncation(
                 "messages_after": after,
             },
         )
+        _record(metrics, "record_responses_truncation_rejected")
         return request, context_length_exceeded_response(
             estimated=tokens_after, window=window
         )
 
     if after >= before:
         # Nothing droppable — still over after a no-op compact.
+        _record(metrics, "record_responses_truncation_rejected")
         return request, context_length_exceeded_response(
             estimated=tokens_after, window=window
         )
@@ -133,9 +144,8 @@ def apply_responses_truncation(
         "tokens_after": tokens_after,
     }
     result.meta.compact_to_fit = detail
-    if metrics is not None and hasattr(metrics, "record_compact_to_fit_applied"):
-        metrics.record_compact_to_fit_applied(
-            tokens_dropped=max(0, tokens_before - tokens_after)
-        )
+    tokens_dropped = max(0, tokens_before - tokens_after)
+    _record(metrics, "record_compact_to_fit_applied", tokens_dropped=tokens_dropped)
+    _record(metrics, "record_responses_truncation_auto", tokens_dropped=tokens_dropped)
     log_gateway_event("responses_truncation_auto", detail)
     return result, None

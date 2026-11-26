@@ -2031,6 +2031,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "mcp_tool_calls": {},
                     "compact_to_fit_applied": 0,
                     "compact_to_fit_tokens_dropped": 0,
+                    "responses_truncation_auto": 0,
+                    "responses_truncation_rejected": 0,
+                    "responses_truncation_tokens_dropped": 0,
                     "auto_caching_applied": 0,
                     "auto_caching_client_preserved": 0,
                     "mcp_grant_denied": 0,
@@ -2065,6 +2068,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "compact_to_fit_applied": int(full.get("compact_to_fit_applied") or 0),
                 "compact_to_fit_tokens_dropped": int(
                     full.get("compact_to_fit_tokens_dropped") or 0
+                ),
+                "responses_truncation_auto": int(full.get("responses_truncation_auto") or 0),
+                "responses_truncation_rejected": int(
+                    full.get("responses_truncation_rejected") or 0
+                ),
+                "responses_truncation_tokens_dropped": int(
+                    full.get("responses_truncation_tokens_dropped") or 0
                 ),
                 "auto_caching_applied": int(full.get("auto_caching_applied") or 0),
                 "auto_caching_client_preserved": int(

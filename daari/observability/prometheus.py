@@ -357,6 +357,33 @@ def render_prometheus(
         f"daari_compact_to_fit_tokens_dropped_total {snap.get('compact_to_fit_tokens_dropped', 0)}"
     )
     lines.append(
+        "# HELP daari_responses_truncation_auto_total Responses truncation=auto "
+        "requests whose oversized input was compacted to the serving-tier window."
+    )
+    lines.append("# TYPE daari_responses_truncation_auto_total counter")
+    lines.append(
+        f"daari_responses_truncation_auto_total {snap.get('responses_truncation_auto', 0)}"
+    )
+    lines.append(
+        "# HELP daari_responses_truncation_rejected_total Responses requests "
+        "rejected with context_length_exceeded (truncation disabled/omitted, "
+        "or auto could not fit the window)."
+    )
+    lines.append("# TYPE daari_responses_truncation_rejected_total counter")
+    lines.append(
+        "daari_responses_truncation_rejected_total "
+        f"{snap.get('responses_truncation_rejected', 0)}"
+    )
+    lines.append(
+        "# HELP daari_responses_truncation_tokens_dropped_total Estimated tokens "
+        "removed by Responses truncation=auto (tokens_before - tokens_after)."
+    )
+    lines.append("# TYPE daari_responses_truncation_tokens_dropped_total counter")
+    lines.append(
+        "daari_responses_truncation_tokens_dropped_total "
+        f"{snap.get('responses_truncation_tokens_dropped', 0)}"
+    )
+    lines.append(
         "# HELP daari_auto_caching_applied_total Anthropic L6 hops where "
         "frontier.auto_caching injected top-level cache_control because the "
         "client sent none."
