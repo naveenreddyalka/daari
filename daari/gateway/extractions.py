@@ -428,7 +428,11 @@ async def _handle_local(
         log_gateway_event("extractions_local_unavailable", {"reason": "no_ollama_base_url"})
         return _error(503, "backend_unavailable", _UNAVAILABLE_LOCAL)
 
-    from daari.gateway.model_access import reject_disallowed_model, reject_retired_model
+    from daari.gateway.model_access import (
+        reject_disallowed_model,
+        reject_end_user,
+        reject_retired_model,
+    )
 
     denied = reject_disallowed_model(request, model, settings)
     if denied is not None:
@@ -436,6 +440,9 @@ async def _handle_local(
     retired = reject_retired_model(request, model, settings)
     if retired is not None:
         return retired
+    user_denied = reject_end_user(request, settings, body.user)
+    if user_denied is not None:
+        return user_denied
 
     started = time.perf_counter()
     payload = _request_payload(model, body)
@@ -560,6 +567,7 @@ async def _handle_frontier(
 ) -> Any:
     from daari.gateway.model_access import (
         reject_disallowed_model,
+        reject_end_user,
         reject_frontier_passthrough,
         reject_retired_model,
     )
@@ -589,6 +597,9 @@ async def _handle_frontier(
     retired = reject_retired_model(request, model, settings)
     if retired is not None:
         return retired
+    user_denied = reject_end_user(request, settings, body.user)
+    if user_denied is not None:
+        return user_denied
 
     started = time.perf_counter()
     payload = _request_payload(model, body)

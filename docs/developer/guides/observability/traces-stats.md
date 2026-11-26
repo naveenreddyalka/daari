@@ -48,6 +48,14 @@ leave all three at 0. Prometheus counterparts are
 `daari_responses_truncation_auto_total` /
 `daari_responses_truncation_rejected_total` /
 `daari_responses_truncation_tokens_dropped_total`.
+`auto_caching_applied` increments once per Anthropic L6 hop where
+`frontier.auto_caching` injected top-level `cache_control` because the client
+sent none; `auto_caching_client_preserved` increments once per Anthropic L6 hop
+where a caller-supplied top-level `cache_control` was forwarded verbatim
+(client wins over the dial, counted whether the dial is on or off).
+Non-Anthropic L6 hops and local tiers leave both at 0, as does dial-off with
+no client value. Prometheus counterparts are
+`daari_auto_caching_applied_total` / `daari_auto_caching_client_preserved_total`.
 `mcp_grant_denied` increments once per `initialize`, `tools/list`, or
 `tools/call` (JSON-RPC and legacy `/v1/mcp/query`) when
 `integrations.mcp_policy.require_key_access_defined` fail-closed applies
