@@ -9620,6 +9620,22 @@ loops); `serve` re-applies CLI flags on reload. Covered by
 `tests/unit/test_config_hot_reload.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Claude Opus 4.5 deprecation lifecycle (retires 2027-01-22 → Opus 5.5) ([#2439](https://github.com/naveenreddyalka/daari/issues/2439))
+
+<!-- tracking:#2439 -->
+**Status:** Done (2026-11-25). `_DEFAULT_MODEL_LIFECYCLE` pins
+`claude-opus-4-5` / `claude-opus-4-5-20251101` as `deprecated`
+(`deprecated_at` 2026-11-23, `retires_at` 2027-01-22, `migrate_to`
+`claude-opus-5-5`) from the Anthropic 2026-11-23 release notes. Lifecycle
+fields carry `migrate_to` onto OpenAI (`shutdown_date`) and Anthropic
+(`retires_at`) `/v1/models` cards; Chat/Messages/Responses serve with
+`daari_meta.warning=model_deprecated` even with an empty operator
+`models.lifecycle`; on/after the cutover default `models.reject_retired`
+returns 410. New `models.lifecycle_as_of` operator clock (YYYY-MM-DD) for
+staged cutovers / hermetic tests. Doctor `model_lifecycle` tip names
+shutdown + `migrate_to`. Docs: config, doctor-health, compare-litellm.
+Covered by `tests/unit/test_opus_45_lifecycle.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

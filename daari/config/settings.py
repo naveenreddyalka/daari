@@ -351,6 +351,13 @@ class ModelsSettings(BaseModel):
             "lifecycle is retired return HTTP 410 instead of routing (fail-closed)."
         ),
     )
+    lifecycle_as_of: str | None = Field(
+        default=None,
+        description=(
+            "Optional YYYY-MM-DD operator clock for model-lifecycle retires_at checks "
+            "(tests and staged cutovers). None uses the host UTC date."
+        ),
+    )
     # Model+speed sunsets (Anthropic Opus 4.8 fast removal) (#2053).
     # Shape: {model_id: {speed, deprecated_at, removed_at, migrate_to}}.
     speed_lifecycle: dict[str, dict[str, Any]] = Field(
@@ -1675,7 +1682,22 @@ class ModelPrice(BaseModel):
 # OpenAI retirement calendar shipped so doctor / 410 / /v1/models light up
 # without operator config (#1653). Operator `models.lifecycle` keys win.
 # Dates from https://developers.openai.com/api/docs/deprecations (2026-10-14).
+# Anthropic Opus 4.5 row from the Claude Platform release notes (2026-11-23);
+# optional ``migrate_to`` names the documented successor (#2439).
 _DEFAULT_MODEL_LIFECYCLE: dict[str, dict[str, Any]] = {
+    # Anthropic 2027-01-22 retirement (announced 2026-11-23) — migrate to Opus 5.5.
+    "claude-opus-4-5": {
+        "lifecycle": "deprecated",
+        "deprecated_at": "2026-11-23",
+        "retires_at": "2027-01-22",
+        "migrate_to": "claude-opus-5-5",
+    },
+    "claude-opus-4-5-20251101": {
+        "lifecycle": "deprecated",
+        "deprecated_at": "2026-11-23",
+        "retires_at": "2027-01-22",
+        "migrate_to": "claude-opus-5-5",
+    },
     # 2027-01-14 wave (announced 2026-10-14) — still serving; replace with gpt-6-luna.
     "gpt-4o": {
         "lifecycle": "deprecated",
