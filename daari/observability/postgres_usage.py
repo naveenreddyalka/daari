@@ -402,6 +402,113 @@ class PostgresUsageLedger:
         chars = row[0] if row else 0
         return (chars / 4) / 1000 * rate
 
+    def end_users(
+        self,
+        *,
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+        day: str | None = None,
+        price_per_1k_tokens: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """Named end-users across keys with first/last seen and L6 spend (#1547)."""
+        del pricing  # Postgres ledger prices by chars/4 only
+        if not self.enabled:
+            return []
+        rate = fallback_per_1k if price_per_1k_tokens is None else price_per_1k_tokens
+        today = day or _today()
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT user_id, MIN(day), MAX(day), SUM(requests), SUM(cache_hits),"
+                        " SUM(CASE WHEN tier = %s THEN requests ELSE 0 END),"
+                        " COALESCE(SUM(CASE WHEN tier = %s THEN prompt_chars + completion_chars"
+                        " ELSE 0 END), 0),"
+                        " COALESCE(SUM(CASE WHEN tier = %s AND day = %s"
+                        " THEN prompt_chars + completion_chars ELSE 0 END), 0)"
+                        " FROM user_usage WHERE user_id <> 'unknown' GROUP BY user_id",
+                        (FRONTIER_TIER, FRONTIER_TIER, FRONTIER_TIER, today),
+                    )
+                    base = cur.fetchall()
+                    cur.execute(
+                        "SELECT DISTINCT user_id, client_id FROM user_usage"
+                        " WHERE user_id <> 'unknown'"
+                    )
+                    clients = cur.fetchall()
+        except Exception:
+            return []
+        rows: dict[str, dict[str, Any]] = {}
+        for user_id, first, last, requests, cache_hits, frontier, chars, chars_today in base:
+            rows[str(user_id)] = {
+                "user_id": str(user_id),
+                "requests": int(requests or 0),
+                "cache_hits": int(cache_hits or 0),
+                "frontier_requests": int(frontier or 0),
+                "local_requests": int(requests or 0) - int(frontier or 0),
+                "client_ids": [],
+                "first_seen": first,
+                "last_seen": last,
+                "spend": {
+                    "today_usd": round((float(chars_today or 0) / 4) / 1000 * rate, 6),
+                    "lifetime_usd": round((float(chars or 0) / 4) / 1000 * rate, 6),
+                },
+            }
+        for user_id, client_id in clients:
+            entry = rows.get(str(user_id))
+            if entry is not None:
+                entry["client_ids"].append(str(client_id))
+        for entry in rows.values():
+            entry["client_ids"].sort()
+        return sorted(rows.values(), key=lambda entry: entry["user_id"])
+
+    def frontier_spend_usd_for_end_user(
+        self,
+        user_id: str,
+        *,
+        window: str = "day",
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+        day: str | None = None,
+        month: str | None = None,
+        price_per_1k_tokens: float | None = None,
+    ) -> float:
+        """USD one end-user spent on L6 across every key (#1547 cap overrides)."""
+        del pricing
+        named = (user_id or "").strip()
+        if not self.enabled or not named:
+            return 0.0
+        rate = fallback_per_1k if price_per_1k_tokens is None else price_per_1k_tokens
+        if window in {"lifetime", "total", "all"}:
+            where, params = "user_id = %s AND tier = %s", (named, FRONTIER_TIER)
+        elif window == "month":
+            where, params = "user_id = %s AND day LIKE %s AND tier = %s", (
+                named,
+                (month or _today()[:7]) + "-%",
+                FRONTIER_TIER,
+            )
+        elif window == "day":
+            where, params = "user_id = %s AND day = %s AND tier = %s", (
+                named,
+                day or _today(),
+                FRONTIER_TIER,
+            )
+        else:
+            raise ValueError(f"window must be 'day', 'month', or 'lifetime', got {window!r}")
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COALESCE(SUM(prompt_chars + completion_chars), 0)"
+                        f" FROM user_usage WHERE {where}",
+                        params,
+                    )
+                    row = cur.fetchone()
+        except Exception:
+            self._mark_budget_degraded()
+            return 0.0
+        chars = row[0] if row else 0
+        return (chars / 4) / 1000 * rate
+
     def frontier_spend_usd_for_client(
         self,
         client_id: str,

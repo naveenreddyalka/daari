@@ -87,6 +87,7 @@ org_learning_app = typer.Typer(help="Inspect enterprise org-learning aggregates.
 web_ui_app = typer.Typer(help="Serve local daari stats dashboard.")
 project_app = typer.Typer(help="Manage per-project .daari.yaml profiles.")
 keys_app = typer.Typer(help="Virtual API keys — per-key budgets, RPM, tier caps.")
+users_app = typer.Typer(help="End-users seen on shared keys — inventory, block, USD cap.")
 spend_app = typer.Typer(help="Per-request spend rows for finance chargeback.")
 audit_app = typer.Typer(help="Read and export the local admin audit log.")
 events_app = typer.Typer(help="List gateway request/event log rows.")
@@ -106,6 +107,7 @@ app.add_typer(org_learning_app, name="org-learning")
 app.add_typer(web_ui_app, name="web-ui")
 app.add_typer(project_app, name="project")
 app.add_typer(keys_app, name="keys")
+app.add_typer(users_app, name="users")
 app.add_typer(audit_app, name="audit")
 app.add_typer(events_app, name="events")
 app.add_typer(backup_app, name="backup")
@@ -1557,6 +1559,145 @@ def _audit_log_from_settings():
     from daari.enterprise.postgres_audit import audit_log_from_settings
 
     return audit_log_from_settings(get_settings())
+
+
+def _users_ledger(settings):
+    """Same ledger backend the gateway meters into (SQLite or Postgres)."""
+    if getattr(settings.observability, "backend", "sqlite") == "postgres":
+        from daari.observability.postgres_usage import PostgresUsageLedger
+
+        return PostgresUsageLedger(
+            settings.observability.postgres_url, enabled=settings.usage.enabled
+        )
+    from daari.observability.usage import UsageLedger
+
+    return UsageLedger(settings.usage.path, enabled=settings.usage.enabled)
+
+
+def _echo_end_user(row: dict) -> None:
+    typer.echo(f"user_id: {row['user_id']}")
+    typer.echo(f"blocked: {'yes' if row.get('blocked') else 'no'}")
+    if row.get("reason"):
+        typer.echo(f"reason:  {row['reason']}")
+    cap = float(row.get("user_usd_cap") or 0)
+    typer.echo(f"user_usd_cap: {cap:.2f}" if cap > 0 else "user_usd_cap: - (key cap applies)")
+    spend = row.get("spend") or {}
+    typer.echo(
+        f"spend:   today ${float(spend.get('today_usd') or 0):.4f}"
+        f" lifetime ${float(spend.get('lifetime_usd') or 0):.4f}"
+    )
+
+
+@users_app.command("list")
+def users_list(
+    blocked: bool = typer.Option(False, "--blocked", help="Only blocked end-users."),
+    limit: int = typer.Option(100, "--limit", help="Rows per page (max 500)."),
+    offset: int = typer.Option(0, "--offset", help="Rows to skip."),
+) -> None:
+    """Inventory end-users seen in the usage ledger plus block / cap overrides (#1547)."""
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.gateway.admin_read import end_users_inventory
+
+    settings = get_settings()
+    store = virtual_key_store_from_settings(settings)
+    page = end_users_inventory(
+        store,
+        ledger=_users_ledger(settings),
+        pricing=getattr(settings, "pricing", None),
+        fallback_per_1k=float(settings.usage.frontier_price_per_1k_tokens or 0.002),
+        limit=limit,
+        offset=offset,
+        blocked=True if blocked else None,
+    )
+    rows = page.get("users") or []
+    if not rows:
+        typer.echo("No end-users.")
+        return
+    typer.echo(
+        f"{'user_id':<28} {'requests':>9} {'today $':>9} {'lifetime $':>11} "
+        f"{'cap $':>8} {'blocked':<8} {'first_seen':<11} {'last_seen':<11} keys"
+    )
+    for row in rows:
+        spend = row.get("spend") or {}
+        cap = float(row.get("user_usd_cap") or 0)
+        typer.echo(
+            f"{row['user_id']:<28} {int(row.get('requests') or 0):>9} "
+            f"{float(spend.get('today_usd') or 0):>9.2f} "
+            f"{float(spend.get('lifetime_usd') or 0):>11.2f} "
+            f"{(f'{cap:.2f}' if cap > 0 else '-'):>8} "
+            f"{('yes' if row.get('blocked') else 'no'):<8} "
+            f"{(row.get('first_seen') or '-'):<11} {(row.get('last_seen') or '-'):<11} "
+            f"{','.join(row.get('client_ids') or []) or '-'}"
+        )
+    typer.echo(
+        f"total: {page.get('total')}  has_more: {'yes' if page.get('has_more') else 'no'}"
+    )
+
+
+def _set_end_user_block(user_id: str, blocked: bool, *, reason: str | None) -> None:
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.gateway.admin_read import end_user_row
+
+    settings = get_settings()
+    store = virtual_key_store_from_settings(settings)
+    try:
+        override = store.set_end_user_blocked(user_id, blocked, reason=reason)
+    except (ValueError, RuntimeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    _echo_end_user(end_user_row(override.user_id, override=override))
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="users.block" if blocked else "users.unblock",
+        detail={"user_id": override.user_id, "reason": override.reason},
+    )
+
+
+@users_app.command("block")
+def users_block(
+    user_id: str = typer.Argument(..., help="End-user id (OpenAI `user` / metadata.user_id)."),
+    reason: str | None = typer.Option(None, "--reason", help="Why; shown in 403 and audit."),
+) -> None:
+    """Block an end-user on every key: inference requests naming them return 403."""
+    _set_end_user_block(user_id, True, reason=reason)
+
+
+@users_app.command("unblock")
+def users_unblock(
+    user_id: str = typer.Argument(..., help="End-user id to restore."),
+) -> None:
+    """Lift an end-user block."""
+    _set_end_user_block(user_id, False, reason=None)
+
+
+@users_app.command("cap")
+def users_cap(
+    user_id: str = typer.Argument(..., help="End-user id."),
+    daily_usd: float = typer.Option(
+        ...,
+        "--daily-usd",
+        help="Daily frontier USD cap across every key (0 = inherit the key's user cap).",
+    ),
+) -> None:
+    """Set a per-end-user daily USD cap that overrides key-level user_daily_usd_cap."""
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.gateway.admin_read import end_user_row
+
+    settings = get_settings()
+    store = virtual_key_store_from_settings(settings)
+    try:
+        override = store.set_end_user_cap(user_id, daily_usd)
+    except (ValueError, RuntimeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    _echo_end_user(end_user_row(override.user_id, override=override))
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="users.cap",
+        detail={"user_id": override.user_id, "user_usd_cap": override.user_usd_cap},
+    )
 
 
 @audit_app.command("list")

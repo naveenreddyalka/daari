@@ -345,6 +345,8 @@ when `postgres.enabled` is true.
 | `config.patch` | Admin config patch | changed keys |
 | `admin.keys.list` | `GET /v1/daari/keys` | `limit`, `offset`, `total`, `returned` |
 | `admin.teams.list` | `GET /v1/daari/teams` | `limit`, `offset`, `total`, `returned` |
+| `admin.users.list` | `GET /v1/daari/users` | `limit`, `offset`, `total`, `returned`, `blocked` |
+| `admin.users.block` / `admin.users.unblock` / `admin.users.cap` | `PATCH /v1/daari/users/{user_id}` (CLI: `users.block` / `users.unblock` / `users.cap`) | `user_id`, `reason` / `user_usd_cap` |
 | `cache.invalidate` | `POST /v1/daari/cache/invalidate` | `scope` (model\|hash\|team\|key\|speed\|all), `l0_removed`, `l1_removed` (no entry bodies) |
 | `retention.prune` | Retention sweep | counts |
 | `mcp.tools/call` / `mcp.guardrail` | MCP policy | tool / decision |
