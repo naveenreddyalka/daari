@@ -41,9 +41,10 @@ _STALL_PR_RE = re.compile(r"PR\s+#(\d+)", re.IGNORECASE)
 
 # Repository connections only — `search(` must never appear here (see module doc).
 ISSUES_QUERY = """
-query($owner: String!, $name: String!, $labels: [String!]!) {
+query($owner: String!, $name: String!, $labels: [String!]!, $after: String) {
   repository(owner: $owner, name: $name) {
-    issues(states: OPEN, labels: $labels, first: 100) {
+    issues(states: OPEN, labels: $labels, first: 100, after: $after) {
+      pageInfo { hasNextPage endCursor }
       nodes {
         number
         title
@@ -57,9 +58,10 @@ query($owner: String!, $name: String!, $labels: [String!]!) {
 """
 
 PRS_QUERY = """
-query($owner: String!, $name: String!) {
+query($owner: String!, $name: String!, $after: String) {
   repository(owner: $owner, name: $name) {
-    pullRequests(states: OPEN, first: 100) {
+    pullRequests(states: OPEN, first: 100, after: $after) {
+      pageInfo { hasNextPage endCursor }
       nodes {
         number
         title
@@ -96,18 +98,40 @@ def _graphql(query: str, variables: dict[str, Any], runner: Runner) -> dict[str,
     return json.loads(runner(args))
 
 
+def _fetch_all_pages(
+    query: str, variables: dict[str, Any], connection: str, runner: Runner
+) -> list[dict[str, Any]]:
+    """Walk every page of a repository connection.
+
+    `first: 100` alone silently drops everything past the first page; with 140+
+    open auto-dev issues that hid the newest P1s from every pick.
+    """
+    nodes: list[dict[str, Any]] = []
+    after: str | None = None
+    while True:
+        page_vars = dict(variables)
+        if after:
+            page_vars["after"] = after
+        data = _graphql(query, page_vars, runner)
+        conn = data["data"]["repository"][connection]
+        nodes.extend(conn["nodes"])
+        page_info = conn.get("pageInfo") or {}
+        if not page_info.get("hasNextPage") or not page_info.get("endCursor"):
+            return nodes
+        after = page_info["endCursor"]
+
+
 def fetch_issues(runner: Runner = _default_runner) -> list[dict[str, Any]]:
-    data = _graphql(
+    return _fetch_all_pages(
         ISSUES_QUERY,
         {"owner": OWNER, "name": REPO, "labels": [BACKLOG_LABEL]},
+        "issues",
         runner,
     )
-    return data["data"]["repository"]["issues"]["nodes"]
 
 
 def fetch_open_prs(runner: Runner = _default_runner) -> list[dict[str, Any]]:
-    data = _graphql(PRS_QUERY, {"owner": OWNER, "name": REPO}, runner)
-    return data["data"]["repository"]["pullRequests"]["nodes"]
+    return _fetch_all_pages(PRS_QUERY, {"owner": OWNER, "name": REPO}, "pullRequests", runner)
 
 
 def fetch_issue_comments(number: int, runner: Runner = _default_runner) -> list[dict[str, Any]]:
