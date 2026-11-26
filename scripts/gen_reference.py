@@ -235,6 +235,21 @@ def render_api_reference() -> str:
             "master key (sandbox hatch), writes stay open; `daari doctor` warns that the "
             "config editor is ungoverned.",
             "",
+            "## Config reload",
+            "",
+            "`POST /v1/daari/reload-config` (admin / master key; same gate as "
+            "`PATCH /v1/daari/config` and `reload-caches`) re-reads `~/.daari/config.yaml` "
+            "(plus profile and `DAARI_*` env layers) without a restart. The safe live-tune "
+            "subset above is applied in place and listed in `changed_keys`; any other key "
+            "that differs on disk (listen bind, TLS, backends, stores, …) is left untouched "
+            "and listed in `requires_restart`. Response: `{ok, trigger, path, changed_keys, "
+            "requires_restart}`. Invalid YAML, a failed `secret://` ref, or a value the "
+            "schema rejects returns **400** and keeps the previous settings. A successful "
+            "reload clears runtime-only overrides from earlier ephemeral `PATCH` calls "
+            "(the file wins) and records a `config.reload` audit row. On Unix, `SIGHUP` to "
+            "the `daari serve` process triggers the same path (`server.sighup_reload`, "
+            "default on; no-op on Windows). In-flight requests are never dropped.",
+            "",
             "## Traces compact_to_fit",
             "",
             "`GET /v1/daari/traces` and `GET /v1/daari/traces/{trace_id}` include a "
