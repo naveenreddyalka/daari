@@ -14,7 +14,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from daari.gateway.client_errors import backend_unavailable_message, summarize_upstream_failure
 from daari.gateway.l6_passthrough import (
+    FrontierBindingError,
     RegionUnavailable,
+    frontier_binding_error_response,
+    frontier_binding_from_request,
     is_slot_failure,
     post_l6,
     region_pin_from_request,
@@ -1254,10 +1257,18 @@ async def _handle_frontier(
     settings = ctx.settings
     pin = region_pin_from_request(request)
     try:
-        targets = resolve_l6_targets(settings, region_pin=pin, default_model="gpt-6-luna")
+        targets = resolve_l6_targets(
+            settings,
+            region_pin=pin,
+            default_model="gpt-6-luna",
+            binding=frontier_binding_from_request(request),
+        )
     except RegionUnavailable as exc:
         log_gateway_event("decisions_region_unavailable", {"pin": exc.pin})
         return _error(400, "region_unavailable", str(exc))
+    except FrontierBindingError as exc:
+        log_gateway_event("decisions_frontier_binding_error", {"error": str(exc)})
+        return frontier_binding_error_response(exc)
     if not targets:
         log_gateway_event("decisions_frontier_unavailable", {"reason": "frontier_disabled_or_no_key"})
         return _error(501, "not_implemented", _UNAVAILABLE_FRONTIER)
