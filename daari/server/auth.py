@@ -187,8 +187,11 @@ def apply_auth_claims_to_meta(
         meta.team_id = team_id
     # Key / team BYOK frontier binding (#2216). Key wins over team.
     if getattr(meta, "frontier_api_key", None) is None and getattr(meta, "frontier_pool", None) is None:
-        from daari.auth.frontier_binding import binding_source, effective_binding
-        from daari.auth.frontier_binding import binding_credential_source, effective_binding
+        from daari.auth.frontier_binding import (
+            binding_credential_source,
+            binding_source,
+            effective_binding,
+        )
 
         vk = getattr(claims, "virtual_key", None)
         key_api = getattr(vk, "frontier_api_key", None) if vk is not None else None
