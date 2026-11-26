@@ -475,7 +475,8 @@ OpenAI→Anthropic chat completions, and Responses bridged to Claude) without
 hand-marking every system block. A request that already sends top-level
 `cache_control` keeps that value; block-level breakpoints and
 `frontier.prompt_cache` last-system marking still apply. Non-Anthropic
-executors never see the field.
+executors never see the field. With the flag on but no Anthropic-shaped L6
+slot, the inject is a no-op — `daari doctor` tips `frontier_auto_caching`.
 
 ## Providers / fallback
 
