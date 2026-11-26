@@ -9721,6 +9721,21 @@ can see local truncation. `tool_calls` finishes unchanged (#2234). Docs:
 caching-and-trust. Covered by `tests/unit/test_cache_finish_reason_gate.py`
 and `tests/integration/test_gateway_flow.py`.
 
+### Observability: Prometheus and stats counters for Responses truncation auto and rejected ([#2306](https://github.com/naveenreddyalka/daari/issues/2306))
+
+<!-- tracking:#2306 -->
+**Status:** Done (2026-11-25). `apply_responses_truncation` records
+`responses_truncation_auto` (+ `responses_truncation_tokens_dropped`,
+`tokens_before - tokens_after`) when `truncation: "auto"` actually compacts,
+and `responses_truncation_rejected` on every `context_length_exceeded` 400
+(omitted / `disabled`, or `auto` that still cannot fit). Exposed on
+`GET /v1/daari/stats` and as `daari_responses_truncation_auto_total` /
+`daari_responses_truncation_rejected_total` /
+`daari_responses_truncation_tokens_dropped_total` (emitted at 0 when unused;
+team-scoped stats zero them like compact-to-fit). HTTP contract unchanged.
+Docs: metrics-prometheus, traces-stats. Covered by
+`tests/unit/test_responses_truncation.py` and `tests/unit/test_prometheus.py`.
+
 ### Spend rows record credential source + frontier slot (team BYOK invoices) ([#2314](https://github.com/naveenreddyalka/daari/issues/2314))
 
 <!-- tracking:#2314 -->
