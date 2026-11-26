@@ -357,6 +357,23 @@ def render_prometheus(
         f"daari_compact_to_fit_tokens_dropped_total {snap.get('compact_to_fit_tokens_dropped', 0)}"
     )
     lines.append(
+        "# HELP daari_auto_caching_applied_total Anthropic L6 hops where "
+        "frontier.auto_caching injected top-level cache_control because the "
+        "client sent none."
+    )
+    lines.append("# TYPE daari_auto_caching_applied_total counter")
+    lines.append(f"daari_auto_caching_applied_total {snap.get('auto_caching_applied', 0)}")
+    lines.append(
+        "# HELP daari_auto_caching_client_preserved_total Anthropic L6 hops where "
+        "a client-supplied top-level cache_control was forwarded verbatim "
+        "(client wins over frontier.auto_caching)."
+    )
+    lines.append("# TYPE daari_auto_caching_client_preserved_total counter")
+    lines.append(
+        "daari_auto_caching_client_preserved_total "
+        f"{snap.get('auto_caching_client_preserved', 0)}"
+    )
+    lines.append(
         "# HELP daari_stream_fallback_continue_total Streaming hops that "
         "continued on the next tier/slot after mid-stream upstream death."
     )
