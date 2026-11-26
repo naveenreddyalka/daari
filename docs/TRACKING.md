@@ -9604,6 +9604,26 @@ fallback continue (midstream)**
 opt-in `routing.stream_fallback_continue` and distinguishes ordinary tier
 fallback. Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Per-key tool-name allowlist subset for mcp_servers ([#1288](https://github.com/naveenreddyalka/daari/issues/1288))
+
+<!-- tracking:#1288 -->
+**Status:** Done (2026-11-25). `mcp_policy.server_tools` /
+`mcp_team_policies.<team>.server_tools` / virtual-key
+`metadata.mcp.server_tools` map an `mcp_servers` id to tool-name globs;
+effective catalog = server tools ∩ servers.allow/deny ∩ subset, empty list
+fails closed, unset preserves prior behavior, key over team over global per
+server. Honored on `/mcp` `tools/list` + `tools/call` (incl. aggregated
+`{id}__{tool}` and coarse `mcp_<id>` stubs via `RequestMeta.mcp_server_tools`
+→ egress `mcp_tool_denied`), Responses `type: mcp`, and Messages
+`mcp_servers` / `mcp_toolset`. `daari keys create --mcp-server-tools
+id=tool,tool`; `server_tools` counts as an MCP grant for
+`require_key_access_defined`. Docs: [mcp.md](developer/guides/clients/mcp.md#per-server-tool-allowlists),
+[config.md](developer/reference/config.md). Covered by
+`tests/unit/test_mcp_policy.py`, `tests/integration/test_mcp_governance.py`,
+`tests/unit/test_responses_server_side_mcp.py`,
+`tests/unit/test_messages_server_side_mcp.py`, `tests/unit/test_virtual_keys.py`,
+`tests/unit/test_mcp_server_tools_docs.py`.
+
 ### End-user inventory + per-user block / cap overrides (#1547) ([#1547](https://github.com/naveenreddyalka/daari/issues/1547))
 
 <!-- tracking:#1547 -->
@@ -9630,6 +9650,7 @@ moves from 2026-11-21 to 2026-11-30 to match the live OpenAI Sol model card:
 promo $4/$20 (cached $0.40) through Nov 29, baseline $5/$30 (cached $0.50)
 on/after Nov 30. Clock-dependent catalog tests now pin `now`. Covered by
 `tests/unit/test_pricing_effective_to.py`.
+
 
 ### Hot-reload Settings from config.yaml ([#1234](https://github.com/naveenreddyalka/daari/issues/1234))
 
@@ -9703,6 +9724,23 @@ emitted; label series only once recorded) and as region → count / USD maps
 `GET /v1/daari/stats` (team-scoped stats zero them). No new dependencies.
 Docs: metrics-prometheus, traces-stats. Covered by
 `tests/unit/test_regional_uplift_metrics.py`.
+
+### Cost-true multi_agent nested usage per declared subagent model ([#1553](https://github.com/naveenreddyalka/daari/issues/1553))
+
+<!-- tracking:#1553 -->
+**Status:** Done (2026-11-25). `nested_agent_usages` copies a subagent's
+declared `model` (aliases `model_id`, `agent.model`, and per-output-item
+`agent.model`) onto each row. New `pricing.multi_agent_cost_breakdown` bills
+every nested row that carries tokens at its own `resolve_price` rate (parent
+model when undeclared) and the parent remainder — plus cached-read /
+cache-write dims — at the parent rate, with service-tier / residency / speed
+multipliers on all rows; each priced row gets `cost_usd`. `_ledger_record`
+uses it on the catalog-billed L6 path (provider `usage.cost` still wins), so
+`daari_meta.cost_usd` / `cost_input_usd` / `cost_output_usd`, cost headers,
+budgets, and the spend ledger agree. #1500 undercount-sum metering is
+unchanged. Docs: budgets-frontier (Responses multi_agent subagent pricing),
+compare-litellm. Covered by `tests/unit/test_responses_multi_agent.py` and
+`tests/unit/test_token_accounting.py`.
 
 ### Bounded + paginated report clients/users rollups ([#1552](https://github.com/naveenreddyalka/daari/issues/1552))
 

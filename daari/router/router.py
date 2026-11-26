@@ -46,6 +46,7 @@ from daari.pricing import (
     cost_usd,
     is_ollama_cloud_model,
     regional_processing_factor,
+    multi_agent_cost_breakdown,
 )
 from daari.providers.integrations import (
     GitHubEnterpriseProvider,
@@ -1613,11 +1614,7 @@ class Router:
             response.daari_meta.cost_usd is None
             and (response.daari_meta.tier or "").upper() == "L6"
         ):
-            parts = cost_breakdown(
-                response.daari_meta.model or response.model,
-                input_tokens,
-                output_tokens,
-                self.pricing,
+            catalog_kwargs = dict(
                 fallback_per_1k=float(self.frontier_price_per_1k_tokens or 0.002),
                 cached_input_tokens=int(response.daari_meta.cached_tokens or 0),
                 cache_write_tokens=write_tokens,
@@ -1626,6 +1623,25 @@ class Router:
                 region_pin=getattr(request.meta, "region_pin", None),
                 usage_speed=getattr(response.daari_meta, "usage_speed", None),
             )
+            agent_usage = getattr(response.daari_meta, "agent_usage", None)
+            if isinstance(agent_usage, list) and agent_usage:
+                # multi_agent: each subagent at its declared model's rate (#1553).
+                parts = multi_agent_cost_breakdown(
+                    response.daari_meta.model or response.model,
+                    input_tokens,
+                    output_tokens,
+                    agent_usage,
+                    self.pricing,
+                    **catalog_kwargs,
+                )
+            else:
+                parts = cost_breakdown(
+                    response.daari_meta.model or response.model,
+                    input_tokens,
+                    output_tokens,
+                    self.pricing,
+                    **catalog_kwargs,
+                )
             response.daari_meta.cost_usd = parts.total
             response.daari_meta.cost_input_usd = parts.input_usd
             response.daari_meta.cost_output_usd = parts.output_usd
@@ -7804,7 +7820,12 @@ class AppContext:
             providers.register(live_provider)
         from daari.enterprise.postgres_audit import audit_log_from_settings
         from daari.gateway.mcp_guardrails import McpGuardrails
-        from daari.gateway.mcp_policy import McpServerPolicy, McpToolPolicy
+        from daari.gateway.mcp_policy import (
+            McpServerPolicy,
+            McpServerToolSubset,
+            McpToolPolicy,
+            _server_tools_block,
+        )
         from daari.providers.mcp_egress import build_mcp_providers
 
         egress_guardrails = McpGuardrails.from_settings(
@@ -7827,6 +7848,9 @@ class AppContext:
             tool_policy=McpToolPolicy.from_mapping(settings.integrations.mcp_policy),
             server_policy=McpServerPolicy.from_mapping(
                 getattr(settings.integrations.mcp_policy, "servers", None)
+            ),
+            server_tools=McpServerToolSubset.from_mapping(
+                _server_tools_block(settings.integrations.mcp_policy)
             ),
             allow_private_networks=bool(getattr(mcp_egress, "allow_private_networks", False)),
             retry=RetryPolicy.from_settings(settings.upstream.retry),

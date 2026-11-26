@@ -271,3 +271,217 @@ async def test_frontier_meters_nested_multi_agent_usage_into_meta(tmp_path):
         ).fetchone()
     assert row == (400, 80)
 
+
+
+def test_nested_agent_usages_copies_declared_model_and_aliases():
+    """Subagent rows carry ``model`` (and model_id / agent.model aliases) (#1553)."""
+    from daari.observability.tokens import nested_agent_usages
+
+    payload = {
+        "usage": {"input_tokens": 800, "output_tokens": 160},
+        "agent_usages": [
+            {"agent_id": "root", "input_tokens": 100, "output_tokens": 20},
+            {
+                "agent_id": "researcher",
+                "model": "gpt-6-luna",
+                "input_tokens": 400,
+                "output_tokens": 80,
+            },
+            {
+                "agent_id": "writer",
+                "model_id": "gpt-6.1-sol",
+                "input_tokens": 200,
+                "output_tokens": 40,
+            },
+            {
+                "agent_id": "critic",
+                "agent": {"model": "claude-haiku-5-5"},
+                "input_tokens": 100,
+                "output_tokens": 20,
+            },
+        ],
+    }
+    rows = {row["agent_id"]: row for row in nested_agent_usages(payload)}
+    assert "model" not in rows["root"]
+    assert rows["researcher"]["model"] == "gpt-6-luna"
+    assert rows["writer"]["model"] == "gpt-6.1-sol"
+    assert rows["critic"]["model"] == "claude-haiku-5-5"
+
+
+def test_nested_agent_usages_reads_model_from_output_items():
+    from daari.observability.tokens import nested_agent_usages
+
+    payload = {
+        "output": [
+            {
+                "id": "msg_1",
+                "agent": {"agent_id": "planner", "model": "gpt-6-luna"},
+                "usage": {"input_tokens": 50, "output_tokens": 5},
+            }
+        ]
+    }
+    rows = nested_agent_usages(payload)
+    assert rows == [
+        {"agent_id": "planner", "input_tokens": 50, "output_tokens": 5, "model": "gpt-6-luna"}
+    ]
+
+
+def test_ledger_record_bills_nested_rows_at_declared_model_rate(tmp_path, settings):
+    """Catalog-billed multi_agent spend prices each subagent at its own model (#1553)."""
+    from daari.config.settings import ModelPrice, PricingSettings
+    from daari.observability.usage import UsageLedger
+    from daari.pricing import cost_breakdown
+
+    pricing = PricingSettings(
+        models={
+            "parent-model": ModelPrice(input_per_1m=10.0, output_per_1m=30.0),
+            "cheap-sub": ModelPrice(input_per_1m=1.0, output_per_1m=2.0),
+            "pricey-sub": ModelPrice(input_per_1m=100.0, output_per_1m=200.0),
+        }
+    )
+    settings = settings.model_copy(
+        update={
+            "pricing": pricing,
+            "usage": settings.usage.model_copy(update={"db_path": str(tmp_path / "usage.db")}),
+        }
+    )
+    ctx = AppContext.from_settings(settings)
+    ctx.router.usage_ledger = UsageLedger(tmp_path / "usage.db")
+    fallback = float(settings.usage.frontier_price_per_1k_tokens or 0.002)
+    request = InternalRequest(
+        messages=[Message(role="user", content="delegate")],
+        model="parent-model",
+        sampling=SamplingParams(multi_agent={"enabled": True}),
+    )
+    agent_usage = [
+        {"agent_id": "root", "input_tokens": 100_000, "output_tokens": 20_000},
+        {
+            "agent_id": "a",
+            "model": "cheap-sub",
+            "input_tokens": 400_000,
+            "output_tokens": 80_000,
+        },
+        {
+            "agent_id": "b",
+            "model": "pricey-sub",
+            "input_tokens": 300_000,
+            "output_tokens": 60_000,
+        },
+    ]
+    response = InternalResponse(
+        content="ok",
+        model="parent-model",
+        daari_meta=DaariMeta(
+            tier="L6",
+            executor="frontier",
+            model="parent-model",
+            input_tokens=800_000,
+            output_tokens=160_000,
+            usage_estimated=False,
+            agent_usage=agent_usage,
+        ),
+    )
+    ctx.router._ledger_record(request, response)
+
+    kw = dict(pricing=pricing, fallback_per_1k=fallback)
+    root = cost_breakdown("parent-model", 100_000, 20_000, **kw)
+    a = cost_breakdown("cheap-sub", 400_000, 80_000, **kw)
+    b = cost_breakdown("pricey-sub", 300_000, 60_000, **kw)
+    parent_only = cost_breakdown("parent-model", 800_000, 160_000, **kw)
+    expected = root.total + a.total + b.total
+    assert expected != pytest.approx(parent_only.total)
+    assert response.daari_meta.cost_usd == pytest.approx(expected)
+    assert response.daari_meta.cost_input_usd == pytest.approx(
+        root.input_usd + a.input_usd + b.input_usd
+    )
+    assert response.daari_meta.cost_output_usd == pytest.approx(
+        root.output_usd + a.output_usd + b.output_usd
+    )
+    rows = {row["agent_id"]: row for row in response.daari_meta.agent_usage}
+    assert rows["a"]["model"] == "cheap-sub"
+    assert rows["a"]["cost_usd"] == pytest.approx(a.total)
+    assert rows["b"]["cost_usd"] == pytest.approx(b.total)
+    # Undeclared model → parent rate.
+    assert rows["root"]["cost_usd"] == pytest.approx(root.total)
+    assert "model" not in rows["root"]
+
+    import sqlite3
+
+    with sqlite3.connect(ctx.router.usage_ledger.path) as conn:
+        row = conn.execute(
+            "SELECT model, input_tokens, output_tokens FROM usage WHERE tier = 'L6'"
+        ).fetchone()
+    assert row == ("parent-model", 800_000, 160_000)
+
+
+def test_ledger_record_keeps_provider_cost_for_nested_rows(settings, tmp_path):
+    """Provider-reported usage.cost still wins over catalog math (#1500 / #1553)."""
+    from daari.observability.usage import UsageLedger
+
+    ctx = AppContext.from_settings(settings)
+    ctx.router.usage_ledger = UsageLedger(tmp_path / "usage.db")
+    request = InternalRequest(
+        messages=[Message(role="user", content="delegate")], model="gpt-6.1-sol"
+    )
+    response = InternalResponse(
+        content="ok",
+        model="gpt-6.1-sol",
+        daari_meta=DaariMeta(
+            tier="L6",
+            executor="frontier",
+            model="gpt-6.1-sol",
+            input_tokens=800,
+            output_tokens=160,
+            cost_usd=0.08,
+            agent_usage=[
+                {"agent_id": "a", "model": "gpt-6-luna", "input_tokens": 400, "output_tokens": 80}
+            ],
+        ),
+    )
+    ctx.router._ledger_record(request, response)
+    assert response.daari_meta.cost_usd == pytest.approx(0.08)
+
+
+@pytest.mark.asyncio
+async def test_frontier_exposes_subagent_model_on_agent_usage():
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "delegated"}}],
+                "usage": {"input_tokens": 250, "output_tokens": 50},
+                "agent_usages": [
+                    {
+                        "agent_id": "researcher",
+                        "model": "gpt-6-luna",
+                        "input_tokens": 200,
+                        "output_tokens": 40,
+                    }
+                ],
+            },
+        )
+
+    executor = FrontierExecutor(
+        base_url="http://frontier.test",
+        default_model="gpt-6.1-sol",
+        api_key="sk-test",
+        transport=httpx.MockTransport(handler),
+    )
+    request = InternalRequest(
+        messages=[Message(role="user", content="compare")],
+        model="gpt-6.1-sol",
+        sampling=SamplingParams(multi_agent={"enabled": True}),
+    )
+    response = await executor.execute(request, escalated_from="multi_agent", local_confidence=0.0)
+    assert response.daari_meta.cost_usd is None  # no provider cost → catalog bills later
+    assert response.daari_meta.input_tokens == 250
+    assert response.daari_meta.agent_usage == [
+        {
+            "agent_id": "researcher",
+            "input_tokens": 200,
+            "output_tokens": 40,
+            "model": "gpt-6-luna",
+        }
+    ]

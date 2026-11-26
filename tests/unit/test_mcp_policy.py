@@ -8,13 +8,16 @@ from daari.enterprise.audit import AuditLog
 from daari.gateway.mcp_policy import (
     McpClientPolicy,
     McpServerPolicy,
+    McpServerToolSubset,
     McpToolPolicy,
     audit_client_decision,
     audit_tool_call,
+    key_has_mcp_grant,
     resolve_client_identity,
     resolve_client_policy,
     resolve_policy,
     resolve_server_policy,
+    resolve_server_tool_subset,
 )
 from daari.server.auth import AuthClaims
 
@@ -159,6 +162,96 @@ class TestResolveServerPolicy:
         assert not policy.allows("github")  # key deny
         assert not policy.allows("shell")  # global deny
         assert not policy.allows("slack")  # not in key allow
+
+
+class TestMcpServerToolSubset:
+    """Per-server tool-name allowlist on top of server grants (#1288)."""
+
+    def test_unset_servers_are_unrestricted(self):
+        subset = McpServerToolSubset()
+        assert not subset.is_restrictive()
+        assert subset.allows("weather", "get_forecast")
+        assert subset.for_server("weather") is None
+
+    def test_named_server_is_exclusive_glob_and_case_insensitive(self):
+        subset = McpServerToolSubset.from_mapping({"Weather": ["get_*", "search"]})
+        assert subset.is_restrictive()
+        assert subset.restricts("weather")
+        assert not subset.restricts("github")
+        assert subset.allows("weather", "get_forecast")
+        assert subset.allows("WEATHER", "Search")
+        assert not subset.allows("weather", "set_alert")
+        assert subset.allows("github", "anything")  # server not named
+
+    def test_empty_list_fails_closed(self):
+        subset = McpServerToolSubset.from_mapping({"shell": []})
+        assert subset.for_server("shell") == ()
+        assert not subset.allows("shell", "exec")
+        assert not subset.allows("shell", "ls")
+
+    def test_from_mapping_tolerates_bad_shapes(self):
+        assert McpServerToolSubset.from_mapping(None) == McpServerToolSubset()
+        assert McpServerToolSubset.from_mapping("weather") == McpServerToolSubset()
+        subset = McpServerToolSubset.from_mapping(
+            {"weather": "get_forecast", "": ["x"], "github": None, "slack": [3, "", " post "]}
+        )
+        assert subset.for_server("weather") == ("get_forecast",)
+        assert subset.for_server("github") is None
+        assert subset.for_server("slack") == ("post",)
+        assert subset.for_server("") is None
+
+    def test_merge_specific_scope_wins_per_server(self):
+        team = McpServerToolSubset.from_mapping({"weather": ["get_*"], "github": ["search"]})
+        key = McpServerToolSubset.from_mapping({"weather": ["get_forecast"]})
+        merged = team.merged_with(key)
+        assert merged.for_server("weather") == ("get_forecast",)
+        assert merged.for_server("github") == ("search",)
+        assert not merged.allows("weather", "get_alerts")
+        assert merged.allows("github", "search")
+
+
+class TestResolveServerToolSubset:
+    def test_default_unset_is_unrestricted(self):
+        settings = Settings()
+        assert not resolve_server_tool_subset(None, settings).is_restrictive()
+        assert not resolve_server_tool_subset(_claims(), settings).is_restrictive()
+
+    def test_global_applies_to_master_and_anonymous(self):
+        settings = Settings.model_validate(
+            {"integrations": {"mcp_policy": {"server_tools": {"weather": ["get_forecast"]}}}}
+        )
+        for claims in (None, AuthClaims(kind="master")):
+            subset = resolve_server_tool_subset(claims, settings)
+            assert subset.allows("weather", "get_forecast")
+            assert not subset.allows("weather", "set_alert")
+
+    def test_key_over_team_over_global(self):
+        settings = Settings.model_validate(
+            {
+                "integrations": {
+                    "mcp_policy": {"server_tools": {"shell": []}},
+                    "mcp_team_policies": {
+                        "finance": {
+                            "server_tools": {"weather": ["get_*"], "github": ["search", "read"]}
+                        }
+                    },
+                }
+            }
+        )
+        subset = resolve_server_tool_subset(
+            _claims({"mcp": {"server_tools": {"github": ["read"]}}}, "finance"), settings
+        )
+        assert not subset.allows("shell", "exec")  # global empty list
+        assert subset.allows("weather", "get_forecast")  # team
+        assert not subset.allows("weather", "set_alert")
+        assert subset.allows("github", "read")  # key narrows team
+        assert not subset.allows("github", "search")
+        assert subset.allows("slack", "post")  # never named
+
+    def test_server_tools_counts_as_mcp_grant(self):
+        assert key_has_mcp_grant({"mcp": {"server_tools": {"weather": ["get_forecast"]}}})
+        assert key_has_mcp_grant({"mcp": {"server_tools": {}}}) is False
+        assert key_has_mcp_grant({"mcp": {"clients": {"allow": ["x"]}}}) is False
 
 
 class TestMcpClientPolicy:

@@ -478,6 +478,25 @@ hand-marking every system block. A request that already sends top-level
 executors never see the field. With the flag on but no Anthropic-shaped L6
 slot, the inject is a no-op — `daari doctor` tips `frontier_auto_caching`.
 
+### Responses multi_agent subagent pricing
+
+Responses `multi_agent.enabled` runs on L6 and the metered totals already
+include subagent tokens (#1500). When the provider omits `usage.cost`, daari
+bills from `pricing.models` — and nested agent rows (`agent_usages` /
+`usage_by_agent` / `usage.agents` / per-output-item `usage`) that declare a
+subagent model (`model`, `model_id`, or `agent.model`) are priced at **that**
+model's catalog rate via `resolve_price` (longest-prefix match, `alias_of`,
+`effective_to` windows all apply). Rows without a model, and the parent's own
+remainder (total minus nested tokens, plus every cached-read / cache-write
+dimension), bill at the parent request model. Service-tier, residency, and
+Anthropic `speed` multipliers apply to every row. `daari_meta.agent_usage`
+keeps the rows with `model` when known and a per-row `cost_usd`; the request's
+`cost_usd` / `cost_input_usd` / `cost_output_usd`, `X-Daari-Cost*` headers,
+budgets, and the `daari spend` ledger all see the same cost-true total.
+A provider-reported `usage.cost` still wins over catalog math. The day-level
+`usage` table stays one row per request under the parent model (token totals
+only); use `daari spend export` for per-request USD.
+
 ## Providers / fallback
 
 Configure `frontier.providers` (ordered list) for OpenAI-compatible bases, Anthropic, OpenRouter, etc. Circuit breakers and key rotation ship with the L6 pool. Each entry may set `timeout_s`, `retry_attempts`, and `retry_backoff_s`; unset fields inherit `upstream.frontier_timeout_seconds` / `upstream.retry`. A provider's exhausted retries advance the chain, and one slot's timeout does not consume the next slot's budget. `POST /v1/daari/route/preview` and `daari route preview` show the resolved policy on `policy` / `chain`. A provider whose `provider` is `anthropic`/`claude`, or whose `base_url` contains `anthropic.com`, is sent native Messages API payloads (`POST …/messages`, `x-api-key`) rather than an OpenAI `/chat/completions` body.
