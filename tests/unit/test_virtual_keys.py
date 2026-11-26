@@ -303,6 +303,42 @@ class TestCLI:
         assert "weather" in shown.output
         assert "shell" in shown.output
 
+    def test_create_with_mcp_server_tools(self, tmp_path, monkeypatch):
+        """--mcp-server-tools id=tool,tool stores metadata.mcp.server_tools (#1288)."""
+        from daari.config.settings import Settings
+
+        settings = Settings()
+        settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+        monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+        runner = CliRunner()
+        created = runner.invoke(
+            cli_app,
+            [
+                "keys",
+                "create",
+                "bot",
+                "--mcp-server-tools",
+                "weather=get_forecast, search*",
+                "--mcp-server-tools",
+                "shell=",
+            ],
+        )
+        assert created.exit_code == 0, created.output
+        from daari.auth.virtual_keys import VirtualKeyStore
+
+        store = VirtualKeyStore(settings.virtual_keys_path)
+        key = store.list()[0]
+        assert key.metadata["mcp"] == {
+            "server_tools": {"weather": ["get_forecast", "search*"], "shell": []},
+        }
+        shown = runner.invoke(cli_app, ["keys", "show", key.key_id])
+        assert shown.exit_code == 0, shown.output
+        assert "mcp server tools:" in shown.output
+        assert "get_forecast" in shown.output
+        bad = runner.invoke(cli_app, ["keys", "create", "bot2", "--mcp-server-tools", "weather"])
+        assert bad.exit_code != 0
+        assert "--mcp-server-tools" in bad.output
+
     def test_report_by_team_rolls_up_clients(self, tmp_path):
         from daari.auth.virtual_keys import VirtualKeyStore
 

@@ -8,11 +8,15 @@ arguments.
 Server-id allowlists (#1201) sit beside tool-name globs: a key may be granted
 the `weather` egress server without ever seeing `shell`, even when tool names
 collide across servers.
+
+Per-server tool subsets (#1288) narrow a granted server to named tools: the
+effective catalog is `server tools ∩ key subset`, and an empty subset fails
+closed (no tools from that server).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from typing import Any
 
@@ -52,6 +56,18 @@ def _clients_block(raw: Any) -> Any:
     if isinstance(raw, dict):
         return raw.get("clients")
     return getattr(raw, "clients", None)
+
+
+SERVER_TOOLS_FIELD = "server_tools"
+
+
+def _server_tools_block(raw: Any) -> Any:
+    """Pull the nested `server_tools` mapping from mcp_policy / metadata.mcp (#1288)."""
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw.get(SERVER_TOOLS_FIELD)
+    return getattr(raw, SERVER_TOOLS_FIELD, None)
 
 
 CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo"
@@ -106,6 +122,9 @@ def key_has_mcp_grant(metadata: Any) -> bool:
     servers = mcp.get("servers")
     if isinstance(servers, dict) and ("allow" in servers or "deny" in servers):
         return True
+    server_tools = mcp.get(SERVER_TOOLS_FIELD)
+    if isinstance(server_tools, dict) and server_tools:
+        return True
     return False
 
 
@@ -152,6 +171,56 @@ class McpServerPolicy:
 
     def is_restrictive(self) -> bool:
         return bool(self.allow or self.deny)
+
+
+@dataclass(frozen=True)
+class McpServerToolSubset:
+    """Per-egress-server tool-name allowlist (issue #1288).
+
+    ``by_server`` maps a lower-cased server id to glob patterns. A server that
+    is absent is unrestricted; a server mapped to an empty tuple exposes no
+    tools (fail closed). Layering follows allow lists: the most specific scope
+    that names a server wins for that server.
+    """
+
+    by_server: dict[str, tuple[str, ...]] = field(default_factory=dict)
+
+    @classmethod
+    def from_mapping(cls, raw: Any) -> McpServerToolSubset:
+        if not isinstance(raw, dict):
+            return cls()
+        by_server: dict[str, tuple[str, ...]] = {}
+        for server, patterns in raw.items():
+            sid = str(server or "").strip().lower()
+            if not sid or patterns is None:
+                continue
+            by_server[sid] = _patterns(patterns)
+        return cls(by_server=by_server)
+
+    def for_server(self, server: str) -> tuple[str, ...] | None:
+        return self.by_server.get(server.strip().lower())
+
+    def restricts(self, server: str) -> bool:
+        return server.strip().lower() in self.by_server
+
+    def allows(self, server: str, tool: str) -> bool:
+        patterns = self.for_server(server)
+        if patterns is None:
+            return True
+        name = tool.strip().lower()
+        return any(fnmatchcase(name, pattern.lower()) for pattern in patterns)
+
+    def merged_with(self, specific: McpServerToolSubset) -> McpServerToolSubset:
+        return McpServerToolSubset(by_server={**self.by_server, **specific.by_server})
+
+    def is_restrictive(self) -> bool:
+        return bool(self.by_server)
+
+    def as_meta(self) -> dict[str, list[str]] | None:
+        """Plain mapping for ``RequestMeta.mcp_server_tools``; None when unrestricted."""
+        if not self.by_server:
+            return None
+        return {sid: list(patterns) for sid, patterns in self.by_server.items()}
 
 
 @dataclass(frozen=True)
@@ -219,6 +288,33 @@ def resolve_server_policy(claims: Any, settings: Any) -> McpServerPolicy:
         )
     key_policy = (key.metadata or {}).get(KEY_METADATA_FIELD)
     return policy.merged_with(McpServerPolicy.from_mapping(_servers_block(key_policy)))
+
+
+def resolve_server_tool_subset(claims: Any, settings: Any) -> McpServerToolSubset:
+    """Global → team → key layers for per-server tool-name subsets (#1288)."""
+    integrations = getattr(settings, "integrations", None)
+    subset = McpServerToolSubset.from_mapping(
+        _server_tools_block(getattr(integrations, "mcp_policy", None))
+    )
+    key = getattr(claims, "virtual_key", None) if claims is not None else None
+    if key is None:
+        return subset
+    team_policies = getattr(integrations, "mcp_team_policies", None) or {}
+    if key.team_name and key.team_name in team_policies:
+        subset = subset.merged_with(
+            McpServerToolSubset.from_mapping(_server_tools_block(team_policies[key.team_name]))
+        )
+    key_policy = (key.metadata or {}).get(KEY_METADATA_FIELD)
+    return subset.merged_with(McpServerToolSubset.from_mapping(_server_tools_block(key_policy)))
+
+
+def apply_server_tool_subset_to_meta(meta: Any, claims: Any, settings: Any) -> None:
+    """Stamp the resolved subset on RequestMeta so egress enforces it (#1288)."""
+    if getattr(meta, "mcp_server_tools", None) is not None:
+        return
+    resolved = resolve_server_tool_subset(claims, settings).as_meta()
+    if resolved is not None:
+        meta.mcp_server_tools = resolved
 
 
 def resolve_client_policy(claims: Any, settings: Any) -> McpClientPolicy:
