@@ -7796,7 +7796,12 @@ class AppContext:
             providers.register(live_provider)
         from daari.enterprise.postgres_audit import audit_log_from_settings
         from daari.gateway.mcp_guardrails import McpGuardrails
-        from daari.gateway.mcp_policy import McpServerPolicy, McpToolPolicy
+        from daari.gateway.mcp_policy import (
+            McpServerPolicy,
+            McpServerToolSubset,
+            McpToolPolicy,
+            _server_tools_block,
+        )
         from daari.providers.mcp_egress import build_mcp_providers
 
         egress_guardrails = McpGuardrails.from_settings(
@@ -7819,6 +7824,9 @@ class AppContext:
             tool_policy=McpToolPolicy.from_mapping(settings.integrations.mcp_policy),
             server_policy=McpServerPolicy.from_mapping(
                 getattr(settings.integrations.mcp_policy, "servers", None)
+            ),
+            server_tools=McpServerToolSubset.from_mapping(
+                _server_tools_block(settings.integrations.mcp_policy)
             ),
             allow_private_networks=bool(getattr(mcp_egress, "allow_private_networks", False)),
             retry=RetryPolicy.from_settings(settings.upstream.retry),
