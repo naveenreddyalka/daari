@@ -9812,6 +9812,20 @@ Covered by `tests/unit/test_anthropic_auto_caching.py` and
 quiet when the flag is off or an Anthropic slot exists. Docs: doctor-health,
 budgets-frontier. Covered by `tests/unit/test_doctor_frontier_auto_caching.py`.
 
+
+### Responses status incomplete with incomplete_details ([#2332](https://github.com/naveenreddyalka/daari/issues/2332))
+
+<!-- tracking:#2332 -->
+**Status:** Done (2026-11-26). `/v1/responses` maps `finish_reason`
+`length`/`max_tokens` → `status: incomplete` +
+`incomplete_details.reason=max_output_tokens`, and `content_filter`/`refusal`
+→ `content_filter`. Non-stream, stream (`response.incomplete`), and GET
+replay all carry it; completed turns stay byte-identical aside from the
+new fields. Incomplete is terminal for cancel/lease; chaining still
+allowed (not in the failed/cancelled refuse set — see #2255 for failed).
+Covered by `tests/unit/test_responses_incomplete_status.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
