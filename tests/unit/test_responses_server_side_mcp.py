@@ -304,3 +304,96 @@ async def test_enabled_denied_server_policy_blocks_before_post(settings, monkeyp
     assert response.status_code == 400
     detail = response.json()["detail"].lower()
     assert "denied" in detail or "shell" in detail
+
+
+@pytest.mark.asyncio
+async def test_key_server_tools_subset_filters_catalog_and_denies_call(settings, monkeypatch):
+    """Per-key mcp.server_tools narrows the server-side MCP catalog and call path (#1288)."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    settings.integrations.mcp_egress.server_side_responses = True
+    settings.integrations.mcp_servers = [
+        McpServerSettings(id="demo", url="http://mcp.test/rpc"),
+    ]
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode())
+        seen.append(body)
+        if body.get("method") == "tools/list":
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": body.get("id", 1),
+                    "result": {
+                        "tools": [
+                            {"name": name, "inputSchema": {"type": "object", "properties": {}}}
+                            for name in ("ping", "shell_exec")
+                        ]
+                    },
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": body.get("id", 1),
+                "result": {"content": [{"type": "text", "text": "pong"}]},
+            },
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    created = store.create(
+        "agent", client_id="agent", metadata={"mcp": {"server_tools": {"demo": ["ping"]}}}
+    )
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    ping = function_name_for("demo", "ping")
+    shell = function_name_for("demo", "shell_exec")
+    calls = {"n": 0}
+
+    async def fake_route(request: InternalRequest) -> InternalResponse:
+        calls["n"] += 1
+        names = {(t.get("function") or {}).get("name") for t in (request.tools or [])}
+        if calls["n"] == 1:
+            assert ping in names
+            assert shell not in names
+            return InternalResponse(
+                content="",
+                model="m",
+                tool_calls=[
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": shell, "arguments": "{}"},
+                    }
+                ],
+                daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=1),
+            )
+        tool_msgs = [m.content or "" for m in request.messages if m.role == "tool"]
+        assert tool_msgs and "denied" in tool_msgs[0].lower()
+        assert "shell_exec" in tool_msgs[0]
+        return InternalResponse(
+            content="could not run shell_exec",
+            model="m",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=1),
+        )
+
+    app.state.ctx.router.route = fake_route
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "daari",
+                "input": "run shell",
+                "tools": [{"type": "mcp", "server_label": "demo"}],
+            },
+            headers={"Authorization": f"Bearer {created.plaintext}"},
+        )
+    assert response.status_code == 200, response.text
+    assert calls["n"] == 2
+    assert not [b for b in seen if b.get("method") == "tools/call"]

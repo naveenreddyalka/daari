@@ -46,7 +46,9 @@ through the cloud gateway), and Lens / agent traces. daari already serves
 `litellm.agent()` and Lens are a cloud agent control plane. daari does **not**
 ship Lens or a hosted agent runner. Responses `multi_agent`
 forwards to frontier (L6) when enabled, and nested agent token rows land on
-the local usage ledger. That path skips local tiers. Requests without
+the local usage ledger — priced per declared subagent model from
+`pricing.models` when the provider omits `usage.cost` (#1553). That path
+skips local tiers. Requests without
 `multi_agent` still take cache → tools → Ollama/MLX before frontier.
 
 Microsoft 365 MCP catalog and Straiker v3 fail-closed routing also landed in
