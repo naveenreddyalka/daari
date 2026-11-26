@@ -438,6 +438,24 @@ def _conversation_after(
     return history
 
 
+def _incomplete_details_from_finish_reason(finish_reason: str | None) -> dict[str, str] | None:
+    """Map InternalResponse.finish_reason → Responses incomplete_details (#2332)."""
+    token = (finish_reason or "").strip().lower()
+    if token in {"length", "max_tokens"}:
+        return {"reason": "max_output_tokens"}
+    if token in {"content_filter", "refusal"}:
+        return {"reason": "content_filter"}
+    return None
+
+
+def _status_from_result(result: InternalResponse) -> tuple[str, dict[str, str] | None]:
+    """``(status, incomplete_details)`` for a routed Responses turn (#2332)."""
+    details = _incomplete_details_from_finish_reason(getattr(result, "finish_reason", None))
+    if details is not None:
+        return "incomplete", details
+    return "completed", None
+
+
 def _response_body(
     response_id: str,
     result: InternalResponse,
@@ -447,7 +465,11 @@ def _response_body(
     metadata: dict[str, str] | None = None,
     status: str = "completed",
     include_encrypted: bool = False,
+    incomplete_details: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    # Incomplete turns still carry partial output (OpenAI wire shape); only
+    # queued/failed/cancelled leave output empty.
+    include_output = status in {"completed", "incomplete"}
     body: dict[str, Any] = {
         "id": response_id,
         "object": "response",
@@ -456,7 +478,7 @@ def _response_body(
         "model": result.model,
         "output": (
             _output_items_from_result(result, include_encrypted=include_encrypted)
-            if status == "completed"
+            if include_output
             else []
         ),
         "usage": {
@@ -465,6 +487,8 @@ def _response_body(
             "total_tokens": _estimate_tokens("x" * input_chars) + _estimate_tokens(result.content),
         },
     }
+    if incomplete_details is not None:
+        body["incomplete_details"] = incomplete_details
     if metadata is not None:
         body["metadata"] = metadata
     if include_daari_meta:
@@ -476,7 +500,7 @@ def _public_body(stored: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in stored.items() if not key.startswith("_")}
 
 
-_TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+_TERMINAL_STATUSES = frozenset({"completed", "incomplete", "failed", "cancelled"})
 _LEASE_ACTIVE_STATUSES = frozenset({"queued", "in_progress"})
 
 # Background job lease TTL / heartbeat (#1957). Monkeypatchable in tests.
@@ -797,7 +821,12 @@ def _replay_events_from_stored(
         completed["usage"] = public["usage"]
     if "metadata" in public:
         completed["metadata"] = public["metadata"]
-    emit("response.completed", {"type": "response.completed", "response": completed})
+    if "incomplete_details" in public:
+        completed["incomplete_details"] = public["incomplete_details"]
+    terminal_event = (
+        "response.incomplete" if completed["status"] == "incomplete" else "response.completed"
+    )
+    emit(terminal_event, {"type": terminal_event, "response": completed})
     return frames
 
 
@@ -815,8 +844,15 @@ def _parse_chat_delta(raw: str) -> dict[str, Any] | None:
     choices = parsed.get("choices") or []
     if not choices:
         return None
-    delta = choices[0].get("delta")
-    return delta if isinstance(delta, dict) else None
+    choice = choices[0] if isinstance(choices[0], dict) else {}
+    delta = choice.get("delta")
+    if not isinstance(delta, dict):
+        delta = {}
+    # Terminal chunks often carry finish_reason with an empty delta (#2332).
+    finish = choice.get("finish_reason")
+    if isinstance(finish, str) and finish.strip():
+        delta = {**delta, "finish_reason": finish.strip()}
+    return delta or None
 
 
 def _store_for(ctx: AppContext) -> ResponseStore | Any:
@@ -1565,12 +1601,15 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             elif getattr(request.state, "rate_limit_soft", False):
                 result.daari_meta.warning = "rate_limit_warning"
             _apply_dropped_content_warning(result, meta.dropped_content_parts)
+            status, incomplete_details = _status_from_result(result)
             payload = _response_body(
                 response_id,
                 result,
                 input_chars=input_chars,
                 include_daari_meta=include_daari_meta,
                 metadata=body.metadata,
+                status=status,
+                incomplete_details=incomplete_details,
                 include_encrypted=include_encrypted,
             )
             store.put(
@@ -1669,12 +1708,15 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             ):
                 return
             _apply_dropped_content_warning(result, internal.meta.dropped_content_parts)
+            status, incomplete_details = _status_from_result(result)
             payload = _response_body(
                 response_id,
                 result,
                 input_chars=input_chars,
                 include_daari_meta=include_daari_meta,
                 metadata=metadata,
+                status=status,
+                incomplete_details=incomplete_details,
                 include_encrypted=include_encrypted,
             )
             store.put(
@@ -1768,6 +1810,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         collected: list[str] = []
         tool_acc: dict[int, dict[str, str]] = {}
         tool_item_ids: dict[int, str] = {}
+        stream_finish: str | None = None
         try:
             async for chunk in stream_with_keepalive(
                 ctx.router.stream_openai_chunks(internal),
@@ -1784,6 +1827,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 delta = _parse_chat_delta(chunk)
                 if not delta:
                     continue
+                raw_finish = delta.get("finish_reason")
+                if isinstance(raw_finish, str) and raw_finish.strip():
+                    stream_finish = raw_finish.strip()
                 text_delta = delta.get("content")
                 if text_delta:
                     collected.append(text_delta)
@@ -1899,9 +1945,11 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 {"type": "response.output_item.done", "output_index": index + 1, "item": done_item},
             )
             output.append(done_item)
+        incomplete_details = _incomplete_details_from_finish_reason(stream_finish)
+        terminal_status = "incomplete" if incomplete_details is not None else "completed"
         completed = {
             **base,
-            "status": "completed",
+            "status": terminal_status,
             "output": output,
             "usage": {
                 "input_tokens": _estimate_tokens("x" * input_chars),
@@ -1909,9 +1957,14 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 "total_tokens": _estimate_tokens("x" * input_chars) + _estimate_tokens(text),
             },
         }
+        if incomplete_details is not None:
+            completed["incomplete_details"] = incomplete_details
         if metadata is not None:
             completed["metadata"] = metadata
-        yield emit("response.completed", {"type": "response.completed", "response": completed})
+        terminal_event = (
+            "response.incomplete" if terminal_status == "incomplete" else "response.completed"
+        )
+        yield emit(terminal_event, {"type": terminal_event, "response": completed})
         if store is not None:
             store.put(
                 response_id,
@@ -1922,5 +1975,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             )
         log_gateway_event(
             "responses_stream_done",
-            {"model": internal.model, "completion_chars": len(text)},
+            {
+                "model": internal.model,
+                "completion_chars": len(text),
+                "status": terminal_status,
+            },
         )
