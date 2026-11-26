@@ -2800,11 +2800,22 @@ class McpToolPolicySettings(BaseModel):
             "mcp_policy / mcp_team_policies / virtual-key metadata.mcp.clients."
         ),
     )
+    server_tools: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-server tool-name allowlist keyed by mcp_servers id (issue #1288): "
+            "tool-name globs the caller may list/call on that server, intersected "
+            "with the server's own catalog and servers.allow/deny. Unlisted servers "
+            "are unrestricted; an empty list exposes no tools from that server "
+            "(fail closed). Key over team over global per server. Nested under "
+            "mcp_policy / mcp_team_policies / virtual-key metadata.mcp.server_tools."
+        ),
+    )
     require_key_access_defined: bool = Field(
         default=False,
         description=(
             "When true, virtual keys with no MCP grant in metadata.mcp "
-            "(allow / deny / servers.allow / servers.deny) fail initialize "
+            "(allow / deny / servers.allow / servers.deny / server_tools) fail initialize "
             "(HTTP 403 JSON-RPC -32003), get an empty tools/list, and "
             "tools/call deny on /mcp and /v1/mcp/query (#1352, #1389). "
             "Master key and flag-off behavior unchanged. Default false. "
