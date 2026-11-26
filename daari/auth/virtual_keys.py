@@ -1725,6 +1725,44 @@ class VirtualKeyStore:
             )
             return cur.rowcount > 0
 
+    def update_guardrail_profile(self, key_id: str, profile: str | None) -> bool:
+        """Bind (or clear with None/empty) a key's guardrails.profiles name (#1548)."""
+        if not self.enabled:
+            return False
+        name = str(profile or "").strip()
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT metadata_json FROM virtual_keys WHERE key_id = ? AND revoked_at IS NULL",
+                (key_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            meta = _write_guardrail_profile(_parse_metadata(row[0]), name)
+            cur = conn.execute(
+                "UPDATE virtual_keys SET metadata_json = ? WHERE key_id = ? AND revoked_at IS NULL",
+                (json.dumps(meta), key_id),
+            )
+            return cur.rowcount > 0
+
+    def update_team_guardrail_profile(self, team_id: str, profile: str | None) -> bool:
+        """Bind (or clear with None/empty) a team's guardrails.profiles name (#1548)."""
+        if not self.enabled:
+            return False
+        name = str(profile or "").strip()
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT metadata_json FROM teams WHERE team_id = ?",
+                (team_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            meta = _write_guardrail_profile(_parse_metadata(row[0] if len(row) else None), name)
+            cur = conn.execute(
+                "UPDATE teams SET metadata_json = ? WHERE team_id = ?",
+                (json.dumps(meta), team_id),
+            )
+            return cur.rowcount > 0
+
     def revoke(self, key_id: str) -> bool:
         if not self.enabled:
             return False
@@ -2603,6 +2641,15 @@ def _parse_metadata(raw: str | None) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _write_guardrail_profile(meta: dict[str, Any], name: str) -> dict[str, Any]:
+    """Set or drop metadata.guardrail_profile (#1548). Empty name clears."""
+    if name:
+        meta["guardrail_profile"] = name
+    else:
+        meta.pop("guardrail_profile", None)
+    return meta
 
 
 def _max_in_flight_from_meta(metadata: dict[str, Any] | None) -> int:
