@@ -102,7 +102,8 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     cost_avoided_usd REAL NOT NULL DEFAULT 0,
     cache_hit INTEGER NOT NULL DEFAULT 0,
     usage_speed TEXT NOT NULL DEFAULT '',
-    service_tier TEXT NOT NULL DEFAULT ''
+    service_tier TEXT NOT NULL DEFAULT '',
+    credential_source TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_spend_requests_ts ON spend_requests (ts);
 CREATE INDEX IF NOT EXISTS idx_spend_requests_key ON spend_requests (key_id);
@@ -129,7 +130,8 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     cost_avoided_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
     cache_hit INTEGER NOT NULL DEFAULT 0,
     usage_speed TEXT NOT NULL DEFAULT '',
-    service_tier TEXT NOT NULL DEFAULT ''
+    service_tier TEXT NOT NULL DEFAULT '',
+    credential_source TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_spend_requests_ts ON spend_requests (ts);
 CREATE INDEX IF NOT EXISTS idx_spend_requests_key ON spend_requests (key_id);
@@ -166,6 +168,16 @@ _PG_SPEND_SERVICE_TIER_MIGRATE = (
     "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS "
     "service_tier TEXT NOT NULL DEFAULT ''"
 )
+# Which frontier credential signed the row (#2315): global | team | key;
+# empty for non-frontier rows and rows written before the column existed.
+CREDENTIAL_SOURCES = ("global", "team", "key")
+_SPEND_CREDENTIAL_SOURCE_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN credential_source TEXT NOT NULL DEFAULT ''"
+)
+_PG_SPEND_CREDENTIAL_SOURCE_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS "
+    "credential_source TEXT NOT NULL DEFAULT ''"
+)
 
 
 @dataclass
@@ -188,6 +200,8 @@ class SpendContext:
     cached_tokens: int = 0
     cache_write_tokens: int = 0
     cache_ttl: str | None = None
+    # team | key when a BYOK binding signed L6; empty means the global key (#2315).
+    credential_source: str = ""
 
 
 _spend_ctx: ContextVar[SpendContext | None] = ContextVar("daari_spend_ctx", default=None)
@@ -260,6 +274,14 @@ def compute_request_usd(
         region_pin=region_pin,
     )
     return 0.0, round(max(0.0, avoided), 8)
+
+
+def billed_credential_source(*, tier: str, bound_source: str) -> str:
+    """``global`` / ``team`` / ``key`` for frontier rows; empty otherwise (#2315)."""
+    if (tier or "").upper() != FRONTIER_TIER:
+        return ""
+    source = (bound_source or "").strip().lower()
+    return source if source in CREDENTIAL_SOURCES else "global"
 
 
 def export_dict(row: dict[str, Any]) -> dict[str, Any]:
@@ -417,6 +439,8 @@ class SpendLedger:
             conn.execute(_SPEND_USAGE_SPEED_MIGRATE)
         if columns and "service_tier" not in columns:
             conn.execute(_SPEND_SERVICE_TIER_MIGRATE)
+        if columns and "credential_source" not in columns:
+            conn.execute(_SPEND_CREDENTIAL_SOURCE_MIGRATE)
         if columns:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_spend_requests_user ON spend_requests (user_id)"
@@ -450,6 +474,7 @@ class SpendLedger:
         cache_hit: bool = False,
         usage_speed: str = "",
         service_tier: str = "",
+        credential_source: str = "",
     ) -> None:
         if not self.enabled:
             return
@@ -460,8 +485,9 @@ class SpendLedger:
                     INSERT INTO spend_requests (
                         ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,
                         input_tokens, output_tokens, cached_tokens, cache_write_tokens,
-                        cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier,
+                        credential_source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         ts or _now_iso(),
@@ -482,6 +508,7 @@ class SpendLedger:
                         1 if cache_hit else 0,
                         usage_speed or "",
                         service_tier or "",
+                        credential_source or "",
                     ),
                 )
         except Exception:
@@ -526,6 +553,10 @@ class SpendLedger:
         user = kwargs.get("user_id")
         if user is None:
             user = bound.user_id
+        credential_source = billed_credential_source(
+            tier=str(kwargs.get("tier") or ""),
+            bound_source=getattr(bound, "credential_source", "") or "",
+        )
         self.record(
             ts=kwargs.get("ts"),
             request_id=bound.request_id or str(kwargs.get("request_id") or ""),
@@ -545,6 +576,7 @@ class SpendLedger:
             cache_hit=bool(kwargs.get("cache_hit")),
             usage_speed=str(getattr(bound, "usage_speed", None) or ""),
             service_tier=str(getattr(bound, "service_tier", None) or ""),
+            credential_source=credential_source,
         )
 
     def count_rows(
@@ -868,6 +900,7 @@ class PostgresSpendLedger(SpendLedger):
                     cur.execute(_PG_SPEND_PROVIDER_MIGRATE)
                     cur.execute(_PG_SPEND_USAGE_SPEED_MIGRATE)
                     cur.execute(_PG_SPEND_SERVICE_TIER_MIGRATE)
+                    cur.execute(_PG_SPEND_CREDENTIAL_SOURCE_MIGRATE)
                     cur.execute(
                         "CREATE INDEX IF NOT EXISTS idx_spend_requests_user "
                         "ON spend_requests (user_id)"
@@ -906,6 +939,7 @@ class PostgresSpendLedger(SpendLedger):
         cache_hit: bool = False,
         usage_speed: str = "",
         service_tier: str = "",
+        credential_source: str = "",
     ) -> None:
         if not self.enabled:
             return
@@ -917,8 +951,11 @@ class PostgresSpendLedger(SpendLedger):
                         INSERT INTO spend_requests (
                             ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,
                             input_tokens, output_tokens, cached_tokens, cache_write_tokens,
-                            cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            cost_usd, cost_avoided_usd, cache_hit, usage_speed, service_tier,
+                            credential_source
+                        ) VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        )
                         """,
                         (
                             ts or _now_iso(),
@@ -939,6 +976,7 @@ class PostgresSpendLedger(SpendLedger):
                             1 if cache_hit else 0,
                             usage_speed or "",
                             service_tier or "",
+                            credential_source or "",
                         ),
                     )
                 conn.commit()

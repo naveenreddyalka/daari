@@ -202,6 +202,7 @@ def apply_auth_claims_to_meta(
         )
         if bound_key:
             meta.frontier_api_key = bound_key
+            meta.frontier_credential_source = "key" if key_api else "team"
         if bound_pool:
             meta.frontier_pool = bound_pool
     # Key / team signal_overrides (#2050). Empty list is intentional clear.

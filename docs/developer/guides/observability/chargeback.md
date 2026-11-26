@@ -95,6 +95,24 @@ daari spend reconcile --provider anthropic \
 Exits nonzero when any model/day drift exceeds `--threshold-pct`, or when the
 admin key is missing / the window exceeds 31 days.
 
+### Team / key BYOK credentials
+
+Every frontier (`L6`) ledger row records `credential_source`: `global` when the
+operator's frontier key signed the request, `team` or `key` when a team- or
+key-bound BYOK credential did (key wins over team, matching the binding
+precedence). Non-frontier rows and rows written before the column existed are
+empty and count as `global`. Tenant-signed requests bill a different Anthropic
+organization, so by default reconcile compares only `global` rows against the
+operator's analytics totals and prints the spend it left out:
+
+```text
+Excluded 12 ledger row(s) / $3.4100 (48210 tok) not signed with the global credential: key $0.9100, team $2.5000. ...
+```
+
+`--credential team` / `--credential key` reconciles that scope instead — supply
+that tenant's admin key via `anthropic.analytics_api_key`. `--credential all`
+keeps every Anthropic-served row (tenant keys in the same organization).
+
 OpenAI Responses prompt-cache **writes** are TTL-dependent totals (not surcharges):
 `prompt_cache_options.ttl` of `30m` bills at **1.25×** input and `12h` at **2.5×**
 input for GPT-5.6+ models (`cache_write_30m_per_1m` / `cache_write_12h_per_1m`).

@@ -146,6 +146,9 @@ class RequestMeta(BaseModel):
     frontier_api_key: str | None = None
     # Optional named frontier.providers slot id for this tenant (#2216).
     frontier_pool: str | None = None
+    # ``key`` | ``team`` when frontier_api_key came from a BYOK binding (#2315).
+    # None means the global operator credential signs L6.
+    frontier_credential_source: str | None = None
 
 
 class InternalRequest(BaseModel):
