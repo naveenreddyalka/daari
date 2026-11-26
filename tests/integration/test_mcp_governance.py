@@ -419,3 +419,188 @@ async def test_require_key_access_clients_only_is_not_a_grant(settings, monkeypa
     assert listed.json()["result"]["tools"] == []
     assert denied.json()["error"]["code"] == TOOL_DENIED
     assert legacy.json()["result"]["tools"] == []
+
+
+def _mock_egress(monkeypatch, *, tools: list[str], seen: list[dict]):
+    """Fake MCP egress server exposing ``tools``; records every JSON-RPC body."""
+    import json
+    import socket
+
+    import httpx
+
+    def fake_getaddrinfo(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port or 0))]
+
+    monkeypatch.setattr("daari.security.egress_url.socket.getaddrinfo", fake_getaddrinfo)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode())
+        seen.append(body)
+        if body.get("method") == "tools/list":
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": body.get("id", 1),
+                    "result": {
+                        "tools": [
+                            {
+                                "name": name,
+                                "description": f"{name} tool",
+                                "inputSchema": {"type": "object", "properties": {}},
+                            }
+                            for name in tools
+                        ]
+                    },
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": body.get("id", 1),
+                "result": {"content": [{"type": "text", "text": "pong"}]},
+            },
+        )
+
+    class Patched(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+
+
+async def test_server_tools_subset_filters_aggregated_catalog_and_denies_call(
+    settings, monkeypatch
+):
+    """Per-key mcp.server_tools narrows a granted server to named tools (#1288)."""
+    from daari.gateway.responses_mcp import function_name_for
+
+    settings.integrations.mcp_aggregate_egress.enabled = True
+    settings.integrations.mcp_servers = [{"id": "demo", "url": "http://mcp.test/rpc"}]
+    seen: list[dict] = []
+    _mock_egress(monkeypatch, tools=["ping", "shell_exec"], seen=seen)
+    app, headers, key_id = _app_with_key(
+        settings,
+        monkeypatch,
+        metadata={"mcp": {"server_tools": {"demo": ["ping"]}}},
+    )
+    ping = function_name_for("demo", "ping")
+    shell = function_name_for("demo", "shell_exec")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await _rpc(client, "tools/list", headers=headers)
+        denied = await _rpc(
+            client, "tools/call", {"name": shell, "arguments": {}}, headers=headers
+        )
+        allowed = await _rpc(
+            client, "tools/call", {"name": ping, "arguments": {}}, headers=headers
+        )
+
+    names = {tool["name"] for tool in listed.json()["result"]["tools"]}
+    assert ping in names
+    assert shell not in names
+    assert "route" in names
+    assert listed.json()["result"]["_meta"]["cacheScope"] == "private"
+    error = denied.json()["error"]
+    assert error["code"] == TOOL_DENIED
+    assert error["data"]["tool"] == shell
+    assert error["data"]["server"] == "demo"
+    assert allowed.json()["result"]["content"][0]["text"] == "pong"
+    called = [b["params"]["name"] for b in seen if b.get("method") == "tools/call"]
+    assert called == ["ping"]
+    rows = [
+        row
+        for row in AuditLog(settings.enterprise.audit_path).list()
+        if row["action"] == "mcp.tools/call" and row["detail"].get("decision") == "deny"
+    ]
+    assert len(rows) == 1
+    assert rows[0]["detail"]["server"] == "demo"
+    assert rows[0]["actor"] == key_id
+
+
+async def test_server_tools_empty_list_fails_closed(settings, monkeypatch):
+    """``server_tools: {demo: []}`` hides the server and denies every call (#1288)."""
+    from daari.gateway.responses_mcp import function_name_for
+
+    settings.integrations.mcp_servers = [{"id": "demo", "url": "http://mcp.test/rpc"}]
+    seen: list[dict] = []
+    _mock_egress(monkeypatch, tools=["ping"], seen=seen)
+    app, headers, _ = _app_with_key(
+        settings, monkeypatch, metadata={"mcp": {"server_tools": {"demo": []}}}
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await _rpc(client, "tools/list", headers=headers)
+        denied = await _rpc(
+            client,
+            "tools/call",
+            {"name": "mcp_demo", "arguments": {"input": "@mcp demo ping"}},
+            headers=headers,
+        )
+        settings.integrations.mcp_aggregate_egress.enabled = True
+        aggregated = await _rpc(client, "tools/list", headers=headers)
+        denied_aggregated = await _rpc(
+            client,
+            "tools/call",
+            {"name": function_name_for("demo", "ping"), "arguments": {}},
+            headers=headers,
+        )
+    names = {tool["name"] for tool in listed.json()["result"]["tools"]}
+    assert "mcp_demo" not in names
+    assert "route" in names
+    assert denied.json()["error"]["code"] == TOOL_DENIED
+    assert denied.json()["error"]["data"]["server"] == "demo"
+    aggregated_names = {tool["name"] for tool in aggregated.json()["result"]["tools"]}
+    assert not any(name.startswith("demo__") for name in aggregated_names)
+    assert denied_aggregated.json()["error"]["code"] == TOOL_DENIED
+    assert not [b for b in seen if b.get("method") == "tools/call"]
+
+
+async def test_server_tools_coarse_stub_call_is_denied_in_egress(settings, monkeypatch):
+    """Non-aggregated ``mcp_<id>`` stub stays listed; the egress client refuses denied tools."""
+    settings.integrations.mcp_servers = [{"id": "demo", "url": "http://mcp.test/rpc"}]
+    seen: list[dict] = []
+    _mock_egress(monkeypatch, tools=["ping", "shell_exec"], seen=seen)
+    app, headers, _ = _app_with_key(
+        settings, monkeypatch, metadata={"mcp": {"server_tools": {"demo": ["ping"]}}}
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await _rpc(client, "tools/list", headers=headers)
+        denied = await _rpc(
+            client,
+            "tools/call",
+            {"name": "mcp_demo", "arguments": {"input": "@mcp demo shell_exec whoami"}},
+            headers=headers,
+        )
+        allowed = await _rpc(
+            client,
+            "tools/call",
+            {"name": "mcp_demo", "arguments": {"input": "@mcp demo ping"}},
+            headers=headers,
+        )
+    assert "mcp_demo" in {tool["name"] for tool in listed.json()["result"]["tools"]}
+    denied_result = denied.json()["result"]
+    assert denied_result["isError"] is True
+    assert "shell_exec" in denied_result["content"][0]["text"]
+    assert "denied" in denied_result["content"][0]["text"].lower()
+    assert allowed.json()["result"]["content"][0]["text"] == "pong"
+    called = [b["params"]["name"] for b in seen if b.get("method") == "tools/call"]
+    assert called == ["ping"]
+
+
+async def test_server_tools_unset_preserves_catalog(settings, monkeypatch):
+    """Default (no server_tools) keeps every upstream tool visible and callable (#1288)."""
+    from daari.gateway.responses_mcp import function_name_for
+
+    settings.integrations.mcp_aggregate_egress.enabled = True
+    settings.integrations.mcp_servers = [{"id": "demo", "url": "http://mcp.test/rpc"}]
+    seen: list[dict] = []
+    _mock_egress(monkeypatch, tools=["ping", "shell_exec"], seen=seen)
+    app, headers, _ = _app_with_key(
+        settings, monkeypatch, metadata={"mcp": {"servers": {"allow": ["demo"]}}}
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await _rpc(client, "tools/list", headers=headers)
+    names = {tool["name"] for tool in listed.json()["result"]["tools"]}
+    assert function_name_for("demo", "ping") in names
+    assert function_name_for("demo", "shell_exec") in names

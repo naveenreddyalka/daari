@@ -33,6 +33,8 @@ DEFAULT_HTTP_TIMEOUT_SECONDS = 30.0
 DEFAULT_MAX_RESULT_CHARS = 2_097_152
 WARNING_RESULT_TRUNCATED = "mcp_result_truncated"
 WARNING_CREDENTIAL_REFRESH_FAILED = "mcp_credential_refresh_failed"
+WARNING_TOOL_DENIED = "mcp_tool_denied"
+_LIST_TOOL_NAMES = frozenset({"tools/list", "list"})
 ACCEPT_JSON_AND_SSE = "application/json, text/event-stream"
 
 
@@ -184,6 +186,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         embedder: Any = None,
         tool_policy: Any = None,
         server_policy: Any = None,
+        server_tools: Any = None,
         allow_private_networks: bool = False,
         retry: RetryPolicy | None = None,
         breaker: CircuitBreaker | None = None,
@@ -214,6 +217,8 @@ class McpEgressProvider(HttpIntegrationProvider):
         self.embedder = embedder
         self.tool_policy = tool_policy
         self.server_policy = server_policy
+        # Global mcp_policy.server_tools; per-request RequestMeta overrides (#1288).
+        self.server_tools = server_tools
         self.allow_private_networks = allow_private_networks
         self.retry = retry or RetryPolicy()
         self.breaker = breaker or CircuitBreaker(
@@ -361,7 +366,9 @@ class McpEgressProvider(HttpIntegrationProvider):
             {"server_id": self.server.id, "tool": tool, "rpc_id": rpc_id},
         )
 
-    def _policy_denied_response(self, request: InternalRequest) -> InternalResponse | None:
+    def _policy_denied_response(
+        self, request: InternalRequest, *, tool: str | None = None
+    ) -> InternalResponse | None:
         if self.server_policy is not None and not self.server_policy.allows(self.server.id):
             return InternalResponse(
                 content=f"MCP server '{self.server.id}' denied by policy.",
@@ -374,7 +381,43 @@ class McpEgressProvider(HttpIntegrationProvider):
                     warning="mcp_server_denied",
                 ),
             )
+        if tool is not None and not self._server_tool_subset(request).allows(self.server.id, tool):
+            return InternalResponse(
+                content=(
+                    f"MCP tool '{tool}' on server '{self.server.id}' denied by policy "
+                    "(not in the caller's server_tools allowlist)."
+                ),
+                model=request.model,
+                daari_meta=DaariMeta(
+                    tier=self.tier,
+                    executor="integration",
+                    provider_id=self.id,
+                    task_type="tool",
+                    warning=WARNING_TOOL_DENIED,
+                ),
+            )
         return None
+
+    def _server_tool_subset(self, request: InternalRequest) -> Any:
+        """Per-request subset from RequestMeta, else the global block (#1288)."""
+        from daari.gateway.mcp_policy import McpServerToolSubset
+
+        raw = getattr(getattr(request, "meta", None), "mcp_server_tools", None)
+        if raw is not None:
+            return McpServerToolSubset.from_mapping(raw)
+        return self.server_tools if self.server_tools is not None else McpServerToolSubset()
+
+    def _filter_server_tools(
+        self, tools: list[dict[str, Any]], request: InternalRequest
+    ) -> list[dict[str, Any]]:
+        subset = self._server_tool_subset(request)
+        if not subset.restricts(self.server.id):
+            return tools
+        return [
+            tool
+            for tool in tools
+            if subset.allows(self.server.id, str(tool.get("name") or ""))
+        ]
 
     def _auth_failure(
         self, request: InternalRequest, warning: str, message: str
@@ -508,7 +551,8 @@ class McpEgressProvider(HttpIntegrationProvider):
     async def _prepare_egress(
         self, request: InternalRequest, *, tool: str, tokens: int = 1
     ) -> tuple[dict[str, str] | None, InternalResponse | None]:
-        denied = self._policy_denied_response(request)
+        call_tool = None if tool in _LIST_TOOL_NAMES else tool
+        denied = self._policy_denied_response(request, tool=call_tool)
         if denied is not None:
             return None, denied
         self._enforce_server_rate_limit(tokens=tokens)
@@ -562,6 +606,7 @@ class McpEgressProvider(HttpIntegrationProvider):
             self._record_egress("ok")
             from daari.gateway.mcp_tool_search import extract_list_query, maybe_rank_tools
 
+            tools = self._filter_server_tools(tools, request)
             query = extract_list_query(arg_text="", messages=request.messages)
             tools = await maybe_rank_tools(
                 tools,
@@ -767,6 +812,7 @@ class McpEgressProvider(HttpIntegrationProvider):
             self._record_egress("ok")
             from daari.gateway.mcp_tool_search import extract_list_query, maybe_rank_tools
 
+            tools = self._filter_server_tools(tools, request)
             query = extract_list_query(arg_text=arg_text, messages=request.messages)
             tools = await maybe_rank_tools(
                 tools,
@@ -854,6 +900,7 @@ def build_mcp_providers(
     embedder: Any = None,
     tool_policy: Any = None,
     server_policy: Any = None,
+    server_tools: Any = None,
     allow_private_networks: bool = False,
     retry: RetryPolicy | None = None,
     failure_threshold: int = 3,
@@ -896,6 +943,7 @@ def build_mcp_providers(
                 embedder=embedder,
                 tool_policy=tool_policy,
                 server_policy=server_policy,
+                server_tools=server_tools,
                 allow_private_networks=allow_private_networks,
                 retry=policy,
                 breaker=CircuitBreaker(
