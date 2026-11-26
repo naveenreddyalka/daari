@@ -41,7 +41,7 @@ until the false-hit rate for your workload is acceptable — measured, not vibes
 
 ## Decisions and System One
 
-Typed judgments are timed by [`scripts/bench_vs_litellm.py`](scripts/bench_vs_litellm.py)
+Typed judgments are timed by [`scripts/bench_vs_litellm.py`](https://github.com/naveenreddyalka/daari/blob/main/scripts/bench_vs_litellm.py)
 (same Ollama on both sides; LiteLLM rows skip when that build has no route):
 
 | ID | What it measures | How to run |
