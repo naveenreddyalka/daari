@@ -153,6 +153,50 @@ def render_api_reference() -> str:
             "`admin.events.list` (actor, role, limit, team scope, returned count; event "
             "bodies are not copied).",
             "",
+            "## Report rollups",
+            "",
+            "`GET /v1/daari/report` bounds its `clients` and `users` rollups the same "
+            "way: query `clients_limit` / `users_limit` (default **100**, max **500**) "
+            "and `clients_offset` / `users_offset` (default **0**). Rows sort by "
+            "requests descending. The body carries `clients_total`, `clients_limit`, "
+            "`clients_offset`, `clients_has_more` and the matching `users_*` fields so "
+            "UIs can page; `teams` and `totals` are still computed from every row, not "
+            "just the returned page. With `team_id`, totals count only that team's "
+            "clients.",
+
+"## Admin end-user inventory and overrides",
+            "",
+            "`GET /v1/daari/users` (admin / master key) pages every named end-user the "
+            "usage ledger has seen across keys (OpenAI `user` / Anthropic "
+            "`metadata.user_id`; unattributed `unknown` rows are skipped) with the same "
+            "`limit` / `offset` / `total` / `has_more` conventions as keys and teams, "
+            "plus optional `blocked=true|false` and `user_id` filters. Each row carries "
+            "`requests`, `frontier_requests`, `local_requests`, `cache_hits`, "
+            "`client_ids` (keys the user appeared on), `first_seen` / `last_seen` (UTC "
+            "day), `spend.today_usd` / `spend.lifetime_usd` (priced like budget "
+            "pre-checks), and the override fields `blocked`, `reason`, `user_usd_cap`, "
+            "`override_updated_at`. Users with an override but no ledger rows "
+            "(pre-emptive blocks) still appear with zero usage. Reads audit "
+            "`admin.users.list`.",
+            "",
+            "`PATCH /v1/daari/users/{user_id}` accepts "
+            '`{"blocked": true|false, "reason": "..."}` and/or `{"user_usd_cap": N}` '
+            "(daily frontier USD across every key; `0` clears the override so the key's "
+            "`user_daily_usd_cap` applies again). Missing both fields or a negative cap "
+            "→ **400**. The response is the updated inventory row; writes audit "
+            "`admin.users.block` / `admin.users.unblock` / `admin.users.cap` "
+            "(`user_id`, `reason` / `user_usd_cap`).",
+            "",
+            "Enforcement runs on every inference facade that binds a user (chat "
+            "completions, Responses, Messages, decisions, batch items, images, OCR, "
+            "moderations, rerank, extractions) before any upstream call: a blocked user "
+            'receives **403** `{"error": {"type": "end_user_blocked", "code": '
+            '"end_user_blocked", "user_id": ..., "reason": ...}}` on every key; a user '
+            "over their cap receives the existing **402** `budget_exceeded` shape with "
+            '`scope: "user"`. Overrides live in the virtual-key store '
+            "(`end_user_overrides`, SQLite and Postgres; `daari migrate` reports the "
+            "table). CLI: `daari users list|block|unblock|cap`.",
+            "",
             "## Request / event log",
             "",
             "`GET /v1/daari/events` (analyst / master, or a virtual key on the same "

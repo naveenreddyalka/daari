@@ -60,6 +60,8 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `PATCH` | `/v1/daari/teams/{team_id}` | Daari Teams Patch |
 | `GET` | `/v1/daari/traces` | Daari Traces |
 | `GET` | `/v1/daari/traces/{trace_id}` | Daari Trace Detail |
+| `GET` | `/v1/daari/users` | Daari Users List |
+| `PATCH` | `/v1/daari/users/{user_id}` | Daari Users Patch |
 | `POST` | `/v1/daari/webhooks/anthropic/org` | Daari Anthropic Org Webhook |
 | `POST` | `/v1/decisions` | Decisions |
 | `POST` | `/v1/embeddings` | Embeddings |
@@ -95,6 +97,17 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 ## Admin keys / teams inventory
 
 `GET /v1/daari/keys` and `GET /v1/daari/teams` (admin / master key) return redacted rows plus pagination metadata: query `limit` (default **100**, max **500**), `offset` (default **0**), and optional `team_id`. Response includes `total`, `has_more`, `limit`, and `offset`. Rows include `allowed_ips` (list of CIDR/address strings, or `null` when unrestricted). A caller pinned to a team who requests a different `team_id` receives **403**. Omitting `team_id` keeps the full inventory for an unscoped admin. Successful reads emit `admin.keys.list` / `admin.teams.list` audit events (`limit` / `offset` / `total` / `returned` / `team_id` — never secrets). `PATCH /v1/daari/keys/{key_id}` and `PATCH /v1/daari/teams/{team_id}` accept `{"allowed_ips": [...]}` (invalid CIDR → **400**; empty list or `null` clears to unrestricted) and audit `admin.keys.patch_ips` / `admin.teams.patch_ips`. `GET /v1/daari/audit` accepts the same optional `team_id` and returns only rows whose detail includes that id (`total` / `has_more` match the filtered set). `GET /v1/daari/events` records `admin.events.list` (actor, role, limit, team scope, returned count; event bodies are not copied).
+
+## Report rollups
+
+`GET /v1/daari/report` bounds its `clients` and `users` rollups the same way: query `clients_limit` / `users_limit` (default **100**, max **500**) and `clients_offset` / `users_offset` (default **0**). Rows sort by requests descending. The body carries `clients_total`, `clients_limit`, `clients_offset`, `clients_has_more` and the matching `users_*` fields so UIs can page; `teams` and `totals` are still computed from every row, not just the returned page. With `team_id`, totals count only that team's clients.
+## Admin end-user inventory and overrides
+
+`GET /v1/daari/users` (admin / master key) pages every named end-user the usage ledger has seen across keys (OpenAI `user` / Anthropic `metadata.user_id`; unattributed `unknown` rows are skipped) with the same `limit` / `offset` / `total` / `has_more` conventions as keys and teams, plus optional `blocked=true|false` and `user_id` filters. Each row carries `requests`, `frontier_requests`, `local_requests`, `cache_hits`, `client_ids` (keys the user appeared on), `first_seen` / `last_seen` (UTC day), `spend.today_usd` / `spend.lifetime_usd` (priced like budget pre-checks), and the override fields `blocked`, `reason`, `user_usd_cap`, `override_updated_at`. Users with an override but no ledger rows (pre-emptive blocks) still appear with zero usage. Reads audit `admin.users.list`.
+
+`PATCH /v1/daari/users/{user_id}` accepts `{"blocked": true|false, "reason": "..."}` and/or `{"user_usd_cap": N}` (daily frontier USD across every key; `0` clears the override so the key's `user_daily_usd_cap` applies again). Missing both fields or a negative cap → **400**. The response is the updated inventory row; writes audit `admin.users.block` / `admin.users.unblock` / `admin.users.cap` (`user_id`, `reason` / `user_usd_cap`).
+
+Enforcement runs on every inference facade that binds a user (chat completions, Responses, Messages, decisions, batch items, images, OCR, moderations, rerank, extractions) before any upstream call: a blocked user receives **403** `{"error": {"type": "end_user_blocked", "code": "end_user_blocked", "user_id": ..., "reason": ...}}` on every key; a user over their cap receives the existing **402** `budget_exceeded` shape with `scope: "user"`. Overrides live in the virtual-key store (`end_user_overrides`, SQLite and Postgres; `daari migrate` reports the table). CLI: `daari users list|block|unblock|cap`.
 
 ## Request / event log
 

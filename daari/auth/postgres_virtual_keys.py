@@ -18,6 +18,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from daari.auth.end_users import (
+    END_USER_OVERRIDES_PG_SCHEMA,
+    EndUserOverride,
+    coerce_user_usd_cap,
+    normalize_end_user_id,
+    override_from_row,
+)
 from daari.auth.virtual_keys import (
     BudgetWindow,
     CreatedKey,
@@ -90,6 +97,8 @@ CREATE TABLE IF NOT EXISTS team_members (
     PRIMARY KEY (subject, team_id)
 );
 """
+# Per-end-user block / cap overrides (#1547); additive CREATE IF NOT EXISTS.
+_PG_SCHEMA += END_USER_OVERRIDES_PG_SCHEMA
 
 _PG_TEAM_MIGRATIONS = (
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS rpm INTEGER NOT NULL DEFAULT 0",
@@ -1758,6 +1767,117 @@ class PostgresVirtualKeyStore:
                 return False
             last_at[key_id] = current
             return True
+
+    # -- end-user overrides (#1547) ------------------------------------------
+
+    _END_USER_SELECT = (
+        "SELECT user_id, blocked, user_usd_cap, reason, created_at, updated_at"
+        " FROM end_user_overrides"
+    )
+
+    def get_end_user(self, user_id: str) -> EndUserOverride | None:
+        if self._inner is not None:
+            return self._inner.get_end_user(user_id)
+        named = str(user_id or "").strip()
+        if not self.enabled or not named:
+            return None
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"{self._END_USER_SELECT} WHERE user_id = %s", (named,))
+                row = cur.fetchone()
+        return override_from_row(row) if row else None
+
+    def list_end_users(self) -> list[EndUserOverride]:
+        if self._inner is not None:
+            return self._inner.list_end_users()
+        if not self.enabled:
+            return []
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"{self._END_USER_SELECT} ORDER BY user_id")
+                rows = cur.fetchall()
+        return [override_from_row(row) for row in rows]
+
+    def _upsert_end_user(
+        self,
+        user_id: str,
+        *,
+        blocked: bool | None = None,
+        user_usd_cap: float | None = None,
+        reason: str | None = None,
+        clear_reason: bool = False,
+    ) -> EndUserOverride:
+        named = normalize_end_user_id(user_id)
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"{self._END_USER_SELECT} WHERE user_id = %s", (named,))
+                current = cur.fetchone()
+                existing = override_from_row(current) if current else None
+                next_blocked = existing.blocked if existing else False
+                next_cap = existing.user_usd_cap if existing else 0.0
+                next_reason = existing.reason if existing else None
+                if blocked is not None:
+                    next_blocked = bool(blocked)
+                if user_usd_cap is not None:
+                    next_cap = float(user_usd_cap)
+                if clear_reason:
+                    next_reason = None
+                if reason is not None:
+                    next_reason = str(reason).strip() or None
+                created = existing.created_at if existing else now
+                cur.execute(
+                    "INSERT INTO end_user_overrides"
+                    " (user_id, blocked, user_usd_cap, reason, created_at, updated_at)"
+                    " VALUES (%s, %s, %s, %s, %s, %s)"
+                    " ON CONFLICT (user_id) DO UPDATE SET"
+                    " blocked = EXCLUDED.blocked, user_usd_cap = EXCLUDED.user_usd_cap,"
+                    " reason = EXCLUDED.reason, updated_at = EXCLUDED.updated_at",
+                    (named, bool(next_blocked), next_cap, next_reason, created, now),
+                )
+            conn.commit()
+        return EndUserOverride(
+            user_id=named,
+            blocked=next_blocked,
+            user_usd_cap=next_cap,
+            reason=next_reason,
+            created_at=created,
+            updated_at=now,
+        )
+
+    def set_end_user_blocked(
+        self, user_id: str, blocked: bool, *, reason: str | None = None
+    ) -> EndUserOverride:
+        if self._inner is not None:
+            return self._inner.set_end_user_blocked(user_id, blocked, reason=reason)
+        if not self.enabled:
+            raise RuntimeError("virtual key store is disabled")
+        return self._upsert_end_user(
+            user_id,
+            blocked=bool(blocked),
+            reason=reason if blocked else None,
+            clear_reason=not blocked,
+        )
+
+    def set_end_user_cap(self, user_id: str, daily_usd: float) -> EndUserOverride:
+        if self._inner is not None:
+            return self._inner.set_end_user_cap(user_id, daily_usd)
+        if not self.enabled:
+            raise RuntimeError("virtual key store is disabled")
+        return self._upsert_end_user(user_id, user_usd_cap=coerce_user_usd_cap(daily_usd))
+
+    def delete_end_user(self, user_id: str) -> bool:
+        if self._inner is not None:
+            return self._inner.delete_end_user(user_id)
+        named = str(user_id or "").strip()
+        if not self.enabled or not named:
+            return False
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM end_user_overrides WHERE user_id = %s", (named,))
+                deleted = cur.rowcount > 0
+            conn.commit()
+        return deleted
 
     def check_rpm(self, key: VirtualKey) -> bool:
         """Local RPM sampler — not fleet-shared; use Redis rate limits for fleets."""
