@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import date
 
 import httpx
 import pytest
@@ -273,7 +274,9 @@ def test_resolve_price_covers_september_2026_frontier_lineup():
         "gemini-4-argon": (4.0, 20.0, 0.20),
     }
     for model, (inp, out, cached) in expected.items():
-        price = resolve_price(model, settings.pricing, fallback_per_1k=0.002)
+        price = resolve_price(
+            model, settings.pricing, fallback_per_1k=0.002, now=date(2026, 12, 1)
+        )
         assert price.is_fallback is False, model
         assert price.input_per_1m == pytest.approx(inp), model
         assert price.output_per_1m == pytest.approx(out), model
