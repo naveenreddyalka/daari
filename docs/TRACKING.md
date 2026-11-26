@@ -9604,6 +9604,15 @@ fallback continue (midstream)**
 opt-in `routing.stream_fallback_continue` and distinguishes ordinary tier
 fallback. Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### GPT-5.6 / Sol promo window ends 2026-11-30 ([#2468](https://github.com/naveenreddyalka/daari/issues/2468))
+
+<!-- tracking:#2468 -->
+**Status:** Done (2026-11-25). `gpt-5.6` / `gpt-5.6-sol` `effective_to`
+moves from 2026-11-21 to 2026-11-30 to match the live OpenAI Sol model card:
+promo $4/$20 (cached $0.40) through Nov 29, baseline $5/$30 (cached $0.50)
+on/after Nov 30. Clock-dependent catalog tests now pin `now`. Covered by
+`tests/unit/test_pricing_effective_to.py`.
+
 ### Hot-reload Settings from config.yaml ([#1234](https://github.com/naveenreddyalka/daari/issues/1234))
 
 <!-- tracking:#1234 -->
