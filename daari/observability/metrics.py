@@ -334,6 +334,10 @@ class Metrics:
     deadline_exhausted: int = 0
     compact_to_fit_applied: int = 0
     compact_to_fit_tokens_dropped: int = 0
+    # Anthropic L6 top-level cache_control: frontier.auto_caching injected vs a
+    # caller-supplied one forwarded verbatim (#2322). Non-Anthropic hops: neither.
+    auto_caching_applied: int = 0
+    auto_caching_client_preserved: int = 0
     stream_fallback_continue: int = 0
     # Virtual-model candidate hops (failed → next) — no per-candidate labels (#2023).
     virtual_model_failover: int = 0
@@ -679,6 +683,16 @@ class Metrics:
             self.compact_to_fit_applied += 1
             self.compact_to_fit_tokens_dropped += max(0, int(tokens_dropped))
 
+    def record_auto_caching_applied(self) -> None:
+        """``frontier.auto_caching`` injected top-level ``cache_control`` on an Anthropic hop."""
+        with self._lock:
+            self.auto_caching_applied += 1
+
+    def record_auto_caching_client_preserved(self) -> None:
+        """Caller-supplied top-level ``cache_control`` forwarded on an Anthropic hop (#2322)."""
+        with self._lock:
+            self.auto_caching_client_preserved += 1
+
     def record_stream_fallback_continue(self) -> None:
         """Mid-stream death continued on the next tier/slot (#2003)."""
         with self._lock:
@@ -929,6 +943,8 @@ class Metrics:
                 "deadline_exhausted": self.deadline_exhausted,
                 "compact_to_fit_applied": self.compact_to_fit_applied,
                 "compact_to_fit_tokens_dropped": self.compact_to_fit_tokens_dropped,
+                "auto_caching_applied": self.auto_caching_applied,
+                "auto_caching_client_preserved": self.auto_caching_client_preserved,
                 "stream_fallback_continue": self.stream_fallback_continue,
                 "virtual_model_failover": self.virtual_model_failover,
                 "virtual_model_daily_quota_skip": self.virtual_model_daily_quota_skip,
