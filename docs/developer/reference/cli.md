@@ -77,6 +77,7 @@ Encryption env / flags: `DAARI_BACKUP_PASS` (or `--passphrase-env`),
 | `web-ui` | `serve` |
 | `project` | `init`, `show` |
 | `keys` | `create`, `update`, `list`, `revoke`, `rotate`, `lockouts`, `unlock-prefix`, `team-create`, `team-update`, `export`, `import` (`--priority high\|normal\|low` and `--max-in-flight N` on create / team-create; see [`keys`](#keys) for list filters) |
+| `users` | `list` (`--blocked`, `--limit`, `--offset`), `block <user_id> [--reason]`, `unblock <user_id>`, `cap <user_id> --daily-usd N` — end-users seen on shared keys; block → 403 on every key, cap overrides the key's `--user-daily-cap` (#1547) |
 | `enterprise` | `bootstrap`, `policy-sync`, `policy-status` |
 | `anthropic` | `enforcement-sync`, `enforcement-list` (restricted/banned user-profile poll; #1866) |
 | `service` | `install`, `status`, `restart`, `uninstall` (user systemd / launchd) |
