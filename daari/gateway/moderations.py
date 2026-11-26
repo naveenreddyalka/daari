@@ -199,6 +199,7 @@ async def handle_moderations(request: Request, body: ModerationsRequest) -> Any:
     )
     from daari.gateway.model_access import (
         reject_disallowed_model,
+        reject_end_user,
         reject_frontier_passthrough,
         reject_retired_model,
     )
@@ -244,6 +245,10 @@ async def handle_moderations(request: Request, body: ModerationsRequest) -> Any:
     if retired is not None:
         abandon_slot(idem_slot)
         return retired
+    user_denied = reject_end_user(request, settings, body.user)
+    if user_denied is not None:
+        abandon_slot(idem_slot)
+        return user_denied
 
     from daari.gateway.guardrails import (
         apply_endpoint_input_policy,

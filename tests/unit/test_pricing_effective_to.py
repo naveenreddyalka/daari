@@ -129,23 +129,26 @@ def test_malformed_warning_is_rate_limited(monkeypatch):
     assert events.count("pricing_effective_to_ignored") == 1
 
 
-def test_shipped_gpt56_promo_window_flips_at_boundary():
+@pytest.mark.parametrize("model", ["gpt-5.6", "gpt-5.6-sol"])
+def test_shipped_gpt56_promo_window_flips_at_boundary(model):
     settings = Settings()
     before = resolve_price(
-        "gpt-5.6",
+        model,
         settings.pricing,
         fallback_per_1k=0.002,
-        now=date(2026, 11, 20),
+        now=date(2026, 11, 29),
     )
     after = resolve_price(
-        "gpt-5.6-sol",
+        model,
         settings.pricing,
         fallback_per_1k=0.002,
-        now=date(2026, 11, 21),
+        now=date(2026, 11, 30),
     )
     assert before.input_per_1m == pytest.approx(4.0)
     assert before.output_per_1m == pytest.approx(20.0)
     assert before.cached_input_per_1m == pytest.approx(0.40)
+    assert before.cache_write_30m_per_1m == pytest.approx(5.0)
+    assert before.cache_write_12h_per_1m == pytest.approx(10.0)
     assert after.input_per_1m == pytest.approx(5.0)
     assert after.output_per_1m == pytest.approx(30.0)
     assert after.cached_input_per_1m == pytest.approx(0.50)

@@ -20,6 +20,23 @@ daari usage --by-user
 returns keys whose `last_used_at` is older than N days (or never used). Successful
 auth updates `last_used_at` (throttled to once per 60s per key).
 
+### Per-user governance on shared keys
+
+One shared key, many human users: when one of them is abusive or offboarded you
+do not have to revoke the whole key (#1547).
+
+```bash
+daari users list                         # every user_id the ledger has seen, across keys
+daari users block mallory --reason offboarded   # 403 end_user_blocked on every key
+daari users cap alice --daily-usd 1.5    # cross-key USD/day; overrides the key's --user-daily-cap
+daari users cap alice --daily-usd 0      # back to the key cap
+daari users unblock mallory
+```
+
+The same registry is `GET /v1/daari/users` and `PATCH /v1/daari/users/{user_id}`
+(admin / master key; see the [HTTP API](../../reference/http-api.md)). Block and
+cap changes write `users.*` / `admin.users.*` audit rows.
+
 Enable in config:
 
 ```yaml
