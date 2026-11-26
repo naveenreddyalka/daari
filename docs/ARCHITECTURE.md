@@ -265,8 +265,8 @@ Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 |--------|------|---------|
 | `POST` | `/v1/chat/completions` | OpenAI-compat chat with full SSE streaming (tier fallback, L0/L1, draft injection) |
 | `POST` | `/v1/audio/transcriptions` | OpenAI speech-to-text; local `asr.base_url`, optional frontier fallback (off by default) |
-| `POST` | `/v1/responses` | OpenAI Responses API (function calls, previous_response_id, background) |
-| `GET` | `/v1/responses/{id}` | Retrieve a stored Responses object |
+| `POST` | `/v1/responses` | OpenAI Responses API (function calls, previous_response_id, background); truncated/refused turns return `status: incomplete` + `incomplete_details` |
+| `GET` | `/v1/responses/{id}` | Retrieve a stored Responses object (replays incomplete status) |
 | `POST` | `/v1/responses/{id}/cancel` | Cancel an in-flight or return the current terminal Responses object |
 | `DELETE` | `/v1/responses/{id}` | Delete a stored Responses object |
 | `GET` | `/v1/models`, `/v1/models/{id}` | Model listing for client pickers |
