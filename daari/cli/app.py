@@ -2486,8 +2486,8 @@ def spend_report(
         None,
         "--group-by",
         help=(
-            "Comma-separated dims: model,team,key,user,tier,usage_speed,service_tier "
-            "(#1931)."
+            "Comma-separated dims: model,team,key,user,tier,usage_speed,service_tier,"
+            "credential_source,frontier_slot_id (#1931, #2314)."
         ),
     ),
     bucket: str | None = typer.Option(
@@ -2919,6 +2919,18 @@ def report(
             f" month=${frontier.get('month_spend_usd', 0.0):.4f}"
             f"/{frontier.get('monthly_budget_usd', 0.0) or '∞'}"
         )
+
+    credential_spend = payload.get("frontier_credential_spend") or []
+    if credential_spend:
+        typer.echo("")
+        typer.echo("frontier spend by credential (global | team | key × slot):")
+        typer.echo(f"  {'credential':<12} {'slot':<18} {'requests':>9} {'cost $':>10}")
+        for row in credential_spend:
+            typer.echo(
+                f"  {row.get('credential_source') or '(unknown)':<12} "
+                f"{row.get('frontier_slot_id') or '(none)':<18} "
+                f"{int(row.get('requests', 0)):>9} {float(row.get('cost_usd', 0.0)):>10.4f}"
+            )
 
     quotas = payload.get("request_quotas") or []
     if quotas:
