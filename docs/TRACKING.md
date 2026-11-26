@@ -9707,6 +9707,23 @@ a `baseline` of list $4/$20 (cached $0.20), so turns before Dec 1 UTC no
 longer bill 2× list. `models/`-prefixed ids resolve the same window. Covered
 by `tests/unit/test_pricing_effective_to.py`.
 
+### Observability: Prometheus and stats counters for frontier binding outcomes ([#2316](https://github.com/naveenreddyalka/daari/issues/2316))
+
+<!-- tracking:#2316 -->
+**Status:** Done (2026-11-25). `daari_frontier_binding_total{source,outcome}`
+(and `frontier_binding` `"<source>:<outcome>"` map on `GET /v1/daari/stats`)
+counts team/key BYOK bindings where `FrontierPool` consumes them:
+`signed` per L6 attempt signed with the bound credential, `pin_unmatched`
+when `frontier_pool` names no configured slot, `unresolvable` when the
+`secret://` ref fails or resolves empty. `source` (`key` | `team`) is stamped
+on `RequestMeta.frontier_api_key_source` / `frontier_pool_source` by
+`apply_auth_claims_to_meta`; global-key traffic never increments; fixed enum
+labels, emits `0` when unused; the 502 fail-closed contract is unchanged.
+`daari.auth.frontier_binding.record_frontier_binding(metrics, outcome=, source=)`
+is the shared sink for chat / Responses / Messages today and the L6 modality
+doors (#2313) once they bind. Covered by
+`tests/unit/test_frontier_binding_metrics.py`.
+
 ### Analytics reconcile excludes tenant-credential spend ([#2315](https://github.com/naveenreddyalka/daari/issues/2315))
 
 <!-- tracking:#2315 -->
