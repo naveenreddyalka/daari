@@ -9620,6 +9620,7 @@ blocked → **403** `end_user_blocked`, cap over → **402** `budget_exceeded`
 (`scope=user`, cross-key spend) replacing the key's `user_daily_usd_cap`.
 CLI `daari users list|block|unblock|cap`. Audit `admin.users.*` /
 `users.*`. Covered by `tests/unit/test_end_users.py` and
+`tests/integration/test_gateway_flow.py`.
 
 ### GPT-5.6 / Sol promo window ends 2026-11-30 ([#2468](https://github.com/naveenreddyalka/daari/issues/2468))
 
