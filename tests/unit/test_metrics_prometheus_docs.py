@@ -37,6 +37,8 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert any("daari_cost_output_usd_total" in row for row in body)
     assert any("daari_server_tool_cost_usd_total" in row for row in body)
     assert any("daari_frontier_binding_total" in row for row in body)
+    assert any("daari_auto_caching_applied_total" in row for row in body)
+    assert any("daari_auto_caching_client_preserved_total" in row for row in body)
     # Orphaned mid-table prose would end the contiguous body early.
     assert body[-1].startswith("| `daari_escalations_total")
 
@@ -76,3 +78,9 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     for token in ("signed", "pin_unmatched", "unresolvable", "`key`", "`team`"):
         assert token in binding_row
     assert "frontier_binding" in binding_row
+    auto_caching_row = next(row for row in body if "daari_auto_caching_applied_total" in row)
+    assert "frontier.auto_caching" in auto_caching_row
+    assert "cache_control" in auto_caching_row
+    assert "auto_caching_applied" in auto_caching_row
+    assert "auto_caching_client_preserved" in auto_caching_row
+    assert "anthropic" in auto_caching_row.lower()

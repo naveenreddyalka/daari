@@ -898,6 +898,7 @@ def _reject_responses_model(
         apply_service_tier_allowlist_degrade,
         reject_disallowed_model,
         reject_disallowed_service_tier,
+        reject_end_user,
         reject_model_max_budget,
         reject_retired_model,
     )
@@ -911,6 +912,9 @@ def _reject_responses_model(
     budget = reject_model_max_budget(request, model, ctx.settings)
     if budget is not None:
         return budget
+    user_denied = reject_end_user(request, ctx.settings, getattr(meta, "user", None))
+    if user_denied is not None:
+        return user_denied
     tier_denied = reject_disallowed_service_tier(request, service_tier=service_tier)
     if tier_denied is not None:
         return tier_denied

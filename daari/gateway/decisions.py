@@ -754,45 +754,9 @@ def _reject_decisions_budget(
     if model_denied is not None:
         return model_denied
 
-    claims = getattr(request.state, "auth_claims", None)
-    vk = getattr(claims, "virtual_key", None) if claims is not None else None
-    named = (user_id or "").strip()
-    if (
-        vk is not None
-        and float(getattr(vk, "user_daily_usd_cap", 0) or 0) > 0
-        and named
-    ):
-        from daari.auth.budgets import user_daily_cap_exceeded
+    from daari.gateway.model_access import reject_end_user
 
-        ctx = getattr(getattr(request, "app", None), "state", None)
-        router = getattr(getattr(ctx, "ctx", None), "router", None) if ctx is not None else None
-        ledger = getattr(router, "usage_ledger", None) if router is not None else None
-        client = (
-            getattr(claims, "client_id", None)
-            or getattr(vk, "client_id", None)
-            or getattr(claims, "key_id", None)
-            or ""
-        )
-        pricing = getattr(settings, "pricing", None)
-        fallback = float(
-            getattr(getattr(settings, "usage", None), "frontier_price_per_1k_tokens", 0.002)
-            or 0.002
-        )
-        exceeded = (
-            user_daily_cap_exceeded(
-                vk,
-                ledger,
-                client_id=str(client),
-                user_id=named,
-                pricing=pricing,
-                fallback_per_1k=fallback,
-            )
-            if ledger is not None
-            else None
-        )
-        if exceeded is not None:
-            return JSONResponse(status_code=402, content={"error": exceeded})
-    return None
+    return reject_end_user(request, settings, user_id)
 
 
 def _record_request(
