@@ -507,6 +507,12 @@ def anthropic_lifecycle_fields(model_id: str, settings: Any = None) -> dict[str,
     migrate_to = str(overrides.get("migrate_to") or "").strip()
     if migrate_to:
         fields["migrate_to"] = migrate_to
+    successor = str(overrides.get("successor_model") or migrate_to or "").strip()
+    if successor:
+        fields["successor_model"] = successor
+    source = str(overrides.get("deprecation_source") or "").strip()
+    if source:
+        fields["deprecation_source"] = source
     return fields
 
 

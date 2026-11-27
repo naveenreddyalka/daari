@@ -261,6 +261,11 @@ def _cacheable_turn(response: InternalResponse) -> bool:
     return is_cacheable_finish_reason(response.finish_reason)
 
 
+def _skip_prompt_cache_put(request: InternalRequest) -> bool:
+    """Zero-retention tenants must not write prompt bytes into on-box caches (#2347)."""
+    return bool(getattr(getattr(request, "meta", None), "zero_retention", False))
+
+
 class OllamaRequestError(RuntimeError):
     """Ollama HTTP error with the response body preserved for diagnosis."""
 
@@ -1345,6 +1350,7 @@ class Router:
                     team_id=getattr(request.meta, "team_id", None) or "",
                 )
             end_trace()
+            self._record_finish_reason(response.finish_reason)
             return self._stamp_agent_turn(request, response)
         try:
             response = await self._route_impl(request, profile)
@@ -1441,6 +1447,7 @@ class Router:
         self._feedback_record(profile, response)
         self._example_record(request, profile, response)
         self._maybe_tier_shadow(request, profile, response)
+        self._record_finish_reason(response.finish_reason)
         return self._stamp_agent_turn(request, response)
 
     _MODEL_TIERS = {"L3", "L4", "L5", "L6"}
@@ -1761,6 +1768,14 @@ class Router:
         self.metrics.record_regional_processing(
             region=region_pin, uplift_usd=billed - billed / factor
         )
+
+    def _record_finish_reason(self, reason: str | None) -> None:
+        """Count one settled turn's honest finish_reason / stop_reason (#2338)."""
+        metrics = getattr(self, "metrics", None)
+        record = getattr(metrics, "record_finish_reason", None)
+        if record is None:
+            return
+        record(reason)
 
     def _example_record(
         self,
@@ -2550,35 +2565,39 @@ class Router:
             and not response.tool_calls
             and _cacheable_turn(response)
         ):
+            await self._write_prompt_caches(request, response)
+        self._record(response, started)
+        return response
+
+    async def _write_prompt_caches(self, request: InternalRequest, response: InternalResponse) -> None:
+        """L0 / org / semantic / agent-prefix puts. Skipped for zero_retention (#2347)."""
+        if _skip_prompt_cache_put(request):
+            return
+        try:
+            self.cache.put(request, response)
+        except Exception:
+            pass
+        if self.org_cache_client is not None:
             try:
-                self.cache.put(request, response)
+                await self.org_cache_client.put_l0(request, response)
+            except Exception:
+                pass
+        agent_turn = bool(request.tools) or request.has_tool_calls_in_history
+        if agent_turn:
+            try:
+                await self.semantic_cache.put_agent_prefix(request, response)
+            except Exception:
+                pass
+        else:
+            try:
+                await self.semantic_cache.put(request, response)
             except Exception:
                 pass
             if self.org_cache_client is not None:
                 try:
-                    await self.org_cache_client.put_l0(request, response)
+                    await self.org_cache_client.put_l1(request, response)
                 except Exception:
                     pass
-            agent_turn = bool(request.tools) or request.has_tool_calls_in_history
-            if agent_turn:
-                # G1b: learn the stable prefix (keyed by the exact tool-result
-                # suffix). Tool-call transcripts are never stored as answers.
-                try:
-                    await self.semantic_cache.put_agent_prefix(request, response)
-                except Exception:
-                    pass
-            else:
-                try:
-                    await self.semantic_cache.put(request, response)
-                except Exception:
-                    pass
-                if self.org_cache_client is not None:
-                    try:
-                        await self.org_cache_client.put_l1(request, response)
-                    except Exception:
-                        pass
-        self._record(response, started)
-        return response
 
     async def _agent_prefix_l1(
         self,
@@ -2754,6 +2773,7 @@ class Router:
             choice: dict[str, Any] = {"index": 0, "delta": filtered}
             if finish_reason is not None:
                 choice["finish_reason"] = finish_reason
+                self._record_finish_reason(finish_reason)
             return {
                 "id": chunk_id,
                 "object": "chat.completion.chunk",
@@ -4063,6 +4083,7 @@ class Router:
                     and streamed_text.strip()
                     and tier in {"L3", "L4", "L5"}
                     and _cacheable_turn(served)
+                    and not _skip_prompt_cache_put(request)
                 ):
                     streamed_response = served.model_copy(deep=True)
                     streamed_response.daari_meta.latency_ms = latency_ms
@@ -4297,6 +4318,11 @@ class Router:
         input_tokens = max(1, prompt_chars // 4)
 
         def sse(event_type: str, payload: dict[str, Any]) -> str:
+            if event_type == "message_delta":
+                delta = payload.get("delta") if isinstance(payload, dict) else None
+                stop = delta.get("stop_reason") if isinstance(delta, dict) else None
+                if isinstance(stop, str) and stop.strip():
+                    self._record_finish_reason(stop)
             return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
 
         def terminal_events(
@@ -4931,6 +4957,8 @@ class Router:
 
             def write_l0_cache(response: InternalResponse, latency_ms: int) -> None:
                 # Exact L0 write-back so a repeat Anthropic stream hits (#600).
+                if _skip_prompt_cache_put(request):
+                    return
                 if not cacheable or tool_use_sent:
                     return
                 if not (response.content or "").strip() or tier not in {"L3", "L4", "L5"}:

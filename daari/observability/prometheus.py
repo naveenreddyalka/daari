@@ -547,6 +547,24 @@ def render_prometheus(
             )
 
     lines.append(
+        "# HELP daari_finish_reason_total Settled chat, messages, and responses "
+        "turns by honest finish_reason / stop_reason (stop, tool_calls, length, "
+        "pause_turn, refusal, content_filter; max_tokens / end_turn / tool_use / "
+        "stop_sequence collapse onto those labels so truncation, pause, and "
+        "refusal stay distinct from a finished stop). Unknown tokens bucket as "
+        "other. One increment per finalized non-stream response or stream terminal."
+    )
+    lines.append("# TYPE daari_finish_reason_total counter")
+    finish_reasons = snap.get("finish_reason") or {}
+    if not finish_reasons:
+        lines.append("daari_finish_reason_total 0")
+    else:
+        for reason, count in sorted(finish_reasons.items()):
+            lines.append(
+                f"daari_finish_reason_total{_labels(reason=str(reason))} {int(count)}"
+            )
+
+    lines.append(
         "# HELP daari_tier_shadow_samples_total Local-tier answers replayed at a "
         "comparison tier, by whether the answers agreed."
     )
