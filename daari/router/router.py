@@ -1746,6 +1746,19 @@ class Router:
             cache_write_tokens=response.daari_meta.cache_write_tokens,
             reported_cost=response.daari_meta.cost_usd,
         )
+        perf = getattr(self, "performance_ledger", None)
+        if perf is not None:
+            try:
+                perf.record(
+                    cost_usd=float(response.daari_meta.cost_usd or 0.0),
+                    latency_ms=int(response.daari_meta.latency_ms or 0),
+                    frontier=(response.daari_meta.tier or "").upper() == "L6",
+                )
+                from daari.observability.performance_alerts import maybe_fire
+
+                maybe_fire(perf, metrics=self.metrics)
+            except Exception:
+                pass
 
     def _record_regional_uplift(
         self, request: InternalRequest, response: InternalResponse
@@ -8167,6 +8180,17 @@ class AppContext:
         spend_ledger = spend_ledger_from_settings(settings)
         router.spend_ledger = spend_ledger
         install_spend_hook(usage_ledger, spend_ledger)
+        from daari.observability.performance_alerts import performance_ledger_from_settings
+
+        router.performance_ledger = performance_ledger_from_settings(settings)
+
+        def _note_server_error(_status: object) -> None:
+            try:
+                router.performance_ledger.record(error=True)
+            except Exception:
+                return
+
+        router.metrics.performance_observer = _note_server_error
         if settings.observability.otel or settings.observability.otlp_logs:
             from daari.observability.otel import configure_providers
 

@@ -73,6 +73,19 @@ def report_markdown(payload: dict[str, Any], *, days: int = 7) -> str:
             )
         lines.append("")
 
+    performance = payload.get("performance_alerts") or []
+    if performance:
+        lines.append("## Performance alerts")
+        lines.append("")
+        lines.append("| kind | resource | recent | baseline |")
+        lines.append("| --- | --- | ---: | ---: |")
+        for row in performance:
+            lines.append(
+                f"| {row.get('kind')} | {row.get('resource')} |"
+                f" {row.get('recent')} | {row.get('baseline')} |"
+            )
+        lines.append("")
+
     return "\n".join(lines)
 
 

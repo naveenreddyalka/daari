@@ -3135,6 +3135,16 @@ def report(
                     f"    team {team_row.get('team_id')}: {int(team_row.get('requests') or 0)}"
                 )
 
+    performance = payload.get("performance_alerts") or []
+    if performance:
+        typer.echo("")
+        typer.echo("performance alerts (spikes vs the prior 7 days):")
+        for row in performance:
+            typer.echo(
+                f"  {row.get('kind')}  resource={row.get('resource')}"
+                f"  recent={row.get('recent')}  baseline={row.get('baseline')}"
+            )
+
     credential_spend = payload.get("frontier_credential_spend") or []
     if credential_spend:
         typer.echo("")

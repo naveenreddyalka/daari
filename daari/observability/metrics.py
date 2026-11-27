@@ -154,6 +154,17 @@ def error_status_label(status: int | str | None = None) -> str:
     return str(code)
 
 
+def _is_server_error_status(status: int | str | None) -> bool:
+    """True for HTTP 5xx. Unlabeled errors are not performance-spike samples."""
+    if isinstance(status, bool) or not isinstance(status, (int, str)):
+        return False
+    try:
+        code = int(status)
+    except ValueError:
+        return False
+    return 500 <= code <= 599
+
+
 def team_metric_label(team: str | None, *, allowed: frozenset[str] | None = None) -> str:
     """Bounded ``team`` label for opt-in request/error series (#1997).
 
@@ -330,6 +341,8 @@ class Metrics:
     backends: dict[str, int] = field(default_factory=dict)
     tier_shadow: dict[str, int] = field(default_factory=dict)
     budget_alerts: dict[str, int] = field(default_factory=dict)
+    # kind → count of performance-spike webhooks newly fired (#2360).
+    performance_alerts: dict[str, int] = field(default_factory=dict)
     responses_webhooks: dict[str, int] = field(default_factory=dict)
     batch_webhooks: dict[str, int] = field(default_factory=dict)
     org_enforcement_webhooks: dict[str, int] = field(default_factory=dict)
@@ -542,6 +555,12 @@ class Metrics:
                 team_label = self._bound_team(team)
                 ekey = (label, team_label)
                 self.team_errors[ekey] = self.team_errors.get(ekey, 0) + 1
+        observer = getattr(self, "performance_observer", None)
+        if observer is not None and _is_server_error_status(status):
+            try:
+                observer(status)
+            except Exception:
+                pass
 
     def record_escalation(self) -> None:
         with self._lock:
@@ -584,6 +603,12 @@ class Metrics:
         key = "agree" if agreed else "disagree"
         with self._lock:
             self.tier_shadow[key] = self.tier_shadow.get(key, 0) + 1
+
+    def record_performance_alert(self, kind: str) -> None:
+        """A newly fired spend/traffic/latency/error spike (#2360)."""
+        label = (kind or "").strip().lower() or "unknown"
+        with self._lock:
+            self.performance_alerts[label] = self.performance_alerts.get(label, 0) + 1
 
     def record_budget_alert(self, *, scope: str, threshold: float) -> None:
         key = f"{scope}:{threshold:g}"
@@ -1025,6 +1050,7 @@ class Metrics:
                 "backends": dict(self.backends),
                 "tier_shadow": dict(self.tier_shadow),
                 "budget_alerts": dict(self.budget_alerts),
+                "performance_alerts": dict(sorted(self.performance_alerts.items())),
                 "responses_webhooks": dict(self.responses_webhooks),
                 "batch_webhooks": dict(self.batch_webhooks),
                 "org_enforcement_webhooks": dict(self.org_enforcement_webhooks),

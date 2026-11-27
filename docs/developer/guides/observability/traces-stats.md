@@ -93,6 +93,10 @@ RETRYABLE_STATUS set retryable (501, 522, and the rest). Statuses already in
 that set (503, 429, 529) stay on `upstream_retries` and do not appear here.
 The map is `{}` while the dial is off. Team-scoped stats zero it. The
 Prometheus counterpart is `daari_http_5xx_failover_total{status}`.
+`performance_alerts` maps kind → count of spikes newly fired against the
+prior 7 days (`spend`, `traffic`, `latency`, `error_rate`). The map is `{}`
+until the first fire. Team-scoped stats zero it. The Prometheus counterpart
+is `daari_performance_alerts_total{kind}`.
 `finish_reason` maps honest completion outcome → count for turns the router
 settles on chat, messages, and responses (non-stream and stream terminal).
 Labels are `stop`, `tool_calls`, `length`, `pause_turn`, `refusal`,
