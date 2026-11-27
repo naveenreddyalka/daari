@@ -2487,12 +2487,22 @@ def spend_reconcile(
         "--base-url",
         help="Anthropic API root (default https://api.anthropic.com).",
     ),
+    credential: str = typer.Option(
+        "global",
+        "--credential",
+        help=(
+            "Ledger credential scope to compare: global (default; operator key), "
+            "team or key (BYOK rows, supply that credential's analytics key), "
+            "or all (every Anthropic-served row)."
+        ),
+    ),
 ) -> None:
     """Compare local spend ledger to Anthropic Usage/Cost Analytics (#2033)."""
     from datetime import datetime, timezone
 
     from daari.enterprise.analytics_reconcile import (
         AnalyticsReconcileError,
+        format_excluded_summary,
         format_reconcile_table,
         reconcile,
         resolve_anthropic_admin_key,
@@ -2542,6 +2552,7 @@ def spend_reconcile(
             until=until_cut,
             threshold_pct=float(threshold_pct),
             base_url=root,
+            credential=credential,
         )
     except AnalyticsReconcileError as exc:
         typer.echo(str(exc), err=True)
@@ -2550,6 +2561,9 @@ def spend_reconcile(
         typer.echo(f"reconcile failed: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(format_reconcile_table(result.rows))
+    excluded_line = format_excluded_summary(result.excluded, credential=result.credential)
+    if excluded_line:
+        typer.echo(excluded_line)
     if result.exceeded:
         typer.echo(
             f"{len(result.exceeded)} row(s) exceed --threshold-pct "
