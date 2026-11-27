@@ -9917,6 +9917,19 @@ allowed (not in the failed/cancelled refuse set — see #2255 for failed).
 Covered by `tests/unit/test_responses_incomplete_status.py`.
 
 
+
+### Per-key/team zero_retention ([#2347](https://github.com/naveenreddyalka/daari/issues/2347))
+
+<!-- tracking:#2347 -->
+**Status:** Done (2026-11-27). Keys and teams accept metadata `zero_retention: true`.
+Either side true enforces (a key cannot loosen a team). Those tenants get
+Responses `store: false` even when the request asks to store, so
+`previous_response_id` chains return the existing not-found 400. L0, org,
+semantic, and agent-prefix cache puts are skipped; reads are unchanged.
+Doctor `zero_retention` reports how many keys and teams have the dial on.
+Covered by `tests/unit/test_zero_retention.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
