@@ -187,7 +187,11 @@ def apply_auth_claims_to_meta(
         meta.team_id = team_id
     # Key / team BYOK frontier binding (#2216). Key wins over team.
     if getattr(meta, "frontier_api_key", None) is None and getattr(meta, "frontier_pool", None) is None:
-        from daari.auth.frontier_binding import binding_credential_source, effective_binding
+        from daari.auth.frontier_binding import (
+            binding_credential_source,
+            binding_source,
+            effective_binding,
+        )
 
         vk = getattr(claims, "virtual_key", None)
         key_api = getattr(vk, "frontier_api_key", None) if vk is not None else None
@@ -202,12 +206,14 @@ def apply_auth_claims_to_meta(
         )
         if bound_key:
             meta.frontier_api_key = bound_key
+            meta.frontier_api_key_source = binding_source(key_api, team_api)
             # Ledger attribution of the signing credential (#2314).
             meta.frontier_credential_source = binding_credential_source(
                 key_api_key=key_api, team_api_key=team_api
             )
         if bound_pool:
             meta.frontier_pool = bound_pool
+            meta.frontier_pool_source = binding_source(key_pool, team_pool)
     # Key / team signal_overrides (#2050). Empty list is intentional clear.
     if getattr(meta, "key_signal_overrides", None) is None:
         vk = getattr(claims, "virtual_key", None)

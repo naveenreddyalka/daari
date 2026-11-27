@@ -2040,6 +2040,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "agent_access_denied": 0,
                     "cost_input_usd": 0.0,
                     "cost_output_usd": 0.0,
+                    "frontier_binding": {},
                 }
             from daari.gateway.systemone import breaker_snapshot
             from daari.router.breaker_inventory import inventory_from_ctx
@@ -2108,6 +2109,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ),
                 "cost_input_usd": float(full.get("cost_input_usd") or 0.0),
                 "cost_output_usd": float(full.get("cost_output_usd") or 0.0),
+                "frontier_binding": dict(full.get("frontier_binding") or {}),
             }
             perf = getattr(getattr(ctx, "router", None), "virtual_model_perf", None)
             if perf is not None and hasattr(perf, "snapshot"):
