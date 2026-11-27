@@ -171,6 +171,9 @@ def run_doctor(
     if body_cap_tip is not None:
         results.append(body_cap_tip)
     results.append(_check_frontier_auto_caching(cfg))
+    failover_5xx_tip = _check_failover_on_http_5xx(cfg)
+    if failover_5xx_tip is not None:
+        results.append(failover_5xx_tip)
     results.append(_check_model_lifecycle(cfg))
     results.append(_check_zero_retention(cfg))
     results.append(_check_anthropic_speed_lifecycle(cfg))
@@ -5149,6 +5152,28 @@ def _check_stream_fallback_continue(settings: Settings) -> CheckResult | None:
             "routing.stream_fallback_continue is on — midstream continuation after "
             "a dying hop is text-only; after any tool_calls delta was delivered the "
             "hop fails closed with stream_incomplete (no next-tier continue)"
+        ),
+        optional=True,
+    )
+
+
+def _check_failover_on_http_5xx(settings: Settings) -> CheckResult | None:
+    """Informational tip when broad HTTP 5xx failover is on (#2336).
+
+    Absent when disabled (default). When enabled, remind operators that any
+    status in 500–599 (including permanent 501 / CDN 522) burns retries.
+    """
+    upstream = getattr(settings, "upstream", None)
+    retry = getattr(upstream, "retry", None) if upstream is not None else None
+    if retry is None or not bool(getattr(retry, "failover_on_http_5xx", False)):
+        return None
+    return CheckResult(
+        name="failover_on_http_5xx",
+        ok=True,
+        detail=(
+            "upstream.retry.failover_on_http_5xx is on — any HTTP 500–599 "
+            "(incl. 501/522) becomes retryable and failover-eligible, wider than "
+            "the default RETRYABLE_STATUS set; permanent 5xx will burn retries"
         ),
         optional=True,
     )
