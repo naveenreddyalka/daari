@@ -9896,6 +9896,17 @@ new fields. Incomplete is terminal for cancel/lease; chaining still
 allowed (not in the failed/cancelled refuse set — see #2255 for failed).
 Covered by `tests/unit/test_responses_incomplete_status.py`.
 
+### Claude text-watermark sampling caveat ([#2340](https://github.com/naveenreddyalka/daari/issues/2340))
+
+<!-- tracking:#2340 -->
+**Status:** Done (2026-11-27). Claude Code guide lists Opus 4.6, Opus 4.5,
+Opus 3, Sonnet 4.6, Sonnet 4.5, and Haiku 4.5: omit `temperature` / `top_p` /
+`top_k` when a detectable mark is required. daari does not inject those knobs
+on client legs; client-supplied values are passed through and may drop the
+mark. daari does not ship watermark detection; Compliance API / detector
+access is Anthropic-side. Docs:
+[claude-code.md](developer/guides/clients/claude-code.md#text-watermark-sampling).
+Covered by `tests/unit/test_claude_watermark_docs.py`.
 
 ## How to update
 
