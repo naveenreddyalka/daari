@@ -112,6 +112,8 @@ class RequestMeta(BaseModel):
     # cache_scope is team or key (#768); global leaves hashes unchanged.
     key_id: str | None = None
     team_id: str | None = None
+    # Per-key/team opt-in: do not persist this tenant's prompt bytes (#2347).
+    zero_retention: bool = False
     # Key / team scoped routing.signal_overrides (#2050). None = none bound.
     key_signal_overrides: list[Any] | None = None
     team_signal_overrides: list[Any] | None = None
