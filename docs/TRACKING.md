@@ -9896,6 +9896,23 @@ new fields. Incomplete is terminal for cancel/lease; chaining still
 allowed (not in the failed/cancelled refuse set — see #2255 for failed).
 Covered by `tests/unit/test_responses_incomplete_status.py`.
 
+### Observability: Prometheus and stats for finish_reason and stop_reason outcomes ([#2338](https://github.com/naveenreddyalka/daari/issues/2338))
+
+<!-- tracking:#2338 -->
+**Status:** Done (2026-11-27). `daari_finish_reason_total{reason}` (and
+`finish_reason` reason → count on `GET /v1/daari/stats` / `daari stats`)
+counts each turn the router settles on chat, messages, and responses.
+`reason` is `stop`, `tool_calls`, `length`, `pause_turn`, `refusal`,
+`content_filter`, or `other`. Anthropic `stop_reason` aliases collapse onto
+the same labels (`end_turn` / `stop_sequence` → `stop`, `max_tokens` →
+`length`, `tool_use` → `tool_calls`) so truncation, pause, and refusal stay
+distinct from a finished turn. Unknown tokens bucket as `other`. Recorded in
+`route()` for non-stream and on the stream terminal (`stream_openai_chunks`
+for chat and responses, `message_delta` for messages). Aborted streams that
+never emit a terminal do not increment. Emits `0` unlabeled until the first
+settled turn; team-scoped stats zero the map. Wire-format mapping and
+Responses `incomplete` status are unchanged. Docs: metrics-prometheus,
+traces-stats. Covered by `tests/unit/test_finish_reason_metrics.py`.
 
 ## How to update
 
