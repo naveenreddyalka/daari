@@ -9952,6 +9952,17 @@ settled turn; team-scoped stats zero the map. Wire-format mapping and
 Responses `incomplete` status are unchanged. Docs: metrics-prometheus,
 traces-stats. Covered by `tests/unit/test_finish_reason_metrics.py`.
 
+
+### Web UI inventory pagination and report.users ([#1551](https://github.com/naveenreddyalka/daari/issues/1551))
+
+<!-- tracking:#1551 -->
+**Status:** Done (2026-11-27). The same-box console follows `has_more` on
+`GET /v1/daari/keys` and `/teams` (`limit=50`, offset, 20-page cap) and shows
+`total` when the page meta includes it. The report panel renders
+`report.users` (client, user, requests, savings) with an empty state when the
+array is absent. Covered by `packages/web-ui/test/dashboard.test.js`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

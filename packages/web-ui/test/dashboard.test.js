@@ -799,7 +799,12 @@ test("admin keys status and idle_days filters build query and render rows", asyn
     const u = String(url);
     if (u.includes("/v1/daari/keys?") && u.includes("status=active") && u.includes("idle_days=30")) {
       fetch.calls.push({ url: u, init });
-      return { ok: true, status: 200, statusText: "OK", json: async () => filteredKeys };
+      const offset = new URL(u).searchParams.get("offset") || "0";
+      const payload =
+        offset === "0"
+          ? { ...filteredKeys, total: 3, limit: 50, offset: 0 }
+          : { keys: [], total: 3, limit: 50, offset: Number(offset), has_more: false };
+      return { ok: true, status: 200, statusText: "OK", json: async () => payload };
     }
     return base(url, init);
   };
@@ -821,14 +826,20 @@ test("admin keys status and idle_days filters build query and render rows", asyn
   assert.ok(filteredCalls.length >= 1, `expected filtered keys fetch, got ${JSON.stringify(fetch.calls)}`);
   const keyRows = [...doc.querySelectorAll("#admin-keys-table tr")];
   assert.equal(keyRows.length, 3);
-  assert.match(doc.getElementById("admin-keys-status").textContent, /3 idle key/);
-  assert.match(doc.getElementById("admin-keys-status").textContent, /More available/);
+  assert.match(doc.getElementById("admin-keys-status").textContent, /3 of 3 idle key/);
+  assert.match(filteredCalls[0].url, /limit=50/);
 
   doc.getElementById("admin-keys-status-filter").value = "";
   doc.getElementById("admin-keys-idle-days").value = "";
   doc.getElementById("admin-keys-idle-days").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
   await settle();
-  const cleared = fetch.calls.filter((c) => /\/v1\/daari\/keys$/.test(c.url) || c.url.endsWith("/v1/daari/keys"));
+  const cleared = fetch.calls.filter(
+    (c) =>
+      c.url.includes("/v1/daari/keys?") &&
+      !c.url.includes("status=") &&
+      !c.url.includes("idle_days=") &&
+      c.url.includes("offset=0")
+  );
   assert.ok(cleared.length >= 1, "clearing filters restores unfiltered URL");
   assert.equal([...doc.querySelectorAll("#admin-keys-table tr")].length, 1);
 });
@@ -857,6 +868,125 @@ test("admin keys show never when last_used_at is null", async (t) => {
   assert.ok(cells.includes("never"), `expected never in ${cells.join("|")}`);
   assert.ok(cells.includes("low"));
   assert.ok(cells.includes("global"));
+});
+
+test("admin keys follow has_more and show total", async (t) => {
+  const pageFor = (offset) => {
+    if (offset === 0) {
+      return {
+        keys: [{ ...ADMIN_KEYS.keys[0], key_id: "page-a", name: "page-a" }],
+        total: 2,
+        limit: 50,
+        offset: 0,
+        has_more: true,
+      };
+    }
+    return {
+      keys: [{ ...ADMIN_KEYS.keys[0], key_id: "page-b", name: "page-b" }],
+      total: 2,
+      limit: 50,
+      offset,
+      has_more: false,
+    };
+  };
+  const base = fakeFetch(routes());
+  const fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes("/v1/daari/keys?")) {
+      fetch.calls.push({ url: u, init });
+      const offset = Number(new URL(u).searchParams.get("offset") || "0");
+      const payload = pageFor(offset);
+      return { ok: true, status: 200, statusText: "OK", json: async () => payload };
+    }
+    return base(url, init);
+  };
+  fetch.calls = base.calls;
+
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const names = [...doc.querySelectorAll("#admin-keys-table tr")].map((row) => row.textContent);
+  assert.equal(names.length, 2);
+  assert.match(names.join("|"), /page-a/);
+  assert.match(names.join("|"), /page-b/);
+  assert.match(doc.getElementById("admin-keys-status").textContent, /2 of 2 key/);
+  const offsets = fetch.calls
+    .filter((c) => c.url.includes("/v1/daari/keys?"))
+    .map((c) => new URL(c.url).searchParams.get("offset"));
+  assert.deepEqual(offsets, ["0", "50"]);
+});
+
+test("admin teams follow has_more", async (t) => {
+  const base = fakeFetch(routes());
+  const fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes("/v1/daari/teams?")) {
+      fetch.calls.push({ url: u, init });
+      const offset = new URL(u).searchParams.get("offset") || "0";
+      const payload =
+        offset === "0"
+          ? {
+              teams: [{ ...ADMIN_TEAMS.teams[0], team_id: "t-a", name: "alpha" }],
+              total: 2,
+              limit: 50,
+              offset: 0,
+              has_more: true,
+            }
+          : {
+              teams: [{ ...ADMIN_TEAMS.teams[0], team_id: "t-b", name: "beta" }],
+              total: 2,
+              limit: 50,
+              offset: Number(offset),
+              has_more: false,
+            };
+      return { ok: true, status: 200, statusText: "OK", json: async () => payload };
+    }
+    return base(url, init);
+  };
+  fetch.calls = base.calls;
+
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const text = [...dom.window.document.querySelectorAll("#admin-teams-table tr")]
+    .map((row) => row.textContent)
+    .join("|");
+  assert.match(text, /alpha/);
+  assert.match(text, /beta/);
+  assert.match(dom.window.document.getElementById("admin-teams-status").textContent, /2 of 2 team/);
+});
+
+test("report renders users and an empty state when users are absent", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/report": {
+        ...REPORT,
+        users: [
+          { client_id: "vk-1", user_id: "ada", requests: 9, estimated_saved_usd: 0.0042 },
+        ],
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const rows = [...dom.window.document.querySelectorAll("#report-users-table tr")];
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].textContent, /vk-1/);
+  assert.match(rows[0].textContent, /ada/);
+  assert.match(rows[0].textContent, /9/);
+  assert.match(rows[0].textContent, /\$0\.0042/);
+
+  const emptyFetch = fakeFetch(routes());
+  const emptyDom = loadDashboard({ fetch: emptyFetch });
+  t.after(() => emptyDom.window.close());
+  await settle();
+  const empty = emptyDom.window.document.querySelector("#report-users-table tr");
+  assert.match(empty.textContent, /No end-user spend/);
 });
 
 test("report spend breakdown renders teams and model_group_spend", async (t) => {

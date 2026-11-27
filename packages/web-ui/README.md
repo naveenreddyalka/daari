@@ -45,7 +45,8 @@ See [SECURITY.md](../../SECURITY.md#cors-and-security-headers) for native CORS v
 - Dark/light theme toggle (persisted locally)
 - Recent traces: click a trace id for the step timeline; `compact_to_fit` steps surface `tokens_before` / `tokens_after` when present
 - Virtual keys and teams inventories from `GET /v1/daari/keys` / `GET /v1/daari/teams` (admin / master key; redacted — no secrets)
-- Spend breakdown tables from `report.teams` and `report.model_group_spend`
+- Spend breakdown tables from `report.teams`, `report.users`, and `report.model_group_spend`
+- Virtual-key and team inventories follow `has_more` (`limit` 50, offset) up to 20 pages and show `total` when the admin API sends it
 - Grouped spend report controls (`group_by`, `bucket`) calling `GET /v1/daari/spend/report`
 
 ## Files
