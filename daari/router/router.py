@@ -1345,6 +1345,7 @@ class Router:
                     team_id=getattr(request.meta, "team_id", None) or "",
                 )
             end_trace()
+            self._record_finish_reason(response.finish_reason)
             return self._stamp_agent_turn(request, response)
         try:
             response = await self._route_impl(request, profile)
@@ -1441,6 +1442,7 @@ class Router:
         self._feedback_record(profile, response)
         self._example_record(request, profile, response)
         self._maybe_tier_shadow(request, profile, response)
+        self._record_finish_reason(response.finish_reason)
         return self._stamp_agent_turn(request, response)
 
     _MODEL_TIERS = {"L3", "L4", "L5", "L6"}
@@ -1761,6 +1763,14 @@ class Router:
         self.metrics.record_regional_processing(
             region=region_pin, uplift_usd=billed - billed / factor
         )
+
+    def _record_finish_reason(self, reason: str | None) -> None:
+        """Count one settled turn's honest finish_reason / stop_reason (#2338)."""
+        metrics = getattr(self, "metrics", None)
+        record = getattr(metrics, "record_finish_reason", None)
+        if record is None:
+            return
+        record(reason)
 
     def _example_record(
         self,
@@ -2754,6 +2764,7 @@ class Router:
             choice: dict[str, Any] = {"index": 0, "delta": filtered}
             if finish_reason is not None:
                 choice["finish_reason"] = finish_reason
+                self._record_finish_reason(finish_reason)
             return {
                 "id": chunk_id,
                 "object": "chat.completion.chunk",
@@ -4297,6 +4308,11 @@ class Router:
         input_tokens = max(1, prompt_chars // 4)
 
         def sse(event_type: str, payload: dict[str, Any]) -> str:
+            if event_type == "message_delta":
+                delta = payload.get("delta") if isinstance(payload, dict) else None
+                stop = delta.get("stop_reason") if isinstance(delta, dict) else None
+                if isinstance(stop, str) and stop.strip():
+                    self._record_finish_reason(stop)
             return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
 
         def terminal_events(
