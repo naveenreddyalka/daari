@@ -45,6 +45,7 @@ from daari.pricing import (
     cost_breakdown,
     cost_usd,
     is_ollama_cloud_model,
+    regional_processing_factor,
     multi_agent_cost_breakdown,
 )
 from daari.providers.integrations import (
@@ -249,6 +250,17 @@ def estimate_num_ctx(prompt_chars: int, *, floor: int = 4096, ceiling: int = 327
     return min(num_ctx, ceiling)
 
 
+def _cacheable_turn(response: InternalResponse) -> bool:
+    """Shared L0/L1 write gate: only complete turns are cached (#2330).
+
+    A ``length`` / ``pause_turn`` / ``refusal`` turn served honestly to the
+    client must not be replayed forever as a clean ``stop``.
+    """
+    from daari.router.stream_terminal import is_cacheable_finish_reason
+
+    return is_cacheable_finish_reason(response.finish_reason)
+
+
 class OllamaRequestError(RuntimeError):
     """Ollama HTTP error with the response body preserved for diagnosis."""
 
@@ -394,10 +406,22 @@ class OllamaExecutor:
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
         input_tokens, output_tokens, estimated = ollama_token_usage(data, request, content)
+        from daari.router.stream_terminal import normalize_stream_finish_reason
+
+        # Honest non-stream done_reason (length / pause_turn / refusal) so the
+        # cache gate and the client see truncation (#2330); abort stays a stop
+        # here because the non-stream failure path is the HTTP error itself.
+        done_reason = normalize_stream_finish_reason(data.get("done_reason"))
+        if tool_calls:
+            finish_reason = "tool_calls"
+        elif done_reason in {"length", "pause_turn", "refusal"}:
+            finish_reason = done_reason
+        else:
+            finish_reason = "stop"
         return InternalResponse(
             content=content,
             model=model,
-            finish_reason="tool_calls" if tool_calls else "stop",
+            finish_reason=finish_reason,
             tool_calls=tool_calls,
             reasoning_content=reasoning_content,
             daari_meta=DaariMeta(
@@ -1699,6 +1723,7 @@ class Router:
         ):
             in_usd, out_usd = 0.0, 0.0
         self.metrics.record_cost(input_usd=in_usd, output_usd=out_usd)
+        self._record_regional_uplift(request, response)
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,
@@ -1713,6 +1738,28 @@ class Router:
             cached_tokens=response.daari_meta.cached_tokens,
             cache_write_tokens=response.daari_meta.cache_write_tokens,
             reported_cost=response.daari_meta.cost_usd,
+        )
+
+    def _record_regional_uplift(
+        self, request: InternalRequest, response: InternalResponse
+    ) -> None:
+        """Attribute the OpenAI regional-processing 1.10× surcharge by pin (#2323).
+
+        Fires only when ``regional_processing_factor`` is above 1.0 for the
+        served frontier model; the delta is billed − billed / factor, so a
+        provider-reported total (which already carries the uplift) and a
+        daari-priced total record the same share.
+        """
+        if (response.daari_meta.tier or "").upper() != "L6":
+            return
+        region_pin = getattr(request.meta, "region_pin", None)
+        model = response.daari_meta.model or response.model
+        factor = regional_processing_factor(region_pin, model)
+        if factor <= 1.0:
+            return
+        billed = float(response.daari_meta.cost_usd or 0.0)
+        self.metrics.record_regional_processing(
+            region=region_pin, uplift_usd=billed - billed / factor
         )
 
     def _example_record(
@@ -2494,12 +2541,14 @@ class Router:
         # #2234: skip L0/L1 when the response carries tool_calls — parity with
         # stream put guards (`not tool_calls_sent` / `not tool_use_sent`). A
         # streamed repeat must miss rather than text-only-replay and drop tools.
+        # #2330: truncated / paused / refused turns are served but never cached.
         if (
             not request.meta.no_cache
             and not cache_skip
             and response.daari_meta.tier in {"L3", "L4", "L5"}
             and response.content.strip()
             and not response.tool_calls
+            and _cacheable_turn(response)
         ):
             try:
                 self.cache.put(request, response)
@@ -3480,6 +3529,9 @@ class Router:
                 served = InternalResponse(
                     content=streamed_text,
                     model=ollama_model,
+                    finish_reason=(
+                        "tool_calls" if tool_calls_sent else (stream_finish_reason or "stop")
+                    ),
                     reasoning_content=streamed_thinking,
                     daari_meta=DaariMeta(
                         tier=tier,
@@ -3513,6 +3565,7 @@ class Router:
                     outcome.note("L6", draft=draft_used)
                     l6_first_at: float | None = None
                     relayed_tool_calls = False
+                    relayed_finish: str | None = None
                     relay_incomplete = False
                     l6_settled = False
                     relayed_text = ""
@@ -3544,6 +3597,9 @@ class Router:
                         yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
 
                         for event in prefetched:
+                            if isinstance(event, dict) and event.get("finish_reason"):
+                                relayed_finish = str(event["finish_reason"])
+                                continue
                             if isinstance(event, dict) and event.get("tool_calls"):
                                 relayed_tool_calls = True
                                 yield f"data: {json.dumps(chunk_payload(delta={'tool_calls': event['tool_calls']}))}\n\n"
@@ -3655,7 +3711,13 @@ class Router:
                         )
                         finish_trace("L6")
                         return
-                    finish_reason = "tool_calls" if relayed_tool_calls else "stop"
+                    # Mirror the upstream terminal reason (max_tokens → length,
+                    # pause_turn, refusal …) instead of a synthesized stop (#2331).
+                    from daari.router.stream_terminal import resolve_stream_finish_reason
+
+                    finish_reason = resolve_stream_finish_reason(
+                        relayed_finish, tool_calls_sent=relayed_tool_calls
+                    )
                     yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
                     bill = self._anthropic_stream_bill(relayed_text, fallback_model=served.model)
                     yield usage_chunk(
@@ -4000,6 +4062,7 @@ class Router:
                     and not tool_calls_sent
                     and streamed_text.strip()
                     and tier in {"L3", "L4", "L5"}
+                    and _cacheable_turn(served)
                 ):
                     streamed_response = served.model_copy(deep=True)
                     streamed_response.daari_meta.latency_ms = latency_ms
@@ -4121,6 +4184,7 @@ class Router:
         from daari.router.deadline import guard_upstream
 
         relayed: list[str] = []
+        relayed_finish: str | None = None
         try:
             guard_upstream("L6")
             l6_request = await self._frontier_request(request)
@@ -4129,6 +4193,9 @@ class Router:
                 escalated_from=from_tier,
                 local_confidence=None,
             ):
+                if isinstance(event, dict) and event.get("finish_reason"):
+                    relayed_finish = str(event["finish_reason"])
+                    continue
                 delta = event if isinstance(event, str) else ""
                 if not delta:
                     continue
@@ -4155,7 +4222,10 @@ class Router:
             return
 
         relayed_text = "".join(relayed)
-        yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+        from daari.router.stream_terminal import resolve_stream_finish_reason
+
+        finish_reason = resolve_stream_finish_reason(relayed_finish)
+        yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
         bill = self._anthropic_stream_bill(relayed_text, fallback_model=None)
         yield usage_chunk(
             len(relayed_text),
@@ -4864,6 +4934,8 @@ class Router:
                 if not cacheable or tool_use_sent:
                     return
                 if not (response.content or "").strip() or tier not in {"L3", "L4", "L5"}:
+                    return
+                if not _cacheable_turn(response):
                     return
                 streamed_response = response.model_copy(deep=True)
                 streamed_response.daari_meta.latency_ms = latency_ms

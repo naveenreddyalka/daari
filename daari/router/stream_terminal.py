@@ -22,6 +22,19 @@ _SUCCESS_FINISH_REASONS = frozenset(
     }
 )
 _ABORT_FINISH_REASONS = frozenset({"abort"})
+# Terminal tokens that mean the turn is not a complete answer: truncated,
+# paused, refused, or filtered. Such turns must never be written to L0/L1 (#2330).
+_INCOMPLETE_FINISH_REASONS = frozenset(
+    {
+        "length",
+        "max_tokens",
+        "pause_turn",
+        "refusal",
+        "content_filter",
+        "incomplete",
+        "abort",
+    }
+)
 
 
 class StreamTerminalError(RuntimeError):
@@ -42,6 +55,15 @@ def is_success_finish_reason(raw: str | None) -> bool:
     """True for stop / tool_calls / length / Anthropic equivalents."""
     token = (raw or "").strip().lower()
     return bool(token) and token in _SUCCESS_FINISH_REASONS
+
+
+def is_cacheable_finish_reason(raw: str | None) -> bool:
+    """False when the turn ended truncated / paused / refused (#2330).
+
+    Missing or empty values stay cacheable: they are the legacy ``stop``
+    default, and the stream paths already reject streams with no terminal.
+    """
+    return (raw or "").strip().lower() not in _INCOMPLETE_FINISH_REASONS
 
 
 def stream_ended_without_terminal(*, had_output: bool, saw_terminal: bool) -> bool:
@@ -67,3 +89,18 @@ def normalize_stream_finish_reason(raw: str | None) -> str | None:
     if token in _SUCCESS_FINISH_REASONS:
         return token
     return None
+
+
+def resolve_stream_finish_reason(upstream: str | None, *, tool_calls_sent: bool = False) -> str:
+    """Terminal ``finish_reason`` for a relayed stream (#2331).
+
+    Mirrors the upstream token when one arrived (``max_tokens`` → ``length``,
+    ``tool_use`` → ``tool_calls``, ``pause_turn`` / ``refusal`` / ``content_filter``
+    verbatim); only synthesizes ``stop`` / ``tool_calls`` when upstream said
+    nothing or said a plain stop after tool calls were relayed.
+    """
+    token = (upstream or "").strip().lower()
+    normalized = normalize_stream_finish_reason(token) or token or None
+    if normalized is None or (normalized == "stop" and tool_calls_sent):
+        return "tool_calls" if tool_calls_sent else "stop"
+    return normalized

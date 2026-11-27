@@ -9707,6 +9707,37 @@ a `baseline` of list $4/$20 (cached $0.20), so turns before Dec 1 UTC no
 longer bill 2× list. `models/`-prefixed ids resolve the same window. Covered
 by `tests/unit/test_pricing_effective_to.py`.
 
+### Cache: never store truncated, paused, or refused turns ([#2330](https://github.com/naveenreddyalka/daari/issues/2330))
+
+<!-- tracking:#2330 -->
+**Status:** Done (2026-11-25). One `_cacheable_turn()` gate
+(`is_cacheable_finish_reason`) now fronts every L0 / L1 / agent-prefix / org
+put — non-stream, chat stream, and `/v1/messages` stream. Turns ending in
+`length` / `max_tokens`, `pause_turn`, `refusal`, or `content_filter` are served
+with their honest finish reason but never cached, so an identical repeat
+re-executes instead of replaying a truncated answer as `stop`. Non-stream
+Ollama `done_reason=length` now surfaces as `finish_reason=length` so the gate
+can see local truncation. `tool_calls` finishes unchanged (#2234). Docs:
+caching-and-trust. Covered by `tests/unit/test_cache_finish_reason_gate.py`
+and `tests/integration/test_gateway_flow.py`.
+### Observability: Prometheus and stats for OpenAI regional processing 1.10× uplift by region ([#2323](https://github.com/naveenreddyalka/daari/issues/2323))
+
+<!-- tracking:#2323 -->
+**Status:** Done (2026-11-25). `_ledger_record` calls
+`metrics.record_regional_processing(region, uplift_usd)` on every L6 settle
+where `regional_processing_factor(region_pin, served_model)` returns 1.10
+(residency pin `us`/`eu`/`au`/`in`/`jp`/`ca`/`sg`/`kr`/`gb`/`ae` on a
+post-2026-03-05 OpenAI model); `uplift_usd` is `billed - billed / 1.10`, so
+provider-reported and daari-priced totals attribute the same surcharge share.
+Unpinned, pre-cutoff, non-OpenAI, and local serves never increment. Exposed as
+`daari_regional_processing_applied_total{region}` /
+`daari_regional_processing_uplift_usd_total{region}` (HELP/TYPE always
+emitted; label series only once recorded) and as region → count / USD maps
+`regional_processing_applied` / `regional_processing_uplift_usd` on
+`GET /v1/daari/stats` (team-scoped stats zero them). No new dependencies.
+Docs: metrics-prometheus, traces-stats. Covered by
+`tests/unit/test_regional_uplift_metrics.py`.
+
 ### Observability: Prometheus and stats counters for frontier binding outcomes ([#2316](https://github.com/naveenreddyalka/daari/issues/2316))
 
 <!-- tracking:#2316 -->
@@ -9843,6 +9874,16 @@ quiet when the flag is off or an Anthropic slot exists. Docs: doctor-health,
 budgets-frontier. Covered by `tests/unit/test_doctor_frontier_auto_caching.py`.
 
 
+### Frontier streamed legs surface honest finish_reason ([#2331](https://github.com/naveenreddyalka/daari/issues/2331))
+
+<!-- tracking:#2331 -->
+**Status:** Done (2026-11-26). `FrontierExecutor.stream` yields a typed
+`{finish_reason}` terminal event for Anthropic `message_delta.stop_reason`,
+OpenAI chat `choices[].finish_reason`, and Responses
+`incomplete_details.reason` (`max_output_tokens` → `length`). The L6 relay
+and mid-stream continue hop call `resolve_stream_finish_reason` instead of
+hardcoding `stop`. Covered by `tests/unit/test_stream_frontier_finish_reason.py`
+and gateway-flow fixtures for chat + Messages.
 ### Responses status incomplete with incomplete_details ([#2332](https://github.com/naveenreddyalka/daari/issues/2332))
 
 <!-- tracking:#2332 -->
