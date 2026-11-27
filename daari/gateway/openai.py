@@ -2053,6 +2053,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "frontier_binding": {},
                     "http_5xx_failover": {},
                     "finish_reason": {},
+                    "performance_alerts": {},
                 }
             from daari.gateway.systemone import breaker_snapshot
             from daari.router.breaker_inventory import inventory_from_ctx
@@ -2141,6 +2142,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "finish_reason": {
                     str(reason): int(count)
                     for reason, count in dict(full.get("finish_reason") or {}).items()
+                },
+                "performance_alerts": {
+                    str(kind): int(count)
+                    for kind, count in dict(full.get("performance_alerts") or {}).items()
                 },
             }
             perf = getattr(getattr(ctx, "router", None), "virtual_model_perf", None)
@@ -2439,6 +2444,18 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             payload["deprecations"] = build_deprecation_exposure(
                 exposure_rows, merged_model_lifecycle(ctx.settings)
             )
+            from daari.observability.performance_alerts import open_alerts_for_settings
+
+            perf = getattr(ctx.router, "performance_ledger", None)
+            if perf is not None:
+                try:
+                    payload["performance_alerts"] = open_alerts_for_settings(
+                        perf, ctx.settings
+                    )
+                except Exception:
+                    payload["performance_alerts"] = []
+            else:
+                payload["performance_alerts"] = []
             return payload
 
         @router.get("/v1/daari/spend/export")

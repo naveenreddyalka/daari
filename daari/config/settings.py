@@ -3327,6 +3327,53 @@ class AlertSettings(BaseModel):
             "was last set by rotation (#2069, #2077)."
         ),
     )
+    performance_enabled: bool = Field(
+        default=True,
+        description=(
+            "On-box spike monitor for frontier spend, traffic, p95 latency, "
+            "and 5xx rate versus the prior 7 days (#2360). Default on. Set "
+            "false to kill the detector, the report section, and webhooks."
+        ),
+    )
+    performance_webhook_url: str = Field(
+        default="",
+        description=(
+            "Optional webhook for a newly opened performance spike (#2360). "
+            "Empty still lists open alerts on `daari report` and does not POST."
+        ),
+    )
+    performance_webhook_secret: str = Field(
+        default="",
+        description=(
+            "HMAC secret for performance-spike webhooks (X-Daari-Signature), "
+            "same scheme as budget alerts (#2360)."
+        ),
+    )
+    performance_spend_ratio: float = Field(
+        default=2.0,
+        gt=1,
+        description="Last-24h frontier USD must exceed this times the prior-7-day daily average.",
+    )
+    performance_traffic_ratio: float = Field(
+        default=2.0,
+        gt=1,
+        description="Last-24h request count must exceed this times the prior-7-day daily average.",
+    )
+    performance_latency_ratio: float = Field(
+        default=1.5,
+        gt=1,
+        description="Last-24h p95 latency must exceed this times the prior-7-day p95.",
+    )
+    performance_error_rate_ratio: float = Field(
+        default=2.0,
+        gt=1,
+        description="Last-24h 5xx rate must exceed this times the prior-7-day rate.",
+    )
+    performance_min_baseline_requests: int = Field(
+        default=20,
+        ge=1,
+        description="No spike fires until the prior 7 days contain at least this many samples.",
+    )
 
     @model_validator(mode="before")
     @classmethod

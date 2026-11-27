@@ -10025,6 +10025,16 @@ RETRYABLE_STATUS set retryable (501/522). Default-set retries (503) stay on
 `upstream_retries` only. Covered by `tests/unit/test_upstream_retry.py`.
 
 
+### On-box performance spike alerts ([#2360](https://github.com/naveenreddyalka/daari/issues/2360))
+
+<!-- tracking:#2360 -->
+**Status:** Done (2026-11-27). The last 24h is compared with the prior 7 days
+for frontier spend, request count, p95 latency, and 5xx rate. Spikes only.
+`alerts.performance_enabled` defaults on; an empty webhook URL lists open
+alerts on `daari report` without a POST. A signed webhook and
+`daari_performance_alerts_total{kind}` fire once per resource, kind, and UTC
+day. Covered by `tests/unit/test_performance_alerts.py`.
+
 ### Gemini 4 Hydrogen catalog ([#2359](https://github.com/naveenreddyalka/daari/issues/2359))
 
 <!-- tracking:#2359 -->

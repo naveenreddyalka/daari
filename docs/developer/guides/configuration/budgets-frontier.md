@@ -168,6 +168,26 @@ and threshold (Redis `SET NX EX` when configured; a Redis error still
 delivers and logs `budget.alert_dedupe_degraded`). Signing uses the same
 `X-Daari-Signature` secret.
 
+Performance spikes (frontier USD, request count, p95 latency, 5xx rate)
+compare the last 24 hours to the prior 7 days. The monitor is on by default;
+`performance_enabled: false` is the kill switch. Drops are not alerts. A
+kind fires once per UTC day, so a quiet recovery does not re-POST. An empty
+webhook URL still lists open spikes on `daari report` / `GET /v1/daari/report`
+(`performance_alerts`) and does not call the network. Signing reuses
+`X-Daari-Signature`.
+
+```yaml
+alerts:
+  performance_enabled: true
+  performance_webhook_url: https://hooks.example/daari-spikes
+  performance_webhook_secret: secret://env-file/~/.daari/secrets.env#PERF_WEBHOOK
+  performance_spend_ratio: 2.0
+  performance_traffic_ratio: 2.0
+  performance_latency_ratio: 1.5
+  performance_error_rate_ratio: 2.0
+  performance_min_baseline_requests: 20
+```
+
 Payload (never includes key material):
 
 ```json

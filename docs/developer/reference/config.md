@@ -433,6 +433,14 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `alerts.batches_completion_webhook_secret` | str | `''` | HMAC secret for batches completion webhooks (X-Daari-Signature). Supports secret:// refs (#2069, #2077). |
 | `alerts.batches_completion_webhook_secret_previous` | str | `''` | Previous batches completion webhook HMAC secret during rotation grace (#2069, #2077). Signing uses batches_completion_webhook_secret; receivers verify against either. Set via `daari alerts rotate-secret batches`. |
 | `alerts.batches_completion_webhook_secret_rotated_at` | str | `''` | ISO-8601 timestamp when batches_completion_webhook_secret_previous was last set by rotation (#2069, #2077). |
+| `alerts.performance_enabled` | bool | `True` | On-box spike monitor for frontier spend, traffic, p95 latency, and 5xx rate versus the prior 7 days (#2360). Default on. Set false to kill the detector, the report section, and webhooks. |
+| `alerts.performance_webhook_url` | str | `''` | Optional webhook for a newly opened performance spike (#2360). Empty still lists open alerts on `daari report` and does not POST. |
+| `alerts.performance_webhook_secret` | str | `''` | HMAC secret for performance-spike webhooks (X-Daari-Signature), same scheme as budget alerts (#2360). |
+| `alerts.performance_spend_ratio` | float | `2.0` | Last-24h frontier USD must exceed this times the prior-7-day daily average. |
+| `alerts.performance_traffic_ratio` | float | `2.0` | Last-24h request count must exceed this times the prior-7-day daily average. |
+| `alerts.performance_latency_ratio` | float | `1.5` | Last-24h p95 latency must exceed this times the prior-7-day p95. |
+| `alerts.performance_error_rate_ratio` | float | `2.0` | Last-24h 5xx rate must exceed this times the prior-7-day rate. |
+| `alerts.performance_min_baseline_requests` | int | `20` | No spike fires until the prior 7 days contain at least this many samples. |
 | `skills_system_prefix` | str | `''` | Runtime-only: markdown loaded from ~/.daari/skills/ and prepended as a system prefix. Supports flat *.md files and AAIF Agent Skills packages (~/.daari/skills/<name>/SKILL.md, directory name = skill title). Nested depth beyond one level is ignored; empty/unreadable SKILL.md is skipped. |
 | `model_groups` | dict | `{}` | Named model groups (exact names or globs such as claude-*). Keys and teams reference them by name; enforcement is the union of allowed_models and the referenced groups, intersected across team and key. |
 

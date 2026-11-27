@@ -375,6 +375,19 @@ def render_prometheus(
                 f"daari_http_5xx_failover_total{_labels(status=str(status))} {int(count)}"
             )
     lines.append(
+        "# HELP daari_performance_alerts_total Performance spikes newly fired "
+        "against the prior 7 days, by kind (spend, traffic, latency, error_rate)."
+    )
+    lines.append("# TYPE daari_performance_alerts_total counter")
+    performance = snap.get("performance_alerts") or {}
+    if not performance:
+        lines.append("daari_performance_alerts_total 0")
+    else:
+        for kind, count in sorted(performance.items()):
+            lines.append(
+                f"daari_performance_alerts_total{_labels(kind=str(kind))} {int(count)}"
+            )
+    lines.append(
         "# HELP daari_request_deadline_exceeded_total "
         "Requests that hit the wall-clock deadline before a tier succeeded."
     )

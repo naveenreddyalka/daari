@@ -198,6 +198,7 @@ def run_doctor(
     results.append(_check_key_lockout(cfg))
     results.append(_check_vk_empty_allowlist(cfg))
     results.append(_check_budget_webhook_secret(cfg))
+    results.append(_check_performance_webhook_secret(cfg))
     results.append(_check_key_expiry_webhook_secret(cfg))
     results.append(_check_responses_completion_webhook_secret(cfg))
     results.append(_check_batches_completion_webhook_secret(cfg))
@@ -3373,6 +3374,37 @@ def _check_budget_webhook_secret(settings: Settings) -> CheckResult:
     else:
         detail = "budget webhook disabled (empty URL)"
     return CheckResult(name="budget_webhook_secret", ok=True, detail=detail, optional=True)
+
+
+def _check_performance_webhook_secret(settings: Settings) -> CheckResult:
+    """Warn when a performance-spike webhook URL is set without a signing secret (#2360)."""
+    url = (settings.alerts.performance_webhook_url or "").strip()
+    secret = (settings.alerts.performance_webhook_secret or "").strip()
+    if not settings.alerts.performance_enabled:
+        return CheckResult(
+            name="performance_webhook_secret",
+            ok=True,
+            detail="performance alerts disabled",
+            optional=True,
+        )
+    if url and not secret:
+        return CheckResult(
+            name="performance_webhook_secret",
+            ok=False,
+            optional=True,
+            detail=(
+                "alerts.performance_webhook_url is set but "
+                "alerts.performance_webhook_secret is empty — receivers cannot "
+                "verify X-Daari-Signature"
+            ),
+        )
+    if url:
+        detail = "performance webhook URL + secret configured"
+    else:
+        detail = "performance alerts on; webhook disabled (empty URL)"
+    return CheckResult(
+        name="performance_webhook_secret", ok=True, detail=detail, optional=True
+    )
 
 
 def _check_key_expiry_webhook_secret(settings: Settings) -> CheckResult:
