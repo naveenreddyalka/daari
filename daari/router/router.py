@@ -250,6 +250,17 @@ def estimate_num_ctx(prompt_chars: int, *, floor: int = 4096, ceiling: int = 327
     return min(num_ctx, ceiling)
 
 
+def _cacheable_turn(response: InternalResponse) -> bool:
+    """Shared L0/L1 write gate: only complete turns are cached (#2330).
+
+    A ``length`` / ``pause_turn`` / ``refusal`` turn served honestly to the
+    client must not be replayed forever as a clean ``stop``.
+    """
+    from daari.router.stream_terminal import is_cacheable_finish_reason
+
+    return is_cacheable_finish_reason(response.finish_reason)
+
+
 class OllamaRequestError(RuntimeError):
     """Ollama HTTP error with the response body preserved for diagnosis."""
 
@@ -395,10 +406,22 @@ class OllamaExecutor:
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
         input_tokens, output_tokens, estimated = ollama_token_usage(data, request, content)
+        from daari.router.stream_terminal import normalize_stream_finish_reason
+
+        # Honest non-stream done_reason (length / pause_turn / refusal) so the
+        # cache gate and the client see truncation (#2330); abort stays a stop
+        # here because the non-stream failure path is the HTTP error itself.
+        done_reason = normalize_stream_finish_reason(data.get("done_reason"))
+        if tool_calls:
+            finish_reason = "tool_calls"
+        elif done_reason in {"length", "pause_turn", "refusal"}:
+            finish_reason = done_reason
+        else:
+            finish_reason = "stop"
         return InternalResponse(
             content=content,
             model=model,
-            finish_reason="tool_calls" if tool_calls else "stop",
+            finish_reason=finish_reason,
             tool_calls=tool_calls,
             reasoning_content=reasoning_content,
             daari_meta=DaariMeta(
@@ -2518,12 +2541,14 @@ class Router:
         # #2234: skip L0/L1 when the response carries tool_calls — parity with
         # stream put guards (`not tool_calls_sent` / `not tool_use_sent`). A
         # streamed repeat must miss rather than text-only-replay and drop tools.
+        # #2330: truncated / paused / refused turns are served but never cached.
         if (
             not request.meta.no_cache
             and not cache_skip
             and response.daari_meta.tier in {"L3", "L4", "L5"}
             and response.content.strip()
             and not response.tool_calls
+            and _cacheable_turn(response)
         ):
             try:
                 self.cache.put(request, response)
@@ -3504,6 +3529,9 @@ class Router:
                 served = InternalResponse(
                     content=streamed_text,
                     model=ollama_model,
+                    finish_reason=(
+                        "tool_calls" if tool_calls_sent else (stream_finish_reason or "stop")
+                    ),
                     reasoning_content=streamed_thinking,
                     daari_meta=DaariMeta(
                         tier=tier,
@@ -4034,6 +4062,7 @@ class Router:
                     and not tool_calls_sent
                     and streamed_text.strip()
                     and tier in {"L3", "L4", "L5"}
+                    and _cacheable_turn(served)
                 ):
                     streamed_response = served.model_copy(deep=True)
                     streamed_response.daari_meta.latency_ms = latency_ms
@@ -4905,6 +4934,8 @@ class Router:
                 if not cacheable or tool_use_sent:
                     return
                 if not (response.content or "").strip() or tier not in {"L3", "L4", "L5"}:
+                    return
+                if not _cacheable_turn(response):
                     return
                 streamed_response = response.model_copy(deep=True)
                 streamed_response.daari_meta.latency_ms = latency_ms
