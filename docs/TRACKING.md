@@ -9894,6 +9894,16 @@ quiet when the flag is off or an Anthropic slot exists. Docs: doctor-health,
 budgets-frontier. Covered by `tests/unit/test_doctor_frontier_auto_caching.py`.
 
 
+### vLLM 0.34.0 local-tier guide refresh ([#2333](https://github.com/naveenreddyalka/daari/issues/2333))
+
+<!-- tracking:#2333 -->
+**Status:** Done (2026-11-26). `vllm-local-tier.md` gains 0.34.0 upgrade notes
+(V1 runner removed, block-size 64, extensible KV / gpu_memory_utilization 1.0
+opt-outs, ROCm 7.2 dropped, huggingface_hub ≥2); ASR guide names
+Nemotron-3.5-Transcribe and Canary-1B-v2; Ollama Ripple recipe notes vLLM
+0.34+ as a serving alternative. ≥0.32.0 security floor unchanged. Covered by
+`tests/unit/test_vllm_local_tier_docs.py`.
+
 ### Doctor tip when upstream.retry.failover_on_http_5xx is on ([#2336](https://github.com/naveenreddyalka/daari/issues/2336))
 
 <!-- tracking:#2336 -->
