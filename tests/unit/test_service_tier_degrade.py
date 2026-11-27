@@ -205,7 +205,7 @@ async def test_streamed_service_tier_400_retries_once_without_tier():
         )
     ]
     assert tiers == ["flex", None]
-    assert events == ["ok"]
+    assert events == ["ok", {"finish_reason": "stop"}]
     assert executor.last_stream_service_tier == "default"
     meta = DaariMeta(tier="L6", executor="frontier")
     outcome = StreamOutcome(tier="L6", cache="miss")

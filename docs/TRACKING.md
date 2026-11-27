@@ -9874,6 +9874,16 @@ quiet when the flag is off or an Anthropic slot exists. Docs: doctor-health,
 budgets-frontier. Covered by `tests/unit/test_doctor_frontier_auto_caching.py`.
 
 
+### Frontier streamed legs surface honest finish_reason ([#2331](https://github.com/naveenreddyalka/daari/issues/2331))
+
+<!-- tracking:#2331 -->
+**Status:** Done (2026-11-26). `FrontierExecutor.stream` yields a typed
+`{finish_reason}` terminal event for Anthropic `message_delta.stop_reason`,
+OpenAI chat `choices[].finish_reason`, and Responses
+`incomplete_details.reason` (`max_output_tokens` → `length`). The L6 relay
+and mid-stream continue hop call `resolve_stream_finish_reason` instead of
+hardcoding `stop`. Covered by `tests/unit/test_stream_frontier_finish_reason.py`
+and gateway-flow fixtures for chat + Messages.
 ### Responses status incomplete with incomplete_details ([#2332](https://github.com/naveenreddyalka/daari/issues/2332))
 
 <!-- tracking:#2332 -->
