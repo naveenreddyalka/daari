@@ -2043,6 +2043,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "regional_processing_applied": {},
                     "regional_processing_uplift_usd": {},
                     "frontier_binding": {},
+                    "finish_reason": {},
                 }
             from daari.gateway.systemone import breaker_snapshot
             from daari.router.breaker_inventory import inventory_from_ctx
@@ -2124,6 +2125,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     ).items()
                 },
                 "frontier_binding": dict(full.get("frontier_binding") or {}),
+                "finish_reason": {
+                    str(reason): int(count)
+                    for reason, count in dict(full.get("finish_reason") or {}).items()
+                },
             }
             perf = getattr(getattr(ctx, "router", None), "virtual_model_perf", None)
             if perf is not None and hasattr(perf, "snapshot"):

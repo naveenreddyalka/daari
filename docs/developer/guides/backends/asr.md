@@ -6,6 +6,11 @@
 
 `asr.base_url` is an OpenAI-compatible API root (it includes `/v1`), the same shape as `frontier.base_url`. Point it at vLLM, whisper.cpp's OpenAI server, or any pool member that already serves `POST /v1/audio/transcriptions` and `POST /v1/audio/translations`. No Whisper or ffmpeg package is installed with daari.
 
+On **vLLM ≥ 0.34.0**, two first-party ASR models serve the same door:
+**Nemotron-3.5-Transcribe** and **Canary-1B-v2**. Set `asr.base_url` to the
+vLLM root and `asr.model` to the served id (see
+[vLLM local tier](../configuration/vllm-local-tier.md) 0.34.0 notes).
+
 ```yaml
 asr:
   base_url: http://127.0.0.1:8000/v1
