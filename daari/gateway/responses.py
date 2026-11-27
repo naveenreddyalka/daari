@@ -1105,6 +1105,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 )
             model = body.model or "daari"
             meta = _governed_responses_meta(request, ctx, user=body.user)
+            if getattr(meta, "zero_retention", False):
+                body = body.model_copy(update={"store": False})
             denied = _reject_responses_model(request, ctx, model, meta)
             if denied is not None:
                 return denied
@@ -1334,6 +1336,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 no_frontier=x_daari_no_frontier == "true",
                 user=body.user,
             )
+            if getattr(meta, "zero_retention", False):
+                body = body.model_copy(update={"store": False})
             from daari.router.signals import parse_request_tags
 
             meta.tags = parse_request_tags(

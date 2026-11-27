@@ -889,6 +889,30 @@ class SpendLedger:
         except Exception:
             return 0
 
+    def model_key_team_counts(self, *, since_iso: str) -> list[dict[str, Any]]:
+        """Request counts by model, key, and team since an ISO timestamp (#2346)."""
+        if not self.enabled:
+            return []
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT model, key_id, team_id, COUNT(*) FROM spend_requests"
+                    " WHERE ts >= ? GROUP BY model, key_id, team_id",
+                    (since_iso,),
+                ).fetchall()
+        except Exception:
+            return []
+        return [
+            {
+                "model": str(model or ""),
+                "key_id": str(key_id or ""),
+                "team_id": str(team_id or ""),
+                "requests": int(count or 0),
+            }
+            for model, key_id, team_id, count in rows
+            if int(count or 0) > 0
+        ]
+
     def erase_subject(
         self,
         *,
@@ -1218,6 +1242,32 @@ class PostgresSpendLedger(SpendLedger):
                 return count
         except Exception:
             return 0
+
+    def model_key_team_counts(self, *, since_iso: str) -> list[dict[str, Any]]:
+        """Request counts by model, key, and team since an ISO timestamp (#2346)."""
+        if not self.enabled:
+            return []
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT model, key_id, team_id, COUNT(*) FROM spend_requests"
+                        " WHERE ts >= %s GROUP BY model, key_id, team_id",
+                        (since_iso,),
+                    )
+                    rows = cur.fetchall()
+        except Exception:
+            return []
+        return [
+            {
+                "model": str(model or ""),
+                "key_id": str(key_id or ""),
+                "team_id": str(team_id or ""),
+                "requests": int(count or 0),
+            }
+            for model, key_id, team_id, count in rows
+            if int(count or 0) > 0
+        ]
 
     def erase_subject(
         self,

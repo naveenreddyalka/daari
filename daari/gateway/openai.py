@@ -2043,6 +2043,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "regional_processing_applied": {},
                     "regional_processing_uplift_usd": {},
                     "frontier_binding": {},
+                    "finish_reason": {},
                 }
             from daari.gateway.systemone import breaker_snapshot
             from daari.router.breaker_inventory import inventory_from_ctx
@@ -2124,6 +2125,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     ).items()
                 },
                 "frontier_binding": dict(full.get("frontier_binding") or {}),
+                "finish_reason": {
+                    str(reason): int(count)
+                    for reason, count in dict(full.get("finish_reason") or {}).items()
+                },
             }
             perf = getattr(getattr(ctx, "router", None), "virtual_model_perf", None)
             if perf is not None and hasattr(perf, "snapshot"):
@@ -2391,6 +2396,36 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 payload[rollup] = rows
                 for field_name, value in page.items():
                     payload[f"{rollup}_{field_name}"] = value
+            from datetime import datetime, timedelta, timezone
+
+            from daari.config.settings import merged_model_lifecycle
+            from daari.observability.usage import build_deprecation_exposure
+
+            cutoff = (
+                datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))
+            ).strftime("%Y-%m-%d")
+            spend = getattr(ctx.router, "spend_ledger", None)
+            exposure_rows: list[dict[str, Any]] = []
+            if (
+                spend is not None
+                and getattr(spend, "enabled", False)
+                and hasattr(spend, "model_key_team_counts")
+            ):
+                try:
+                    exposure_rows = list(
+                        spend.model_key_team_counts(since_iso=f"{cutoff}T00:00:00+00:00")
+                        or []
+                    )
+                except Exception:
+                    exposure_rows = []
+            if not exposure_rows and hasattr(ledger, "model_client_counts"):
+                try:
+                    exposure_rows = list(ledger.model_client_counts(days=max(1, days)) or [])
+                except Exception:
+                    exposure_rows = []
+            payload["deprecations"] = build_deprecation_exposure(
+                exposure_rows, merged_model_lifecycle(ctx.settings)
+            )
             return payload
 
         @router.get("/v1/daari/spend/export")

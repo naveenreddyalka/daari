@@ -87,6 +87,18 @@ names no configured slot → 502), or `unresolvable` (`secret://` ref failed
 or resolved empty → 502). Global-key traffic never increments; the map is
 empty until the first bound request. The Prometheus counterpart is
 `daari_frontier_binding_total{source,outcome}`.
+`finish_reason` maps honest completion outcome → count for turns the router
+settles on chat, messages, and responses (non-stream and stream terminal).
+Labels are `stop`, `tool_calls`, `length`, `pause_turn`, `refusal`,
+`content_filter`, and `other`. Anthropic `stop_reason` is the same series:
+`end_turn` / `stop_sequence` → `stop`, `max_tokens` → `length`, `tool_use` →
+`tool_calls`, while `pause_turn` and `refusal` stay distinct from a finished
+`end_turn`. Unknown tokens bucket as `other`. Aborted streams that never emit
+a terminal do not increment. The map is empty until the first settled turn;
+team-scoped stats zero it like the other fleet-wide counters. The Prometheus
+counterpart is `daari_finish_reason_total{reason}` (emits `0` unlabeled until
+the first turn). `daari stats` prints this map with the rest of
+`GET /v1/daari/stats`.
 
 ## Retention
 

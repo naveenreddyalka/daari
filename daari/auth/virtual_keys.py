@@ -359,6 +359,11 @@ class Team:
 
         return signal_overrides_from_meta(self.metadata)
 
+    @property
+    def zero_retention(self) -> bool:
+        """Opt-in: no tenant prompt content in on-box stores (#2347)."""
+        return self.metadata.get("zero_retention") is True
+
 
 @dataclass(frozen=True)
 class VirtualKey:
@@ -421,6 +426,11 @@ class VirtualKey:
 
         return signal_overrides_from_meta(self.metadata)
 
+    @property
+    def zero_retention(self) -> bool:
+        """Opt-in: no tenant prompt content in on-box stores (#2347)."""
+        return self.metadata.get("zero_retention") is True
+
     def is_expired(self, now: datetime | None = None) -> bool:
         return _is_past(self.expires_at, now)
 
@@ -431,6 +441,11 @@ class VirtualKey:
         if self.is_expired(now):
             return "expired"
         return "active"
+
+
+def zero_retention_enforced(key: Any, team: Any) -> bool:
+    """Either side true enforces; a key cannot loosen a team dial (#2347)."""
+    return bool(getattr(key, "zero_retention", False) or getattr(team, "zero_retention", False))
 
 
 def admission_priority_for(key: VirtualKey | None = None, team: Team | None = None) -> str:

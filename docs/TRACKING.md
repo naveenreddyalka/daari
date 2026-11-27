@@ -9894,6 +9894,16 @@ quiet when the flag is off or an Anthropic slot exists. Docs: doctor-health,
 budgets-frontier. Covered by `tests/unit/test_doctor_frontier_auto_caching.py`.
 
 
+### vLLM 0.34.0 local-tier guide refresh ([#2333](https://github.com/naveenreddyalka/daari/issues/2333))
+
+<!-- tracking:#2333 -->
+**Status:** Done (2026-11-26). `vllm-local-tier.md` gains 0.34.0 upgrade notes
+(V1 runner removed, block-size 64, extensible KV / gpu_memory_utilization 1.0
+opt-outs, ROCm 7.2 dropped, huggingface_hub ≥2); ASR guide names
+Nemotron-3.5-Transcribe and Canary-1B-v2; Ollama Ripple recipe notes vLLM
+0.34+ as a serving alternative. ≥0.32.0 security floor unchanged. Covered by
+`tests/unit/test_vllm_local_tier_docs.py`.
+
 ### Doctor tip when upstream.retry.failover_on_http_5xx is on ([#2336](https://github.com/naveenreddyalka/daari/issues/2336))
 
 <!-- tracking:#2336 -->
@@ -9935,6 +9945,74 @@ mark. daari does not ship watermark detection; Compliance API / detector
 access is Anthropic-side. Docs:
 [claude-code.md](developer/guides/clients/claude-code.md#text-watermark-sampling).
 Covered by `tests/unit/test_claude_watermark_docs.py`.
+
+### OpenRouter HF Inference Providers and scoped management keys ([#2339](https://github.com/naveenreddyalka/daari/issues/2339))
+
+<!-- tracking:#2339 -->
+**Status:** Done (2026-11-27). `compare-openrouter.md` notes that Hugging Face
+Inference Providers chat routing now goes through OpenRouter (optional L6
+`base_url`; local tiers unchanged; `X-HF-Session-Id` affinity is the existing
+session pin, not a new feature) and that scoped management keys are an
+OpenRouter control-plane strength. The on-box counterpart is virtual keys,
+team BYOK, and grants — not a clone of OpenRouter management keys. daari does
+not broker HF Inference Providers. The compare index one-liner points at the
+same page. Covered by
+`tests/unit/test_compare_openrouter_hf_management_keys.py`.
+
+### Observability: Prometheus and stats for finish_reason and stop_reason outcomes ([#2338](https://github.com/naveenreddyalka/daari/issues/2338))
+
+<!-- tracking:#2338 -->
+**Status:** Done (2026-11-27). `daari_finish_reason_total{reason}` (and
+`finish_reason` reason → count on `GET /v1/daari/stats` / `daari stats`)
+counts each turn the router settles on chat, messages, and responses.
+`reason` is `stop`, `tool_calls`, `length`, `pause_turn`, `refusal`,
+`content_filter`, or `other`. Anthropic `stop_reason` aliases collapse onto
+the same labels (`end_turn` / `stop_sequence` → `stop`, `max_tokens` →
+`length`, `tool_use` → `tool_calls`) so truncation, pause, and refusal stay
+distinct from a finished turn. Unknown tokens bucket as `other`. Recorded in
+`route()` for non-stream and on the stream terminal (`stream_openai_chunks`
+for chat and responses, `message_delta` for messages). Aborted streams that
+never emit a terminal do not increment. Emits `0` unlabeled until the first
+settled turn; team-scoped stats zero the map. Wire-format mapping and
+Responses `incomplete` status are unchanged. Docs: metrics-prometheus,
+traces-stats. Covered by `tests/unit/test_finish_reason_metrics.py`.
+
+
+### Web UI inventory pagination and report.users ([#1551](https://github.com/naveenreddyalka/daari/issues/1551))
+
+<!-- tracking:#1551 -->
+**Status:** Done (2026-11-27). The same-box console follows `has_more` on
+`GET /v1/daari/keys` and `/teams` (`limit=50`, offset, 20-page cap) and shows
+`total` when the page meta includes it. The report panel renders
+`report.users` (client, user, requests, savings) with an empty state when the
+array is absent. Covered by `packages/web-ui/test/dashboard.test.js`.
+
+
+
+### Successor model and deprecation exposure ([#2346](https://github.com/naveenreddyalka/daari/issues/2346))
+
+<!-- tracking:#2346 -->
+**Status:** Done (2026-11-27). Lifecycle rows accept optional `successor_model`
+and `deprecation_source` (unknown keys still kept). Doctor `model_lifecycle`
+names `successor: …` when one is known. `GET /v1/daari/report` and
+`daari report` include a `deprecations` section: models with a lifecycle date
+and ledger traffic, request counts split by key and team, plus date, source,
+and successor. Reject/degrade behavior is unchanged. Covered by
+`tests/unit/test_deprecation_exposure.py`.
+
+
+
+### Per-key/team zero_retention ([#2347](https://github.com/naveenreddyalka/daari/issues/2347))
+
+<!-- tracking:#2347 -->
+**Status:** Done (2026-11-27). Keys and teams accept metadata `zero_retention: true`.
+Either side true enforces (a key cannot loosen a team). Those tenants get
+Responses `store: false` even when the request asks to store, so
+`previous_response_id` chains return the existing not-found 400. L0, org,
+semantic, and agent-prefix cache puts are skipped; reads are unchanged.
+Doctor `zero_retention` reports how many keys and teams have the dial on.
+Covered by `tests/unit/test_zero_retention.py`.
+
 
 ## How to update
 
