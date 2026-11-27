@@ -4,11 +4,16 @@ Fetches ``GET /v1/organizations/analytics/cost`` (and usage) with the
 ``analytics-usage-cost-2026-08-24`` beta header, groups by model + day, and
 compares provider ``amount`` (discounted, cents→USD) to daari's ledger rollup
 for Anthropic-served rows.
+
+Rows signed with a team/key BYOK credential (#2216) bill another Anthropic
+organization, so by default only ``credential_source`` global (or legacy
+empty) rows enter the comparison; tenant-signed spend is reported as
+excluded instead of inflating drift (#2315).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlencode
@@ -18,6 +23,10 @@ from daari.router.anthropic_messages import ANTHROPIC_VERSION
 
 ANALYTICS_BETA = "analytics-usage-cost-2026-08-24"
 MAX_WINDOW_DAYS = 31
+# ``all`` keeps the pre-#2315 behaviour (every Anthropic-served row) for
+# operators whose tenant keys live in the same Anthropic org.
+CREDENTIAL_SCOPES = ("global", "team", "key", "all")
+DEFAULT_CREDENTIAL_SCOPE = "global"
 
 
 @dataclass
@@ -33,14 +42,43 @@ class ReconcileRow:
 
 
 @dataclass
+class ExcludedSpend:
+    """Ledger spend left out of the comparison because another credential signed it."""
+
+    rows: int = 0
+    cost_usd: float = 0.0
+    tokens: int = 0
+    by_source: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
 class ReconcileResult:
     rows: list[ReconcileRow]
     exceeded: list[ReconcileRow]
     threshold_pct: float
+    credential: str = DEFAULT_CREDENTIAL_SCOPE
+    excluded: ExcludedSpend = field(default_factory=ExcludedSpend)
 
 
 class AnalyticsReconcileError(ValueError):
     """Operator-facing reconcile failure (missing key, window, provider)."""
+
+
+def normalize_credential_scope(raw: str | None) -> str:
+    text = str(raw or DEFAULT_CREDENTIAL_SCOPE).strip().lower()
+    if text not in CREDENTIAL_SCOPES:
+        raise AnalyticsReconcileError(
+            f"--credential must be one of {', '.join(CREDENTIAL_SCOPES)}; got {raw!r}"
+        )
+    return text
+
+
+def credential_in_scope(source: str, scope: str) -> bool:
+    """Legacy rows (empty source) predate the column and were global-signed."""
+    if scope == "all":
+        return True
+    normalized = (source or "").strip().lower() or "global"
+    return normalized == scope
 
 
 def _parse_iso(raw: str) -> datetime:
@@ -247,48 +285,102 @@ def provider_usage_index(rows: list[dict[str, Any]]) -> dict[tuple[str, str], in
     return index
 
 
-def local_anthropic_rollup(
+def _ledger_query(ledger: Any, sql: str, params: list[Any]) -> list[tuple[Any, ...]]:
+    with ledger._lock, ledger._connect() as conn:
+        if hasattr(ledger, "dsn"):
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                return list(cur.fetchall())
+        return list(conn.execute(sql, params).fetchall())
+
+
+def local_anthropic_rollup_by_credential(
     ledger: Any,
     *,
     since: str,
     until: str,
-) -> dict[tuple[str, str], dict[str, float]]:
-    """Sum ledger cost/tokens per (day, model) for Anthropic-served rows."""
+) -> dict[tuple[str, str, str], dict[str, float]]:
+    """Sum ledger cost/tokens/rows per (day, model, credential_source) for Anthropic rows."""
     if not getattr(ledger, "enabled", False):
         return {}
     ph = "%s" if hasattr(ledger, "dsn") else "?"
-    sql = (
-        f"SELECT substr(ts, 1, 10) AS day, model, "
-        f"SUM(cost_usd) AS cost_usd, "
-        f"SUM(input_tokens + output_tokens) AS tokens "
+    where = (
         f"FROM spend_requests WHERE ts >= {ph} AND ts < {ph} "
         f"AND ("
         f"  lower(provider) LIKE {ph} OR lower(provider) LIKE {ph} "
         f"  OR lower(model) LIKE {ph}"
         f") "
-        f"GROUP BY day, model ORDER BY day, model"
     )
     params: list[Any] = [since, until, "%anthropic%", "%claude%", "claude%"]
+    sql = (
+        "SELECT substr(ts, 1, 10) AS day, model, credential_source, "
+        "SUM(cost_usd) AS cost_usd, "
+        "SUM(input_tokens + output_tokens) AS tokens, COUNT(*) AS rows_n "
+        f"{where}"
+        "GROUP BY day, model, credential_source ORDER BY day, model, credential_source"
+    )
+    # Ledgers opened by an older daari lack the column: every row was global-signed.
+    legacy_sql = (
+        "SELECT substr(ts, 1, 10) AS day, model, '' AS credential_source, "
+        "SUM(cost_usd) AS cost_usd, "
+        "SUM(input_tokens + output_tokens) AS tokens, COUNT(*) AS rows_n "
+        f"{where}"
+        "GROUP BY day, model ORDER BY day, model"
+    )
     try:
-        with ledger._lock, ledger._connect() as conn:
-            if hasattr(ledger, "dsn"):
-                with conn.cursor() as cur:
-                    cur.execute(sql, params)
-                    rows = cur.fetchall()
-            else:
-                rows = conn.execute(sql, params).fetchall()
+        rows = _ledger_query(ledger, sql, params)
     except Exception:
-        return {}
-    out: dict[tuple[str, str], dict[str, float]] = {}
-    for day, model, cost, tokens in rows:
-        key = (str(day or ""), str(model or ""))
+        try:
+            rows = _ledger_query(ledger, legacy_sql, params)
+        except Exception:
+            return {}
+    out: dict[tuple[str, str, str], dict[str, float]] = {}
+    for day, model, source, cost, tokens, count in rows:
+        key = (str(day or ""), str(model or ""), str(source or "").strip().lower())
         if not key[0] or not key[1]:
             continue
         out[key] = {
             "cost_usd": float(cost or 0.0),
             "tokens": float(tokens or 0),
+            "rows": float(count or 0),
         }
     return out
+
+
+def split_rollup_by_credential(
+    rollup: dict[tuple[str, str, str], dict[str, float]],
+    credential: str,
+) -> tuple[dict[tuple[str, str], dict[str, float]], ExcludedSpend]:
+    """Keep (day, model) sums for rows in ``credential`` scope; total the rest."""
+    local: dict[tuple[str, str], dict[str, float]] = {}
+    excluded = ExcludedSpend()
+    for (day, model, source), slot in rollup.items():
+        if credential_in_scope(source, credential):
+            agg = local.setdefault((day, model), {"cost_usd": 0.0, "tokens": 0.0})
+            agg["cost_usd"] += float(slot["cost_usd"])
+            agg["tokens"] += float(slot["tokens"])
+            continue
+        excluded.rows += int(slot.get("rows") or 0)
+        excluded.cost_usd += float(slot["cost_usd"])
+        excluded.tokens += int(slot["tokens"])
+        label = source or "global"
+        excluded.by_source[label] = excluded.by_source.get(label, 0.0) + float(
+            slot["cost_usd"]
+        )
+    return local, excluded
+
+
+def local_anthropic_rollup(
+    ledger: Any,
+    *,
+    since: str,
+    until: str,
+    credential: str = "all",
+) -> dict[tuple[str, str], dict[str, float]]:
+    """Sum ledger cost/tokens per (day, model) for Anthropic-served rows."""
+    rollup = local_anthropic_rollup_by_credential(ledger, since=since, until=until)
+    local, _ = split_rollup_by_credential(rollup, normalize_credential_scope(credential))
+    return local
 
 
 def drift_pct(daari: float, provider: float) -> float:
@@ -305,7 +397,9 @@ def reconcile(
     threshold_pct: float = 5.0,
     base_url: str = DEFAULT_BASE_URL,
     transport: Any | None = None,
+    credential: str = DEFAULT_CREDENTIAL_SCOPE,
 ) -> ReconcileResult:
+    scope = normalize_credential_scope(credential)
     starting_at, ending_at = validate_window(since, until)
     cost_rows = fetch_anthropic_cost_rows(
         api_key,
@@ -323,7 +417,10 @@ def reconcile(
     )
     provider_cost = provider_cost_index(cost_rows)
     provider_usage = provider_usage_index(usage_rows)
-    local = local_anthropic_rollup(ledger, since=starting_at, until=ending_at)
+    rollup = local_anthropic_rollup_by_credential(
+        ledger, since=starting_at, until=ending_at
+    )
+    local, excluded = split_rollup_by_credential(rollup, scope)
     keys = sorted(set(provider_cost) | set(local) | set(provider_usage))
     rows: list[ReconcileRow] = []
     exceeded: list[ReconcileRow] = []
@@ -351,7 +448,26 @@ def reconcile(
         if pct > threshold_pct:
             exceeded.append(row)
     return ReconcileResult(
-        rows=rows, exceeded=exceeded, threshold_pct=threshold_pct
+        rows=rows,
+        exceeded=exceeded,
+        threshold_pct=threshold_pct,
+        credential=scope,
+        excluded=excluded,
+    )
+
+
+def format_excluded_summary(excluded: ExcludedSpend, *, credential: str) -> str:
+    """One line naming tenant-signed spend left out of the comparison; empty when none."""
+    if excluded.rows <= 0 and excluded.cost_usd <= 0.0:
+        return ""
+    parts = ", ".join(
+        f"{source} ${usd:.4f}" for source, usd in sorted(excluded.by_source.items())
+    )
+    return (
+        f"Excluded {excluded.rows} ledger row(s) / ${excluded.cost_usd:.4f} "
+        f"({excluded.tokens} tok) not signed with the {credential} credential"
+        f"{': ' + parts if parts else ''}. Reconcile those scopes with "
+        f"--credential and that credential's analytics key."
     )
 
 

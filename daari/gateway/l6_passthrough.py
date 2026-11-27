@@ -6,7 +6,13 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from fastapi.responses import JSONResponse
 
+from daari.auth.frontier_binding import (
+    FrontierBindingError,
+    effective_binding,
+    resolve_bound_key,
+)
 from daari.gateway.provider_prefs import (
     RegionUnavailable,
     filter_slots_for_region,
@@ -25,6 +31,17 @@ class L6Target:
     retry: Any | None = None
 
 
+@dataclass(frozen=True)
+class FrontierBinding:
+    """Team/key BYOK binding for an L6 door (#2216, #2313). Empty = global key."""
+
+    api_key: str | None = None
+    pool: str | None = None
+
+    def __bool__(self) -> bool:
+        return bool(self.api_key or self.pool)
+
+
 def region_pin_from_request(request: Any) -> str | None:
     claims = getattr(getattr(request, "state", None), "auth_claims", None)
     pin = getattr(claims, "region_pin", None) if claims is not None else None
@@ -32,15 +49,44 @@ def region_pin_from_request(request: Any) -> str | None:
     return text or None
 
 
+def frontier_binding_from_request(request: Any) -> FrontierBinding:
+    """Same key-over-team precedence as ``apply_auth_claims_to_meta`` on chat."""
+    claims = getattr(getattr(request, "state", None), "auth_claims", None)
+    if claims is None:
+        return FrontierBinding()
+    vk = getattr(claims, "virtual_key", None)
+    api_key, pool = effective_binding(
+        key_api_key=getattr(vk, "frontier_api_key", None) if vk is not None else None,
+        key_pool=getattr(vk, "frontier_pool", None) if vk is not None else None,
+        team_api_key=getattr(claims, "team_frontier_api_key", None),
+        team_pool=getattr(claims, "team_frontier_pool", None),
+    )
+    api_text = str(api_key or "").strip() or None
+    pool_text = str(pool or "").strip() or None
+    return FrontierBinding(api_key=api_text, pool=pool_text)
+
+
+def frontier_binding_error_response(exc: FrontierBindingError) -> JSONResponse:
+    """Fail closed: bound credential problems never fall back to the global key."""
+    return JSONResponse(
+        status_code=int(getattr(exc, "status_code", 502) or 502),
+        content={"error": {"type": "frontier_binding_error", "message": str(exc)}},
+    )
+
+
 def resolve_l6_targets(
     settings: Any,
     *,
     region_pin: str | None,
     default_model: str,
+    binding: FrontierBinding | None = None,
 ) -> list[L6Target]:
-    """Eligible frontier slots in chat order, filtered by region_pin.
+    """Eligible frontier slots in chat order, filtered by region_pin and binding.
 
-    Raises RegionUnavailable when a pin is set but no slot can satisfy it.
+    Raises RegionUnavailable when a pin is set but no slot can satisfy it, and
+    FrontierBindingError when a bound ``pool`` names no slot or a bound
+    ``api_key`` cannot be resolved (mirrors ``FrontierPool._slots_for_request``
+    / ``_key_for_slot`` on the chat leg).
     """
     frontier = getattr(settings, "frontier", None)
     if frontier is None or not bool(getattr(frontier, "enabled", False)):
@@ -55,12 +101,25 @@ def resolve_l6_targets(
     slots = list(pool.slots)
     require_region_slot(region_pin, slots)
     slots = filter_slots_for_region(region_pin, slots)
+    bound = binding or FrontierBinding()
+    if bound.pool:
+        wanted = str(bound.pool).strip()
+        slots = [slot for slot in slots if slot.id == wanted]
+        if not slots:
+            raise FrontierBindingError(
+                f"frontier_pool {wanted!r} is not a configured provider slot",
+                status_code=502,
+            )
+    bound_key = resolve_bound_key(bound.api_key) if bound.api_key else None
     targets: list[L6Target] = []
     for slot in slots:
-        try:
-            key = slot.pick_key()
-        except SecretRefError:
-            continue
+        if bound_key is not None:
+            key = bound_key
+        else:
+            try:
+                key = slot.pick_key()
+            except SecretRefError:
+                continue
         secret = str(key or "").strip()
         if not secret:
             continue
@@ -129,8 +188,12 @@ def is_slot_failure(response: httpx.Response) -> bool:
 
 
 __all__ = [
+    "FrontierBinding",
+    "FrontierBindingError",
     "L6Target",
     "RegionUnavailable",
+    "frontier_binding_error_response",
+    "frontier_binding_from_request",
     "is_slot_failure",
     "post_l6",
     "region_pin_from_request",

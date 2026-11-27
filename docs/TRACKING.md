@@ -9707,6 +9707,51 @@ a `baseline` of list $4/$20 (cached $0.20), so turns before Dec 1 UTC no
 longer bill 2× list. `models/`-prefixed ids resolve the same window. Covered
 by `tests/unit/test_pricing_effective_to.py`.
 
+### Observability: Prometheus and stats counters for frontier binding outcomes ([#2316](https://github.com/naveenreddyalka/daari/issues/2316))
+
+<!-- tracking:#2316 -->
+**Status:** Done (2026-11-25). `daari_frontier_binding_total{source,outcome}`
+(and `frontier_binding` `"<source>:<outcome>"` map on `GET /v1/daari/stats`)
+counts team/key BYOK bindings where `FrontierPool` consumes them:
+`signed` per L6 attempt signed with the bound credential, `pin_unmatched`
+when `frontier_pool` names no configured slot, `unresolvable` when the
+`secret://` ref fails or resolves empty. `source` (`key` | `team`) is stamped
+on `RequestMeta.frontier_api_key_source` / `frontier_pool_source` by
+`apply_auth_claims_to_meta`; global-key traffic never increments; fixed enum
+labels, emits `0` when unused; the 502 fail-closed contract is unchanged.
+`daari.auth.frontier_binding.record_frontier_binding(metrics, outcome=, source=)`
+is the shared sink for chat / Responses / Messages today and the L6 modality
+doors (#2313) once they bind. Covered by
+`tests/unit/test_frontier_binding_metrics.py`.
+
+### Analytics reconcile excludes tenant-credential spend ([#2315](https://github.com/naveenreddyalka/daari/issues/2315))
+
+<!-- tracking:#2315 -->
+**Status:** Done (2026-11-25). `daari spend reconcile` compares only rows
+whose `credential_source` is `global` (or legacy empty) against the operator's
+Anthropic analytics totals, so team/key BYOK spend billed to another org no
+longer inflates drift. `ReconcileResult.excluded` (rows / USD / tokens /
+by-source) and a CLI summary line report what was left out; `--credential
+global|team|key|all` picks the scope. Ships the minimal `credential_source`
+ledger column (SQLite + Postgres migration, `SpendContext`, router L6 record
+site via `RequestMeta.frontier_credential_source`, key over team) that #2314
+also defines. Drift math unchanged for global-only ledgers. Covered by
+`tests/unit/test_analytics_reconcile.py` and
+`tests/unit/test_spend_credential_source.py`.
+
+### Team/key BYOK signs modality + passthrough L6 doors ([#2313](https://github.com/naveenreddyalka/daari/issues/2313))
+
+<!-- tracking:#2313 -->
+**Status:** Done (2026-11-25). `resolve_l6_targets()` takes a `FrontierBinding`
+(`frontier_binding_from_request()` derives it from auth claims with the same
+key-over-team precedence as chat): a bound `frontier_api_key` replaces
+`slot.pick_key()`, a bound `frontier_pool` filters to the named slot, and an
+unknown pin or unresolvable ref raises `FrontierBindingError`, which images
+(generations/edits/variations), ASR frontier fallback, OCR, moderations,
+rerank, and decisions surface as 502 `frontier_binding_error` — never a silent
+fallback to the global key. Unbound requests are byte-for-byte unchanged.
+Extractions (#2412) can reuse the same helper. Docs: virtual-keys guide.
+Covered by `tests/unit/test_team_frontier_byok_doors.py`.
 ### Observability: Prometheus and stats counters for Responses truncation auto and rejected ([#2306](https://github.com/naveenreddyalka/daari/issues/2306))
 
 <!-- tracking:#2306 -->
@@ -9808,6 +9853,17 @@ OpenAI chat `choices[].finish_reason`, and Responses
 and mid-stream continue hop call `resolve_stream_finish_reason` instead of
 hardcoding `stop`. Covered by `tests/unit/test_stream_frontier_finish_reason.py`
 and gateway-flow fixtures for chat + Messages.
+### Responses status incomplete with incomplete_details ([#2332](https://github.com/naveenreddyalka/daari/issues/2332))
+
+<!-- tracking:#2332 -->
+**Status:** Done (2026-11-26). `/v1/responses` maps `finish_reason`
+`length`/`max_tokens` → `status: incomplete` +
+`incomplete_details.reason=max_output_tokens`, and `content_filter`/`refusal`
+→ `content_filter`. Non-stream, stream (`response.incomplete`), and GET
+replay all carry it; completed turns stay byte-identical aside from the
+new fields. Incomplete is terminal for cancel/lease; chaining still
+allowed (not in the failed/cancelled refuse set — see #2255 for failed).
+Covered by `tests/unit/test_responses_incomplete_status.py`.
 
 
 ## How to update

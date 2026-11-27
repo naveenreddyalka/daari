@@ -502,6 +502,25 @@ def render_prometheus(
     )
     lines.append("# TYPE daari_agent_access_denied_total counter")
     lines.append(f"daari_agent_access_denied_total {snap.get('agent_access_denied', 0)}")
+    lines.append(
+        "# HELP daari_frontier_binding_total Team/key BYOK frontier bindings "
+        "consumed at L6 (source=key|team, outcome=signed|pin_unmatched|"
+        "unresolvable). Global-key traffic does not count; no tenant labels."
+    )
+    lines.append("# TYPE daari_frontier_binding_total counter")
+    bindings = snap.get("frontier_binding") or {}
+    if not bindings:
+        lines.append("daari_frontier_binding_total 0")
+    else:
+        for key, count in sorted(bindings.items()):
+            raw = str(key)
+            source, _, outcome = raw.partition(":")
+            if not outcome:
+                source, outcome = "-", raw
+            lines.append(
+                f"daari_frontier_binding_total"
+                f"{_labels(source=source, outcome=outcome)} {int(count)}"
+            )
 
     lines.append(
         "# HELP daari_tier_shadow_samples_total Local-tier answers replayed at a "
