@@ -41,6 +41,7 @@ const reportLocalNode = document.getElementById("report-local");
 const reportSavingsNode = document.getElementById("report-savings");
 const reportTableNode = document.getElementById("report-table");
 const reportTeamsTableNode = document.getElementById("report-teams-table");
+const reportUsersTableNode = document.getElementById("report-users-table");
 const reportModelGroupSpendTableNode = document.getElementById("report-model-group-spend-table");
 const spendReportSinceNode = document.getElementById("spend-report-since");
 const spendReportBucketNode = document.getElementById("spend-report-bucket");
@@ -484,6 +485,29 @@ function formatSpendSummary(spend) {
     .join("; ");
 }
 
+function renderReportUsers(users) {
+  if (!reportUsersTableNode) {
+    return;
+  }
+  const rows = Array.isArray(users) ? users : [];
+  if (rows.length === 0) {
+    setEmptyRow(reportUsersTableNode, 4, "No end-user spend in this window.");
+    return;
+  }
+  clearNode(reportUsersTableNode);
+  for (const user of rows) {
+    const savings = user.estimated_saved_usd;
+    const row = document.createElement("tr");
+    appendTextCells(row, [
+      user.client_id || "-",
+      user.user_id || "-",
+      formatNumber(user.requests),
+      typeof savings === "number" ? `$${savings.toFixed(4)}` : "-",
+    ]);
+    reportUsersTableNode.appendChild(row);
+  }
+}
+
 function renderReportTeams(teams) {
   if (!reportTeamsTableNode) {
     return;
@@ -640,6 +664,7 @@ function renderReport(report) {
   reportSavingsNode.textContent = typeof savings === "number" ? `$${savings.toFixed(4)}` : "-";
 
   renderReportTeams(report.teams);
+  renderReportUsers(report.users);
   renderModelGroupSpend(report.model_group_spend);
 
   const days = Array.isArray(report.days) ? [...report.days].reverse() : [];
@@ -699,7 +724,7 @@ async function loadReport() {
     const report = await fetchJson(`${apiBaseUrl}/v1/daari/report?days=${days}`);
     if (report.enabled === false) {
       reportStatusNode.textContent = "Usage ledger is disabled on the daemon.";
-      renderReport({ totals: {}, days: [], teams: [], model_group_spend: [] });
+      renderReport({ totals: {}, days: [], teams: [], users: [], model_group_spend: [] });
       renderCacheTrust(report.cache_trust || null);
       return;
     }
@@ -707,7 +732,7 @@ async function loadReport() {
     renderCacheTrust(report.cache_trust || null);
     reportStatusNode.textContent = `Window: last ${days} days.`;
   } catch (error) {
-    renderReport({ totals: {}, days: [], teams: [], model_group_spend: [] });
+    renderReport({ totals: {}, days: [], teams: [], users: [], model_group_spend: [] });
     renderCacheTrust(null);
     reportStatusNode.textContent = `Report unavailable (${error.message}).`;
   }
@@ -735,28 +760,56 @@ function adminKeysFilterParams() {
   return params;
 }
 
-function adminKeysUrl() {
+const ADMIN_INVENTORY_PAGE_LIMIT = 50;
+const ADMIN_INVENTORY_PAGE_CAP = 20;
+
+function adminKeysUrl(offset) {
   const params = adminKeysFilterParams();
-  const qs = params.toString();
-  return qs ? `${apiBaseUrl}/v1/daari/keys?${qs}` : `${apiBaseUrl}/v1/daari/keys`;
+  params.set("limit", String(ADMIN_INVENTORY_PAGE_LIMIT));
+  params.set("offset", String(offset));
+  return `${apiBaseUrl}/v1/daari/keys?${params}`;
 }
 
-function formatAdminKeysStatus(payload) {
-  const count = Array.isArray(payload?.keys) ? payload.keys.length : 0;
-  const params = adminKeysFilterParams();
-  const status = params.get("status");
-  const idle = params.get("idle_days");
-  let noun = "key(s)";
-  if (idle != null) {
-    noun = "idle key(s)";
-  } else if (status) {
-    noun = `${status} key(s)`;
+function adminTeamsUrl(offset) {
+  const params = new URLSearchParams();
+  params.set("limit", String(ADMIN_INVENTORY_PAGE_LIMIT));
+  params.set("offset", String(offset));
+  return `${apiBaseUrl}/v1/daari/teams?${params}`;
+}
+
+function formatPagedInventoryStatus(count, total, noun, hasMore) {
+  const text =
+    typeof total === "number" ? `${count} of ${total} ${noun}.` : `${count} ${noun}.`;
+  return hasMore ? `${text} More available.` : text;
+}
+
+async function fetchInventoryPages(urlForOffset, itemKey, statusNode, noun) {
+  const items = [];
+  let offset = 0;
+  let total = null;
+  let hasMore = false;
+  for (let page = 0; page < ADMIN_INVENTORY_PAGE_CAP; page += 1) {
+    const payload = await fetchJson(urlForOffset(offset));
+    const batch = Array.isArray(payload?.[itemKey]) ? payload[itemKey] : [];
+    items.push(...batch);
+    if (typeof payload?.total === "number") {
+      total = payload.total;
+    }
+    hasMore = Boolean(payload?.has_more) && batch.length > 0;
+    if (statusNode && hasMore) {
+      const shown = typeof total === "number" ? `${items.length} of ${total}` : String(items.length);
+      statusNode.textContent = `Loading ${noun}… ${shown}. More pages exist.`;
+    }
+    if (!hasMore) {
+      break;
+    }
+    const limit =
+      typeof payload?.limit === "number" && payload.limit > 0
+        ? payload.limit
+        : batch.length || ADMIN_INVENTORY_PAGE_LIMIT;
+    offset += limit;
   }
-  let text = `${count} ${noun}.`;
-  if (payload && payload.has_more) {
-    text += " More available.";
-  }
-  return text;
+  return { items, total, hasMore };
 }
 
 async function loadAdminKeys() {
@@ -764,9 +817,23 @@ async function loadAdminKeys() {
     return;
   }
   try {
-    const payload = await fetchJson(adminKeysUrl());
-    renderAdminKeys(payload.keys);
-    adminKeysStatusNode.textContent = formatAdminKeysStatus(payload);
+    const page = await fetchInventoryPages(adminKeysUrl, "keys", adminKeysStatusNode, "keys");
+    renderAdminKeys(page.items);
+    const params = adminKeysFilterParams();
+    const status = params.get("status");
+    const idle = params.get("idle_days");
+    let noun = "key(s)";
+    if (idle != null) {
+      noun = "idle key(s)";
+    } else if (status) {
+      noun = `${status} key(s)`;
+    }
+    adminKeysStatusNode.textContent = formatPagedInventoryStatus(
+      page.items.length,
+      page.total,
+      noun,
+      page.hasMore
+    );
   } catch (error) {
     renderAdminKeys([]);
     adminKeysStatusNode.textContent = `Keys unavailable (${error.message}).`;
@@ -1020,9 +1087,14 @@ async function loadAdminTeams() {
     return;
   }
   try {
-    const payload = await fetchJson(`${apiBaseUrl}/v1/daari/teams`);
-    renderAdminTeams(payload.teams);
-    adminTeamsStatusNode.textContent = `${Array.isArray(payload.teams) ? payload.teams.length : 0} team(s).`;
+    const page = await fetchInventoryPages(adminTeamsUrl, "teams", adminTeamsStatusNode, "teams");
+    renderAdminTeams(page.items);
+    adminTeamsStatusNode.textContent = formatPagedInventoryStatus(
+      page.items.length,
+      page.total,
+      "team(s)",
+      page.hasMore
+    );
   } catch (error) {
     renderAdminTeams([]);
     adminTeamsStatusNode.textContent = `Teams unavailable (${error.message}).`;

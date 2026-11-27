@@ -2926,12 +2926,19 @@ def _check_model_lifecycle(settings: Settings) -> CheckResult:
         stage = str(fields.get("lifecycle") or "active").lower()
         retires = fields.get("retires_at")
         migrate = str(fields.get("migrate_to") or "").strip()
+        successor = str(fields.get("successor_model") or "").strip()
         if stage == "retired":
-            retired.append(f"{label}={name}" + (f" (migrate_to={migrate})" if migrate else ""))
+            notes = [f"migrate_to={migrate}"] if migrate else []
+            if successor:
+                notes.append(f"successor: {successor}")
+            suffix = f" ({'; '.join(notes)})" if notes else ""
+            retired.append(f"{label}={name}{suffix}")
         elif stage == "deprecated":
             notes = [f"shutdown {retires}"] if retires else []
             if migrate:
                 notes.append(f"migrate_to={migrate}")
+            if successor:
+                notes.append(f"successor: {successor}")
             suffix = f" ({'; '.join(notes)})" if notes else ""
             deprecated.append(f"{label}={name}{suffix}")
 
