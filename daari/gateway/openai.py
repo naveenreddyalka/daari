@@ -2040,6 +2040,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "agent_access_denied": 0,
                     "cost_input_usd": 0.0,
                     "cost_output_usd": 0.0,
+                    "regional_processing_applied": {},
+                    "regional_processing_uplift_usd": {},
                     "frontier_binding": {},
                 }
             from daari.gateway.systemone import breaker_snapshot
@@ -2109,6 +2111,18 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ),
                 "cost_input_usd": float(full.get("cost_input_usd") or 0.0),
                 "cost_output_usd": float(full.get("cost_output_usd") or 0.0),
+                "regional_processing_applied": {
+                    str(region): int(count)
+                    for region, count in dict(
+                        full.get("regional_processing_applied") or {}
+                    ).items()
+                },
+                "regional_processing_uplift_usd": {
+                    str(region): float(amount)
+                    for region, amount in dict(
+                        full.get("regional_processing_uplift_usd") or {}
+                    ).items()
+                },
                 "frontier_binding": dict(full.get("frontier_binding") or {}),
             }
             perf = getattr(getattr(ctx, "router", None), "virtual_model_perf", None)
