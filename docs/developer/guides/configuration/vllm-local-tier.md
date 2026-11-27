@@ -32,6 +32,39 @@ pull release wheels or images on a CUDA 12.x host:
 The ≥0.32.0 security floor above is unchanged; 0.33.0 is an optional upgrade
 path with these artifact constraints.
 
+### 0.34.0 upgrade notes
+
+[vLLM 0.34.0](https://github.com/vllm-project/vllm/releases/tag/v0.34.0)
+(GA 2026-11-16; first stable after 0.33) is another operator-breaking bump
+for anyone running daari's L4/L5 on vLLM:
+
+- **Model Runner V1 removed** — `VLLM_USE_V2_MODEL_RUNNER=0` now **fails at
+  startup** ([#63373](https://github.com/vllm-project/vllm/pull/63373)). Drop
+  that env if you still carry it.
+- **Default `--block-size` is 64** (was 16)
+  ([#63231](https://github.com/vllm-project/vllm/pull/63231)).
+- **Extensible KV cache on by default**, and `gpu_memory_utilization`
+  defaults to **1.0** — bigger cache/throughput, but TPOT can rise 6–18% at
+  high concurrency. Opt out with `--gpu-memory-utilization 0.9` and/or
+  `--no-enable-extensible-kv-cache`
+  ([#56492](https://github.com/vllm-project/vllm/pull/56492)).
+- **ROCm 7.2 images/wheels dropped** — ROCm 10.0 only
+  ([#61939](https://github.com/vllm-project/vllm/pull/61939)).
+- **`huggingface_hub >= 2.0.0` required**
+  ([#64779](https://github.com/vllm-project/vllm/pull/64779)).
+
+Same release also adds surfaces daari already fronts:
+
+- **Local ASR** — Nemotron-3.5-Transcribe and Canary-1B-v2 serve
+  `/v1/audio/transcriptions` (see [Speech-to-text](../backends/asr.md)).
+- **Ripple-65B Preview** with `ripple` reasoning/tool parsers — a serving
+  alternative to the Ollama Ripple recipe (see [Ollama setup](../../../setup/ollama.md)).
+- Ops watch: `/checkpoint/prepare|status|restore` and opt-in cache-aware
+  admission — capacity-relevant, not required for the OpenAI-compat pool.
+
+The ≥0.32.0 security floor above is unchanged; 0.34.0 is the current
+recommended upgrade path when you can absorb the runner / KV / ROCm moves.
+
 ## Config
 
 `routing.local_pool.backends[].kind: openai` talks OpenAI chat-completions
