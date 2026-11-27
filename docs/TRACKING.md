@@ -9883,6 +9883,17 @@ opt-outs, ROCm 7.2 dropped, huggingface_hub ≥2); ASR guide names
 Nemotron-3.5-Transcribe and Canary-1B-v2; Ollama Ripple recipe notes vLLM
 0.34+ as a serving alternative. ≥0.32.0 security floor unchanged. Covered by
 `tests/unit/test_vllm_local_tier_docs.py`.
+
+### Frontier streamed legs surface honest finish_reason ([#2331](https://github.com/naveenreddyalka/daari/issues/2331))
+
+<!-- tracking:#2331 -->
+**Status:** Done (2026-11-26). `FrontierExecutor.stream` yields a typed
+`{finish_reason}` terminal event for Anthropic `message_delta.stop_reason`,
+OpenAI chat `choices[].finish_reason`, and Responses
+`incomplete_details.reason` (`max_output_tokens` → `length`). The L6 relay
+and mid-stream continue hop call `resolve_stream_finish_reason` instead of
+hardcoding `stop`. Covered by `tests/unit/test_stream_frontier_finish_reason.py`
+and gateway-flow fixtures for chat + Messages.
 ### Responses status incomplete with incomplete_details ([#2332](https://github.com/naveenreddyalka/daari/issues/2332))
 
 <!-- tracking:#2332 -->
