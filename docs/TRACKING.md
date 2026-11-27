@@ -10014,6 +10014,17 @@ Doctor `zero_retention` reports how many keys and teams have the dial on.
 Covered by `tests/unit/test_zero_retention.py`.
 
 
+
+### HTTP 5xx failover counters by status ([#2337](https://github.com/naveenreddyalka/daari/issues/2337))
+
+<!-- tracking:#2337 -->
+**Status:** Done (2026-11-27). `daari_http_5xx_failover_total{status}` and
+stats `http_5xx_failover` count retries taken only because
+`upstream.retry.failover_on_http_5xx` made a 5xx outside the default
+RETRYABLE_STATUS set retryable (501/522). Default-set retries (503) stay on
+`upstream_retries` only. Covered by `tests/unit/test_upstream_retry.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

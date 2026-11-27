@@ -109,6 +109,7 @@ prometheus-operator), same as `ServiceMonitor`.
 | Series | Reading it |
 |--------|-----------|
 | `daari_upstream_retries_total` | Transient upstream failures absorbed by backoff. Rising here while errors stay flat means clients never saw the instability. Rising alongside errors means the failures are not retryable — check for 401s or malformed requests. |
+| `daari_http_5xx_failover_total{status}` | Retries taken only because `upstream.retry.failover_on_http_5xx` widened the allowlist (501/522 and other 5xx outside the default set). Flat at `0` while the dial is off or only default statuses retry. Stats counterpart: `http_5xx_failover` on `GET /v1/daari/stats`. |
 | `daari_cache_false_hits_avoided_total` | L1 hits vetoed by verification. Steady growth is the cache working; a spike suggests the similarity threshold is too loose. |
 | `daari_cache_invalidate_total{scope,result}` | Admin `POST /v1/daari/cache/invalidate` (and daemon CLI via that path). `scope` is `model`\|`hash`\|`team`\|`key`\|`speed`\|`all`; `result` is `ok`\|`error`. Alert on surprise mass `rate(...[5m])` spikes. No per-hash labels. |
 | `daari_cache_invalidate_entries_removed_total{layer}` | Entries removed by those ops (`layer="l0"` or `l1`). Bounded cardinality companion to the op counter. |
