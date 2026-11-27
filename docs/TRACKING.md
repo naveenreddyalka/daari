@@ -9934,6 +9934,19 @@ new fields. Incomplete is terminal for cancel/lease; chaining still
 allowed (not in the failed/cancelled refuse set — see #2255 for failed).
 Covered by `tests/unit/test_responses_incomplete_status.py`.
 
+### OpenRouter HF Inference Providers and scoped management keys ([#2339](https://github.com/naveenreddyalka/daari/issues/2339))
+
+<!-- tracking:#2339 -->
+**Status:** Done (2026-11-27). `compare-openrouter.md` notes that Hugging Face
+Inference Providers chat routing now goes through OpenRouter (optional L6
+`base_url`; local tiers unchanged; `X-HF-Session-Id` affinity is the existing
+session pin, not a new feature) and that scoped management keys are an
+OpenRouter control-plane strength. The on-box counterpart is virtual keys,
+team BYOK, and grants — not a clone of OpenRouter management keys. daari does
+not broker HF Inference Providers. The compare index one-liner points at the
+same page. Covered by
+`tests/unit/test_compare_openrouter_hf_management_keys.py`.
+
 ### Observability: Prometheus and stats for finish_reason and stop_reason outcomes ([#2338](https://github.com/naveenreddyalka/daari/issues/2338))
 
 <!-- tracking:#2338 -->
