@@ -40,6 +40,7 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert any("daari_server_tool_cost_usd_total" in row for row in body)
     assert any("daari_regional_processing_applied_total" in row for row in body)
     assert any("daari_regional_processing_uplift_usd_total" in row for row in body)
+    assert any("daari_frontier_binding_total" in row for row in body)
     assert any("daari_auto_caching_applied_total" in row for row in body)
     assert any("daari_auto_caching_client_preserved_total" in row for row in body)
     # Orphaned mid-table prose would end the contiguous body early.
@@ -83,6 +84,10 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert "region" in regional_row
     assert "1.10" in regional_row
     assert "regional_processing_uplift_usd" in regional_row
+    binding_row = next(row for row in body if "daari_frontier_binding_total" in row)
+    for token in ("signed", "pin_unmatched", "unresolvable", "`key`", "`team`"):
+        assert token in binding_row
+    assert "frontier_binding" in binding_row
     truncation_row = next(row for row in body if "daari_responses_truncation_auto_total" in row)
     assert "context_length_exceeded" in truncation_row
     assert "responses_truncation_auto" in truncation_row

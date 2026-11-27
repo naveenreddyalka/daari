@@ -79,6 +79,14 @@ maps empty (`{}`); team-scoped stats zero them like the other fleet-wide
 counters. Prometheus counterparts are
 `daari_regional_processing_applied_total{region}` /
 `daari_regional_processing_uplift_usd_total{region}`.
+`frontier_binding` maps `"<source>:<outcome>"` → count for team/key BYOK
+frontier bindings consumed at L6: `source` is `key` or `team` (whichever
+layer supplied that binding side; key wins), `outcome` is `signed` (an L6
+attempt signed with the bound credential), `pin_unmatched` (`frontier_pool`
+names no configured slot → 502), or `unresolvable` (`secret://` ref failed
+or resolved empty → 502). Global-key traffic never increments; the map is
+empty until the first bound request. The Prometheus counterpart is
+`daari_frontier_binding_total{source,outcome}`.
 
 ## Retention
 
