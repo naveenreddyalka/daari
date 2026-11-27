@@ -16,6 +16,8 @@ def test_traces_stats_docs_mention_cliff_maps() -> None:
     assert "regional_processing_applied" in text
     assert "regional_processing_uplift_usd" in text
     assert "daari_regional_processing_uplift_usd_total" in text
+    assert "`finish_reason`" in text
+    assert "daari_finish_reason_total" in text
 
 
 def test_traces_stats_docs_mention_frontier_binding_counters() -> None:
@@ -24,3 +26,12 @@ def test_traces_stats_docs_mention_frontier_binding_counters() -> None:
     for token in ("signed", "pin_unmatched", "unresolvable"):
         assert token in text
     assert "daari_frontier_binding_total" in text
+
+
+def test_traces_stats_docs_mention_finish_reason_counters() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "`finish_reason`" in text
+    for token in ("stop", "tool_calls", "length", "pause_turn", "refusal", "other"):
+        assert token in text
+    assert "max_tokens" in text
+    assert "daari_finish_reason_total" in text
