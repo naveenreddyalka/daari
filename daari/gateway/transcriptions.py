@@ -179,11 +179,15 @@ def _error(status: int, code: str, message: str) -> JSONResponse:
 
 
 def resolve_asr_targets(
-    settings: Any, *, region_pin: str | None = None
+    settings: Any,
+    *,
+    region_pin: str | None = None,
+    binding: Any | None = None,
 ) -> list[AsrTarget]:
     """Local ASR when configured; else frontier slots in pool order (#1061).
 
-    Raises RegionUnavailable when a pin is set but no slot can satisfy it.
+    Raises RegionUnavailable when a pin is set but no slot can satisfy it, and
+    FrontierBindingError when a team/key BYOK binding cannot be honored (#2313).
     """
     asr = getattr(settings, "asr", None)
     if asr is None:
@@ -207,7 +211,10 @@ def resolve_asr_targets(
     from daari.gateway.l6_passthrough import resolve_l6_targets
 
     l6 = resolve_l6_targets(
-        settings, region_pin=region_pin, default_model=model or "whisper-1"
+        settings,
+        region_pin=region_pin,
+        default_model=model or "whisper-1",
+        binding=binding,
     )
     return [
         AsrTarget(
@@ -531,7 +538,10 @@ async def handle_transcription(
             return request_deadline_response(exc)
 
     from daari.gateway.l6_passthrough import (
+        FrontierBindingError,
         RegionUnavailable,
+        frontier_binding_error_response,
+        frontier_binding_from_request,
         is_slot_failure,
         region_pin_from_request,
     )
@@ -543,10 +553,15 @@ async def handle_transcription(
 
     pin = region_pin_from_request(request)
     try:
-        targets = resolve_asr_targets(ctx.settings, region_pin=pin)
+        targets = resolve_asr_targets(
+            ctx.settings, region_pin=pin, binding=frontier_binding_from_request(request)
+        )
     except RegionUnavailable as exc:
         log_gateway_event("asr_region_unavailable", {"pin": exc.pin})
         return _error(400, "region_unavailable", str(exc))
+    except FrontierBindingError as exc:
+        log_gateway_event("asr_frontier_binding_error", {"error": str(exc)})
+        return frontier_binding_error_response(exc)
     if not targets:
         return _error(501, "asr_unavailable", _UNAVAILABLE)
 

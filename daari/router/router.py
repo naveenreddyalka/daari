@@ -1570,6 +1570,7 @@ class Router:
                 pricing=self.pricing,
                 fallback_per_1k=float(self.frontier_price_per_1k_tokens or 0.002),
                 cache_ttl=request_cache_ttl(request),
+                credential_source=getattr(meta, "frontier_credential_source", None) or "",
             )
         )
 

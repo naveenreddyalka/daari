@@ -118,6 +118,24 @@ def effective_binding(
     return api_key, pool
 
 
+def binding_source(key_value: str | None, team_value: str | None) -> str | None:
+    """Which layer supplied one side of the effective binding (same precedence)."""
+    if key_value:
+        return "key"
+    if team_value:
+        return "team"
+    return None
+
+
+def record_frontier_binding(metrics: Any, *, outcome: str, source: str | None) -> None:
+    """Count a binding outcome where the binding is consumed (#2316).
+
+    No-op without a Metrics sink so pool/door code paths never fail on
+    observability. Global-key traffic must not call this.
+    """
+    if metrics is None or not hasattr(metrics, "record_frontier_binding"):
+        return
+    metrics.record_frontier_binding(outcome=outcome, source=source)
 CREDENTIAL_SOURCE_GLOBAL = "global"
 CREDENTIAL_SOURCE_TEAM = "team"
 CREDENTIAL_SOURCE_KEY = "key"
