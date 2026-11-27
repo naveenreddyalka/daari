@@ -7,6 +7,9 @@ LiteLLM is a **provider gateway**: one OpenAI-shaped API in front of 100+ cloud 
 | Job | Talk to many remote providers | Keep repeat agent work on your machine |
 | Default path | Cloud / configured backends | L0/L1 cache → tools → local → L6 |
 | Cache | Optional Redis/Qdrant | Built-in exact + semantic, measured false-hit rate |
+| Router core | Rust router core behind a Python host (1.110+; Python core deleted) | Pure-Python single process, `pip install`, pdb-debuggable |
+| Spend accounting | SpendLogs ledger is the default path (1.110+) | On-box SQLite usage ledger (per-key / team / user / tier rows; Postgres is the optional control-plane store) |
+| FIPS mode | Startup gate + PBKDF2 / KBKDF hashes (1.110+) | **No FIPS gate** — watch row, not a parity claim |
 | IDE setup | DIY | `daari setup cursor` / Claude Code / JetBrains / VS Code |
 | License | MIT-class (OSI) | Apache 2.0 (OSI) |
 | Stars / mindshare | Category default | New |
@@ -63,8 +66,8 @@ LiteLLM [v1.106.0](https://github.com/BerriAI/litellm/releases/tag/v1.106.0)
 27 Oct 2026 and
 [1.106.4](https://github.com/BerriAI/litellm/releases/tag/v1.106.4) on
 25 Oct 2026; also backported as 1.103.9 / 1.104.7 / 1.105.5). The **current
-stable comparison floor** is **[1.109.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.1)**
-(2026-11-12) — see below. The 1.106 cut includes a native
+stable comparison floor** is **[1.111.0](https://github.com/BerriAI/litellm/releases/tag/v1.111.0)**
+(2026-11-25) — see below. The 1.106 cut includes a native
 [decision-model guardrail](https://docs.litellm.ai/docs/proxy/guardrails/decision_model)
 (`guardrail: decision_model`): yes/no questions against any `/v1/decisions`
 model, blocking or logging at a probability threshold.
@@ -97,7 +100,8 @@ PyPI quarantined the version; the Docker image was removed from Docker Hub /
 GHCR. Indicators include `/tmp/.pc_once_*` and `/tmp/remote_code_loader.lock`.
 
 **Do not** `pip install litellm==1.107.0` or pull `litellm/litellm:1.107.0`.
-Stay on LiteLLM **1.109.1** (or skip LiteLLM entirely). Treat 1.107.0 as
+Stay on LiteLLM **1.111.0** stable or **1.108.17** LTS (or skip LiteLLM
+entirely). Treat 1.107.0 as
 unsafe / do-not-install — not a feature comparison bar. Do **not** advertise
 compromised 1.107 watchables as safe.
 
@@ -116,9 +120,20 @@ LTS GA cut was
 **[v1.108.0](https://github.com/BerriAI/litellm/releases/tag/v1.108.0)**
 (2026-11-04); **1.108.2** was the fixes-only LTS patch (including spend/key
 401s while Postgres restarts). The **live LTS patch** is now
+**[v1.108.17](https://github.com/BerriAI/litellm/releases/tag/v1.108.17)**
+(2026-11-24; streamed tool calls with end-only arguments, `chat-latest`
+first-prompt 400, FLAC duration billing, OpenAI Agents session $0-logging
+fix). Prior LTS patches retained for history:
+**[v1.108.16](https://github.com/BerriAI/litellm/releases/tag/v1.108.16)**
+(2026-11-23; MCP DCR opt-in backport, `anthropic-version: 2026-10-21`
+sampling, Gradium TTS),
+**[v1.108.11](https://github.com/BerriAI/litellm/releases/tag/v1.108.11)**
+(2026-11-17; 22 fixes-only PRs),
+**[v1.108.10](https://github.com/BerriAI/litellm/releases/tag/v1.108.10)**
+(2026-11-16; wildcard `base_model` pricing, PDF-URL / file-part async),
 **[v1.108.8](https://github.com/BerriAI/litellm/releases/tag/v1.108.8)**
 (2026-11-13; Azure `/v1/decisions`, file-id ownership spelling, MCP
-`mcp_all` scope grant). Prior LTS patches retained for history:
+`mcp_all` scope grant),
 **[v1.108.7](https://github.com/BerriAI/litellm/releases/tag/v1.108.7)**
 (2026-11-12; Responses `max_tool_calls` + failed-turn
 `previous_response_id`),
@@ -132,8 +147,74 @@ hygiene), and
 fixes onto the 1.108 train — not a feature ship — and is superseded by the
 stable tags. **1.106.7** remains the final 1.106.x patch; do **not** treat
 compromised **1.107.0** as a support window. The **stable comparison floor**
-moved to **[1.109.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.1)**
-(see below); keep **1.108.8** for LTS-pin buyers only.
+moved to **[1.111.0](https://github.com/BerriAI/litellm/releases/tag/v1.111.0)**
+(see below); keep **1.108.17** for LTS-pin buyers only.
+
+**1.108.17 LTS highlights:** streamed tool calls whose arguments arrive only
+on the final chunk are now assembled instead of dropped; the
+`chat-latest` alias returns a 400 on the first prompt instead of a silent
+fallback; FLAC audio is billed from real duration; OpenAI Agents sessions no
+longer log $0 rows. daari's stance: the Responses bridge already
+accumulates tool-call deltas per index before emitting `function_call` items
+(chat streams pass provider deltas through unchanged, so end-only arguments
+reach the client intact); speech / ASR duration billing ([#2250](https://github.com/naveenreddyalka/daari/issues/2250))
+prices from upstream `usage` or audio duration regardless of container; local
+Ollama / MLX speech and ASR stay **$0** on the ledger, and Responses
+`multi_agent` nested rows land on the same SQLite ledger (never a silent $0
+row for a billed hop).
+
+**1.108.16 MCP DCR opt-in (backport):** LiteLLM's MCP gateway can register
+itself with upstream OAuth servers via Dynamic Client Registration when an
+operator opts in
+([#53059](https://github.com/BerriAI/litellm/pull/53059) →
+[#53180](https://github.com/BerriAI/litellm/pull/53180)). daari ships **no
+hosted DCR control plane**; on-box MCP OAuth uses operator-pinned
+`secret://oauth` client credentials or per-server OBO token exchange, plus
+RFC 9728 protected-resource discovery when opted in (see
+[MCP clients](../guides/clients/mcp.md)). DCR is a watch row, not a parity
+claim.
+
+**1.108.16 `anthropic-version: 2026-10-21` sampling:** LiteLLM drops or
+rejects `temperature` / `top_p` / `top_k` under the new Anthropic API version
+([#53395](https://github.com/BerriAI/litellm/pull/53395)). daari already
+strips the trio on that header (`apply_anthropic_version_sampling_compat`) and
+for Fable / Mythos ids via builtin `frontier.param_compat` — see the
+[sampling watch](#anthropic-api-version-2026-10-21-sampling-watch-2384)
+below.
+
+**1.108.16 provider catalog (LTS):** Gradium native `/v1/audio/speech`,
+Gnani Prisma transcription, Perplexity Orchestrator, `gemini-decision-1` on
+`/v1/decisions`, Gemini `video_url` parts kept, thought-signature replay,
+batch-embedding spend from `usageMetadata`, `/v1/decisions` through the
+`litellm_proxy` provider, and Azure Foundry `/openai/v1` chat routing
+backports; Responses tool-call replay plus cut-stream input billing honesty.
+daari makes **no Gradium / Gnani / Perplexity provider claim**: local
+speech / OCR / ASR paths stay $0 on-box (Ollama Phonon / `lfm3-audio`,
+llama.cpp `drama-3`, Kokoro via `tts.base_url`; see
+[tts](../guides/backends/tts.md) and [asr](../guides/backends/asr.md)), and
+`/v1/decisions` prefers local System One before any Gemini decision model.
+Gemini `video_url` parts and thought-signature replay ride the L6 leg
+unchanged.
+
+**1.108.10 wildcard `base_model` pricing:** LiteLLM stopped a `base_model:
+"*"` / wildcard deployment from pinning the cost ladder at $0 — the priced
+response model now wins
+([#47497](https://github.com/BerriAI/litellm/pull/47497) /
+[#51412](https://github.com/BerriAI/litellm/pull/51412)). daari never had
+the trap: spend is priced from the **served** model via longest-prefix
+`matching_model_key` against `pricing.models`, so a wildcard slot cannot
+zero the local ledger.
+
+**1.108.10 PDF-URL / file-part async:** async chat with `file` parts
+(Codestral) and PDF-URL downloads moved off the event loop
+([#49176](https://github.com/BerriAI/litellm/pull/49176) /
+[#51860](https://github.com/BerriAI/litellm/pull/51860)); versioned Claude
+`max_tokens` on Vertex AI landed alongside
+([#40376](https://github.com/BerriAI/litellm/pull/40376) /
+[#51863](https://github.com/BerriAI/litellm/pull/51863)). daari's L0–L5
+tiers never download remote PDFs on the serving loop; file bytes come from
+the local FileStore, and only an explicit L6 hop forwards provider file
+parts.
 
 **1.108.8 Azure Decisions vs local-first:** LiteLLM fixed 400s on
 `/v1/decisions` for `azure/` deployments (keyless Entra /
@@ -182,18 +263,19 @@ against.
 
 LiteLLM
 **[v1.109.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.1)**
-(2026-11-12) is **GA** and the current **stable comparison floor** (emergency
-credential-field hygiene; see
-[#51254](https://github.com/BerriAI/litellm/pull/51254)). Prior
+(2026-11-12) is **GA** and was the stable comparison floor until 1.110.0 /
+1.111.0 shipped (emergency credential-field hygiene; see
+[#51254](https://github.com/BerriAI/litellm/pull/51254)). The stable
+comparison floor is now **1.111.0** (see below). Prior
 **[v1.109.0](https://github.com/BerriAI/litellm/releases/tag/v1.109.0)**
 (2026-11-11) and earlier
 [v1.109.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-rc.1),
 [v1.109.0-dev.2](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.2),
 and
 [v1.109.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.109.0-dev.1)
-builds are superseded. The live LTS patch on the prior line remains
-**[1.108.8](https://github.com/BerriAI/litellm/releases/tag/v1.108.8)**
-(2026-11-13). Feature notes and daari's stance:
+builds are superseded. The live LTS patch on the prior line is
+**[1.108.17](https://github.com/BerriAI/litellm/releases/tag/v1.108.17)**
+(2026-11-24). Feature notes and daari's stance:
 
 - **Client credential-field hygiene** — LiteLLM #51254 blocked client bodies
   from overriding admin deployment credential fields (`tenant_id`,
@@ -274,15 +356,121 @@ in-memory-only. daari's $0 L0/L1 path remains a local **diskcache** by design
 — exact + semantic hits survive process restarts without Redis. That is a
 factual packaging difference, not a claim that LiteLLM cannot cache.
 
-## LiteLLM 1.110.0-dev.1 watch
+## LiteLLM 1.110.0 GA (history)
 
 LiteLLM
+**[v1.110.0](https://github.com/BerriAI/litellm/releases/tag/v1.110.0)**
+(2026-11-18 01:36 UTC) shipped **stable** hours after this doc promoted
+1.109.x, and was the comparison floor until 1.111.0 GA; the stable
+comparison floor is now **1.111.0** (see below). The earlier
 [v1.110.0-dev.1](https://github.com/BerriAI/litellm/releases/tag/v1.110.0-dev.1)
-(2026-11-07) is **prerelease watch only** — do **not** promote 1.110 to the
-GA floor (stable comparison remains **1.109.1**). Watchables on this channel
-include provider-reported `usage.cost`, tenant session affinity, and
-Lens-split Helm; daari does **not** claim Lens / hosted Helm parity. Treat
-1.110-dev as competitor ops context, not a support window.
+(2026-11-07; provider-reported `usage.cost`, tenant session affinity,
+Lens-split Helm) is a **superseded** prerelease. 1.110.0 is LiteLLM's
+largest architectural cut of the year; daari's stance, stated factually:
+
+- **Rust-only router** — the Python router core is deleted
+  ([#50178](https://github.com/BerriAI/litellm/pull/50178)); the Rust router
+  core is the only router
+  ([#49513](https://github.com/BerriAI/litellm/pull/49513)), with the Python
+  host as its boundary, and a characterization suite guards the port
+  ([#49610](https://github.com/BerriAI/litellm/pull/49610)). daari stays
+  **pure-Python**, Apache 2.0, one `pip install`: no FFI boundary in the
+  serving path, so the router is **pdb**-debuggable and patchable on-site.
+  That is a packaging difference, not a performance claim either way.
+- **SpendLogs ledger default** — the SpendLogs ledger is now the default
+  accounting path and the accounting event tables are dropped
+  ([#49872](https://github.com/BerriAI/litellm/pull/49872)). daari's analog
+  is the on-box **SQLite** usage ledger (per-key / team / user / tier rows,
+  `daari spend` exports) with Postgres as the optional control-plane store —
+  no proxy-side schema migration to reach a ledger.
+- **FIPS mode** — startup gate plus PBKDF2 UI hashes and KBKDF MCP keys
+  ([#48600](https://github.com/BerriAI/litellm/pull/48600)). daari has **no
+  FIPS gate**; this is a watch row, not a parity claim.
+- **Agent Skills Hub** — portable skills API with submissions / review and
+  security scans ([#50159](https://github.com/BerriAI/litellm/pull/50159)).
+  Hosted hub surface; non-goal for daari (local `daari/skills` stay files on
+  disk).
+- **Model deprecation alerts** — `successor_model`, owner emails. daari's
+  on-box twin is the lifecycle catalog (`models.lifecycle`, `migrate_to`,
+  `daari_meta.warning=model_deprecated`, 410 `model_retired`; see the
+  Opus 4.5 window below) — no SaaS email loop.
+- **Experimental Redis / v2 caches removed**
+  ([#50005](https://github.com/BerriAI/litellm/pull/50005)) — alongside the
+  1.109 disk-backend removal, this reinforces that daari's $0 L0/L1
+  **diskcache** path is a design choice LiteLLM no longer offers.
+
+## LiteLLM 1.111.0 GA (stable comparison floor)
+
+LiteLLM promoted
+**[v1.111.0](https://github.com/BerriAI/litellm/releases/tag/v1.111.0)** to
+**stable** on 2026-11-25; it is **GA** and the current **stable comparison
+floor**. The live LTS patch is
+**[1.108.17](https://github.com/BerriAI/litellm/releases/tag/v1.108.17)**
+(2026-11-24; see the 1.108 LTS section). The earlier
+[v1.111.0-rc.1](https://docs.litellm.ai/release_notes/v1.111.0rc1/v1-111-0-rc-1)
+(2026-11-18) watch row is folded here — the GA promotion supersedes the
+RC-watch posture. Feature set mapped to daari parity / non-goals:
+
+- **Per-model TPM/RPM limit maps** on budgets and customers, enforced by the
+  v3 limiter. daari parity predates the GA: per-key-per-model
+  `rate_limit.models` (exact id, else longest prefix) with `model_rpm` /
+  `model_tpm` defaults
+  ([#1592](https://github.com/naveenreddyalka/daari/issues/1592)) and
+  per-key-per-model UTC-day `model_rpd` / `model_tpd` with virtual-model
+  failover past exhausted peers
+  ([#2240](https://github.com/naveenreddyalka/daari/issues/2240)); rejects
+  carry `X-RateLimit-Scope`. See
+  [auth-and-keys](../guides/configuration/auth-and-keys.md#named-per-model-map).
+- **Access groups via principal attribute rules** (SSO-attribute-driven
+  RBAC). daari maps IdP claims to admin roles with `enterprise.sso` /
+  `role_claim`, and SSO bearers are control-plane only — data-plane calls
+  mint a virtual key (`POST /v1/daari/sso/session`) so budgets and model
+  allowlists still bind per key. There is no attribute → model-access-group
+  rule engine on-box; allowlists are per key / team. Honest gap, filed
+  separately if a buyer asks.
+- **Customer portal (beta)** UI plus **Customer Management** hierarchy;
+  `/customer/new` and `/customer/update` reject unknown fields. daari has no
+  customer portal and no customer object: end users are attributed via the
+  OpenAI `user` field (or Anthropic `metadata.user_id`) with per-user
+  `--user-rpd` / `--user-tpd` fences and per-user ledger rows. Hosted portal
+  is a non-goal.
+- **Native `/v1/messages` on the Rust path**; **refused-leg billing**;
+  **transcription billed from provider-reported seconds**. daari serves
+  `/v1/messages` natively in the same Python process (no bridge boundary),
+  adds a discarded refused / `content_filter` L6 leg's `cost_usd` onto the
+  serving attempt so the ledger reflects what was actually billed
+  ([#2272](https://github.com/naveenreddyalka/daari/issues/2272); local
+  refused legs stay $0), and prices ASR from upstream `usage` or audio
+  **seconds**
+  ([#2250](https://github.com/naveenreddyalka/daari/issues/2250)) — local
+  Ollama / MLX ASR stays $0.
+- **Retries may leave a pinned deployment**; **Claude Code subagent traffic
+  kept off other agents' tier pins**. daari parity: session pins are scoped
+  by conversation `prefix_hash`, so a subagent's tool-result turn cannot
+  replay a parent loop's pin
+  ([#2267](https://github.com/naveenreddyalka/daari/issues/2267)), and an
+  open circuit, a down pinned model, or a tier cap beats the pin
+  (`session_pin_override` logged) instead of retrying a dead pinned
+  deployment.
+- **Default performance alerts** (7-day latency / error spikes) and
+  **dynamic rate limiter** with `rate_limited_by` on 429s. daari's on-box
+  twin is Prometheus `/metrics` + the shipped Grafana panels and `daari
+  doctor` tips (no SaaS alert email); 429s name the tightest counter via
+  `X-RateLimit-Scope` (`key` / `team` / `user` / `model` / `*_concurrency` /
+  `mcp_server:<id>`) — a different name for the same honesty as
+  `rate_limited_by`, with Redis or SQLite counters rather than a
+  cluster-wide dynamic limiter.
+- **Gemini 4 Hydrogen** catalog and **Microsoft Web IQ `/v1/search`**.
+  daari prices Gemini 4 ids from the on-box `pricing.models` ledger
+  (Carbon / Argon intro windows via `effective_to`); Hydrogen rows follow
+  the same path when Google publishes list prices — no hosted
+  `model_prices` fetch required. `/v1/search` as a provider-backed search
+  door is **N/A / watch**: daari's web-search path is the on-box
+  escalate-to-search tool, not a Bing-shaped endpoint.
+- **Non-root single image / `helm/litellm`**. daari's Docker image already
+  runs as `USER daari`; Helm capacity notes live in
+  [capacity-helm](../guides/operations/capacity-helm.md). No Lens / hosted
+  Helm parity claimed.
 
 ### Anthropic API version `2026-10-21` sampling watch (#2384)
 

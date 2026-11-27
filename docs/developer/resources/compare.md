@@ -18,7 +18,7 @@ Full gap + 90-day plan: [ROADMAP-v3](../../prd/ROADMAP-v3.md).
 
 Buyer pages (when to pick which, licenses named):
 
-- [daari vs LiteLLM](compare-litellm.md) (stable floor **1.109.1**; LTS **1.108.8**)
+- [daari vs LiteLLM](compare-litellm.md) (stable floor **1.111.0**; LTS **1.108.17**)
 - [daari vs Ollama](compare-ollama.md)
 - [daari vs OpenRouter](compare-openrouter.md)
 
