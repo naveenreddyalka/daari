@@ -10025,6 +10025,18 @@ RETRYABLE_STATUS set retryable (501/522). Default-set retries (503) stay on
 `upstream_retries` only. Covered by `tests/unit/test_upstream_retry.py`.
 
 
+### Typed overload envelopes ([#2348](https://github.com/naveenreddyalka/daari/issues/2348))
+
+<!-- tracking:#2348 -->
+**Status:** Done (2026-11-27). When routing exhausts on HTTP 429 or 529,
+OpenAI-shaped routes return 503 `error.type=server_is_overloaded` and
+`/v1/messages` returns 529 `error.type=overloaded_error`, both with
+`Retry-After` (upstream value, else 1s). Other failures stay
+`Routing failed:`. Terminal overload on a stream emits the same typed frame
+before close. Messages still go through `safe_detail`. Covered by
+`tests/unit/test_overload_envelopes.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
