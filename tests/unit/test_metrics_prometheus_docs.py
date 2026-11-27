@@ -41,6 +41,7 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert any("daari_regional_processing_applied_total" in row for row in body)
     assert any("daari_regional_processing_uplift_usd_total" in row for row in body)
     assert any("daari_frontier_binding_total" in row for row in body)
+    assert any("daari_finish_reason_total" in row for row in body)
     assert any("daari_auto_caching_applied_total" in row for row in body)
     assert any("daari_auto_caching_client_preserved_total" in row for row in body)
     assert any("daari_http_5xx_failover_total" in row for row in body)
@@ -89,6 +90,19 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     for token in ("signed", "pin_unmatched", "unresolvable", "`key`", "`team`"):
         assert token in binding_row
     assert "frontier_binding" in binding_row
+    finish_row = next(row for row in body if "daari_finish_reason_total" in row)
+    for token in (
+        "stop",
+        "tool_calls",
+        "length",
+        "pause_turn",
+        "refusal",
+        "content_filter",
+        "other",
+        "max_tokens",
+        "finish_reason",
+    ):
+        assert token in finish_row
     truncation_row = next(row for row in body if "daari_responses_truncation_auto_total" in row)
     assert "context_length_exceeded" in truncation_row
     assert "responses_truncation_auto" in truncation_row

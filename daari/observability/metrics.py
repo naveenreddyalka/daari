@@ -27,6 +27,30 @@ def cache_write_ttl_label(ttl: str | None) -> str:
         return label
     return "unset"
 
+
+# Honest finish_reason / stop_reason labels (#2338). ``other`` bounds unknowns.
+_FINISH_REASON_LABELS = frozenset(
+    {"stop", "tool_calls", "length", "pause_turn", "refusal", "content_filter", "other"}
+)
+# Anthropic stop_reason (and Ollama max_tokens) → OpenAI-shaped finish_reason.
+_FINISH_REASON_ALIASES = {
+    "end_turn": "stop",
+    "stop_sequence": "stop",
+    "max_tokens": "length",
+    "tool_use": "tool_calls",
+}
+
+
+def _finish_reason_label(reason: str | None) -> str:
+    """Bucket a settled finish_reason or stop_reason. Blank is the wire default."""
+    token = (reason or "").strip().lower()
+    if not token:
+        return "stop"
+    token = _FINISH_REASON_ALIASES.get(token, token)
+    if token not in _FINISH_REASON_LABELS:
+        return "other"
+    return token
+
 # Prometheus modality label values (#1106).
 MODALITIES = frozenset(
     {
@@ -389,6 +413,9 @@ class Metrics:
     # HTTP status → retries taken only because failover_on_http_5xx widened
     # the allowlist (501/522/…, not the default RETRYABLE_STATUS set) (#2337).
     http_5xx_failover: dict[str, int] = field(default_factory=dict)
+    # Honest finish_reason / stop_reason → count for settled turns (#2338).
+    # Fixed enum — see _FINISH_REASON_LABELS. Unknown tokens bucket as other.
+    finish_reason: dict[str, int] = field(default_factory=dict)
     # Opt-in per-team request/error counters (#1997). Off → no team dims.
     team_metrics: bool = False
     team_allowlist: frozenset[str] = field(default_factory=frozenset)
@@ -948,6 +975,18 @@ class Metrics:
         with self._lock:
             self.frontier_binding[key] = self.frontier_binding.get(key, 0) + 1
 
+    def record_finish_reason(self, reason: str | None) -> None:
+        """One settled chat / messages / responses turn (#2338).
+
+        Anthropic ``stop_reason`` aliases (``end_turn``, ``max_tokens``,
+        ``tool_use``, ``stop_sequence``) collapse onto the OpenAI-shaped
+        label so truncation, pause, and refusal share one series. Blank is
+        the wire default (``stop``). Unknown tokens bucket as ``other``.
+        """
+        label = _finish_reason_label(reason)
+        with self._lock:
+            self.finish_reason[label] = self.finish_reason.get(label, 0) + 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -1038,6 +1077,7 @@ class Metrics:
                     sorted(self.regional_processing_uplift_usd.items())
                 ),
                 "frontier_binding": dict(sorted(self.frontier_binding.items())),
+                "finish_reason": dict(sorted(self.finish_reason.items())),
                 "decision_classifier": dict(self.decision_classifier),
                 "decision_classifier_latency": {
                     "count": self.decision_classifier_latency.count,

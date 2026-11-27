@@ -46,6 +46,8 @@ class AuthClaims:
     boundary_profile: str | None = None
     # Named guardrails.profiles binding, key metadata first then team (#1548).
     guardrail_profile: str | None = None
+    # Key or team metadata zero_retention; either true enforces (#2347).
+    zero_retention: bool = False
     region_pin: str | None = None
     # Raw allowlist (#708). Expanded against settings.model_groups at request time.
     allowed_models: tuple[str, ...] | None = None
@@ -170,6 +172,8 @@ def apply_auth_claims_to_meta(
         meta.boundary_profile = claims.boundary_profile
     if getattr(claims, "guardrail_profile", None):
         meta.guardrail_profile = claims.guardrail_profile
+    if getattr(claims, "zero_retention", False):
+        meta.zero_retention = True
     if not getattr(meta, "region_pin", None) and claims.region_pin:
         meta.region_pin = claims.region_pin
     from daari.auth.model_access import patterns_from_claims
@@ -313,6 +317,9 @@ def apply_selected_team(
 
     key_meta = getattr(claims.virtual_key, "metadata", None) if claims.virtual_key else None
     claims.guardrail_profile = resolve_profile_name(key_meta, getattr(team, "metadata", None))
+    from daari.auth.virtual_keys import zero_retention_enforced
+
+    claims.zero_retention = zero_retention_enforced(getattr(claims, "virtual_key", None), team)
     team_scope = team.cache_scope
     key_scope = getattr(claims.virtual_key, "cache_scope", "global") if claims.virtual_key else "global"
     claims.cache_scope = effective_cache_scope(key_scope, team_scope)
@@ -327,6 +334,7 @@ def _claims_from_virtual_key(
     grace_served: bool = False,
 ) -> AuthClaims:
     """Build AuthClaims from a VirtualKey; team lookup skipped when store is down."""
+    from daari.auth.virtual_keys import zero_retention_enforced
     from daari.gateway.guardrails import resolve_profile_name
 
     if key.is_expired():
@@ -345,12 +353,14 @@ def _claims_from_virtual_key(
     team_frontier_pool = None
     team_metadata = None
     team_scope = "global"
+    team_row = None
     if key.team_id and store is not None:
         try:
             team = store.get_team(key.team_id)
         except Exception:
             team = None
         if team is not None:
+            team_row = team
             team_metadata = getattr(team, "metadata", None)
             if not region_pin and team.region_pin:
                 region_pin = team.region_pin
@@ -370,6 +380,7 @@ def _claims_from_virtual_key(
         virtual_key=key,
         boundary_profile=(key.metadata or {}).get("boundary_profile"),
         guardrail_profile=resolve_profile_name(key.metadata, team_metadata),
+        zero_retention=zero_retention_enforced(key, team_row),
         region_pin=region_pin,
         allowed_models=key.allowed_models,
         model_groups=key.model_groups,

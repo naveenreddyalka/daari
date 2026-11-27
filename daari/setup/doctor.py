@@ -175,6 +175,7 @@ def run_doctor(
     if failover_5xx_tip is not None:
         results.append(failover_5xx_tip)
     results.append(_check_model_lifecycle(cfg))
+    results.append(_check_zero_retention(cfg))
     results.append(_check_anthropic_speed_lifecycle(cfg))
     zdr_retention_tip = _check_zdr_retention_required(cfg)
     if zdr_retention_tip is not None:
@@ -2837,6 +2838,49 @@ def _check_budget_reserve_in_flight(settings: Settings) -> CheckResult:
     )
 
 
+def _check_zero_retention(settings: Settings) -> CheckResult:
+    """Count keys and teams with metadata.zero_retention (#2347)."""
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return CheckResult(
+            name="zero_retention",
+            ok=True,
+            detail="virtual keys disabled (no zero_retention tenants)",
+            optional=True,
+        )
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception as exc:
+        return CheckResult(
+            name="zero_retention",
+            ok=True,
+            detail=f"virtual-key store unread ({exc})",
+            optional=True,
+        )
+    keys = 0
+    teams = 0
+    try:
+        for key in store.list():
+            if getattr(key, "zero_retention", False):
+                keys += 1
+    except Exception:
+        keys = 0
+    try:
+        team_rows = store.list_teams() if hasattr(store, "list_teams") else []
+    except Exception:
+        team_rows = []
+    for team in team_rows:
+        if getattr(team, "zero_retention", False):
+            teams += 1
+    return CheckResult(
+        name="zero_retention",
+        ok=True,
+        detail=f"zero_retention keys={keys} teams={teams}",
+        optional=True,
+    )
+
+
 def _check_model_lifecycle(settings: Settings) -> CheckResult:
     """Error on configured retired models; tip on deprecated (#1549)."""
     from daari.router.capabilities import anthropic_lifecycle_fields
@@ -2882,12 +2926,19 @@ def _check_model_lifecycle(settings: Settings) -> CheckResult:
         stage = str(fields.get("lifecycle") or "active").lower()
         retires = fields.get("retires_at")
         migrate = str(fields.get("migrate_to") or "").strip()
+        successor = str(fields.get("successor_model") or "").strip()
         if stage == "retired":
-            retired.append(f"{label}={name}" + (f" (migrate_to={migrate})" if migrate else ""))
+            notes = [f"migrate_to={migrate}"] if migrate else []
+            if successor:
+                notes.append(f"successor: {successor}")
+            suffix = f" ({'; '.join(notes)})" if notes else ""
+            retired.append(f"{label}={name}{suffix}")
         elif stage == "deprecated":
             notes = [f"shutdown {retires}"] if retires else []
             if migrate:
                 notes.append(f"migrate_to={migrate}")
+            if successor:
+                notes.append(f"successor: {successor}")
             suffix = f" ({'; '.join(notes)})" if notes else ""
             deprecated.append(f"{label}={name}{suffix}")
 

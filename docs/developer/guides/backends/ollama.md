@@ -48,6 +48,8 @@ Optional **Ripple Preview** L5 agentic-coding recipe (Ollama ≥ 0.40.16):
 `daari setup models --ripple` sets `models.l5=ripple-preview` without pulling
 weights (high-memory L4 is also fine). 65B dense — plan ~40 GB+ quantized.
 Preview tag may change at GA. Pull later with `ollama pull ripple-preview`.
+Serving alternative: **vLLM ≥ 0.34.0** with Ripple-65B Preview and the
+`ripple` parsers ([vLLM local tier](../configuration/vllm-local-tier.md)).
 
 Optional **Nemotron 3.5 Bolt E4B** L3 VLM recipe (Ollama ≥ 0.40.10):
 `daari setup models --nemotron-bolt` sets `models.l3=nemotron-3.5-bolt:e4b`

@@ -18,6 +18,8 @@ this recipe is configured but the Ollama server is older than 0.40.16.
 
 Ripple also runs on pinned [llama.cpp v1.0.0+](../developer/guides/configuration/llamacpp-local-tier.md)
 `llama-server` as a `kind: openai` L5 slot when you prefer a binary floor over
-Ollama's library UX.
+Ollama's library UX, and on **vLLM ≥ 0.34.0** (Ripple-65B Preview with the
+`ripple` reasoning/tool parsers — see
+[vLLM local tier](../developer/guides/configuration/vllm-local-tier.md)).
 
 See also the backends guide: [ollama.md](../developer/guides/backends/ollama.md).

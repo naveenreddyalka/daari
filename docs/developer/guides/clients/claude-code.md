@@ -46,6 +46,23 @@ when the effective version is `2026-10-21`, the L6 Anthropic hop strips any
 sampling knobs the client still sent and lists them in
 `daari_meta.dropped_params` / `x-daari-dropped-params`.
 
+## Text watermark (sampling)
+
+Anthropic's [text watermark](https://platform.claude.com/docs/en/build-with-claude/text-watermark)
+may be absent on **Opus 4.6, Opus 4.5, Opus 3, Sonnet 4.6, Sonnet 4.5, and Haiku 4.5**
+when `temperature`, `top_p`, or `top_k` is not the provider default. That
+guidance widened on 2026-11-17 (it previously named Sonnet 4.6 alone).
+Detection remains an Anthropic private preview.
+
+Omit `temperature`, `top_p`, and `top_k` when a detectable mark is required.
+daari does not inject those knobs on client legs. Client-supplied values are
+passed through on the Anthropic hop and may drop the mark. When the request's
+effective `anthropic-version` is `2026-10-21`, that hop still strips the trio
+before egress (see the section above) so the provider accepts the call.
+
+daari does not ship watermark detection. Compliance API / detector access is
+Anthropic-side.
+
 ## Thinking budgets
 
 Claude Code's request-level `thinking: {type, budget_tokens}` is forwarded

@@ -111,3 +111,55 @@ in-region routing) instead of the global host. Non-OpenRouter slots still match
 on the slot's configured `region` label only.
 
 Stripe announced an OpenRouter acquisition (Aug 2026). That does not change daari’s job. Roadmap: [ROADMAP-v3](../../prd/ROADMAP-v3.md). Short matrix: [compare](compare.md).
+
+## Hugging Face Inference Providers (2026-11-16)
+
+OpenRouter's
+[Hugging Face Inference Providers](https://openrouter.ai/blog/announcements/hugging-face-inference-providers/)
+announcement (16 Nov 2026) routes Hugging Face chat models through OpenRouter
+provider routing: live price, speed, and reliability, with failover inside the
+same call. The prompt still leaves the machine. Hugging Face documents a
+stable [`X-HF-Session-Id`](https://huggingface.co/docs/inference-providers/prompt-caching)
+so the hosted router keeps the conversation on the provider holding the
+prompt cache. OpenRouter can also broadcast traces to a Hugging Face Storage
+Bucket the caller owns; that sink stays on their control plane.
+
+**daari stance (local-first):** daari does **not** broker Hugging Face
+Inference Providers natively. Local tiers are unchanged. What you already
+have:
+
+- Optional L6 is still a choice. Point `frontier.providers[].base_url` at
+  OpenRouter (see the
+  [OpenRouter slot](../guides/configuration/budgets-frontier.md#openrouter-slot-g3))
+  when you want that marketplace, including an HF-routed model behind it.
+  L0–L5 stay the default, and the same-box ledger stays the governance layer
+  on that hop.
+- Session / cache affinity is the existing pin, not a new feature.
+  `routing.session_affinity` with `X-Daari-Session` (or the OpenAI `user`
+  field) reuses the tier that planned the turn — approximately the same job
+  as staying on the hop that already holds the conversation, on your machine
+  rather than across HF providers. See
+  [Session affinity](../concepts/routing-tiers.md#session-affinity).
+
+## Scoped management keys (2026-11-16)
+
+OpenRouter's
+[scoped management keys](https://openrouter.ai/blog/announcements/scoped-management-keys/)
+(16 Nov 2026) are a control-plane strength. A management key can be
+read-only, limited to one workspace, or both, so automation cannot reach the
+whole organization. Read-only keys can view API keys, activity, and usage;
+read/write keys can also create, update, and delete API keys inside that
+scope. Scope and access level are fixed when the key is created.
+
+daari does **not** clone OpenRouter management keys or workspace scope. The
+on-box counterparts are the keys and grants you already run in-process:
+
+- [Virtual keys](../guides/features/virtual-keys.md) (and the
+  [master key](../guides/configuration/auth-and-keys.md#master-api-key)) —
+  budgets, model allowlists, and per-user caps on your daemon.
+- [Team / key BYOK](../guides/features/virtual-keys.md#frontier-credential-binding-team--key-byok)
+  so tenant frontier spend uses the tenant credential.
+- Grants on the key or team (MCP and agent access) instead of an org-wide
+  management API. See
+  [agent access](../guides/features/virtual-keys.md#agent-access-multi_agent)
+  and [MCP tool governance](../guides/clients/mcp.md#tool-governance).
