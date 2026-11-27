@@ -3453,10 +3453,21 @@ class Router:
                                     ),
                                 },
                             )
-                            yield _openai_stream_error_frame(
-                                error_type="stream_incomplete",
-                                message=str(exc)[:300],
+                            from daari.gateway.client_errors import (
+                                is_upstream_overload,
+                                routing_failure_detail,
                             )
+
+                            if is_upstream_overload(exc):
+                                yield _openai_stream_error_frame(
+                                    error_type="server_is_overloaded",
+                                    message=routing_failure_detail(exc),
+                                )
+                            else:
+                                yield _openai_stream_error_frame(
+                                    error_type="stream_incomplete",
+                                    message=str(exc)[:300],
+                                )
                             yield "data: [DONE]\n\n"
                             add_step("served", tier=None, error=str(exc)[:120])
                             if getattr(self, "otel_enabled", False) and trace is not None:
@@ -4246,10 +4257,21 @@ class Router:
                 },
             )
             self._record_frontier_stream_failure()
-            yield _openai_stream_error_frame(
-                error_type="stream_incomplete",
-                message=str(exc)[:300],
+            from daari.gateway.client_errors import (
+                is_upstream_overload,
+                routing_failure_detail,
             )
+
+            if is_upstream_overload(exc):
+                yield _openai_stream_error_frame(
+                    error_type="server_is_overloaded",
+                    message=routing_failure_detail(exc),
+                )
+            else:
+                yield _openai_stream_error_frame(
+                    error_type="stream_incomplete",
+                    message=str(exc)[:300],
+                )
             yield "data: [DONE]\n\n"
             add_step("served", tier="L6", error="stream_incomplete")
             finish_trace("L6")
@@ -4878,10 +4900,21 @@ class Router:
                                 "partial_chars": completion_chars,
                             },
                         )
-                        yield _anthropic_stream_error_frame(
-                            error_type="stream_incomplete",
-                            message=str(exc)[:300],
+                        from daari.gateway.client_errors import (
+                            is_upstream_overload,
+                            routing_failure_detail,
                         )
+
+                        if is_upstream_overload(exc):
+                            yield _anthropic_stream_error_frame(
+                                error_type="overloaded_error",
+                                message=routing_failure_detail(exc),
+                            )
+                        else:
+                            yield _anthropic_stream_error_frame(
+                                error_type="stream_incomplete",
+                                message=str(exc)[:300],
+                            )
                         yield sse("message_stop", {"type": "message_stop"})
                         return
                     else:

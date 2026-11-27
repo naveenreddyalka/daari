@@ -10035,6 +10035,27 @@ alerts on `daari report` without a POST. A signed webhook and
 `daari_performance_alerts_total{kind}` fire once per resource, kind, and UTC
 day. Covered by `tests/unit/test_performance_alerts.py`.
 
+### Gemini 4 Hydrogen catalog ([#2359](https://github.com/naveenreddyalka/daari/issues/2359))
+
+<!-- tracking:#2359 -->
+**Status:** Done (2026-11-27). `_DEFAULT_MODEL_PRICES` includes
+`gemini-4-hydrogen` at $1.50 / $7.50 with cache read $0.075. The longer key
+wins over a `gemini-4` prefix. Capabilities match Carbon/Argon (tools, JSON,
+vision, audio, 1M). `reasoning_effort=xhigh` is accepted and forwarded;
+local Ollama think still omits it. Priority on this id bills 1.8×; flex
+stays 0.5×. Covered by `tests/unit/test_gemini_4_hydrogen.py`.
+
+### Typed overload envelopes ([#2348](https://github.com/naveenreddyalka/daari/issues/2348))
+
+<!-- tracking:#2348 -->
+**Status:** Done (2026-11-27). When routing exhausts on HTTP 429 or 529,
+OpenAI-shaped routes return 503 `error.type=server_is_overloaded` and
+`/v1/messages` returns 529 `error.type=overloaded_error`, both with
+`Retry-After` (upstream value, else 1s). Other failures stay
+`Routing failed:`. Terminal overload on a stream emits the same typed frame
+before close. Messages still go through `safe_detail`. Covered by
+`tests/unit/test_overload_envelopes.py`.
+
 
 ## How to update
 

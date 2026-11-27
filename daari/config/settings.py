@@ -931,11 +931,12 @@ class SignalOverrideRule(BaseModel):
         default=None,
         description="When set, pin the initial tier like X-Daari-Tier-Override.",
     )
-    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = Field(
+    reasoning_effort: Literal["minimal", "low", "medium", "high", "xhigh"] | None = Field(
         default=None,
         description=(
             "When set, pin reasoning_effort only if the client omitted it "
-            "(#2162). Accepted: minimal|low|medium|high."
+            "(#2162). Accepted: minimal|low|medium|high|xhigh. "
+            "xhigh is forwarded on Gemini 4 Hydrogen and omitted on local think."
         ),
     )
 
@@ -2017,6 +2018,16 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, Any]] = {
             "output_per_1m": 20.00,
             "cached_input_per_1m": 0.20,
         },
+    },
+    # Gemini 4 Hydrogen: flat $1.50 / $7.50 across the 1M window, cache read
+    # $0.075. Batch/Flex use the shared flex 0.5× multiplier. Priority is 1.8×
+    # on this id (pricing.service_tier_factor), not the OpenAI 2× priority
+    # factor. Thinking level xhigh is accepted and forwarded (#2359).
+    # https://aistudio.google.com/docs/pricing
+    "gemini-4-hydrogen": {
+        "input_per_1m": 1.50,
+        "output_per_1m": 7.50,
+        "cached_input_per_1m": 0.075,
     },
     # xAI Grok 4.7 (LiteLLM 1.105 RC day-one, 2026-10-04): lab $2/$6,
     # cache read $0.50. OpenRouter list is ~$1.6/$4.8 — we ship the lab bar.

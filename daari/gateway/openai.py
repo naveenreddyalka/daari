@@ -16,6 +16,8 @@ from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.client_errors import (
     backend_unavailable_message,
     request_deadline_response,
+    overload_json_response,
+    overload_stream_frame,
     routing_failure_detail,
     safe_detail,
 )
@@ -1238,7 +1240,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                             collected.append(chunk)
                             yield chunk
                     except Exception as exc:
-                        err = f"data: {json.dumps({'error': f'stream failed: {safe_detail(exc)}'})}\n\n"
+                        overload = overload_stream_frame(exc)
+                        err = overload or (
+                            f"data: {json.dumps({'error': f'stream failed: {safe_detail(exc)}'})}\n\n"
+                        )
                         collected.append(err)
                         collected.append("data: [DONE]\n\n")
                         yield err
@@ -1347,6 +1352,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 if idem_slot is not None:
                     idem_slot.abandon()
                 ctx.metrics.record_error(status=503)
+                overloaded = overload_json_response(exc)
+                if overloaded is not None:
+                    return overloaded
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
 
             if internal.provider and result.daari_meta.provider_prefs is None:

@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict
 from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.client_errors import (
     backend_unavailable_message,
+    overload_json_response,
     request_deadline_response,
     routing_failure_detail,
     safe_detail,
@@ -1559,6 +1560,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 if idem_slot is not None:
                     idem_slot.abandon()
                 ctx.metrics.record_error(status=503)
+                overloaded = overload_json_response(exc)
+                if overloaded is not None:
+                    return overloaded
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
             if mcp_server_ids:
                 try:
@@ -1595,6 +1599,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     if idem_slot is not None:
                         idem_slot.abandon()
                     ctx.metrics.record_error(status=503)
+                    overloaded = overload_json_response(exc)
+                    if overloaded is not None:
+                        return overloaded
                     raise HTTPException(
                         status_code=503, detail=routing_failure_detail(exc)
                     ) from exc

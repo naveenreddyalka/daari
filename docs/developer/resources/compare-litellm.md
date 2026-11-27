@@ -461,10 +461,11 @@ RC-watch posture. Feature set mapped to daari parity / non-goals:
   `rate_limited_by`, with Redis or SQLite counters rather than a
   cluster-wide dynamic limiter.
 - **Gemini 4 Hydrogen** catalog and **Microsoft Web IQ `/v1/search`**.
-  daari prices Gemini 4 ids from the on-box `pricing.models` ledger
-  (Carbon / Argon intro windows via `effective_to`); Hydrogen rows follow
-  the same path when Google publishes list prices — no hosted
-  `model_prices` fetch required. `/v1/search` as a provider-backed search
+  daari prices Gemini 4 ids from the on-box `pricing.models` ledger:
+  Carbon / Argon intro windows via `effective_to`, and Hydrogen at the
+  flat $1.50 / $7.50 list (cache read $0.075, Priority 1.8×, thinking
+  level `xhigh`) — no hosted `model_prices` fetch required.
+  `/v1/search` as a provider-backed search
   door is **N/A / watch**: daari's web-search path is the on-box
   escalate-to-search tool, not a Bing-shaped endpoint.
 - **Non-root single image / `helm/litellm`**. daari's Docker image already
