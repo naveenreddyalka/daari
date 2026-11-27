@@ -11,9 +11,10 @@
 | Local engine floor | [llama.cpp v1.0.0](https://github.com/ggml-org/llama.cpp/releases/tag/v1.0.0) via `kind: openai` ([guide](../guides/configuration/llamacpp-local-tier.md)) | N/A (hosted) | Optional backend among many |
 
 OpenRouter (Stripe, Aug 2026) is not a clone target. Late Oct 2026 rebuilt
-default routing, Private Endpoints, and in-flight CSAM screening (incl. ZDR)
-are covered on the [OpenRouter compare page](compare-openrouter.md). Full gap +
-90-day plan: [ROADMAP-v3](../../prd/ROADMAP-v3.md).
+default routing, Private Endpoints, and in-flight CSAM screening (incl. ZDR),
+and 16 Nov 2026 Hugging Face Inference Providers routing plus scoped
+management keys, are covered on the [OpenRouter compare page](compare-openrouter.md).
+Full gap + 90-day plan: [ROADMAP-v3](../../prd/ROADMAP-v3.md).
 
 Buyer pages (when to pick which, licenses named):
 
