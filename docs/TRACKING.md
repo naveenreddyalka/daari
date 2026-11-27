@@ -10025,6 +10025,16 @@ RETRYABLE_STATUS set retryable (501/522). Default-set retries (503) stay on
 `upstream_retries` only. Covered by `tests/unit/test_upstream_retry.py`.
 
 
+### rate_limited_by on every 429 ([#2361](https://github.com/naveenreddyalka/daari/issues/2361))
+
+<!-- tracking:#2361 -->
+**Status:** Done (2026-11-27). Hard RPM/TPM/RPD/TPD denials, MCP server
+ceilings, concurrency 503s, and invalid-key throttle/lockout 429s emit
+`rate_limited_by` and `X-Daari-Rate-Limited-By` with enum-like values
+(`key_rpm`, `team_tpm`, `mcp_server_rpm`, `concurrency`, `key_lockout`, …).
+Existing `Retry-After` / `X-RateLimit-*` unchanged. compare-litellm names
+the header next to LiteLLM's. Covered by `tests/unit/test_rate_limited_by.py`.
+
 ### On-box performance spike alerts ([#2360](https://github.com/naveenreddyalka/daari/issues/2360))
 
 <!-- tracking:#2360 -->

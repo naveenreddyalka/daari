@@ -455,11 +455,14 @@ RC-watch posture. Feature set mapped to daari parity / non-goals:
 - **Default performance alerts** (7-day latency / error spikes) and
   **dynamic rate limiter** with `rate_limited_by` on 429s. daari's on-box
   twin is Prometheus `/metrics` + the shipped Grafana panels and `daari
-  doctor` tips (no SaaS alert email); 429s name the tightest counter via
+  doctor` tips (no SaaS alert email). Every gateway 429 (and concurrency
+  503) also emits `rate_limited_by` / `X-Daari-Rate-Limited-By` with a
+  stable enum (`key_rpm`, `team_tpm`, `model_rpd`, `mcp_server_rpm`,
+  `concurrency`, `key_lockout`, `auth_throttled`, …) next to the existing
   `X-RateLimit-Scope` (`key` / `team` / `user` / `model` / `*_concurrency` /
-  `mcp_server:<id>`) — a different name for the same honesty as
-  `rate_limited_by`, with Redis or SQLite counters rather than a
-  cluster-wide dynamic limiter.
+  `mcp_server:<id>`) and `Retry-After` — LiteLLM parity for the limiter
+  name, with Redis or SQLite counters rather than a cluster-wide dynamic
+  limiter ([#2361](https://github.com/naveenreddyalka/daari/issues/2361)).
 - **Gemini 4 Hydrogen** catalog and **Microsoft Web IQ `/v1/search`**.
   daari prices Gemini 4 ids from the on-box `pricing.models` ledger:
   Carbon / Argon intro windows via `effective_to`, and Hydrogen at the
