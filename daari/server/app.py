@@ -544,6 +544,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             retry_after=decision.retry_after,
                             omit_client_ip=omit_ip,
                         )
+                        from daari.auth.rate_limit import rate_limited_by_headers
+
+                        throttle_headers = {
+                            "Retry-After": str(max(1, decision.retry_after)),
+                            **rate_limited_by_headers(kind="auth_throttled"),
+                        }
                         return JSONResponse(
                             status_code=429,
                             content={
@@ -556,7 +562,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                     ),
                                 }
                             },
-                            headers={"Retry-After": str(max(1, decision.retry_after))},
+                            headers=throttle_headers,
                         )
                     throttle.record_failure(client_ip)
                 lockout = getattr(request.app.state, "key_lockout", None)
@@ -581,6 +587,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             retry_after=locked.retry_after,
                             redis=getattr(lockout, "redis", None),
                         )
+                        from daari.auth.rate_limit import rate_limited_by_headers
+
+                        lockout_headers = {
+                            "Retry-After": str(max(1, locked.retry_after)),
+                            **rate_limited_by_headers(kind="key_lockout"),
+                        }
                         return JSONResponse(
                             status_code=429,
                             content={
@@ -593,7 +605,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                     ),
                                 }
                             },
-                            headers={"Retry-After": str(max(1, locked.retry_after))},
+                            headers=lockout_headers,
                         )
                     lockout.record_failure(supplied, client_ip=client_ip)
                 record_invalid_key(

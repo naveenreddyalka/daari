@@ -22,6 +22,9 @@ WINDOW_SECONDS = 60
 DAY_SECONDS = 86400
 DEFAULT_PROBE_INTERVAL_SECONDS = 5.0
 RATELIMIT_WARNING_HEADER = "x-daari-ratelimit-warning"
+# LiteLLM-shaped limiter name on hard 429/503 denials (#2361).
+RATE_LIMITED_BY_HEADER = "rate_limited_by"
+RATE_LIMITED_BY_HEADER_ALIAS = "X-Daari-Rate-Limited-By"
 # Soft-warning / hard-reject metric kinds for limiter cliffs (#2096).
 RATE_LIMIT_METRIC_SCOPES = frozenset({"rpm", "tpm", "rpd", "tpd"})
 
@@ -32,6 +35,53 @@ def rate_limit_metric_kind(scope: str | None) -> str:
     if text in RATE_LIMIT_METRIC_SCOPES:
         return f"rate_limit_{text}"
     return "rate_limit"
+
+
+def rate_limited_by_label(
+    *,
+    bucket: str = "",
+    scope: str = "",
+    kind: str | None = None,
+) -> str:
+    """Stable enum-like value naming the limiter that fired (#2361).
+
+    Examples: ``key_rpm``, ``team_tpm``, ``model_rpd``, ``mcp_server_rpm``,
+    ``concurrency``, ``key_lockout``, ``auth_throttled``, ``budget_usd``.
+    """
+    explicit = str(kind or "").strip().lower()
+    if explicit:
+        return explicit
+    raw_bucket = str(bucket or "").strip().lower()
+    raw_scope = str(scope or "").strip().lower()
+    if raw_bucket.startswith("mcp_server"):
+        entity = "mcp_server"
+    elif raw_bucket.startswith("family:"):
+        entity = "family"
+    elif raw_bucket.endswith("_concurrency") or raw_bucket == "concurrency":
+        return raw_bucket or "concurrency"
+    elif raw_bucket in {"key", "team", "model", "user"}:
+        entity = raw_bucket
+    else:
+        entity = raw_bucket or "rate"
+    if raw_scope == "concurrency" or entity == "concurrency":
+        return "concurrency"
+    if raw_scope:
+        return f"{entity}_{raw_scope}"
+    return entity or "rate"
+
+
+def rate_limited_by_headers(
+    *,
+    bucket: str = "",
+    scope: str = "",
+    kind: str | None = None,
+) -> dict[str, str]:
+    """Both public and X-Daari spellings of the limiter name (#2361)."""
+    label = rate_limited_by_label(bucket=bucket, scope=scope, kind=kind)
+    return {
+        RATE_LIMITED_BY_HEADER: label,
+        RATE_LIMITED_BY_HEADER_ALIAS: label,
+    }
 
 
 def _wall_time() -> float:
@@ -74,21 +124,29 @@ class RateLimitDecision:
         return (self.used / float(self.limit)) >= mark
 
     def headers(self, *, soft: bool = False) -> dict[str, str]:
-        if self.limit <= 0:
+        if self.limit <= 0 and self.allowed:
             return {}
-        headers = {
-            "X-RateLimit-Limit": str(self.limit),
-            "X-RateLimit-Remaining": str(max(0, self.remaining)),
-            "X-RateLimit-Reset": str(self.reset_epoch),
-        }
-        if self.bucket:
-            headers["X-RateLimit-Scope"] = self.bucket
-        if self.backend:
-            headers["X-RateLimit-Backend"] = self.backend
-        if self.retry_after is not None:
-            headers["Retry-After"] = str(self.retry_after)
-        if soft and self.allowed:
-            headers[RATELIMIT_WARNING_HEADER] = "soft"
+        headers: dict[str, str] = {}
+        if self.limit > 0:
+            headers = {
+                "X-RateLimit-Limit": str(self.limit),
+                "X-RateLimit-Remaining": str(max(0, self.remaining)),
+                "X-RateLimit-Reset": str(self.reset_epoch),
+            }
+            if self.bucket:
+                headers["X-RateLimit-Scope"] = self.bucket
+            if self.backend:
+                headers["X-RateLimit-Backend"] = self.backend
+            if self.retry_after is not None:
+                headers["Retry-After"] = str(self.retry_after)
+            if soft and self.allowed:
+                headers[RATELIMIT_WARNING_HEADER] = "soft"
+        if not self.allowed:
+            headers.update(
+                rate_limited_by_headers(bucket=self.bucket, scope=self.scope)
+            )
+            if self.retry_after is not None:
+                headers.setdefault("Retry-After", str(self.retry_after))
         return headers
 
 
