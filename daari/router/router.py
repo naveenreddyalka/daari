@@ -45,6 +45,7 @@ from daari.pricing import (
     cost_breakdown,
     cost_usd,
     is_ollama_cloud_model,
+    regional_processing_factor,
     multi_agent_cost_breakdown,
 )
 from daari.providers.integrations import (
@@ -1722,6 +1723,7 @@ class Router:
         ):
             in_usd, out_usd = 0.0, 0.0
         self.metrics.record_cost(input_usd=in_usd, output_usd=out_usd)
+        self._record_regional_uplift(request, response)
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,
@@ -1736,6 +1738,28 @@ class Router:
             cached_tokens=response.daari_meta.cached_tokens,
             cache_write_tokens=response.daari_meta.cache_write_tokens,
             reported_cost=response.daari_meta.cost_usd,
+        )
+
+    def _record_regional_uplift(
+        self, request: InternalRequest, response: InternalResponse
+    ) -> None:
+        """Attribute the OpenAI regional-processing 1.10× surcharge by pin (#2323).
+
+        Fires only when ``regional_processing_factor`` is above 1.0 for the
+        served frontier model; the delta is billed − billed / factor, so a
+        provider-reported total (which already carries the uplift) and a
+        daari-priced total record the same share.
+        """
+        if (response.daari_meta.tier or "").upper() != "L6":
+            return
+        region_pin = getattr(request.meta, "region_pin", None)
+        model = response.daari_meta.model or response.model
+        factor = regional_processing_factor(region_pin, model)
+        if factor <= 1.0:
+            return
+        billed = float(response.daari_meta.cost_usd or 0.0)
+        self.metrics.record_regional_processing(
+            region=region_pin, uplift_usd=billed - billed / factor
         )
 
     def _example_record(
