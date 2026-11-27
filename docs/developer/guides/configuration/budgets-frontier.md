@@ -403,6 +403,9 @@ rates. Current flagship and workhorse models, USD per 1M tokens:
 | `gpt-5.6-terra` | 2.00 | 0.20 | — | 12.00 | OpenAI API pricing (historical pin; prefer `gpt-6.1-terra`) |
 | `gpt-5.6-luna` | 0.20 | 0.02 | — | 1.20 | OpenAI API pricing |
 | `gemini-3.8-flash` | 0.75 | 0.075 | — | 3.75 | [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) intro rate through 2026-12-31 |
+| `gemini-4-carbon` | 2.00 | 0.10 | — | 10.00 | [Gemini 4](https://aistudio.google.com/docs/pricing) intro through 2026-11-30; list $4 / $0.20 / $20 from 2026-12-01 |
+| `gemini-4-argon` | 2.00 | 0.10 | — | 10.00 | Same intro window and list rates as Carbon |
+| `gemini-4-hydrogen` | 1.50 | 0.075 | — | 7.50 | Flat across 1M context. Flex/Batch 0.5×; Priority 1.8× (not the shared 2×). Thinking level `xhigh` |
 | `grok-4.7` | 2.00 | 0.50 | — | 6.00 | xAI / LiteLLM 1.105 RC lab bar (2026-10-04); OpenRouter ~$1.6/$4.8 |
 
 `gpt-5.6` is the Sol alias. Longer keys win, so `gpt-5.6-luna` is not priced
@@ -442,7 +445,9 @@ for `gpt-6.1-sol` and `gpt-6-astra` (Astra Ultrafast is US/global only — an
 `region_pin: eu` key clears the tier with `daari_meta.warning=
 ultrafast_eu_unsupported`; unsupported models get
 `ultrafast_unsupported_model`), `standard` / `default` / `auto` / missing is
-1×. Unknown values log `service_tier_ignored` and bill as standard.
+1×. Gemini 4 Hydrogen `priority` is 1.8× (Google's published factor); every
+other model stays at 2×. Hydrogen Batch/Flex use the shared `flex` 0.5×
+multiplier. Unknown values log `service_tier_ignored` and bill as standard.
 When OpenAI rejects a requested tier under org/project service-tier
 restrictions (400 with `error.param=service_tier`), L6 retries once without
 the tier, stamps `service_tier_degraded`, and bills from the response's

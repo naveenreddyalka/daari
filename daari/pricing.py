@@ -93,11 +93,21 @@ def anthropic_speed_factor(speed: str | None) -> float:
     return 1.0
 
 
-def service_tier_factor(tier: str | None) -> float:
-    """Multiplier for a client `service_tier`. Unknown → 1.0 + event."""
+def service_tier_factor(tier: str | None, model: str | None = None) -> float:
+    """Multiplier for a client `service_tier`. Unknown → 1.0 + event.
+
+    Gemini 4 Hydrogen publishes Priority at 1.8×, not the shared OpenAI 2×
+    ``priority`` factor (#2359). Flex/Batch stay on the shared 0.5× ``flex``.
+    """
     if tier is None or not str(tier).strip():
         return 1.0
     key = str(tier).strip().lower()
+    if (
+        key == "priority"
+        and model
+        and matching_model_key(model, ("gemini-4-hydrogen",)) is not None
+    ):
+        return 1.8
     if key in _SERVICE_TIER_FACTORS:
         return _SERVICE_TIER_FACTORS[key]
     from daari.gateway.request_log import log_gateway_event
@@ -528,7 +538,7 @@ def cost_breakdown(
         input_raw += write_tokens / 1_000_000 * _cache_write_rate(price, cache_ttl)
     output_raw = max(0, output_tokens) / 1_000_000 * price.output_per_1m
     factor = (
-        service_tier_factor(service_tier)
+        service_tier_factor(service_tier, model)
         * regional_processing_factor(region_pin, model)
         * anthropic_speed_factor(usage_speed)
     )

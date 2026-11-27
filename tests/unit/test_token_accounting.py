@@ -272,6 +272,7 @@ def test_resolve_price_covers_september_2026_frontier_lineup():
         # $2/$10/$0.10 cache through 2026-11-30 via effective_to (#2469)
         "gemini-4-carbon": (4.0, 20.0, 0.20),
         "gemini-4-argon": (4.0, 20.0, 0.20),
+        "gemini-4-hydrogen": (1.50, 7.50, 0.075),
     }
     for model, (inp, out, cached) in expected.items():
         price = resolve_price(
@@ -354,8 +355,10 @@ def test_doctor_does_not_warn_for_priced_september_2026_models():
         "gemini-3.8-flash",
         "gemini-4-carbon",
         "gemini-4-argon",
+        "gemini-4-hydrogen",
         "models/gemini-4-carbon",
         "models/gemini-4-argon",
+        "models/gemini-4-hydrogen",
         "claude-fable-5-1-20260901",
         "anthropic.claude-fable-5-1",
         "anthropic.claude-fable-5-2",
