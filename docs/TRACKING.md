@@ -9727,6 +9727,23 @@ sampling, Gradium / Gnani / Perplexity / `gemini-decision-1` non-goals),
 1.108.11, and 1.108.10 (wildcard `base_model` pricing vs
 `matching_model_key`, PDF-URL async) notes retained. `compare.md` LTS line
 updated. Covered by `tests/unit/test_compare_litellm_1104.py`.
+### Observability: Prometheus and stats for OpenAI regional processing 1.10× uplift by region ([#2323](https://github.com/naveenreddyalka/daari/issues/2323))
+
+<!-- tracking:#2323 -->
+**Status:** Done (2026-11-25). `_ledger_record` calls
+`metrics.record_regional_processing(region, uplift_usd)` on every L6 settle
+where `regional_processing_factor(region_pin, served_model)` returns 1.10
+(residency pin `us`/`eu`/`au`/`in`/`jp`/`ca`/`sg`/`kr`/`gb`/`ae` on a
+post-2026-03-05 OpenAI model); `uplift_usd` is `billed - billed / 1.10`, so
+provider-reported and daari-priced totals attribute the same surcharge share.
+Unpinned, pre-cutoff, non-OpenAI, and local serves never increment. Exposed as
+`daari_regional_processing_applied_total{region}` /
+`daari_regional_processing_uplift_usd_total{region}` (HELP/TYPE always
+emitted; label series only once recorded) and as region → count / USD maps
+`regional_processing_applied` / `regional_processing_uplift_usd` on
+`GET /v1/daari/stats` (team-scoped stats zero them). No new dependencies.
+Docs: metrics-prometheus, traces-stats. Covered by
+`tests/unit/test_regional_uplift_metrics.py`.
 
 ### Observability: Prometheus and stats counters for frontier binding outcomes ([#2316](https://github.com/naveenreddyalka/daari/issues/2316))
 

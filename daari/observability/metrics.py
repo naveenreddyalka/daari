@@ -379,6 +379,10 @@ class Metrics:
     cost_output_usd: float = 0.0
     # Server-side tool fee USD by tool type (pricing.server_tools keys) (#2288).
     server_tool_cost_usd: dict[str, float] = field(default_factory=dict)
+    # OpenAI regional-processing 1.10× uplift by residency pin: request count
+    # and billed − pre-uplift USD (#2323).
+    regional_processing_applied: dict[str, int] = field(default_factory=dict)
+    regional_processing_uplift_usd: dict[str, float] = field(default_factory=dict)
     # source:outcome → count for team/key BYOK frontier bindings (#2316).
     # Fixed enums (key|team|- × signed|pin_unmatched|unresolvable) — no tenant ids.
     frontier_binding: dict[str, int] = field(default_factory=dict)
@@ -902,6 +906,22 @@ class Metrics:
                     self.server_tool_cost_usd.get(name, 0.0) + usd
                 )
 
+    def record_regional_processing(self, *, region: str | None, uplift_usd: float) -> None:
+        """One request billed at the regional-processing 1.10× under ``region`` (#2323).
+
+        ``uplift_usd`` is billed − pre-uplift (``total - total / 1.10``).
+        """
+        label = str(region or "").strip().lower()
+        if not label:
+            return
+        usd = max(0.0, float(uplift_usd or 0.0))
+        with self._lock:
+            self.regional_processing_applied[label] = (
+                self.regional_processing_applied.get(label, 0) + 1
+            )
+            self.regional_processing_uplift_usd[label] = (
+                self.regional_processing_uplift_usd.get(label, 0.0) + usd
+            )
     def record_frontier_binding(self, *, outcome: str, source: str | None) -> None:
         """Team/key BYOK binding consumed at L6: signed, pin_unmatched, unresolvable (#2316).
 
@@ -1000,6 +1020,12 @@ class Metrics:
                 "cost_input_usd": float(self.cost_input_usd),
                 "cost_output_usd": float(self.cost_output_usd),
                 "server_tool_cost_usd": dict(sorted(self.server_tool_cost_usd.items())),
+                "regional_processing_applied": dict(
+                    sorted(self.regional_processing_applied.items())
+                ),
+                "regional_processing_uplift_usd": dict(
+                    sorted(self.regional_processing_uplift_usd.items())
+                ),
                 "frontier_binding": dict(sorted(self.frontier_binding.items())),
                 "decision_classifier": dict(self.decision_classifier),
                 "decision_classifier_latency": {
