@@ -475,7 +475,7 @@ async def test_streamed_fast_529_retries_once_at_standard():
         )
     ]
     assert speeds == ["fast", "standard"]
-    assert events == ["ok"]
+    assert events == ["ok", {"finish_reason": "end_turn"}]
     assert executor.last_stream_usage_speed == "standard"
     meta = DaariMeta(tier="L6", executor="frontier")
     outcome = StreamOutcome(tier="L6", cache="miss")
@@ -515,7 +515,7 @@ async def test_streamed_fast_success_does_not_retry():
         )
     ]
     assert speeds == ["fast"]
-    assert events == ["ok"]
+    assert events == ["ok", {"finish_reason": "end_turn"}]
     assert executor.last_fast_degraded is False
     meta = DaariMeta(tier="L6", executor="frontier")
     executor.apply_fast_degraded_warning(meta)

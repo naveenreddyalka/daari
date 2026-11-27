@@ -260,6 +260,18 @@ def _remember_openai_stream_usage(executor: FrontierExecutor, chunk: dict[str, A
     _remember_stream_token_counts(executor, usage, prefer_output=True)
 
 
+def _responses_incomplete_finish_reason(response_obj: Any) -> str | None:
+    """OpenAI Responses ``incomplete_details.reason`` → chat finish_reason (#2331)."""
+    if not isinstance(response_obj, dict):
+        return None
+    details = response_obj.get("incomplete_details")
+    reason = details.get("reason") if isinstance(details, dict) else None
+    if not isinstance(reason, str) or not reason.strip():
+        return "stop" if response_obj.get("status") == "completed" else None
+    token = reason.strip().lower()
+    return {"max_output_tokens": "length", "content_filter": "content_filter"}.get(token, token)
+
+
 @dataclass
 class FrontierExecutor:
     base_url: str
@@ -733,6 +745,9 @@ class FrontierExecutor:
                                             "abort",
                                             detail="upstream stop_reason=abort",
                                         )
+                                    # Typed terminal event so the router can
+                                    # mirror the real stop reason (#2331).
+                                    yield {"finish_reason": stop.strip()}
                             elif event_type == "message_stop":
                                 saw_terminal = True
                         tool_event = anthropic_tool_event_from_sse_data(data)
@@ -799,11 +814,15 @@ class FrontierExecutor:
                                 had_output = True
                                 yield delta_text
                             continue
-                        if event_type == "response.completed":
+                        if event_type in {"response.completed", "response.incomplete"}:
                             saw_terminal = True
-                            usage = chunk.get("response", {}).get("usage")
+                            response_obj = chunk.get("response") or {}
+                            usage = response_obj.get("usage")
                             if isinstance(usage, dict):
                                 _remember_openai_stream_usage(self, {"usage": usage, "choices": []})
+                            incomplete = _responses_incomplete_finish_reason(response_obj)
+                            if incomplete is not None:
+                                yield {"finish_reason": incomplete}
                             continue
                         continue
                     if isinstance(chunk, dict):
@@ -826,6 +845,8 @@ class FrontierExecutor:
                         if text:
                             had_output = True
                             yield text
+                        if isinstance(raw_finish, str) and raw_finish.strip():
+                            yield {"finish_reason": raw_finish.strip()}
                 # Chat/completions (+ Anthropic messages): abort / missing terminal
                 # fail visibly so mid-stream failover can run (#2241). Responses
                 # WS terminal rules stay out of scope.
