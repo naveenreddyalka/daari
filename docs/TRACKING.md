@@ -9707,6 +9707,26 @@ a `baseline` of list $4/$20 (cached $0.20), so turns before Dec 1 UTC no
 longer bill 2× list. `models/`-prefixed ids resolve the same window. Covered
 by `tests/unit/test_pricing_effective_to.py`.
 
+### Promote LiteLLM floor to 1.111.0 GA + 1.108.17 LTS ([#2465](https://github.com/naveenreddyalka/daari/issues/2465), [#2442](https://github.com/naveenreddyalka/daari/issues/2442), [#2362](https://github.com/naveenreddyalka/daari/issues/2362), [#2349](https://github.com/naveenreddyalka/daari/issues/2349), [#2324](https://github.com/naveenreddyalka/daari/issues/2324))
+
+<!-- tracking:#2465 -->
+Also closes #2442, #2362, #2349, #2324 (superseded floors folded in).
+**Status:** Done (2026-11-25). `compare-litellm.md` stable comparison floor
+is **1.111.0 GA** (2026-11-25; per-model TPM/RPM maps vs `rate_limit.models`
+/ `model_rpd`, attribute access groups as an honest gap, customer portal
+non-goal, native `/v1/messages`, refused-leg + seconds billing, prefix-scoped
+pins) with the 1.111.0-rc.1 watch folded in (Customer Management,
+performance alerts / `rate_limited_by` vs `X-RateLimit-Scope`, Hydrogen,
+Web IQ `/v1/search` N/A, non-root image = `USER daari`). New **1.110.0 GA
+(history)** section: Rust-only router + deleted Python core (pure-Python /
+pdb positioning), SpendLogs ledger default vs SQLite ledger, FIPS watch row,
+Skills Hub, deprecation alerts vs lifecycle catalog, Redis v2 removal;
+matrix gains Router core / Spend accounting / FIPS rows. Live LTS patch is
+**1.108.17** (2026-11-24) with 1.108.16 (DCR opt-in, `anthropic-version`
+sampling, Gradium / Gnani / Perplexity / `gemini-decision-1` non-goals),
+1.108.11, and 1.108.10 (wildcard `base_model` pricing vs
+`matching_model_key`, PDF-URL async) notes retained. `compare.md` LTS line
+updated. Covered by `tests/unit/test_compare_litellm_1104.py`.
 ### Cache: never store truncated, paused, or refused turns ([#2330](https://github.com/naveenreddyalka/daari/issues/2330))
 
 <!-- tracking:#2330 -->
@@ -9873,6 +9893,14 @@ Covered by `tests/unit/test_anthropic_auto_caching.py` and
 quiet when the flag is off or an Anthropic slot exists. Docs: doctor-health,
 budgets-frontier. Covered by `tests/unit/test_doctor_frontier_auto_caching.py`.
 
+
+### Doctor tip when upstream.retry.failover_on_http_5xx is on ([#2336](https://github.com/naveenreddyalka/daari/issues/2336))
+
+<!-- tracking:#2336 -->
+**Status:** Done (2026-11-26). Optional tip when
+`upstream.retry.failover_on_http_5xx` is true — any HTTP 500–599 (incl.
+501/522) burns retries; quiet when the dial is off (default). Covered by
+`tests/unit/test_doctor_failover_on_http_5xx.py`.
 
 ### Frontier streamed legs surface honest finish_reason ([#2331](https://github.com/naveenreddyalka/daari/issues/2331))
 
