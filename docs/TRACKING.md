@@ -9894,6 +9894,14 @@ quiet when the flag is off or an Anthropic slot exists. Docs: doctor-health,
 budgets-frontier. Covered by `tests/unit/test_doctor_frontier_auto_caching.py`.
 
 
+### Doctor tip when upstream.retry.failover_on_http_5xx is on ([#2336](https://github.com/naveenreddyalka/daari/issues/2336))
+
+<!-- tracking:#2336 -->
+**Status:** Done (2026-11-26). Optional tip when
+`upstream.retry.failover_on_http_5xx` is true — any HTTP 500–599 (incl.
+501/522) burns retries; quiet when the dial is off (default). Covered by
+`tests/unit/test_doctor_failover_on_http_5xx.py`.
+
 ### Frontier streamed legs surface honest finish_reason ([#2331](https://github.com/naveenreddyalka/daari/issues/2331))
 
 <!-- tracking:#2331 -->
