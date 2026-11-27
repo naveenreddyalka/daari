@@ -258,6 +258,16 @@ async def run_upstream(
         if metrics is not None:
             try:
                 metrics.record_upstream_retry()
+                status = status_of(exc)
+                if (
+                    policy is not None
+                    and policy.failover_on_http_5xx
+                    and status is not None
+                    and status not in RETRYABLE_STATUS
+                    and 500 <= status <= 599
+                    and hasattr(metrics, "record_http_5xx_failover")
+                ):
+                    metrics.record_http_5xx_failover(status)
             except Exception:  # noqa: BLE001 — metrics must never break a request
                 pass
 

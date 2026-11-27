@@ -361,6 +361,20 @@ def render_prometheus(
     lines.append("# TYPE daari_upstream_retries_total counter")
     lines.append(f"daari_upstream_retries_total {snap.get('upstream_retries', 0)}")
     lines.append(
+        "# HELP daari_http_5xx_failover_total Retries taken only because "
+        "upstream.retry.failover_on_http_5xx made an HTTP 5xx outside the "
+        "default RETRYABLE_STATUS set retryable, labeled by status."
+    )
+    lines.append("# TYPE daari_http_5xx_failover_total counter")
+    hops = snap.get("http_5xx_failover") or {}
+    if not hops:
+        lines.append("daari_http_5xx_failover_total 0")
+    else:
+        for status, count in sorted(hops.items()):
+            lines.append(
+                f"daari_http_5xx_failover_total{_labels(status=str(status))} {int(count)}"
+            )
+    lines.append(
         "# HELP daari_request_deadline_exceeded_total "
         "Requests that hit the wall-clock deadline before a tier succeeded."
     )

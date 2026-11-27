@@ -87,6 +87,12 @@ names no configured slot → 502), or `unresolvable` (`secret://` ref failed
 or resolved empty → 502). Global-key traffic never increments; the map is
 empty until the first bound request. The Prometheus counterpart is
 `daari_frontier_binding_total{source,outcome}`.
+`http_5xx_failover` maps HTTP status → count of retries taken only because
+`upstream.retry.failover_on_http_5xx` made a 5xx outside the default
+RETRYABLE_STATUS set retryable (501, 522, and the rest). Statuses already in
+that set (503, 429, 529) stay on `upstream_retries` and do not appear here.
+The map is `{}` while the dial is off. Team-scoped stats zero it. The
+Prometheus counterpart is `daari_http_5xx_failover_total{status}`.
 
 ## Retention
 

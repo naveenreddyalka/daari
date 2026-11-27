@@ -43,6 +43,7 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert any("daari_frontier_binding_total" in row for row in body)
     assert any("daari_auto_caching_applied_total" in row for row in body)
     assert any("daari_auto_caching_client_preserved_total" in row for row in body)
+    assert any("daari_http_5xx_failover_total" in row for row in body)
     # Orphaned mid-table prose would end the contiguous body early.
     assert body[-1].startswith("| `daari_escalations_total")
 

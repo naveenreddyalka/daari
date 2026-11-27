@@ -24,3 +24,5 @@ def test_traces_stats_docs_mention_frontier_binding_counters() -> None:
     for token in ("signed", "pin_unmatched", "unresolvable"):
         assert token in text
     assert "daari_frontier_binding_total" in text
+    assert "`http_5xx_failover`" in text
+    assert "daari_http_5xx_failover_total" in text

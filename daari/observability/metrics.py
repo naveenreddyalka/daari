@@ -386,6 +386,9 @@ class Metrics:
     # source:outcome → count for team/key BYOK frontier bindings (#2316).
     # Fixed enums (key|team|- × signed|pin_unmatched|unresolvable) — no tenant ids.
     frontier_binding: dict[str, int] = field(default_factory=dict)
+    # HTTP status → retries taken only because failover_on_http_5xx widened
+    # the allowlist (501/522/…, not the default RETRYABLE_STATUS set) (#2337).
+    http_5xx_failover: dict[str, int] = field(default_factory=dict)
     # Opt-in per-team request/error counters (#1997). Off → no team dims.
     team_metrics: bool = False
     team_allowlist: frozenset[str] = field(default_factory=frozenset)
@@ -542,6 +545,12 @@ class Metrics:
         """
         with self._lock:
             self.upstream_retries += 1
+
+    def record_http_5xx_failover(self, status: int) -> None:
+        """A retry taken only because ``failover_on_http_5xx`` widened the set (#2337)."""
+        label = str(int(status))
+        with self._lock:
+            self.http_5xx_failover[label] = self.http_5xx_failover.get(label, 0) + 1
 
     def record_tier_shadow(self, *, agreed: bool) -> None:
         """A sampled local-tier answer was replayed at a comparison tier (#318)."""
@@ -922,6 +931,7 @@ class Metrics:
             self.regional_processing_uplift_usd[label] = (
                 self.regional_processing_uplift_usd.get(label, 0.0) + usd
             )
+
     def record_frontier_binding(self, *, outcome: str, source: str | None) -> None:
         """Team/key BYOK binding consumed at L6: signed, pin_unmatched, unresolvable (#2316).
 
@@ -972,6 +982,7 @@ class Metrics:
                 "boundaries": dict(self.boundaries),
                 "cache_false_hits_avoided": self.cache_false_hits_avoided,
                 "upstream_retries": self.upstream_retries,
+                "http_5xx_failover": dict(sorted(self.http_5xx_failover.items())),
                 "backends": dict(self.backends),
                 "tier_shadow": dict(self.tier_shadow),
                 "budget_alerts": dict(self.budget_alerts),

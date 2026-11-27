@@ -10,11 +10,14 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from daari.observability.metrics import Metrics
+from daari.observability.prometheus import render_prometheus
 from daari.router.retry import (
     RetryPolicy,
     RetryBudgetExhausted,
     is_retryable,
     retry_after_seconds,
+    run_upstream,
     with_retries,
 )
 
@@ -337,3 +340,80 @@ class TestFailoverOnHttp5xx:
         assert counts_as_hard_provider_failure(_status_error(503)) is True
         assert counts_as_hard_provider_failure(_status_error(429)) is False
         assert counts_as_hard_provider_failure(_status_error(529)) is False
+
+
+@pytest.mark.asyncio
+async def test_dial_off_501_does_not_increment_http_5xx_failover():
+    metrics = Metrics()
+
+    async def always_501():
+        raise _status_error(501)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await run_upstream(
+            always_501,
+            upstream="openai",
+            policy=RetryPolicy(attempts=2, base_delay=0.0, max_delay=0.0, jitter=0.0),
+            metrics=metrics,
+        )
+    assert metrics.upstream_retries == 0
+    assert metrics.http_5xx_failover == {}
+
+
+@pytest.mark.asyncio
+async def test_dial_on_501_increments_http_5xx_failover_by_status():
+    metrics = Metrics()
+    calls = {"n": 0}
+
+    async def flaky():
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise _status_error(501)
+        return "ok"
+
+    result = await run_upstream(
+        flaky,
+        upstream="openai",
+        policy=RetryPolicy(
+            attempts=3,
+            base_delay=0.0,
+            max_delay=0.0,
+            jitter=0.0,
+            failover_on_http_5xx=True,
+        ),
+        metrics=metrics,
+    )
+    assert result == "ok"
+    assert metrics.upstream_retries == 1
+    assert metrics.http_5xx_failover == {"501": 1}
+    text = render_prometheus(metrics)
+    assert "daari_http_5xx_failover_total" in text
+    assert 'status="501"' in text
+
+
+@pytest.mark.asyncio
+async def test_dial_on_503_does_not_count_as_widened_failover():
+    """503 is already in RETRYABLE_STATUS — the widened-dial counter stays quiet."""
+    metrics = Metrics()
+    calls = {"n": 0}
+
+    async def flaky():
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise _status_error(503)
+        return "ok"
+
+    await run_upstream(
+        flaky,
+        upstream="openai",
+        policy=RetryPolicy(
+            attempts=2,
+            base_delay=0.0,
+            max_delay=0.0,
+            jitter=0.0,
+            failover_on_http_5xx=True,
+        ),
+        metrics=metrics,
+    )
+    assert metrics.upstream_retries == 1
+    assert metrics.http_5xx_failover == {}
