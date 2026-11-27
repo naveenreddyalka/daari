@@ -135,7 +135,12 @@ _REASONING_EFFORT_TO_THINK: dict[str, str | None] = {
 }
 
 # Values signal_overrides / config may set as a reasoning_effort lever (#2162).
-ACCEPTED_REASONING_EFFORTS: frozenset[str] = frozenset(_REASONING_EFFORT_TO_THINK)
+# ``xhigh`` is Gemini 4 Hydrogen's extra thinking level (#2359). It is accepted
+# and forwarded on that model; local Ollama think still omits it (not in
+# ``_REASONING_EFFORT_TO_THINK``). Unknown strings stay omitted the same way.
+ACCEPTED_REASONING_EFFORTS: frozenset[str] = frozenset(_REASONING_EFFORT_TO_THINK) | {
+    "xhigh"
+}
 
 # Name markers for Ollama models that accept think levels (gpt-oss, Qwen3, …).
 _THINKING_MODEL_MARKERS = ("gpt-oss", "qwen3", "thinking", "deepseek-r1")
@@ -427,7 +432,7 @@ class SamplingParams(BaseModel):
     tool_choice: str | dict[str, Any] | None = None
     n: int | None = None
     logprobs: bool | None = None
-    # Client reasoning_effort (minimal|low|medium|high); forwarded / mapped (#297).
+    # Client reasoning_effort (minimal|low|medium|high|xhigh); forwarded / mapped (#297/#2359).
     reasoning_effort: str | None = None
     # Client service_tier (flex|standard|priority|fast|ultrafast); forwarded / mapped (#430, #1519).
     service_tier: str | None = None

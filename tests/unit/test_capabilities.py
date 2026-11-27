@@ -105,6 +105,7 @@ def test_known_frontier_models_declare_provider_capabilities():
         "gemini-3.8-flash",
         "gemini-4-carbon",
         "gemini-4-argon",
+        "gemini-4-hydrogen",
     }
     for model in expected:
         caps = known_model_capabilities(model)
@@ -116,7 +117,13 @@ def test_known_frontier_models_declare_provider_capabilities():
     assert "tools" in known_model_capabilities("anthropic.claude-fable-5-2")
     assert "long_context" in known_model_capabilities("claude-mythos-5-2-20261109")
     # Gemini 4 Carbon/Argon: native audio/video/PDF input on the model card.
-    for gemini4 in ("gemini-4-carbon", "gemini-4-argon", "models/gemini-4-carbon"):
+    for gemini4 in (
+        "gemini-4-carbon",
+        "gemini-4-argon",
+        "gemini-4-hydrogen",
+        "models/gemini-4-carbon",
+        "models/gemini-4-hydrogen",
+    ):
         assert "audio" in known_model_capabilities(gemini4), gemini4
 
 

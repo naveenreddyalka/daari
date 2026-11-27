@@ -10025,6 +10025,16 @@ RETRYABLE_STATUS set retryable (501/522). Default-set retries (503) stay on
 `upstream_retries` only. Covered by `tests/unit/test_upstream_retry.py`.
 
 
+### Gemini 4 Hydrogen catalog ([#2359](https://github.com/naveenreddyalka/daari/issues/2359))
+
+<!-- tracking:#2359 -->
+**Status:** Done (2026-11-27). `_DEFAULT_MODEL_PRICES` includes
+`gemini-4-hydrogen` at $1.50 / $7.50 with cache read $0.075. The longer key
+wins over a `gemini-4` prefix. Capabilities match Carbon/Argon (tools, JSON,
+vision, audio, 1M). `reasoning_effort=xhigh` is accepted and forwarded;
+local Ollama think still omits it. Priority on this id bills 1.8×; flex
+stays 0.5×. Covered by `tests/unit/test_gemini_4_hydrogen.py`.
+
 ### Typed overload envelopes ([#2348](https://github.com/naveenreddyalka/daari/issues/2348))
 
 <!-- tracking:#2348 -->

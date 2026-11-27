@@ -65,6 +65,7 @@ def test_l6_cards_include_known_frontier_capabilities():
                     {"id": "anthropic", "model": "claude-mythos-5-2"},
                     {"id": "openai", "model": "gemini-4-carbon"},
                     {"id": "openai", "model": "gemini-4-argon"},
+                    {"id": "openai", "model": "gemini-4-hydrogen"},
                 ],
             }
         }
@@ -76,6 +77,7 @@ def test_l6_cards_include_known_frontier_capabilities():
         "claude-mythos-5-2",
         "gemini-4-carbon",
         "gemini-4-argon",
+        "gemini-4-hydrogen",
     ):
         card = next(item for item in cards if item["id"] == model_id)
         assert {"tools", "json", "vision", "long_context"} <= set(card["capabilities"]), model_id
@@ -86,7 +88,7 @@ def test_l6_cards_include_known_frontier_capabilities():
     assert fable52["speed"]["fast"]["output_per_1m"] == pytest.approx(80.0)
     mythos = next(item for item in cards if item["id"] == "claude-mythos-5-2")
     assert "speed" not in mythos
-    for model_id in ("gemini-4-carbon", "gemini-4-argon"):
+    for model_id in ("gemini-4-carbon", "gemini-4-argon", "gemini-4-hydrogen"):
         card = next(item for item in cards if item["id"] == model_id)
         assert "audio" in card["capabilities"], model_id
 
