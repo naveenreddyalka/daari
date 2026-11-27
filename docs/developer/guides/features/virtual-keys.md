@@ -188,6 +188,32 @@ daari keys list
 `daari keys list` prints the effective scope. `POST /introspect` includes
 `cache_scope` for the token (never the secret).
 
+## Frontier credential binding (team / key BYOK)
+
+Teams and keys can bind their own frontier credential so tenant spend lands on
+the tenant's provider invoice instead of the operator's. Bind with the admin
+API (master key); the value may be a plain key or a `secret://` ref, and
+`frontier_pool` pins the named `frontier.providers[].id` slot:
+
+```bash
+curl -X PATCH http://127.0.0.1:8000/v1/daari/teams/<team_id> \
+  -H "Authorization: Bearer $DAARI_MASTER_KEY" \
+  -d '{"frontier_api_key": "secret://env-file/keys.env#ENG", "frontier_pool": "openai-byok"}'
+curl -X PATCH http://127.0.0.1:8000/v1/daari/keys/<key_id> \
+  -H "Authorization: Bearer $DAARI_MASTER_KEY" -d '{"frontier_api_key": "sk-..."}'
+```
+
+Key binding wins over team; `null` clears a side. Admin reads and audit rows
+redact the credential. The binding applies on **every** door where money
+leaves the box — chat / Responses / Messages L6 escalation and the modality and
+passthrough doors (`/v1/images/*`, `/v1/audio/transcriptions` frontier
+fallback, `/v1/ocr`, `/v1/moderations`, `/v1/rerank`, `/v1/decisions`). A bound
+credential replaces slot key rotation; a pool pin filters to that slot. Daari
+fails closed rather than falling back to the global key: an unknown pool name
+or an unresolvable `secret://` ref returns 502 `frontier_binding_error` on all
+of those doors. Unbound keys and teams keep the global frontier key. `daari
+doctor` (`team_frontier_bindings`) tips on bindings that no longer resolve.
+
 ## Key expiry (doctor / Prometheus / webhook)
 
 Enforcement-time expiry is a 401 `key_expired`. For 90-day rotation, also
