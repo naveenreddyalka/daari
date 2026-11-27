@@ -10035,6 +10035,17 @@ vision, audio, 1M). `reasoning_effort=xhigh` is accepted and forwarded;
 local Ollama think still omits it. Priority on this id bills 1.8×; flex
 stays 0.5×. Covered by `tests/unit/test_gemini_4_hydrogen.py`.
 
+### Typed overload envelopes ([#2348](https://github.com/naveenreddyalka/daari/issues/2348))
+
+<!-- tracking:#2348 -->
+**Status:** Done (2026-11-27). When routing exhausts on HTTP 429 or 529,
+OpenAI-shaped routes return 503 `error.type=server_is_overloaded` and
+`/v1/messages` returns 529 `error.type=overloaded_error`, both with
+`Retry-After` (upstream value, else 1s). Other failures stay
+`Routing failed:`. Terminal overload on a stream emits the same typed frame
+before close. Messages still go through `safe_detail`. Covered by
+`tests/unit/test_overload_envelopes.py`.
+
 
 ## How to update
 

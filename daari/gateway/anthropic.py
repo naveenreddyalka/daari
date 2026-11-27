@@ -10,7 +10,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
-from daari.gateway.client_errors import backend_unavailable_message, request_deadline_response, routing_failure_detail, safe_detail
+from daari.gateway.client_errors import (
+    backend_unavailable_message,
+    overload_json_response,
+    overload_stream_frame,
+    request_deadline_response,
+    routing_failure_detail,
+    safe_detail,
+)
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import (
@@ -688,6 +695,10 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         ):
                             yield event
                     except Exception as exc:
+                        overload = overload_stream_frame(exc, anthropic=True)
+                        if overload is not None:
+                            yield overload
+                            return
                         error_payload = {
                             "type": "error",
                             "error": {"type": "stream_error", "message": safe_detail(exc)},
@@ -797,6 +808,10 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             except RequestDeadlineExceeded as exc:
                 return request_deadline_response(exc)
             except Exception as exc:
+                overloaded = overload_json_response(exc, anthropic=True)
+                if overloaded is not None:
+                    ctx.metrics.record_error(status=overloaded.status_code)
+                    return overloaded
                 ctx.metrics.record_error(status=503)
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
 
@@ -828,6 +843,10 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 except RequestDeadlineExceeded as exc:
                     return request_deadline_response(exc)
                 except Exception as exc:
+                    overloaded = overload_json_response(exc, anthropic=True)
+                    if overloaded is not None:
+                        ctx.metrics.record_error(status=overloaded.status_code)
+                        return overloaded
                     ctx.metrics.record_error(status=503)
                     raise HTTPException(
                         status_code=503, detail=routing_failure_detail(exc)
