@@ -3113,6 +3113,28 @@ def report(
             f"/{frontier.get('monthly_budget_usd', 0.0) or '∞'}"
         )
 
+    deprecations = payload.get("deprecations") or []
+    if deprecations:
+        typer.echo("")
+        typer.echo("deprecations (models with a lifecycle date and ledger traffic):")
+        for row in deprecations:
+            successor = row.get("successor_model") or "-"
+            source = row.get("deprecation_source") or "-"
+            typer.echo(
+                f"  {row.get('model')}  retires {row.get('retires_at') or '-'}"
+                f"  deprecated {row.get('deprecated_at') or '-'}"
+                f"  successor: {successor}  source: {source}"
+                f"  requests: {int(row.get('requests') or 0)}"
+            )
+            for key_row in row.get("by_key") or []:
+                typer.echo(
+                    f"    key {key_row.get('key_id')}: {int(key_row.get('requests') or 0)}"
+                )
+            for team_row in row.get("by_team") or []:
+                typer.echo(
+                    f"    team {team_row.get('team_id')}: {int(team_row.get('requests') or 0)}"
+                )
+
     credential_spend = payload.get("frontier_credential_spend") or []
     if credential_spend:
         typer.echo("")

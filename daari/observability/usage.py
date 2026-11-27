@@ -842,6 +842,33 @@ class UsageLedger:
             )
         return total
 
+    def model_client_counts(self, *, days: int) -> list[dict[str, Any]]:
+        """Per-model request counts by client id for the deprecation report (#2346)."""
+        if not self.enabled or days <= 0:
+            return []
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
+            "%Y-%m-%d"
+        )
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT model, client_id, SUM(requests) FROM client_usage"
+                    " WHERE day >= ? GROUP BY model, client_id",
+                    (cutoff,),
+                ).fetchall()
+        except Exception:
+            return []
+        return [
+            {
+                "model": str(model or ""),
+                "key_id": str(client_id or ""),
+                "team_id": "",
+                "requests": int(count or 0),
+            }
+            for model, client_id, count in rows
+            if int(count or 0) > 0
+        ]
+
     def request_count_for_client(
         self,
         client_id: str,
@@ -1104,3 +1131,71 @@ def _usage_rows_to_report(
             totals["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
     totals["estimated_saved_usd"] = round(totals["estimated_saved_usd"], 4)
     return {"enabled": True, "days": list(per_day.values()), "totals": totals}
+
+
+def build_deprecation_exposure(
+    rows: list[dict[str, Any]],
+    lifecycle: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Models with a lifecycle date that still have ledger traffic (#2346).
+
+    ``rows`` are ``{model, key_id, team_id, requests}``. Models with no
+    ``deprecated_at`` / ``retires_at`` are skipped. Reject/degrade is unchanged.
+    """
+    from daari.pricing import matching_model_key
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        model = str(row.get("model") or "")
+        requests = int(row.get("requests") or 0)
+        if not model or requests <= 0:
+            continue
+        key = matching_model_key(model, lifecycle) if lifecycle else None
+        if key is None:
+            continue
+        entry = lifecycle.get(key) or {}
+        if not isinstance(entry, dict):
+            continue
+        deprecated_at = entry.get("deprecated_at") or None
+        retires_at = entry.get("retires_at") or None
+        if not deprecated_at and not retires_at:
+            continue
+        bucket = grouped.get(key)
+        if bucket is None:
+            successor = str(entry.get("successor_model") or entry.get("migrate_to") or "").strip()
+            source = str(entry.get("deprecation_source") or "").strip()
+            bucket = {
+                "model": key,
+                "deprecated_at": deprecated_at,
+                "retires_at": retires_at,
+                "deprecation_source": source or None,
+                "successor_model": successor or None,
+                "requests": 0,
+                "by_key": {},
+                "by_team": {},
+            }
+            grouped[key] = bucket
+        bucket["requests"] += requests
+        key_id = str(row.get("key_id") or "")
+        team_id = str(row.get("team_id") or "")
+        if key_id:
+            bucket["by_key"][key_id] = bucket["by_key"].get(key_id, 0) + requests
+        if team_id:
+            bucket["by_team"][team_id] = bucket["by_team"].get(team_id, 0) + requests
+    out: list[dict[str, Any]] = []
+    for bucket in grouped.values():
+        out.append(
+            {
+                **{k: v for k, v in bucket.items() if k not in {"by_key", "by_team"}},
+                "by_key": [
+                    {"key_id": key_id, "requests": count}
+                    for key_id, count in sorted(bucket["by_key"].items())
+                ],
+                "by_team": [
+                    {"team_id": team_id, "requests": count}
+                    for team_id, count in sorted(bucket["by_team"].items())
+                ],
+            }
+        )
+    out.sort(key=lambda item: (-int(item["requests"]), str(item["model"])))
+    return out

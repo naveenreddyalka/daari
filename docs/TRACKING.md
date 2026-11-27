@@ -9963,6 +9963,19 @@ traces-stats. Covered by `tests/unit/test_finish_reason_metrics.py`.
 array is absent. Covered by `packages/web-ui/test/dashboard.test.js`.
 
 
+
+### Successor model and deprecation exposure ([#2346](https://github.com/naveenreddyalka/daari/issues/2346))
+
+<!-- tracking:#2346 -->
+**Status:** Done (2026-11-27). Lifecycle rows accept optional `successor_model`
+and `deprecation_source` (unknown keys still kept). Doctor `model_lifecycle`
+names `successor: …` when one is known. `GET /v1/daari/report` and
+`daari report` include a `deprecations` section: models with a lifecycle date
+and ledger traffic, request counts split by key and team, plus date, source,
+and successor. Reject/degrade behavior is unchanged. Covered by
+`tests/unit/test_deprecation_exposure.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
