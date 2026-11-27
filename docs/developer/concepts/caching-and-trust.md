@@ -19,6 +19,17 @@ cannot near-miss collide. Agent-prefix L1 (`agent_prefix_text`) uses the same
 `_message_embed_chunk` path, so tool-loop prefixes with different screenshots or
 clips also stay distinct.
 
+## Only complete turns are written
+
+Every L0 / L1 / agent-prefix / org-cache put — non-stream, chat stream, and
+`/v1/messages` stream — runs the same gate on the turn's `finish_reason`. A turn
+that ended with `length` (`max_tokens`), `pause_turn`, `refusal`, or
+`content_filter` is served to the client with that honest finish reason but is
+never cached, so an identical or merely similar follow-up re-executes instead of
+replaying a truncated answer. `tool_calls` turns keep their existing rule (exact
+L0 only, never L1). Because only complete turns are stored, a cached replay's
+`finish_reason: stop` / `stop_reason: end_turn` is always truthful.
+
 ## Verifying a hit before serving it
 
 A cosine threshold cannot separate "how do I list Docker containers?" from "how do

@@ -9727,6 +9727,19 @@ sampling, Gradium / Gnani / Perplexity / `gemini-decision-1` non-goals),
 1.108.11, and 1.108.10 (wildcard `base_model` pricing vs
 `matching_model_key`, PDF-URL async) notes retained. `compare.md` LTS line
 updated. Covered by `tests/unit/test_compare_litellm_1104.py`.
+### Cache: never store truncated, paused, or refused turns ([#2330](https://github.com/naveenreddyalka/daari/issues/2330))
+
+<!-- tracking:#2330 -->
+**Status:** Done (2026-11-25). One `_cacheable_turn()` gate
+(`is_cacheable_finish_reason`) now fronts every L0 / L1 / agent-prefix / org
+put — non-stream, chat stream, and `/v1/messages` stream. Turns ending in
+`length` / `max_tokens`, `pause_turn`, `refusal`, or `content_filter` are served
+with their honest finish reason but never cached, so an identical repeat
+re-executes instead of replaying a truncated answer as `stop`. Non-stream
+Ollama `done_reason=length` now surfaces as `finish_reason=length` so the gate
+can see local truncation. `tool_calls` finishes unchanged (#2234). Docs:
+caching-and-trust. Covered by `tests/unit/test_cache_finish_reason_gate.py`
+and `tests/integration/test_gateway_flow.py`.
 ### Observability: Prometheus and stats for OpenAI regional processing 1.10× uplift by region ([#2323](https://github.com/naveenreddyalka/daari/issues/2323))
 
 <!-- tracking:#2323 -->
