@@ -19,6 +19,7 @@ from daari.gateway.request_log import log_gateway_event
 
 TASKS_CAPABILITY = "io.modelcontextprotocol/tasks"
 SKILLS_EXTENSION = "io.modelcontextprotocol/skills"
+EVENTS_EXTENSION = "io.modelcontextprotocol/events"
 TASKS_META_KEY = "io.modelcontextprotocol/tasks"
 
 STATUS_WORKING = "working"
@@ -276,7 +277,11 @@ def tool_should_become_task(
     return threshold_ms > 0
 
 
-def initialize_capabilities(protocol_version: str) -> dict[str, Any]:
+def initialize_capabilities(
+    protocol_version: str,
+    *,
+    upstream_extensions: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     caps: dict[str, Any] = {
         "tools": {"listChanged": False},
         # Empty surfaces so explorer clients probing resources/prompts succeed (#1014).
@@ -288,6 +293,11 @@ def initialize_capabilities(protocol_version: str) -> dict[str, Any]:
         # SEP-2640: clients call skills/list only after observing this (#1979).
         # directoryRead: false — resources/directory/read not implemented yet.
         caps.setdefault("extensions", {})[SKILLS_EXTENSION] = {"directoryRead": False}
+        # SEP-3415: advertise events only when a bound egress server does (#2368).
+        if isinstance(upstream_extensions, dict) and EVENTS_EXTENSION in upstream_extensions:
+            raw = upstream_extensions[EVENTS_EXTENSION]
+            settings_obj = raw if isinstance(raw, dict) else {}
+            caps.setdefault("extensions", {})[EVENTS_EXTENSION] = dict(settings_obj)
     return caps
 
 

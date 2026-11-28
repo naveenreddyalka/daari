@@ -35,6 +35,10 @@ WARNING_RESULT_TRUNCATED = "mcp_result_truncated"
 WARNING_CREDENTIAL_REFRESH_FAILED = "mcp_credential_refresh_failed"
 WARNING_TOOL_DENIED = "mcp_tool_denied"
 _LIST_TOOL_NAMES = frozenset({"tools/list", "list"})
+# Methods that are not tools/call — skip per-tool server_tools subset checks.
+_NON_TOOL_METHODS = frozenset(
+    {"tools/list", "list", "initialize", "events/list", "events/poll"}
+)
 ACCEPT_JSON_AND_SSE = "application/json, text/event-stream"
 
 
@@ -230,9 +234,16 @@ class McpEgressProvider(HttpIntegrationProvider):
         self._tool_embed_cache = ToolEmbeddingCache()
         self._http: httpx.AsyncClient | None = None
         self._rpc_id_seq = itertools.count(1)
+        # Cached after first successful initialize probe (#2368).
+        self._upstream_extensions: dict[str, Any] | None = None
+        self._upstream_extensions_probed = False
         from daari.providers.mcp_token_exchange import TokenExchangeCache
 
         self._token_exchange_cache = TokenExchangeCache()
+
+    @property
+    def upstream_extensions(self) -> dict[str, Any]:
+        return dict(self._upstream_extensions or {})
 
     def _ensure_egress_url_allowed(self) -> None:
         from daari.security.egress_url import validate_egress_url
@@ -551,7 +562,7 @@ class McpEgressProvider(HttpIntegrationProvider):
     async def _prepare_egress(
         self, request: InternalRequest, *, tool: str, tokens: int = 1
     ) -> tuple[dict[str, str] | None, InternalResponse | None]:
-        call_tool = None if tool in _LIST_TOOL_NAMES else tool
+        call_tool = None if tool in _NON_TOOL_METHODS else tool
         denied = self._policy_denied_response(request, tool=call_tool)
         if denied is not None:
             return None, denied
@@ -580,6 +591,114 @@ class McpEgressProvider(HttpIntegrationProvider):
                 warning=WARNING_SERVER_RATE_LIMITED,
             ),
         )
+
+    async def capture_upstream_extensions(
+        self, request: InternalRequest
+    ) -> dict[str, Any]:
+        """Probe upstream initialize once; cache capabilities.extensions (#2368)."""
+        if self._upstream_extensions_probed:
+            return self.upstream_extensions
+        try:
+            headers, err = await self._prepare_egress(request, tool="initialize")
+        except McpServerRateLimited:
+            self._upstream_extensions_probed = True
+            self._upstream_extensions = {}
+            return {}
+        if err is not None:
+            self._upstream_extensions_probed = True
+            self._upstream_extensions = {}
+            return {}
+        assert headers is not None
+        rpc_id = next(self._rpc_id_seq)
+        payload = {
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2026-07-28",
+                "capabilities": {},
+                "clientInfo": {"name": "daari", "version": "0"},
+            },
+        }
+        headers = {**headers, "Mcp-Method": "initialize"}
+        try:
+            response = await self._post_json(payload, headers)
+            data = parse_mcp_http_response(response, request_id=rpc_id)
+            if "error" in data:
+                self.breaker.record_failure()
+                self._upstream_extensions = {}
+            else:
+                result = data.get("result") if isinstance(data.get("result"), dict) else {}
+                caps = result.get("capabilities") if isinstance(result, dict) else {}
+                extensions = caps.get("extensions") if isinstance(caps, dict) else {}
+                self._upstream_extensions = (
+                    dict(extensions) if isinstance(extensions, dict) else {}
+                )
+                self.breaker.record_success()
+        except Exception:  # noqa: BLE001 — probe must never break initialize
+            self.breaker.record_failure()
+            self._upstream_extensions = {}
+        self._upstream_extensions_probed = True
+        return self.upstream_extensions
+
+    async def relay_jsonrpc(
+        self,
+        request: InternalRequest,
+        *,
+        method: str,
+        params: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any] | None, InternalResponse | None]:
+        """Relay a JSON-RPC method to the upstream MCP server (#2368).
+
+        Returns ``(result, None)`` on success or ``(None, InternalResponse)`` on
+        transport/policy failure. JSON-RPC errors from upstream are returned as
+        ``({"error": ...}, None)`` so callers can forward the code/message.
+        """
+        try:
+            headers, err = await self._prepare_egress(request, tool=method)
+        except McpServerRateLimited as exc:
+            record_mcp_server_rate_limit_reject(exc, metrics=self.metrics, settings=self.settings)
+            return None, self._rate_limited_response(request)
+        if err is not None:
+            return None, err
+        assert headers is not None
+        args = dict(params or {})
+        if method == "events/poll":
+            event_name = str(args.get("name") or "").strip() or "events/poll"
+            checked = self.guardrails.check_arguments(event_name, args.get("arguments") or {})
+            if checked.blocked:
+                rule = first_rule(checked)
+                denial = self.guardrails.denial_text(
+                    checked,
+                    legacy=f"{self.id} events/poll blocked by guardrail {rule}.",
+                )
+                return None, self._guardrail_blocked(request, event_name, rule, denial=denial)
+        rpc_id = next(self._rpc_id_seq)
+        payload: dict[str, Any] = {
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "method": method,
+            "params": args,
+        }
+        headers = {**headers, "Mcp-Method": method}
+        try:
+            response = await self._post_json(payload, headers)
+            data = parse_mcp_http_response(response, request_id=rpc_id)
+            if "error" in data:
+                self.breaker.record_failure()
+                self._record_egress("error")
+                err_body = data["error"]
+                if not isinstance(err_body, dict):
+                    err_body = {"code": -32603, "message": str(err_body)}
+                return {"error": err_body}, None
+            self.breaker.record_success()
+            self._record_egress("ok")
+            result = data.get("result", data)
+            return result if isinstance(result, dict) else {"value": result}, None
+        except Exception as exc:  # noqa: BLE001
+            self.breaker.record_failure()
+            self._record_egress("error")
+            return None, self._failure(request, exc)
 
     async def list_tools_catalog(
         self, request: InternalRequest
