@@ -39,6 +39,7 @@ from daari.gateway.mcp_policy import (
     virtual_key_lacks_mcp_grant,
 )
 from daari.gateway.mcp_tasks import (
+    EVENTS_EXTENSION,
     client_opted_into_tasks,
     create_task_result,
     initialize_capabilities,
@@ -902,19 +903,148 @@ def _unsupported_protocol_error(rpc_id: Any, requested: str) -> dict[str, Any]:
     )
 
 
-def _discover_result(protocol: str | None = None) -> dict[str, Any]:
+async def _collect_upstream_extensions(
+    ctx: AppContext,
+    request: Request | None,
+    server_policy: McpServerPolicy | None,
+) -> dict[str, Any]:
+    """Merge capabilities.extensions from allowed egress servers (#2368)."""
+    known = configured_mcp_server_ids(ctx.settings)
+    if not known:
+        return {}
+    meta = _governed_meta(request, ctx, None)
+    internal = InternalRequest(
+        messages=[Message(role="user", content="")],
+        model="",
+        meta=meta,
+    )
+    merged: dict[str, Any] = {}
+    for sid in sorted(known):
+        if server_policy is not None and not server_policy.allows(sid):
+            continue
+        provider = ctx.providers.get(f"mcp:{sid}")
+        if not isinstance(provider, McpEgressProvider):
+            continue
+        extensions = await provider.capture_upstream_extensions(internal)
+        for key, value in extensions.items():
+            if key not in merged:
+                merged[key] = value
+    return merged
+
+
+async def _initialize_capabilities_async(
+    ctx: AppContext,
+    request: Request | None,
+    protocol: str,
+    server_policy: McpServerPolicy | None = None,
+) -> dict[str, Any]:
+    upstream: dict[str, Any] | None = None
+    if protocol >= MODERN_PROTOCOL_VERSION:
+        upstream = await _collect_upstream_extensions(ctx, request, server_policy)
+    return initialize_capabilities(protocol, upstream_extensions=upstream or None)
+
+
+def _bound_events_provider(
+    ctx: AppContext,
+    server_policy: McpServerPolicy | None,
+) -> McpEgressProvider | None:
+    """First allowed egress provider that advertised the events extension."""
+    known = configured_mcp_server_ids(ctx.settings)
+    for sid in sorted(known):
+        if server_policy is not None and not server_policy.allows(sid):
+            continue
+        provider = ctx.providers.get(f"mcp:{sid}")
+        if not isinstance(provider, McpEgressProvider):
+            continue
+        if EVENTS_EXTENSION in provider.upstream_extensions:
+            return provider
+    return None
+
+
+async def _discover_result(
+    ctx: AppContext,
+    request: Request | None,
+    protocol: str | None = None,
+    server_policy: McpServerPolicy | None = None,
+) -> dict[str, Any]:
     """Build server/discover DiscoverResult (MCP 2026-07-28 / #1213)."""
     version = protocol if protocol in SUPPORTED_PROTOCOL_VERSIONS else MODERN_PROTOCOL_VERSION
     info = _server_info()
+    caps = await _initialize_capabilities_async(ctx, request, version, server_policy)
     return {
         "resultType": "complete",
         "supportedVersions": _sorted_supported_versions(),
-        "capabilities": initialize_capabilities(version),
+        "capabilities": caps,
         "serverInfo": info,
         "_meta": {SERVER_INFO_META_KEY: info},
         "ttlMs": 3_600_000,
         "cacheScope": "public",
     }
+
+
+async def _relay_events_method(
+    ctx: AppContext,
+    request: Request,
+    *,
+    method: str,
+    params: dict[str, Any],
+    rpc_id: Any,
+    server_policy: McpServerPolicy | None,
+) -> Response:
+    """Relay events/list or events/poll through the bound egress server (#2368)."""
+    provider = _bound_events_provider(ctx, server_policy)
+    if provider is None:
+        # Probe once more in case initialize was skipped.
+        await _collect_upstream_extensions(ctx, request, server_policy)
+        provider = _bound_events_provider(ctx, server_policy)
+    if provider is None:
+        return _rpc_response(
+            request,
+            _jsonrpc_error(rpc_id, METHOD_NOT_FOUND, f"Method not found: {method}"),
+        )
+    meta = _governed_meta(request, ctx, None)
+    internal = InternalRequest(
+        messages=[Message(role="user", content="")],
+        model="",
+        meta=meta,
+    )
+    result, err = await provider.relay_jsonrpc(internal, method=method, params=params)
+    log_gateway_event(
+        "mcp_events_list" if method == "events/list" else "mcp_events_poll",
+        {
+            "server_id": provider.server.id,
+            "method": method,
+            "ok": err is None and isinstance(result, dict) and "error" not in result,
+            "cursor": params.get("cursor"),
+            "name": params.get("name") if method == "events/poll" else None,
+        },
+    )
+    if err is not None:
+        warning = getattr(err.daari_meta, "warning", None) or ""
+        if warning == "guardrail_blocked":
+            return _rpc_response(
+                request,
+                _jsonrpc_error(
+                    rpc_id,
+                    GUARDRAIL_BLOCKED,
+                    err.content or "blocked by guardrail",
+                    data={"method": method, "direction": "input"},
+                ),
+            )
+        return _rpc_response(
+            request,
+            _jsonrpc_error(rpc_id, INTERNAL_ERROR, safe_detail(RuntimeError(err.content))[:200]),
+        )
+    assert result is not None
+    if "error" in result:
+        upstream_err = result["error"]
+        code = int(upstream_err.get("code", INTERNAL_ERROR))
+        message = str(upstream_err.get("message") or "upstream error")
+        return _rpc_response(
+            request,
+            _jsonrpc_error(rpc_id, code, message, data=upstream_err.get("data")),
+        )
+    return _rpc_response(request, _jsonrpc_result(rpc_id, result))
 
 
 class ModelNotAllowed(Exception):
@@ -1649,20 +1779,31 @@ class MCPGatewayAdapter(GatewayAdapter):
                 if method == "server/discover":
                     return _rpc_response(
                         request,
-                        _jsonrpc_result(rpc_id, _discover_result(requested_meta)),
+                        _jsonrpc_result(
+                            rpc_id,
+                            await _discover_result(
+                                ctx,
+                                request,
+                                requested_meta,
+                                governance.server_policy,
+                            ),
+                        ),
                     )
                 if method == "initialize":
                     if virtual_key_lacks_mcp_grant(governance.claims, ctx.settings):
                         _record_mcp_grant_denied(ctx)
                         return _grant_denied_initialize_response(request, rpc_id)
                     protocol = _negotiate_protocol(params)
+                    caps = await _initialize_capabilities_async(
+                        ctx, request, protocol, governance.server_policy
+                    )
                     return _rpc_response(
                         request,
                         _jsonrpc_result(
                             rpc_id,
                             {
                                 "protocolVersion": protocol,
-                                "capabilities": initialize_capabilities(protocol),
+                                "capabilities": caps,
                                 "serverInfo": _server_info(),
                             },
                         ),
@@ -1744,6 +1885,61 @@ class MCPGatewayAdapter(GatewayAdapter):
                             ),
                         )
                     return _rpc_response(request, _jsonrpc_result(rpc_id, get_result))
+                if method == "events/list":
+                    if virtual_key_lacks_mcp_grant(governance.claims, ctx.settings):
+                        _record_mcp_grant_denied(ctx)
+                        return _rpc_response(
+                            request,
+                            _jsonrpc_result(
+                                rpc_id,
+                                {"resultType": "complete", "events": []},
+                            ),
+                        )
+                    return await _relay_events_method(
+                        ctx,
+                        request,
+                        method="events/list",
+                        params=params,
+                        rpc_id=rpc_id,
+                        server_policy=governance.server_policy,
+                    )
+                if method == "events/poll":
+                    if virtual_key_lacks_mcp_grant(governance.claims, ctx.settings):
+                        _record_mcp_grant_denied(ctx)
+                        return _rpc_response(
+                            request,
+                            _jsonrpc_result(
+                                rpc_id,
+                                {
+                                    "resultType": "complete",
+                                    "events": [],
+                                    "cursor": params.get("cursor"),
+                                    "hasMore": False,
+                                },
+                            ),
+                        )
+                    return await _relay_events_method(
+                        ctx,
+                        request,
+                        method="events/poll",
+                        params=params,
+                        rpc_id=rpc_id,
+                        server_policy=governance.server_policy,
+                    )
+                if method in {"events/stream", "events/subscribe"}:
+                    return _rpc_response(
+                        request,
+                        _jsonrpc_error(
+                            rpc_id,
+                            INTERNAL_ERROR,
+                            (
+                                f"{method} is not supported yet; "
+                                "poll delivery (events/list + events/poll) only "
+                                "(SEP-3415 follow-up)"
+                            ),
+                            data={"method": method, "supported": ["poll"]},
+                        ),
+                    )
                 if method == "prompts/list":
                     return _rpc_response(
                         request,

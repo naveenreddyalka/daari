@@ -10045,6 +10045,17 @@ alerts on `daari report` without a POST. A signed webhook and
 `daari_performance_alerts_total{kind}` fire once per resource, kind, and UTC
 day. Covered by `tests/unit/test_performance_alerts.py`.
 
+### MCP Events Extension relay SEP-3415 ([#2368](https://github.com/naveenreddyalka/daari/issues/2368))
+
+<!-- tracking:#2368 -->
+**Status:** Done (2026-11-28). Egress `initialize` caches
+`capabilities.extensions`; ingress advertises
+`io.modelcontextprotocol/events` only when a bound egress server does.
+`events/list` and `events/poll` relay with opaque cursors and
+`mcp_events_*` audit events; grant fail-closed returns empty catalogs.
+`events/stream` / `events/subscribe` return not-supported; unknown methods
+stay `-32601`. Covered by `tests/unit/test_mcp_events_sep3415.py`.
+
 ### GPT-6.2 Astra and Sol catalog rates ([#2367](https://github.com/naveenreddyalka/daari/issues/2367))
 
 <!-- tracking:#2367 -->

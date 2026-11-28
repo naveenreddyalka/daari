@@ -9,6 +9,12 @@ is set, send the same Bearer / `x-api-key` the rest of the daemon expects.
 on protocol ≥ 2026-07-28 it also declares
 `extensions["io.modelcontextprotocol/skills"]` (with an explicit
 `directoryRead` flag) so clients discover the skills surface.
+When a configured egress MCP server advertises
+`extensions["io.modelcontextprotocol/events"]` (SEP-3415), ingress
+`initialize` / `server/discover` pass that extension through and relay
+`events/list` + `events/poll` (opaque cursors, audited as `mcp_events_list` /
+`mcp_events_poll`). `events/stream` and `events/subscribe` return a clear
+not-supported JSON-RPC error (poll-only follow-up).
 `prompts/list` returns an empty array. `resources/list` includes
 `skill://<id>/SKILL.md` (and package supporting files) for on-box skills under
 `~/.daari/skills/` (flat `*.md` and AAIF `*/SKILL.md` packages);
