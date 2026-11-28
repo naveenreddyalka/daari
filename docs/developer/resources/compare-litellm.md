@@ -286,6 +286,14 @@ builds are superseded. The live LTS patch on the prior line is
   resolve only from operator-owned `Settings` at boot/refresh, and admin
   config PATCH is a validated whitelist with no credential fields. Fenced by
   `tests/unit/test_client_credential_hygiene.py`.
+- **Long tool-name (>64 chars) governance** — LiteLLM 1.108.12 LTS fixed a
+  fail-open where `tool_policy` / Messages guardrails truncated at Anthropic's
+  64-char tool-name limit
+  ([#47434](https://github.com/BerriAI/litellm/issues/47434) /
+  [#52717](https://github.com/BerriAI/litellm/issues/52717)). daari never
+  truncates for matching: MCP allow/deny and `server_tools`, chat
+  `tool_choice.allowed_tools`, and the Messages bridge compare full names.
+  Fenced by `tests/unit/test_long_tool_name_governance.py`.
 
 - **Mid-stream fallback continuation** — LiteLLM can keep a streaming chat
   going on a configured fallback mid-answer. daari ships the same on-box via

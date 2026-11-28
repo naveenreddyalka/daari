@@ -10045,6 +10045,15 @@ alerts on `daari report` without a POST. A signed webhook and
 `daari_performance_alerts_total{kind}` fire once per resource, kind, and UTC
 day. Covered by `tests/unit/test_performance_alerts.py`.
 
+### Long tool-name governance fence ([#2369](https://github.com/naveenreddyalka/daari/issues/2369))
+
+<!-- tracking:#2369 -->
+**Status:** Done (2026-11-28). Hermetic tests prove MCP allow/deny,
+`server_tools`, chat `allowed_tools`, and Messages bridge match full tool
+names longer than 64 chars (no truncate / fail-open). Granted long names
+round-trip on the local tier. compare-litellm cites LiteLLM #47434/#52717.
+Covered by `tests/unit/test_long_tool_name_governance.py`.
+
 ### MCP Events Extension relay SEP-3415 ([#2368](https://github.com/naveenreddyalka/daari/issues/2368))
 
 <!-- tracking:#2368 -->

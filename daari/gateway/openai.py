@@ -743,6 +743,8 @@ def build_chat_completion_payload(
     reasoning_text = (response.reasoning_content or "").strip() or None
     if reasoning_exclude:
         reasoning_text = None
+    tool_calls = list(response.tool_calls) if response.tool_calls else None
+    finish = response.finish_reason or ("tool_calls" if tool_calls else "stop")
     payload = ChatCompletionResponse(
         id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
         created=int(time.time()),
@@ -752,10 +754,11 @@ def build_chat_completion_payload(
                 message=ChatMessage(
                     role="assistant",
                     content=response.content,
+                    tool_calls=tool_calls,
                     reasoning=reasoning_text,
                     reasoning_content=reasoning_text,
                 ),
-                finish_reason=response.finish_reason or "stop",
+                finish_reason=finish,
             )
         ],
         usage={
@@ -779,6 +782,7 @@ def _openai_completion_body(
     finish_reason: str | None = None,
     reasoning_content: str | None = None,
     reasoning_exclude: bool = False,
+    tool_calls: list[Any] | None = None,
 ) -> dict[str, Any]:
     prompt_chars = sum(len(message.content or "") for message in body.messages)
     if usage is not None:
@@ -793,6 +797,8 @@ def _openai_completion_body(
     reasoning_text = (reasoning_content or "").strip() or None
     if reasoning_exclude:
         reasoning_text = None
+    calls = list(tool_calls) if tool_calls else None
+    finish = finish_reason or ("tool_calls" if calls else "stop")
     payload = ChatCompletionResponse(
         id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
         created=int(time.time()),
@@ -802,10 +808,11 @@ def _openai_completion_body(
                 message=ChatMessage(
                     role="assistant",
                     content=result_content,
+                    tool_calls=calls,
                     reasoning=reasoning_text,
                     reasoning_content=reasoning_text,
                 ),
-                finish_reason=finish_reason or "stop",
+                finish_reason=finish,
             )
         ],
         usage={
@@ -1377,6 +1384,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 finish_reason=result.finish_reason,
                 reasoning_content=result.reasoning_content,
                 reasoning_exclude=bool(internal.sampling.reasoning_exclude),
+                tool_calls=result.tool_calls,
             )
             if idem_slot is not None:
                 idem_slot.complete(
