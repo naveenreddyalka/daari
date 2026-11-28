@@ -19,7 +19,7 @@ KNOWN_CAPABILITIES = ("tools", "json", "vision", "audio", "long_context")
 # Claude Fable 5.1 / Opus 5 / Sonnet 5: tools, vision, 1M context, JSON
 # (https://platform.claude.com/docs/en/models/overview).
 # GPT-6 Astra and the GPT-5.6 family: tools, JSON, image input, ≥1M context.
-# GPT-6.1 Sol: same capability set (coding/professional; tools + vision).
+# GPT-6.1 Sol / GPT-6.2 Astra+Sol: same capability set (tools + vision).
 # Gemini 3.8 Flash: tools, JSON, native image/audio/video, 1M context
 # (https://ai.google.dev/gemini-api/docs/latest-model).
 # Gemini 4 Carbon / Argon: same multimodal set (images/audio/video/PDF) +
@@ -41,6 +41,8 @@ _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
         "gpt-6-astra",
         "gpt-6.1-sol",
         "gpt-6.1-terra",
+        "gpt-6.2-astra",
+        "gpt-6.2-sol",
         # Rolling ChatGPT Instant alias (rates in pricing; snapshot moves).
         "chat-latest",
         "gpt-5.6",
@@ -64,6 +66,8 @@ for _audio_model in (
     "gpt-6-astra",
     "gpt-6.1-sol",
     "gpt-6.1-terra",
+    "gpt-6.2-astra",
+    "gpt-6.2-sol",
     "chat-latest",
     "gpt-5.6",
     "gpt-5.6-sol",

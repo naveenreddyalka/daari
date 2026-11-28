@@ -10045,6 +10045,16 @@ alerts on `daari report` without a POST. A signed webhook and
 `daari_performance_alerts_total{kind}` fire once per resource, kind, and UTC
 day. Covered by `tests/unit/test_performance_alerts.py`.
 
+### GPT-6.2 Astra and Sol catalog rates ([#2367](https://github.com/naveenreddyalka/daari/issues/2367))
+
+<!-- tracking:#2367 -->
+**Status:** Done (2026-11-28). `_DEFAULT_MODEL_PRICES` pins `gpt-6.2-astra`
+($8/$40, cached $0.40, writes $10/$20; ≥272K → $16/$60) and `gpt-6.2-sol`
+($2/$10, cached $0.10, writes $2.50/$5; ≥272K → $4/$15). Capabilities match
+the GPT-6 family (tools, JSON, vision, audio, long_context). 12h prompt-cache
+TTL bills `cache_write_12h_per_1m`. Covered by
+`tests/unit/test_gpt_6_2_pricing.py`.
+
 ### Gemini 4 Hydrogen catalog ([#2359](https://github.com/naveenreddyalka/daari/issues/2359))
 
 <!-- tracking:#2359 -->
