@@ -100,7 +100,7 @@ def test_messages_facade_preserves_and_filters_long_tool_names():
 
 @pytest.mark.asyncio
 async def test_mcp_ingress_denies_long_blocked_tool(settings, monkeypatch):
-    from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+    from daari.gateway.internal import DaariMeta, InternalResponse
 
     settings.integrations.mcp_policy.deny = [LONG_BLOCKED]
     app = create_app(settings)
@@ -225,7 +225,7 @@ async def test_mcp_egress_server_tools_deny_long_name(settings, monkeypatch):
 @pytest.mark.asyncio
 async def test_granted_long_tool_name_round_trips_local_tier(settings, monkeypatch):
     """Granted >64-char tool name survives tools[] out and tool_calls back."""
-    from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+    from daari.gateway.internal import DaariMeta, InternalResponse
 
     captured: dict = {}
 
