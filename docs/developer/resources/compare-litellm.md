@@ -311,11 +311,13 @@ builds are superseded. The live LTS patch on the prior line is
   Claudes. Related on-box path: opt-in `models.degrade_deprecated_speed`
   strips deprecated `speed` with soft_warning `deprecated_speed_degraded`
   instead of hard-failing after the removal date.
-- **GPT-6.2 sampler / tools hygiene** — LiteLLM's GPT-6 family table strips
-  `temperature` / `top_p` / `logprobs` and routes tools via Responses. daari's
-  builtin `frontier.param_compat` does the same for `gpt-6.2-astra` /
-  `gpt-6.2-sol` (effort `none` → `low`; chat+tools warn toward Responses)
-  without a `drop_params` flag.
+- **GPT-6.2 catalog + sampler hygiene** — LiteLLM needed a four-line
+  prompt-caching backport the night GPT-6.2 shipped. daari pins
+  `gpt-6.2-astra` / `gpt-6.2-sol` Standard rates (Astra $8/$40, Sol $2/$10;
+  30m/12h cache writes; ≥272K long-context) in `_DEFAULT_MODEL_PRICES` and
+  matches LiteLLM's GPT-6 family table: strip `temperature` / `top_p` /
+  `logprobs`, route tools via Responses (effort `none` → `low`) without a
+  `drop_params` flag.
 - **`LITELLM_OFFLINE_MODE`** — one switch to disable outbound fetches; daari is
   already local-first by default, so this is naming/ergonomics rather than a
   missing trust floor.

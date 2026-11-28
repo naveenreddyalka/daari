@@ -1899,6 +1899,31 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, Any]] = {
         "cache_write_30m_per_1m": 2.50,
         "cache_write_12h_per_1m": 5.00,
     },
+    # OpenAI gpt-6.2-astra / gpt-6.2-sol (2026-11-17): Standard short-context
+    # rates; ≥272K bills the whole request at above-* (2× input / 1.5× output).
+    # Prompt-cache writes: 30m = 1.25× input, 12h = 2.5× input (#2367).
+    # https://developers.openai.com/api/docs/models/gpt-6.2-astra
+    # https://developers.openai.com/api/docs/models/gpt-6.2-sol
+    "gpt-6.2-astra": {
+        "input_per_1m": 8.00,
+        "output_per_1m": 40.00,
+        "cached_input_per_1m": 0.40,
+        "cache_write_30m_per_1m": 10.00,
+        "cache_write_12h_per_1m": 20.00,
+        "input_threshold_tokens": 272_000,
+        "above_input_per_1m": 16.00,
+        "above_output_per_1m": 60.00,
+    },
+    "gpt-6.2-sol": {
+        "input_per_1m": 2.00,
+        "output_per_1m": 10.00,
+        "cached_input_per_1m": 0.10,
+        "cache_write_30m_per_1m": 2.50,
+        "cache_write_12h_per_1m": 5.00,
+        "input_threshold_tokens": 272_000,
+        "above_input_per_1m": 4.00,
+        "above_output_per_1m": 15.00,
+    },
     # OpenAI gpt-6.1-terra (2026-10-26): $1 / $0.05 cached / $5 Standard.
     # ≥272K input → 2× input/cache and 1.5× output for the full request.
     # https://developers.openai.com/api/docs/models/gpt-6.1-terra
